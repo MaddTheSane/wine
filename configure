@@ -830,6 +830,7 @@ with_oss
 with_png
 with_pthread
 with_sane
+with_macic
 with_tiff
 with_v4l
 with_xcomposite
@@ -1520,6 +1521,7 @@ Optional Packages:
   --without-png           do not use PNG
   --without-pthread       do not use the pthread library
   --without-sane          do not use SANE (scanner support)
+  --without-macic         do not use Image Capture (Mac)
   --without-tiff          do not use TIFF
   --without-v4l           do not use v4l1 (v4l support)
   --without-xcomposite    do not use the Xcomposite extension
@@ -2713,6 +2715,12 @@ fi
 # Check whether --with-sane was given.
 if test "${with_sane+set}" = set; then :
   withval=$with_sane;
+fi
+
+
+# Check whether --with-macic was given.
+if test "${with_macic+set}" = set; then :
+  withval=$with_macic;
 fi
 
 
@@ -6776,6 +6784,7 @@ done
     then
         CARBONLIB="-framework Carbon"
 
+        enable_macic=${enable_macic:-yes}
     fi
 
         if test "$ac_cv_header_ApplicationServices_ApplicationServices_h" = "yes"
@@ -7245,6 +7254,7 @@ esac
 
 enable_wineqtdecoder=${enable_wineqtdecoder:-no}
 enable_winemac_drv=${enable_winemac_drv:-no}
+enable_macic=${enable_macic:-no}
 
 if test "$LIBEXT" = "a"; then
   as_fn_error $? "could not find a way to build shared libraries.
@@ -15886,6 +15896,7 @@ wine_fn_config_test dlls/infosoft/tests infosoft_test
 wine_fn_config_dll initpki enable_initpki
 wine_fn_config_dll inkobj enable_inkobj
 wine_fn_config_dll inseng enable_inseng
+wine_fn_config_dll imagecapture.ds macic
 wine_fn_config_dll iphlpapi enable_iphlpapi implib
 wine_fn_config_test dlls/iphlpapi/tests iphlpapi_test
 wine_fn_config_dll itircl enable_itircl

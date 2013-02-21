@@ -1,0 +1,15 @@
+TOPSRCDIR = @top_srcdir@
+TOPOBJDIR = ../..
+SRCDIR    = @srcdir@
+VPATH     = @srcdir@
+MODULE    = imagecapture.ds
+IMPORTS   = comctl32 user32 gdi32 kernel32
+EXTRALIBS = @CARBONLIB@
+
+
+C_SRCS = \
+	imagecapture_main.c \
+	carbon_compat.c \
+	DSUI.c 
+
+@MAKE_DLL_RULES@

@@ -75,6 +75,7 @@ AC_ARG_WITH(png,       AS_HELP_STRING([--without-png],[do not use PNG]),
 AC_ARG_WITH(pthread,   AS_HELP_STRING([--without-pthread],[do not use the pthread library]),
             [if test "x$withval" = "xno"; then ac_cv_header_pthread_h=no; fi])
 AC_ARG_WITH(sane,      AS_HELP_STRING([--without-sane],[do not use SANE (scanner support)]))
+AC_ARG_WITH(macic,       AS_HELP_STRING([--without-macic],[do not use Image Capture (Mac)]))
 AC_ARG_WITH(tiff,       AS_HELP_STRING([--without-tiff],[do not use TIFF]),
             [if test "x$withval" = "xno"; then ac_cv_header_tiffio_h=no; fi])
 AC_ARG_WITH(v4l,       AS_HELP_STRING([--without-v4l],[do not use v4l1 (v4l support)]))
@@ -799,6 +800,7 @@ case $host_os in
     if test "$ac_cv_header_Carbon_Carbon_h" = "yes"
     then
         AC_SUBST(CARBONLIB,"-framework Carbon")
+        enable_macic=${enable_macic:-yes}
     fi
 
     dnl Enable Mac driver on Mac OS X 10.6 or later
@@ -908,6 +910,7 @@ esac
 
 enable_wineqtdecoder=${enable_wineqtdecoder:-no}
 enable_winemac_drv=${enable_winemac_drv:-no}
+enable_macic=${enable_macic:-no}
 
 if test "$LIBEXT" = "a"; then
   AC_MSG_ERROR(
@@ -2769,6 +2772,7 @@ WINE_CONFIG_TEST(dlls/infosoft/tests)
 WINE_CONFIG_DLL(initpki)
 WINE_CONFIG_DLL(inkobj)
 WINE_CONFIG_DLL(inseng)
+WINE_CONFIG_DLL(imagecapture.ds,macic)
 WINE_CONFIG_DLL(iphlpapi,,[implib])
 WINE_CONFIG_TEST(dlls/iphlpapi/tests)
 WINE_CONFIG_DLL(itircl)
