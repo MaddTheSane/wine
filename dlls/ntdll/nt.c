@@ -34,7 +34,9 @@
 # include <machine/cpu.h>
 #endif
 #ifdef HAVE_MACH_MACHINE_H
+# define cpu_type_t mach_cpu_type_t
 # include <mach/machine.h>
+# undef cpu_type_t
 #endif
 
 #include <ctype.h>
