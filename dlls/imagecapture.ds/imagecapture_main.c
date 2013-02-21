@@ -35,10 +35,6 @@ WINE_DEFAULT_DEBUG_CHANNEL(twain);
 
 HINSTANCE CIC_instance;
 
-#ifdef HAVE_CARBON_CARBON_H
-
-#endif /* HAVE_CARBON_CARBON_H */
-
 BOOL WINAPI DllMain (HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpvReserved)
 {
     TRACE("%p,%x,%p\n", hinstDLL, fdwReason, lpvReserved);
@@ -66,6 +62,7 @@ DS_Entry ( pTW_IDENTITY pOrigin,
            TW_UINT16    MSG,
            TW_MEMREF    pData)
 {
+#ifdef HAVE_CARBON_CARBON_H
     TW_UINT16 twRC = TWRC_SUCCESS;  /* Return Code */
 
     TRACE("(DG=%d DAT=%d MSG=%d)\n", DG, DAT, MSG);
@@ -89,4 +86,8 @@ DS_Entry ( pTW_IDENTITY pOrigin,
     }
 
     return twRC;
+    
+#else
+    return TWRC_FAILURE;
+#endif /* HAVE_CARBON_CARBON_H */
 }

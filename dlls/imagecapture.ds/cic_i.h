@@ -47,9 +47,6 @@ struct tagActiveDS
     HWND				hwndOwner;		/* window handle of the app */
     HWND				progressWnd;	/* window handle of the scanning window */
 #ifdef HAVE_CARBON_CARBON_H
-//    SANE_Handle		deviceHandle;		/* device handle */
-//    SANE_Parameters     sane_param;             /* parameters about the image
-//                                                   transferred */
     ICASessionID		Camera_Session;
 	ICAScannerSessionID	Scanner_Session;
     BOOL				sane_param_valid;	/* true if valid sane_param*/
