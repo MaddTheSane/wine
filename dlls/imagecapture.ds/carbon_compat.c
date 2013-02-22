@@ -125,7 +125,6 @@ static TW_UINT16 CIC_CloseCIC( ICASessionID cameraSession, ICAScannerSessionID s
 static void CICNotificationCallback(CFStringRef notificationType, 
           CFDictionaryRef notificationDictionary);
 static void CICRegisterForEventNotificationCallback(ICAHeader* header);
-#endif
 
 TW_UINT16 CIC_SourceControlHandler(
            pTW_IDENTITY pOrigin,
@@ -141,31 +140,15 @@ TW_UINT16 CIC_SourceControlHandler(
 			switch (MSG)
 	    {
 			case MSG_CLOSEDS:
-#ifdef HAVE_CARBON_CARBON_H
 				twRC = CIC_CloseCIC(activeDS.Camera_Session, activeDS.Scanner_Session);
 				activeDS.Camera_Session = 0;
 				activeDS.Scanner_Session = 0;
-
-#else
-				twRC = TWRC_FAILURE;
-				activeDS.twCC = TWCC_CAPUNSUPPORTED;
-#endif
 				break;
 			case MSG_OPENDS:
-#ifdef HAVE_CARBON_CARBON_H
 				twRC = CIC_OpenDS( pOrigin, (pTW_IDENTITY)pData);
-#else
-				twRC = TWRC_FAILURE;
-				activeDS.twCC = TWCC_CAPUNSUPPORTED;
-#endif
 				break;
 			case MSG_GET:
-#ifdef HAVE_CARBON_CARBON_H
 				twRC = CIC_GetIdentity( pOrigin, (pTW_IDENTITY)pData);
-#else
-				twRC = TWRC_FAILURE;
-				activeDS.twCC = TWCC_CAPUNSUPPORTED;
-#endif
 				break;
 	    }
 			break;
@@ -299,14 +282,18 @@ TW_UINT16 CIC_ImageGroupHandler(pTW_IDENTITY pOrigin,
     return TWRC_FAILURE;
 }
 
-#ifdef HAVE_CARBON_CARBON_H
+static void detect_ImageCapture_devices(void)
+{
+    
+}
+
 static TW_UINT16 CIC_GetIdentity( pTW_IDENTITY pOrigin, pTW_IDENTITY self)
 {
 //	static int cursanedev = 0;
 	
-//    detect_ImageCapture_devices();
+    detect_ImageCapture_devices();
 //    if (!sane_devlist[cursanedev])
-		return TWRC_FAILURE;
+//		return TWRC_FAILURE;
     self->ProtocolMajor = TWON_PROTOCOLMAJOR;
     self->ProtocolMinor = TWON_PROTOCOLMINOR;
     self->SupportedGroups = DG_CONTROL | DG_IMAGE;
@@ -318,7 +305,7 @@ static TW_UINT16 CIC_OpenDS( pTW_IDENTITY pOrigin, pTW_IDENTITY self)
 {
 	OSErr							   err = noErr;
     ICARegisterForEventNotificationPB  pb = {};
-    CFStringRef NotificationTypes[] = {                       
+    const CFStringRef NotificationTypes[] = {
 		kICANotificationTypeDeviceRemoved,
 		kICANotificationTypeDeviceInfoChanged,
 		kICANotificationTypeDeviceWasReset,
@@ -333,11 +320,10 @@ static TW_UINT16 CIC_OpenDS( pTW_IDENTITY pOrigin, pTW_IDENTITY self)
 		kICANotificationTypeScannerScanDone,
 		kICANotificationTypeScannerPageDone,
 		kICANotificationTypeScannerButtonPressed,
-		kICANotificationTypeScanProgressStatus,
-		NULL
+		kICANotificationTypeScanProgressStatus
 	};
 	
-    CFArrayRef array = CFArrayCreate(kCFAllocatorDefault, NotificationTypes, 12, &kCFTypeArrayCallBacks);
+    CFArrayRef array = CFArrayCreate(kCFAllocatorDefault, (const void **)&NotificationTypes, sizeof(NotificationTypes) / sizeof(CFStringRef), &kCFTypeArrayCallBacks);
     
     
     pb.header.refcon    = 0; //(uintptr_t)self;							// refcon
@@ -362,7 +348,6 @@ static void CICNotificationCallback(CFStringRef notificationType,
 {
 
 }
-#endif
 
 TW_UINT16 CIC_CapabilityGet (pTW_IDENTITY pOrigin, pTW_IDENTITY self)
 {
@@ -452,3 +437,4 @@ static TW_UINT16 CIC_CloseCIC( ICASessionID cameraSession, ICAScannerSessionID s
 	
 	return TWRC_SUCCESS;
 }
+#endif
