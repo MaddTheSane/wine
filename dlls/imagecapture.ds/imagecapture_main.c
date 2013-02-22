@@ -83,6 +83,7 @@ DS_Entry ( pTW_IDENTITY pOrigin,
         default:
             activeDS.twCC = TWCC_BADPROTOCOL;
             twRC = TWRC_FAILURE;
+            break;
     }
 
     return twRC;
