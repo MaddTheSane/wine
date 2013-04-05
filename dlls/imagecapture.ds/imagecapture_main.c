@@ -33,7 +33,7 @@
 
 WINE_DEFAULT_DEBUG_CHANNEL(twain);
 
-HINSTANCE CIC_instance;
+static HINSTANCE CIC_instance;
 
 BOOL WINAPI DllMain (HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpvReserved)
 {

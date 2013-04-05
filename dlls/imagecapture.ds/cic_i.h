@@ -61,7 +61,7 @@ struct tagActiveDS
     TW_FIX32			defaultXResolution;
     BOOL				YResolutionSet;
     TW_FIX32			defaultYResolution;
-} activeDS;
+} activeDS DECLSPEC_HIDDEN;
 
 extern TW_UINT16 CIC_SourceControlHandler(
            pTW_IDENTITY pOrigin,
