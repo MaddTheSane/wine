@@ -16,8 +16,8 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA
  */
 
-#ifndef _TWAIN32_H
-#define _TWAIN32_H
+#ifndef _MACTWAIN_H
+#define _MACTWAIN_H
 
 #ifndef __WINE_CONFIG_H
 # error You must include config.h first
@@ -49,7 +49,7 @@ struct tagActiveDS
 #ifdef HAVE_CARBON_CARBON_H
     ICASessionID		Camera_Session;
 	ICAScannerSessionID	Scanner_Session;
-    BOOL				sane_param_valid;	/* true if valid sane_param*/
+    BOOL				CIC_param_valid;	/* true if valid sane_param*/
     BOOL				CIC_started;		/* If sane_start has been called */
     INT					deviceIndex;		/* index of the current device */
 #endif
@@ -63,32 +63,32 @@ struct tagActiveDS
     TW_FIX32			defaultYResolution;
 } activeDS;
 
-TW_UINT16 CIC_SourceControlHandler(
+extern TW_UINT16 CIC_SourceControlHandler(
            pTW_IDENTITY pOrigin,
            TW_UINT16    DAT,
            TW_UINT16    MSG,
-           TW_MEMREF    pData);
-TW_UINT16 CIC_ImageGroupHandler(pTW_IDENTITY pOrigin,
+           TW_MEMREF    pData) DECLSPEC_HIDDEN;
+extern TW_UINT16 CIC_ImageGroupHandler(pTW_IDENTITY pOrigin,
            TW_UINT16    DAT,
            TW_UINT16    MSG,
-           TW_MEMREF    pData);
+           TW_MEMREF    pData) DECLSPEC_HIDDEN;
 
-TW_UINT16 CIC_CapabilityGet (pTW_IDENTITY pOrigin, pTW_IDENTITY self);
-TW_UINT16 CIC_CapabilityGetCurrent (pTW_IDENTITY pOrigin, pTW_IDENTITY self);
-TW_UINT16 CIC_CapabilityGetDefault (pTW_IDENTITY pOrigin, pTW_IDENTITY self);
-TW_UINT16 CIC_CapabilityQuerySupport (pTW_IDENTITY pOrigin, pTW_IDENTITY self);
-TW_UINT16 CIC_CapabilityReset (pTW_IDENTITY pOrigin, pTW_IDENTITY self);
-TW_UINT16 CIC_CapabilitySet (pTW_IDENTITY pOrigin, pTW_IDENTITY self);
-TW_UINT16 CIC_ProcessEvent(pTW_IDENTITY pOrigin, pTW_IDENTITY self);
-TW_UINT16 CIC_PendingXfersEndXfer(pTW_IDENTITY pOrigin, pTW_IDENTITY self);
-TW_UINT16 CIC_PendingXfersGet(pTW_IDENTITY pOrigin, pTW_IDENTITY self);
-TW_UINT16 CIC_PendingXfersReset(pTW_IDENTITY pOrigin, pTW_IDENTITY self);
-TW_UINT16 CIC_SetupMemXferGet(pTW_IDENTITY pOrigin, pTW_IDENTITY self);
-TW_UINT16 CIC_GetDSStatus(pTW_IDENTITY pOrigin, pTW_IDENTITY self);
-TW_UINT16 CIC_DisableDSUserInterface(pTW_IDENTITY pOrigin, pTW_IDENTITY self);
-TW_UINT16 CIC_EnableDSUserInterface(pTW_IDENTITY pOrigin, pTW_IDENTITY self);
-TW_UINT16 CIC_EnableDSUIOnly(pTW_IDENTITY pOrigin, pTW_IDENTITY self);
-TW_UINT16 CIC_XferGroupGet(pTW_IDENTITY pOrigin, pTW_IDENTITY self);
-TW_UINT16 CIC_XferGroupSet(pTW_IDENTITY pOrigin, pTW_IDENTITY self);
+extern TW_UINT16 CIC_CapabilityGet (pTW_IDENTITY pOrigin, pTW_IDENTITY self) DECLSPEC_HIDDEN;
+extern TW_UINT16 CIC_CapabilityGetCurrent (pTW_IDENTITY pOrigin, pTW_IDENTITY self) DECLSPEC_HIDDEN;
+extern TW_UINT16 CIC_CapabilityGetDefault (pTW_IDENTITY pOrigin, pTW_IDENTITY self) DECLSPEC_HIDDEN;
+extern TW_UINT16 CIC_CapabilityQuerySupport (pTW_IDENTITY pOrigin, pTW_IDENTITY self) DECLSPEC_HIDDEN;
+extern TW_UINT16 CIC_CapabilityReset (pTW_IDENTITY pOrigin, pTW_IDENTITY self) DECLSPEC_HIDDEN;
+extern TW_UINT16 CIC_CapabilitySet (pTW_IDENTITY pOrigin, pTW_IDENTITY self) DECLSPEC_HIDDEN;
+extern TW_UINT16 CIC_ProcessEvent(pTW_IDENTITY pOrigin, pTW_IDENTITY self) DECLSPEC_HIDDEN;
+extern TW_UINT16 CIC_PendingXfersEndXfer(pTW_IDENTITY pOrigin, pTW_IDENTITY self) DECLSPEC_HIDDEN;
+extern TW_UINT16 CIC_PendingXfersGet(pTW_IDENTITY pOrigin, pTW_IDENTITY self) DECLSPEC_HIDDEN;
+extern TW_UINT16 CIC_PendingXfersReset(pTW_IDENTITY pOrigin, pTW_IDENTITY self) DECLSPEC_HIDDEN;
+extern TW_UINT16 CIC_SetupMemXferGet(pTW_IDENTITY pOrigin, pTW_IDENTITY self) DECLSPEC_HIDDEN;
+extern TW_UINT16 CIC_GetDSStatus(pTW_IDENTITY pOrigin, pTW_IDENTITY self) DECLSPEC_HIDDEN;
+extern TW_UINT16 CIC_DisableDSUserInterface(pTW_IDENTITY pOrigin, pTW_IDENTITY self) DECLSPEC_HIDDEN;
+extern TW_UINT16 CIC_EnableDSUserInterface(pTW_IDENTITY pOrigin, pTW_IDENTITY self) DECLSPEC_HIDDEN;
+extern TW_UINT16 CIC_EnableDSUIOnly(pTW_IDENTITY pOrigin, pTW_IDENTITY self) DECLSPEC_HIDDEN;
+extern TW_UINT16 CIC_XferGroupGet(pTW_IDENTITY pOrigin, pTW_IDENTITY self) DECLSPEC_HIDDEN;
+extern TW_UINT16 CIC_XferGroupSet(pTW_IDENTITY pOrigin, pTW_IDENTITY self) DECLSPEC_HIDDEN;
 
 #endif
