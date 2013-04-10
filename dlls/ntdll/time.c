@@ -39,7 +39,9 @@
 # include <unistd.h>
 #endif
 #ifdef __APPLE__
+# define cpu_type_t mach_cpu_type_t
 # include <mach/mach_time.h>
+# undef cpu_type_t
 #endif
 
 #define NONAMELESSUNION
