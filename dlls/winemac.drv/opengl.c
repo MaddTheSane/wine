@@ -2901,7 +2901,9 @@ static BOOL macdrv_wglSwapIntervalEXT(int interval)
         return FALSE;
     }
 
-    if (interval > 1)
+    if (!pixel_formats[context->format - 1].double_buffer)
+        interval = 0;
+    else if (interval > 1)
         interval = 1;
 
     value = interval;
@@ -2986,9 +2988,12 @@ static void load_extensions(void)
     register_extension("WGL_EXT_extensions_string");
     opengl_funcs.ext.p_wglGetExtensionsStringEXT = macdrv_wglGetExtensionsStringEXT;
 
-    register_extension("WGL_EXT_swap_control");
-    opengl_funcs.ext.p_wglSwapIntervalEXT = macdrv_wglSwapIntervalEXT;
-    opengl_funcs.ext.p_wglGetSwapIntervalEXT = macdrv_wglGetSwapIntervalEXT;
+    if (allow_vsync)
+    {
+        register_extension("WGL_EXT_swap_control");
+        opengl_funcs.ext.p_wglSwapIntervalEXT = macdrv_wglSwapIntervalEXT;
+        opengl_funcs.ext.p_wglGetSwapIntervalEXT = macdrv_wglGetSwapIntervalEXT;
+    }
 
     /* Presumably identical to [W]GL_ARB_framebuffer_sRGB, above, but clients may
        check for either, so register them separately. */
@@ -3049,9 +3054,10 @@ static BOOL init_opengl(void)
 #define REDIRECT(func) \
     do { p##func = opengl_funcs.gl.p_##func; opengl_funcs.gl.p_##func = macdrv_##func; } while(0)
     REDIRECT(glCopyPixels);
-    REDIRECT(glFlush);
     REDIRECT(glReadPixels);
     REDIRECT(glViewport);
+    if (skip_single_buffer_flushes)
+        REDIRECT(glFlush);
 #undef REDIRECT
 
     /* redirect some OpenGL extension functions */
@@ -3238,8 +3244,14 @@ static BOOL create_context(struct wgl_context *context, CGLContextObj share)
     }
 
     /* According to the WGL_EXT_swap_control docs, the default swap interval for
-       a context is 1.  CGL contexts default to 0, so we need to set it. */
-    swap_interval = 1;
+       a context is 1.  CGL contexts default to 0, so we need to set it.  This
+       only make sense for double-buffered contexts, though.  In theory, for
+       single-buffered contexts, there's no such thing as a swap.  But OS X
+       will synchronize flushes of single-buffered contexts if this is set. */
+    if (pf->double_buffer && allow_vsync)
+        swap_interval = 1;
+    else
+        swap_interval = 0;
     err = CGLSetParameter(context->cglcontext, kCGLCPSwapInterval, (GLint*)&swap_interval);
     if (err != kCGLNoError)
         WARN("CGLSetParameter(kCGLCPSwapInterval) failed with error %d %s; leaving un-vsynced\n", err, CGLErrorString(err));
