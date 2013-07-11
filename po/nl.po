@@ -8264,6 +8264,7 @@ msgid "Confirm overwrite"
 msgstr "Bevestig overschrijven"
 
 #: shell32.rc:265
+#, fuzzy
 msgid ""
 "Wine is free software; you can redistribute it and/or modify it under the "
 "terms of the GNU Lesser General Public License as published by the Free "
@@ -11512,7 +11513,7 @@ msgstr "&Info"
 
 #: regedit.rc:88
 msgid "Modify Binary Data..."
-msgstr "Binaire data wijzigen"
+msgstr "Binaire data wijzigen..."
 
 #: regedit.rc:215
 msgid "Export registry"
@@ -12782,7 +12783,7 @@ msgstr "Windowsversie:"
 
 #: winecfg.rc:160
 msgid "Window settings"
-msgstr " Vensterinstellingen "
+msgstr "Vensterinstellingen"
 
 #: winecfg.rc:161
 msgid "Automatically capture the &mouse in full-screen windows"
@@ -12806,7 +12807,7 @@ msgstr "Afmetingen:"
 
 #: winecfg.rc:171
 msgid "Screen resolution"
-msgstr "Schermresolutie "
+msgstr "Schermresolutie"
 
 #: winecfg.rc:175
 msgid "This is a sample text using 10 point Tahoma"
@@ -12849,7 +12850,7 @@ msgstr "Override bewerken"
 
 #: winecfg.rc:199
 msgid "Load order"
-msgstr "Laadvolgorde "
+msgstr "Laadvolgorde"
 
 #: winecfg.rc:200
 msgid "&Builtin (Wine)"
@@ -13531,6 +13532,7 @@ msgstr ""
 "worden. Excuses voor het ongemak."
 
 #: winedbg.rc:55
+#, fuzzy
 msgid ""
 "This can be caused by a problem in the program or a deficiency in Wine. You "
 "may want to check the <a href=\"http://appdb.winehq.org\">Application "
