@@ -90,7 +90,7 @@ msgstr "التّواصل:"
 
 #: appwiz.rc:80
 msgid "Support Information:"
-msgstr "معلومات الدّعم"
+msgstr "معلومات الدّعم:"
 
 #: appwiz.rc:81
 msgid "Support Telephone:"
@@ -394,7 +394,7 @@ msgstr "اليوم:"
 
 #: comctl32.rc:34
 msgid "Go to today"
-msgstr "اذهب إلى اليوم:"
+msgstr "اذهب إلى اليوم"
 
 #: comdlg32.rc:151 comdlg32.rc:164 comdlg32.rc:453 comdlg32.rc:479
 #: shell32.rc:164 oleview.rc:99
@@ -411,7 +411,7 @@ msgstr "الم&جلدات:"
 
 #: comdlg32.rc:160 comdlg32.rc:182
 msgid "List Files of &Type:"
-msgstr "قائمة الملفات من ن&وع"
+msgstr "قائمة الملفات من ن&وع:"
 
 #: comdlg32.rc:162 comdlg32.rc:184
 msgid "Dri&ves:"
@@ -528,15 +528,15 @@ msgstr "الخط"
 
 #: comdlg32.rc:247
 msgid "&Font:"
-msgstr "ال&خط"
+msgstr "ال&خط:"
 
 #: comdlg32.rc:250
 msgid "Font St&yle:"
-msgstr "نم&ط الخط"
+msgstr "نم&ط الخط:"
 
 #: comdlg32.rc:253 comdlg32.rc:430 winecfg.rc:280
 msgid "&Size:"
-msgstr "ال&حجم"
+msgstr "ال&حجم:"
 
 #: comdlg32.rc:260
 msgid "Effects"
@@ -560,7 +560,7 @@ msgstr "نموذج"
 
 #: comdlg32.rc:268
 msgid "Scr&ipt:"
-msgstr "ترمي&ز"
+msgstr "ترمي&ز:"
 
 #: comdlg32.rc:276
 msgid "Color"
@@ -650,7 +650,7 @@ msgstr "استبدل"
 
 #: comdlg32.rc:334
 msgid "Re&place With:"
-msgstr "اس&تبدل بـ :"
+msgstr "اس&تبدل بـ:"
 
 #: comdlg32.rc:340
 msgid "&Replace"
@@ -767,7 +767,7 @@ msgstr "الأس&فل:"
 
 #: comdlg32.rc:448
 msgid "P&rinter..."
-msgstr "الطاب&عة"
+msgstr "الطاب&عة..."
 
 #: comdlg32.rc:456
 msgid "Look &in:"
@@ -1035,15 +1035,15 @@ msgstr "جاهز"
 
 #: comdlg32.rc:80
 msgid "Paused; "
-msgstr "متوقف"
+msgstr "متوقف; "
 
 #: comdlg32.rc:81
 msgid "Error; "
-msgstr "خطأ"
+msgstr "خطأ; "
 
 #: comdlg32.rc:82
 msgid "Pending deletion; "
-msgstr "إلغاء الإرسال;"
+msgstr "إلغاء الإرسال; "
 
 #: comdlg32.rc:83
 msgid "Paper jam; "
@@ -2024,7 +2024,7 @@ msgstr "سياسة الشهادة"
 
 #: cryptdlg.rc:28
 msgid "Policy Identifier: "
-msgstr "معرف الشهادة:"
+msgstr "معرف الشهادة: "
 
 #: cryptdlg.rc:29
 msgid "Policy Qualifier Info"
@@ -2076,7 +2076,7 @@ msgstr "تحري&ر الخصائص..."
 
 #: cryptui.rc:203
 msgid "&Copy to File..."
-msgstr "ا&نسخ إلى ملف ..."
+msgstr "ا&نسخ إلى ملف..."
 
 #: cryptui.rc:207
 msgid "Certification Path"
@@ -2137,7 +2137,7 @@ msgstr "أضف غرضًا"
 #: cryptui.rc:257
 msgid ""
 "Add the object identifier (OID) for the certificate purpose you wish to add:"
-msgstr "أضف معرفًا عنصريًا لغرض الشهادة الذي ترغب بإضافته :"
+msgstr "أضف معرفًا عنصريًا لغرض الشهادة الذي ترغب بإضافته:"
 
 #: cryptui.rc:265 cryptui.rc:66
 msgid "Select Certificate Store"
@@ -2145,7 +2145,7 @@ msgstr "اختر مستودع الشهادات"
 
 #: cryptui.rc:268
 msgid "Select the certificate store you want to use:"
-msgstr "اختر مستودع الشهادات الذي ترغب باستعمال :"
+msgstr "اختر مستودع الشهادات الذي ترغب باستعمال:"
 
 #: cryptui.rc:271
 msgid "&Show physical stores"
@@ -2233,7 +2233,7 @@ msgstr "أكملت بنجاح معالج استيراد الشهادات"
 
 #: cryptui.rc:326 cryptui.rc:440
 msgid "You have specified the following settings:"
-msgstr "قمت يتحديد الخيارات التالية :"
+msgstr "قمت يتحديد الخيارات التالية:"
 
 #: cryptui.rc:334 cryptui.rc:119 inetcpl.rc:108
 msgid "Certificates"
@@ -2417,23 +2417,23 @@ msgstr "الغرض المنشود من الشهادة لم يتم التحقق �
 
 #: cryptui.rc:34
 msgid "This certificate is intended for the following purposes:"
-msgstr "هذه الشهادة تنشد الأغراض التالية :"
+msgstr "هذه الشهادة تنشد الأغراض التالية:"
 
 #: cryptui.rc:35
 msgid "Issued to: "
-msgstr "مصدرة لـ:"
+msgstr "مصدرة لـ: "
 
 #: cryptui.rc:36
 msgid "Issued by: "
-msgstr "مصدرة بواسطة:"
+msgstr "مصدرة بواسطة: "
 
 #: cryptui.rc:37
 msgid "Valid from "
-msgstr "صالحة من"
+msgstr "صالحة من "
 
 #: cryptui.rc:38
 msgid " to "
-msgstr "إلى"
+msgstr " إلى "
 
 #: cryptui.rc:39
 msgid "This certificate has an invalid signature."
@@ -2600,7 +2600,7 @@ msgstr "لم يتم تحديد صيغة الملف ، اخترا ملفًا آخ
 
 #: cryptui.rc:83
 msgid "Could not open "
-msgstr "لا يمكن فتحه"
+msgstr "لا يمكن فتحه "
 
 #: cryptui.rc:84
 msgid "Determined by the program"
@@ -3064,7 +3064,7 @@ msgstr "جاري النقل"
 
 #: gphoto2.rc:43
 msgid "Transferring... Please Wait"
-msgstr "جاري النقل ... يرجى الانتظار"
+msgstr "جاري النقل... يرجى الانتظار"
 
 #: gphoto2.rc:48
 msgid "Connecting to camera"
@@ -3072,7 +3072,7 @@ msgstr "جاري الاتصال بالقُمرة"
 
 #: gphoto2.rc:52
 msgid "Connecting to camera... Please Wait"
-msgstr "جاري الاتصال بالقُمرة ... يرجى الانتظار"
+msgstr "جاري الاتصال بالقُمرة... يرجى الانتظار"
 
 #: hhctrl.rc:56
 msgid "S&ync"
@@ -3101,7 +3101,7 @@ msgstr "ت&حديث"
 
 #: hhctrl.rc:62 winhlp32.rc:31
 msgid "&Print..."
-msgstr "&طباعة"
+msgstr "&طباعة..."
 
 #: hhctrl.rc:28 taskmgr.rc:89
 msgid "&Contents"
@@ -3301,7 +3301,7 @@ msgstr "ح&ذف الملفات..."
 
 #: inetcpl.rc:57
 msgid "&Settings..."
-msgstr "الإعدادات"
+msgstr "الإعدادات..."
 
 #: inetcpl.rc:65
 msgid "Delete browsing history"
@@ -7143,7 +7143,7 @@ msgstr "اعرض كرمز"
 
 #: oledlg.rc:68 setupapi.rc:58
 msgid "Browse..."
-msgstr "استعرض"
+msgstr "استعرض..."
 
 #: oledlg.rc:69
 msgid "File:"
@@ -7172,7 +7172,7 @@ msgstr "كـ:"
 
 #: oledlg.rc:90
 msgid "&Display As Icon"
-msgstr "اع&رض كرمز:"
+msgstr "اع&رض كرمز"
 
 #: oledlg.rc:92
 msgid "Change &Icon..."
@@ -7206,7 +7206,7 @@ msgstr "أضف متحكمًا"
 
 #: oledlg.rc:34
 msgid "Inserts the contents of the clipboard into your document as %s."
-msgstr "أضف المحتوى الموجود في الحافظة إلى المستند كـ %s. "
+msgstr "أضف المحتوى الموجود في الحافظة إلى المستند كـ %s."
 
 #: oledlg.rc:35
 msgid ""
@@ -7272,7 +7272,7 @@ msgstr "المسح"
 
 #: sane.rc:44
 msgid "SCANNING... Please Wait"
-msgstr "يجري المسح ... يرجى الانتظار"
+msgstr "يجري المسح... يرجى الانتظار"
 
 #: sane.rc:31
 msgctxt "unit: pixels"
@@ -7325,7 +7325,7 @@ msgstr "نبضات التوقف"
 
 #: setupapi.rc:36
 msgid "Copying Files..."
-msgstr "يجري نسخ الملفات ..."
+msgstr "يجري نسخ الملفات..."
 
 #: setupapi.rc:42
 msgid "Destination:"
@@ -7345,7 +7345,7 @@ msgstr ""
 
 #: setupapi.rc:54
 msgid "Copy manufacturer's files from:"
-msgstr "نسخ الملفات الأصلية من :"
+msgstr "نسخ الملفات الأصلية من:"
 
 #: setupapi.rc:28
 msgid "The file '%1' on %2 is needed"
@@ -8184,14 +8184,14 @@ msgid ""
 msgstr ""
 "واين برنامج مجاني ، يمكنك إعادة نشره بصيغته الحالية أو معدّلًا وذلك تحت بنود "
 "الإصدار 2.1 أو اعلى من رخصة غنّو العمومية المنشورة بواسطة منظمة البرمجيات "
-"الحرة \n"
+"الحرة\n"
+"\n"
 "تم نشر واين على أمل منفعتكم بدون اي ضمانات سواء كانت ضمانات للاستخدامات "
-"الشخصية أو التجارية ، لمزيد من التفاصيل لا تنس مراجعة رخصة غنّو العمومية . \n"
+"الشخصية أو التجارية ، لمزيد من التفاصيل لا تنس مراجعة رخصة غنّو العمومية.\n"
+"\n"
 "من المفترض توفر نسخة من رخصة غنّو العمومية لديك وهي مرفقة مع واين ، في حال "
 "عدم عثورك عليها راسل منظمة البرمجيات الحرة 51 شارع فرنكلين الطابق الرابع "
-"بوسطنMA 02110-1301 الولايات المتحدة الأمريكية\n"
-"ترجمه للعربية أعضاء من فريق عيون العرب و مجتمع لينكس العربي\n"
-"مع ملاحظة عدم تبني المترجمين لتسمية و رموز البرنامج"
+"بوسطنMA 02110-1301 الولايات المتحدة الأمريكية."
 
 #: shell32.rc:253
 msgid "Wine License"
@@ -8295,7 +8295,7 @@ msgstr "&معلومات حول واين"
 
 #: user32.rc:46
 msgid "&Close\tCtrl+F4"
-msgstr "&إغلاق\tAlt+F4"
+msgstr "&إغلاق\tCtrl+F4"
 
 #: user32.rc:48
 msgid "Nex&t\tCtrl+F6"
@@ -8420,7 +8420,7 @@ msgstr ""
 msgid ""
 "This function is not supported. Use the Capabilities function to determine "
 "which functions and messages the driver supports."
-msgstr "هذه الوظيفة غير مدعومة ، اختر وظيفة مناسبة تناسب عتادك . "
+msgstr "هذه الوظيفة غير مدعومة ، اختر وظيفة مناسبة تناسب عتادك ."
 
 #: winmm.rc:37
 msgid "An error number was specified that is not defined in the system."
@@ -9172,7 +9172,7 @@ msgstr "لم يتمكن من الاتصال بخادوم LDAP"
 
 #: wldap32.rc:119
 msgid "Operation not supported by this version of the LDAP protocol"
-msgstr "العملية غير مدعومة بواسطة هذه الإصدار من بروتوكول LDAP "
+msgstr "العملية غير مدعومة بواسطة هذه الإصدار من بروتوكول LDAP"
 
 #: wldap32.rc:120
 msgid "Specified control was not found in message"
@@ -9194,7 +9194,7 @@ msgstr "حدثت دوامة أثناء التقاط التحويلات"
 msgid "Referral hop limit exceeded"
 msgstr "تم تجاوز الحد الأقصى للتحويلات"
 
-#: attrib.rc:27 cmd.rc:325
+#: attrib.rc:27 cmd.rc:322
 msgid ""
 "Not Yet Implemented\n"
 "\n"
@@ -9202,7 +9202,7 @@ msgstr ""
 "لم تنفذ بعد\n"
 "\n"
 
-#: attrib.rc:28 cmd.rc:328
+#: attrib.rc:28 cmd.rc:325
 msgid "%1: File Not Found\n"
 msgstr "%1: الملف غير موجود\n"
 
@@ -9360,23 +9360,17 @@ msgstr ""
 msgid "ERASE <filename> deletes a file or set of files.\n"
 msgstr "ERASE <filename> يقوم بحذف ملف أو مجموعة ملفات.\n"
 
-#: cmd.rc:69
+#: cmd.rc:66
 msgid ""
 "The FOR command is used to execute a command for each of a set of files.\n"
 "\n"
 "Syntax: FOR %variable IN (set) DO command\n"
-"\n"
-"The requirement to double the % sign when using FOR in a batch file does\n"
-"not exist in wine's cmd.\n"
 msgstr ""
 "الأمر FOR يستخدم لتطبيق أمر معين على مجموعة من الملفات.\n"
 "\n"
 "الصيغة: FOR %variable IN (set) DO command\n"
-"\n"
-"الحاجة إلى إشارتي % عند استخدام FOR in في المخطوطات\n"
-"غير موجودة في سطر أوامر واين.\n"
 
-#: cmd.rc:81
+#: cmd.rc:78
 msgid ""
 "The GOTO command transfers execution to another statement within a\n"
 "batch file.\n"
@@ -9393,23 +9387,23 @@ msgstr ""
 "ضمن نفس المخطوطة المستعملة.\n"
 "\n"
 "الاسم الذي يشكل هدفًا للأمر GOTO يجب ألا يزيد طوله عن 255 محرفًا\n"
-"كما لا يجب ان يحوي مسافات ، وهذا مختلف عن الأنظمة الاخرى ، \n"
+"كما لا يجب ان يحوي مسافات ، وهذا مختلف عن الأنظمة الاخرى ،\n"
 "وفي حالة تواجد معرفين أو أكثر في نفس المخطوطة سيتم تنفيذ\n"
 "أولهما بشكل عام ، عند محاولة تنفيذ الأمر GOTO على اسم غير موجود\n"
 "سيقوم بإنهاء العمل ضمن المخطوطة.\n"
 "\n"
 "لا يملك الأمر GOTO أي تأثير عند استخدامه ببيئة غير نشطة.\n"
 
-#: cmd.rc:84
+#: cmd.rc:81
 msgid ""
 "HELP <command> shows brief help details on a topic.\n"
 "HELP without an argument shows all CMD built-in commands.\n"
 msgstr ""
-"HELP <الامر> \n"
+"HELP <الامر>\n"
 "يقوم بعرض المساعدة لأمر معين ، وفي حال إطلاقه يقوم بعرض المساعدة الخاصة بسطر "
 "الأوامر.\n"
 
-#: cmd.rc:94
+#: cmd.rc:91
 msgid ""
 "IF is used to conditionally execute a command.\n"
 "\n"
@@ -9429,7 +9423,7 @@ msgstr ""
 "في الصيغة الثانية يجب إحاطة كلًا من السلسلتين بعلامات الاقتباس\n"
 "عملية المقارنة حساسة من هذه الناحية.\n"
 
-#: cmd.rc:100
+#: cmd.rc:97
 msgid ""
 "LABEL is used to set a disk volume label.\n"
 "\n"
@@ -9443,15 +9437,15 @@ msgstr ""
 "يتطلب الامر توكيدًا منك بعد اختيارك الاسم الجديد.\n"
 "يمكنك إظهار الاسم الحالي بالأمر VOL.\n"
 
-#: cmd.rc:103
+#: cmd.rc:100
 msgid "MD <name> is the short version of MKDIR. It creates a subdirectory.\n"
 msgstr "MD هي اختصار لـ MKDIR.\n"
 
-#: cmd.rc:104
+#: cmd.rc:101
 msgid "MKDIR <name> creates a subdirectory.\n"
 msgstr "MKDIR <name> يحاول إنشاء مجلد فرعي.\n"
 
-#: cmd.rc:111
+#: cmd.rc:108
 msgid ""
 "MOVE relocates a file or directory to a new point within the file system.\n"
 "\n"
@@ -9469,7 +9463,7 @@ msgstr ""
 "\n"
 "MOVE تفشل عملية النقل في حال كان المصدر و الوجهة ليسا على قرص واحد.\n"
 
-#: cmd.rc:122
+#: cmd.rc:119
 msgid ""
 "PATH displays or changes the cmd search path.\n"
 "\n"
@@ -9491,7 +9485,7 @@ msgstr ""
 "مع المتغيرات ، مثلًا:\n"
 "PATH %PATH%;c:\\temp\n"
 
-#: cmd.rc:128
+#: cmd.rc:125
 msgid ""
 "PAUSE displays a message on the screen asking the user to press a key.\n"
 "\n"
@@ -9503,7 +9497,7 @@ msgstr ""
 "هذا الأمر مفيد في ملفات المخطوطات للسماح للمستخدم بقراءة\n"
 "مخرجات الأوامر السابقة قبل تمرير الشاشة.\n"
 
-#: cmd.rc:149
+#: cmd.rc:146
 msgid ""
 "PROMPT sets the command-line prompt.\n"
 "\n"
@@ -9545,7 +9539,7 @@ msgstr ""
 "يمكن أيضًا تعديل التلقينات بواسطة المتغير البيئي PROMT\n"
 "أي أن الأمر 'SET PROMPT=text' يعطي نفس نتيجة 'PROMPT text'.\n"
 
-#: cmd.rc:153
+#: cmd.rc:150
 msgid ""
 "A command line beginning with REM (followed by a space) performs no\n"
 "action, and can therefore be used as a comment in a batch file.\n"
@@ -9553,23 +9547,23 @@ msgstr ""
 "إن أي سطر أمري يبدأ بـ REM متبوعة بمسافة لن يؤدي\n"
 "أي عمل ، ويمكن استعماله كتعليق ضمن المخطوط.\n"
 
-#: cmd.rc:156
+#: cmd.rc:153
 msgid "REN <filename> is the short version of RENAME. It renames a file.\n"
 msgstr "REN هي اختصار لـ RENAME.\n"
 
-#: cmd.rc:157
+#: cmd.rc:154
 msgid "RENAME <filename> renames a file.\n"
 msgstr "RENAME <filename> لإعادة تسمية الملف.\n"
 
-#: cmd.rc:159
+#: cmd.rc:156
 msgid "RD <dir> is the short version of RMDIR. It deletes a subdirectory.\n"
 msgstr "RD هي اختصار لـ RMDIR.\n"
 
-#: cmd.rc:160
+#: cmd.rc:157
 msgid "RMDIR <dir> deletes a subdirectory.\n"
 msgstr "RMDIR <dir> يحذف مجلدًا فرعيًا.\n"
 
-#: cmd.rc:204
+#: cmd.rc:201
 msgid ""
 "SET displays or changes the cmd environment variables.\n"
 "\n"
@@ -9601,21 +9595,21 @@ msgstr ""
 "مسافات في ضمنها عكس ما بعد المساواة.\n"
 "\n"
 "في واين ، يتم احتواء المتغيرات البيئية من النظام\n"
-"الحاضن إلى بيئة Win32 مما يعني وجود الكثير من \n"
+"الحاضن إلى بيئة Win32 مما يعني وجود الكثير من\n"
 "بالغضافة إلى قيم Win32 الأصلية ، مع ملاحظة عدم الإمكانية\n"
 "على التأثير على بيئة النظام من خلال سطر أوامر واين.\n"
 
-#: cmd.rc:209
+#: cmd.rc:206
 msgid ""
 "SHIFT is used in a batch file to remove one parameter from the head of\n"
 "the list, so parameter 2 becomes parameter 1 and so on. It has no effect\n"
 "if called from the command line.\n"
 msgstr ""
-"SHIFT يستخدم هذا الأمر في المخطوطات لحذف معامل من رأس القائمة وحتى موضعه \n"
+"SHIFT يستخدم هذا الأمر في المخطوطات لحذف معامل من رأس القائمة وحتى موضعه\n"
 "مثلًا استبدال المعامل 1 بالمعامل 2 و هكذا ، مع ملاحظة أن الأمر .\n"
 "لا يملك اي تأثير إذا استخدم مباشرة دون مخطوطة.\n"
 
-#: cmd.rc:186 start.rc:50
+#: cmd.rc:183 start.rc:50
 msgid ""
 "Start a program, or open a document in the program normally used for files "
 "with that suffix.\n"
@@ -9670,24 +9664,24 @@ msgstr ""
 "/ProgIDOpen  افتح المستند باستخدام معرف برنامجي محدد.\n"
 "/?           أظهر هذه المساعدة ثم اخرج.\n"
 
-#: cmd.rc:211
+#: cmd.rc:208
 msgid "TIME sets or shows the current system time.\n"
 msgstr "TIME لعرض أو ضبط توقيت النظام.\n"
 
-#: cmd.rc:213
+#: cmd.rc:210
 msgid "TITLE <string> sets the window title for the cmd window.\n"
 msgstr "TITLE <string> لضبط عنوان نافذة سطر الأوامر.\n"
 
-#: cmd.rc:217
+#: cmd.rc:214
 msgid ""
 "TYPE <filename> copies <filename> to the console device (or elsewhere\n"
 "if redirected). No check is made that the file is readable text.\n"
 msgstr ""
-"TYPE <filename> \n"
+"TYPE <filename>\n"
 "يقوم بعرض ملف معين على سطر الاوامر ( أو بمكان آخر ) دون التحقق ما إذا كان "
 "الملف نصيًا.\n"
 
-#: cmd.rc:226
+#: cmd.rc:223
 msgid ""
 "VERIFY is used to set, clear or test the verify flag. Valid forms are:\n"
 "\n"
@@ -9705,15 +9699,15 @@ msgstr ""
 "\n"
 "إشارة التحقق لا تملك عملا في واين.\n"
 
-#: cmd.rc:229
+#: cmd.rc:226
 msgid "VER displays the version of cmd you are running.\n"
 msgstr "VER يظهر إصدارة سطر الأوامر الحالية.\n"
 
-#: cmd.rc:231
+#: cmd.rc:228
 msgid "VOL shows the volume label of a disk device.\n"
 msgstr "VOL يظهر اسم القسم في القرص.\n"
 
-#: cmd.rc:235
+#: cmd.rc:232
 msgid ""
 "ENDLOCAL ends localization of environment changes in a batch file\n"
 "which were introduced by a preceding SETLOCAL.\n"
@@ -9721,7 +9715,7 @@ msgstr ""
 "ENDLOCAL ينهي عملية أقلمة المتغيرات البيئية من مخطوطة\n"
 "و التي قدمة بواسطة SETLOCAL.\n"
 
-#: cmd.rc:243
+#: cmd.rc:240
 msgid ""
 "SETLOCAL starts localization of environment changes in a batch file.\n"
 "\n"
@@ -9737,7 +9731,7 @@ msgstr ""
 "ياتي أولًا ، وفي هذه النقطة المتغيرات البيئية السابقة\n"
 "سيعاد تحميلها.\n"
 
-#: cmd.rc:246
+#: cmd.rc:243
 msgid ""
 "PUSHD <directoryname> saves the current directory onto a\n"
 "stack, and then changes the current directory to the supplied one.\n"
@@ -9745,11 +9739,11 @@ msgstr ""
 "PUSHD <directoryname> يحفظ الدليل الحالي في حافظته\n"
 "ثم ينتقل إلى الدليل المعطى.\n"
 
-#: cmd.rc:248
+#: cmd.rc:245
 msgid "POPD changes current directory to the last one saved with PUSHD.\n"
 msgstr "POPD يقوم بتغيير المجلد الحالي إلى نظيره المحفوظ بواسطة PUSHD.\n"
 
-#: cmd.rc:256
+#: cmd.rc:253
 msgid ""
 "ASSOC shows or modifies file extension associations.\n"
 "\n"
@@ -9769,7 +9763,7 @@ msgstr ""
 "في حال عدم كتابة أي شيء بعد إشارة المساواة سقوم بحذف الاقتران الحالي إن كان "
 "موجودا.\n"
 
-#: cmd.rc:267
+#: cmd.rc:264
 msgid ""
 "FTYPE shows or modifies open commands associated with file types.\n"
 "\n"
@@ -9793,11 +9787,11 @@ msgstr ""
 "في حال عدم وضع أي معامل بعد إشارة المساواة = ستقوم الاداة بحذف أمر الاقتران "
 "الموجود للنوع المحدد من الملفات.\n"
 
-#: cmd.rc:269
+#: cmd.rc:266
 msgid "MORE displays output of files or piped input in pages.\n"
 msgstr "MORE يقوم بعرض المخرجات سواء من ملف أو من القنوات في صفحات.\n"
 
-#: cmd.rc:273
+#: cmd.rc:270
 msgid ""
 "CHOICE displays a text and waits, until the User\n"
 "presses an allowed Key from a selectable list.\n"
@@ -9807,7 +9801,7 @@ msgstr ""
 "يضغط المفتاح المتاح من قائمة الاختيارات.\n"
 "CHOICE تستخدم هذه الاداة بشكل رئيسي لبناء قائمة اختيارات ضمن المخطوطة.\n"
 
-#: cmd.rc:277
+#: cmd.rc:274
 msgid ""
 "EXIT terminates the current command session and returns\n"
 "to the operating system or shell from which you invoked cmd.\n"
@@ -9815,7 +9809,7 @@ msgstr ""
 "EXIT يقوم بإنهاء جلسة الأوامر الحالية ، ويعود إلى نظام\n"
 "التشغيل أو إلى الصدفة التي شغلت منها سطر الأوامر.\n"
 
-#: cmd.rc:315
+#: cmd.rc:312
 msgid ""
 "CMD built-in commands are:\n"
 "ASSOC\t\tShow or modify file extension associations\n"
@@ -9895,112 +9889,112 @@ msgstr ""
 "\n"
 "أدخل HELP <أمر> لعرض معلومات أكثر عن الأوامر المدرجة أعلاه.\n"
 
-#: cmd.rc:317
+#: cmd.rc:314
 msgid "Are you sure?"
 msgstr "هل أنت متاكد ؟"
 
-#: cmd.rc:318 xcopy.rc:40
+#: cmd.rc:315 xcopy.rc:40
 msgctxt "Yes key"
 msgid "Y"
 msgstr "Y"
 
-#: cmd.rc:319 xcopy.rc:41
+#: cmd.rc:316 xcopy.rc:41
 msgctxt "No key"
 msgid "N"
 msgstr "N"
 
-#: cmd.rc:320
+#: cmd.rc:317
 #, fuzzy
 #| msgid "File association missing for extension '%1'\n"
 msgid "File association missing for extension %1\n"
 msgstr "لا يتوفر اقتران مع هذا النوع من الملفات '%1'\n"
 
-#: cmd.rc:321
+#: cmd.rc:318
 msgid "No open command associated with file type '%1'\n"
 msgstr "لا يوجد أمر مفتوح مقترن بنوع الملفات '%1'\n"
 
-#: cmd.rc:322
+#: cmd.rc:319
 msgid "Overwrite %1?"
 msgstr "الكتابة فوق %1 ؟"
 
-#: cmd.rc:323
+#: cmd.rc:320
 msgid "More..."
-msgstr "أكثر ..."
+msgstr "أكثر..."
 
-#: cmd.rc:324
+#: cmd.rc:321
 msgid "Line in Batch processing possibly truncated. Using:\n"
 msgstr "الخط المعالج في المخطوطة يبدو مقطوعًا . استخدم:\n"
 
-#: cmd.rc:326
+#: cmd.rc:323
 msgid "Argument missing\n"
 msgstr "نقص في الإدخالات\n"
 
-#: cmd.rc:327
+#: cmd.rc:324
 msgid "Syntax error\n"
-msgstr "خطأ بنيوي \n"
+msgstr "خطأ بنيوي\n"
 
-#: cmd.rc:329
+#: cmd.rc:326
 msgid "No help available for %1\n"
 msgstr "لا يوجد مساعدة في %1\n"
 
-#: cmd.rc:330
+#: cmd.rc:327
 msgid "Target to GOTO not found\n"
 msgstr "الهدف الذي ترغب في الذهاب إليه غير موجود\n"
 
-#: cmd.rc:331
+#: cmd.rc:328
 msgid "Current Date is %1\n"
 msgstr "التاريخ الحالي هو %1\n"
 
-#: cmd.rc:332
+#: cmd.rc:329
 msgid "Current Time is %1\n"
 msgstr "التوقيت الحالي هو %1\n"
 
-#: cmd.rc:333
+#: cmd.rc:330
 msgid "Enter new date: "
-msgstr "أدخل التاريخ الجديد:"
+msgstr "أدخل التاريخ الجديد: "
 
-#: cmd.rc:334
+#: cmd.rc:331
 msgid "Enter new time: "
-msgstr "أدخل التوقيت الجديد:"
+msgstr "أدخل التوقيت الجديد: "
 
-#: cmd.rc:335
+#: cmd.rc:332
 msgid "Environment variable %1 not defined\n"
 msgstr "متغير البيئة %1 غير معرف\n"
 
-#: cmd.rc:336 xcopy.rc:38
+#: cmd.rc:333 xcopy.rc:38
 msgid "Failed to open '%1'\n"
 msgstr "فشل فتح '%1'\n"
 
-#: cmd.rc:337
+#: cmd.rc:334
 msgid "Cannot call batch label outside of a batch script\n"
 msgstr "لم يتمكن من استدعاء هذا الاسم خارج المخطوطة\n"
 
-#: cmd.rc:338 xcopy.rc:42
+#: cmd.rc:335 xcopy.rc:42
 msgctxt "All key"
 msgid "A"
 msgstr "A"
 
-#: cmd.rc:339
+#: cmd.rc:336
 msgid "Delete %1?"
 msgstr "احذف %1 ؟"
 
-#: cmd.rc:340
+#: cmd.rc:337
 msgid "Echo is %1\n"
 msgstr "الصدى هو %1\n"
 
-#: cmd.rc:341
+#: cmd.rc:338
 msgid "Verify is %1\n"
 msgstr "التحقق هو %1\n"
 
-#: cmd.rc:342
+#: cmd.rc:339
 msgid "Verify must be ON or OFF\n"
 msgstr "تحقق حيث انها يجب ان تكون مشغلة أو مطفأة\n"
 
-#: cmd.rc:343
+#: cmd.rc:340
 msgid "Parameter error\n"
 msgstr "خطأ في المعامل\n"
 
-#: cmd.rc:344
+#: cmd.rc:341
 msgid ""
 "Volume Serial Number is %1!04x!-%2!04x!\n"
 "\n"
@@ -10008,72 +10002,72 @@ msgstr ""
 "الرقم التسلسلي للقسم هو %1!04x!-%2!04x!\n"
 "\n"
 
-#: cmd.rc:345
+#: cmd.rc:342
 msgid "Volume label (11 characters, <Enter> for none)?"
-msgstr "اسم القسم ( 11 محرفًا ) أو أضغط مفتاح الإدخال لتركه فارغًا ؟ "
+msgstr "اسم القسم ( 11 محرفًا ) أو أضغط مفتاح الإدخال لتركه فارغًا ؟"
 
-#: cmd.rc:346
+#: cmd.rc:343
 msgid "PATH not found\n"
 msgstr "المسار غير موجود\n"
 
-#: cmd.rc:347
+#: cmd.rc:344
 msgid "Press any key to continue... "
-msgstr "اضغط أي مفتاح للاستمرار ..."
+msgstr "اضغط أي مفتاح للاستمرار... "
 
-#: cmd.rc:348
+#: cmd.rc:345
 msgid "Wine Command Prompt"
 msgstr "سطر أوامر واين"
 
-#: cmd.rc:349
+#: cmd.rc:346
 msgid "Wine CMD Version %1!S!\n"
 msgstr "سطر أوامر واين - الإصدارة %1!S!\n"
 
-#: cmd.rc:350
+#: cmd.rc:347
 msgid "More? "
-msgstr "إضافي؟"
+msgstr "إضافي؟ "
 
-#: cmd.rc:351
+#: cmd.rc:348
 msgid "The input line is too long.\n"
 msgstr "سطر الإدخال طويل جدًا.\n"
 
-#: cmd.rc:352
+#: cmd.rc:349
 msgid "Volume in drive %1!c! is %2\n"
 msgstr "القسم الموجود في المحرك %1!c! هو %2\n"
 
-#: cmd.rc:353
+#: cmd.rc:350
 msgid "Volume in drive %1!c! has no label.\n"
 msgstr "القسم الموجود في المحرك %1!c! لا يملك اسمًا.\n"
 
-#: cmd.rc:354
+#: cmd.rc:351
 msgid " (Yes|No)"
 msgstr " (Yes|No)"
 
-#: cmd.rc:355
+#: cmd.rc:352
 msgid " (Yes|No|All)"
 msgstr " (Yes|No|All)"
 
-#: cmd.rc:356
+#: cmd.rc:353
 msgid ""
 "Can't recognize '%1' as an internal or external command, or batch script.\n"
 msgstr "لا يمكن استكشاف '%1' كأمر داخلي أو خارجي و لا حتى مخطوطة.\n"
 
-#: cmd.rc:357
+#: cmd.rc:354
 msgid "Division by zero error.\n"
 msgstr "خطأ القسمة على الصفر.\n"
 
-#: cmd.rc:358
+#: cmd.rc:355
 msgid "Expected an operand.\n"
 msgstr "معمول متوقع.\n"
 
-#: cmd.rc:359
+#: cmd.rc:356
 msgid "Expected an operator.\n"
 msgstr "عامل متوقع.\n"
 
-#: cmd.rc:360
+#: cmd.rc:357
 msgid "Mismatch in parentheses.\n"
 msgstr "عدم تطابق في المعترضات .\n"
 
-#: cmd.rc:361
+#: cmd.rc:358
 msgid ""
 "Badly formed number - must be one of decimal (12),\n"
 " hexadecimal (0x34) or octal (056).\n"
@@ -10303,7 +10297,7 @@ msgstr "إعادة الاتصال"
 
 #: net.rc:40
 msgid "The following services are running:\n"
-msgstr "يجري تشغيل الخدمات التالية :\n"
+msgstr "يجري تشغيل الخدمات التالية:\n"
 
 #: netstat.rc:27
 msgid "Active Connections"
@@ -10655,11 +10649,11 @@ msgstr ""
 
 #: oleview.rc:29
 msgid "&Bind to file..."
-msgstr "ا&ربط إلى ملف ..."
+msgstr "ا&ربط إلى ملف..."
 
 #: oleview.rc:30
 msgid "&View TypeLib..."
-msgstr "ا&عرض مكتبة النوع ..."
+msgstr "ا&عرض مكتبة النوع..."
 
 #: oleview.rc:32
 msgid "&System Configuration"
@@ -10703,7 +10697,7 @@ msgstr "إنشاء مر&حلة"
 
 #: oleview.rc:50
 msgid "Create Instance &On..."
-msgstr "إنشاء مرحل&ة في ..."
+msgstr "إنشاء مرحل&ة في..."
 
 #: oleview.rc:51
 msgid "&Release Instance"
@@ -10791,7 +10785,7 @@ msgstr "الواجهة"
 
 #: oleview.rc:183
 msgid "IID:"
-msgstr "IID"
+msgstr "IID:"
 
 #: oleview.rc:186
 msgid "&View Type Info"
@@ -10880,7 +10874,7 @@ msgstr "التنقل بين نمطي الخبير و المبتدئ"
 #: oleview.rc:118
 msgid ""
 "Toggle the display of component categories that are not meant to be visible"
-msgstr "التنقل في عرض تصنيف المكونات المراد عرضها "
+msgstr "التنقل في عرض تصنيف المكونات المراد عرضها"
 
 #: oleview.rc:119
 msgid "Show or hide the toolbar"
@@ -11068,7 +11062,7 @@ msgstr "ال&برنامج"
 
 #: progman.rc:113
 msgid "Move Program"
-msgstr "نقل البرنامج:"
+msgstr "نقل البرنامج"
 
 #: progman.rc:115
 msgid "Move program:"
@@ -11120,7 +11114,7 @@ msgstr "الت&صغير عند التشغيل"
 
 #: progman.rc:180
 msgid "Change &icon..."
-msgstr "تغيير ا&لرمز ..."
+msgstr "تغيير ا&لرمز..."
 
 #: progman.rc:189
 msgid "Change Icon"
@@ -11317,7 +11311,7 @@ msgstr "تق&سيم"
 
 #: regedit.rc:74
 msgid "&Remove Favorite..."
-msgstr "إ&زالة المفضلة ..."
+msgstr "إ&زالة المفضلة..."
 
 #: regedit.rc:79
 msgid "&About Registry Editor"
@@ -11716,7 +11710,7 @@ msgstr "متو&قفة"
 
 #: taskmgr.rc:68 taskmgr.rc:256
 msgid "&Select Columns..."
-msgstr "ا&ختر أعمدة ..."
+msgstr "ا&ختر أعمدة..."
 
 #: taskmgr.rc:69 taskmgr.rc:258
 msgid "&CPU History"
@@ -12473,7 +12467,7 @@ msgid ""
 msgstr ""
 "فشل تطبيق أمر الإزالة '%s' قد تكون أداة الإزالة غير موجودة أو أن البرنامج "
 "حذف بطريقة أخرى.\n"
-"هل ترغب بإزالة هذا الخيار من السجل ؟ "
+"هل ترغب بإزالة هذا الخيار من السجل ؟"
 
 #: view.rc:33
 msgid "&Pan"
@@ -12521,7 +12515,7 @@ msgstr "واين"
 
 #: wineboot.rc:43
 msgid "The Wine configuration in %s is being updated, please wait..."
-msgstr "يجري تحديث إعدادات واين في %s ، يرجى الانتظار ..."
+msgstr "يجري تحديث إعدادات واين في %s ، يرجى الانتظار..."
 
 #: winecfg.rc:132
 msgid ""
@@ -12562,7 +12556,7 @@ msgstr ""
 
 #: winecfg.rc:150
 msgid "&Add application..."
-msgstr "أ&ضف تطبيقًا ..."
+msgstr "أ&ضف تطبيقًا..."
 
 #: winecfg.rc:151
 msgid "&Remove application"
@@ -12582,7 +12576,7 @@ msgstr "التقا&ط آلي للفأرة في وضع ملء الشاشة"
 
 #: winecfg.rc:162
 msgid "Allow the window manager to &decorate the windows"
-msgstr "السّماح لمدير النّواف&ذ بتأطيرها "
+msgstr "السّماح لمدير النّواف&ذ بتأطيرها"
 
 #: winecfg.rc:163
 msgid "Allow the &window manager to control the windows"
@@ -12929,7 +12923,7 @@ msgid ""
 "Most Windows applications expect drive C to exist, and will die messily if "
 "it doesn't. If you proceed remember to recreate it!"
 msgstr ""
-"هل أنت متاكد من رغبتك في إزالة المحرك c ؟ \n"
+"هل أنت متاكد من رغبتك في إزالة المحرك c ؟\n"
 "\n"
 "معظم برامج وندوز تحتاج وجود المحرك c و غالبًا ستنهارفي حال عدم وجوده ! إذا "
 "استمريت لا تنس أن تعيد إنشاءه. "
@@ -13123,7 +13117,7 @@ msgstr "تأريخ الأوامر"
 
 #: wineconsole.rc:73
 msgid "&Number of recalled commands:"
-msgstr "عد&د الاوامر المعاد طلبها"
+msgstr "عد&د الاوامر المعاد طلبها:"
 
 #: wineconsole.rc:76
 msgid "&Remove doubles"
@@ -13278,7 +13272,7 @@ msgid ""
 "                           try to setup the current terminal as a Wine "
 "console.\n"
 msgstr ""
-"  --backend={مؤشرات|مستخدم}اختيار المستخدم و المؤشرات \n"
+"  --backend={مؤشرات|مستخدم}اختيار المستخدم و المؤشرات\n"
 "                           محاولة استخدام الطرفية الحالية كطرفية واين.\n"
 
 #: wineconsole.rc:50
@@ -13358,7 +13352,7 @@ msgstr "خطأ في الحفظ"
 
 #: winedbg.rc:41
 msgid "Loading detailed information, please wait..."
-msgstr "يجري تحميل المعلومات التفصيلية ، برجاء الانتظار ..."
+msgstr "يجري تحميل المعلومات التفصيلية ، برجاء الانتظار..."
 
 #: winefile.rc:26
 msgid "&Open\tEnter"
@@ -13390,7 +13384,7 @@ msgstr "وصل قرص ال&شبكة..."
 
 #: winefile.rc:42
 msgid "&Disconnect Network Drive"
-msgstr "ف&صل قرص الشبكة..."
+msgstr "ف&صل قرص الشبكة"
 
 #: winefile.rc:48
 msgid "&Name"
@@ -13694,7 +13688,7 @@ msgstr "&عرّف..."
 
 #: winhlp32.rc:46 winhlp32.rc:67
 msgid "Fonts"
-msgstr "ال&خطوط..."
+msgstr "ال&خطوط"
 
 #: winhlp32.rc:48 winhlp32.rc:69
 msgid "Small"
@@ -13762,11 +13756,11 @@ msgstr "لم نتمكن من إيجاد '%s' ، هل ترغب بالبحث عن�
 
 #: winhlp32.rc:90
 msgid "Cannot find a richedit implementation... Aborting"
-msgstr "لم يعثر على أداة تحرير النصوص الغنية ... جاري الإحباط"
+msgstr "لم يعثر على أداة تحرير النصوص الغنية... جاري الإحباط"
 
 #: winhlp32.rc:91
 msgid "Help topics: "
-msgstr "نصائح المساعدة:"
+msgstr "نصائح المساعدة: "
 
 #: wmic.rc:25
 msgid "Error: Command line not supported\n"
@@ -14156,11 +14150,11 @@ msgstr "اضغط مفتاح الإدخال للبدء بالنسخ\n"
 
 #: xcopy.rc:30
 msgid "%1!d! file(s) would be copied\n"
-msgstr "سيتم نسخ الملفات %1!d! \n"
+msgstr "سيتم نسخ الملفات %1!d!\n"
 
 #: xcopy.rc:31
 msgid "%1!d! file(s) copied\n"
-msgstr "تم نسخ الملفات %1!d! \n"
+msgstr "تم نسخ الملفات %1!d!\n"
 
 #: xcopy.rc:34
 msgid ""
