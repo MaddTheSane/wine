@@ -193,11 +193,16 @@ HRESULT WINAPI D3DXFindShaderComment(const DWORD *byte_code, DWORD fourcc, const
 HRESULT WINAPI D3DXAssembleShader(const char *data, UINT data_len, const D3DXMACRO *defines,
         ID3DXInclude *include, DWORD flags, ID3DXBuffer **shader, ID3DXBuffer **error_messages)
 {
+    HRESULT hr;
+
+    TRACE("data %p, data_len %u, defines %p, include %p, flags %#x, shader %p, error_messages %p\n",
+          data, data_len, defines, include, flags, shader, error_messages);
+
     /* Forward to d3dcompiler: the parameter types aren't really different,
        the actual data types are equivalent */
-    HRESULT hr = D3DAssemble(data, data_len, NULL, (D3D_SHADER_MACRO *)defines,
-                             (ID3DInclude *)include, flags, (ID3DBlob **)shader,
-                             (ID3DBlob **)error_messages);
+    hr = D3DAssemble(data, data_len, NULL, (D3D_SHADER_MACRO *)defines,
+                     (ID3DInclude *)include, flags, (ID3DBlob **)shader,
+                     (ID3DBlob **)error_messages);
 
     if(hr == E_FAIL) hr = D3DXERR_INVALIDDATA;
     return hr;
@@ -350,18 +355,21 @@ HRESULT WINAPI D3DXAssembleShaderFromResourceW(HMODULE module, const WCHAR *reso
                               shader, error_messages);
 }
 
-HRESULT WINAPI D3DXCompileShader(const char *pSrcData, UINT srcDataLen, const D3DXMACRO *pDefines,
-        ID3DXInclude *pInclude, const char *pFunctionName, const char *pProfile, DWORD Flags,
-        ID3DXBuffer **ppShader, ID3DXBuffer **ppErrorMsgs, ID3DXConstantTable **ppConstantTable)
+HRESULT WINAPI D3DXCompileShader(const char *data, UINT length, const D3DXMACRO *defines,
+        ID3DXInclude *include, const char *function, const char *profile, DWORD flags,
+        ID3DXBuffer **shader, ID3DXBuffer **error_msgs, ID3DXConstantTable **constant_table)
 {
-    HRESULT hr = D3DCompile(pSrcData, srcDataLen, NULL,
-                            (D3D_SHADER_MACRO *)pDefines, (ID3DInclude *)pInclude,
-                            pFunctionName, pProfile, Flags, 0,
-                            (ID3DBlob **)ppShader, (ID3DBlob **)ppErrorMsgs);
+    HRESULT hr;
 
-    if(SUCCEEDED(hr) && ppConstantTable)
-        return D3DXGetShaderConstantTable(ID3DXBuffer_GetBufferPointer(*ppShader),
-                                          ppConstantTable);
+    TRACE("data %p, length %u, defines %p, include %p, function %s, profile %s, flags %#x, shader %p, error_msgs %p, constant_table %p\n",
+          data, length, defines, include, function, profile, flags, shader, error_msgs, constant_table);
+
+    hr = D3DCompile(data, length, NULL, (D3D_SHADER_MACRO *)defines, (ID3DInclude *)include,
+                    function, profile, flags, 0, (ID3DBlob **)shader, (ID3DBlob **)error_msgs);
+
+    if (SUCCEEDED(hr) && constant_table)
+        hr = D3DXGetShaderConstantTable(ID3DXBuffer_GetBufferPointer(*shader), constant_table);
+
     return hr;
 }
 
@@ -602,11 +610,6 @@ static inline BOOL is_vertex_shader(DWORD version)
     return (version & 0xffff0000) == 0xfffe0000;
 }
 
-static inline struct ctab_constant *constant_from_handle(D3DXHANDLE handle)
-{
-    return (struct ctab_constant *)handle;
-}
-
 static inline D3DXHANDLE handle_from_constant(struct ctab_constant *constant)
 {
     return (D3DXHANDLE)constant;
@@ -700,42 +703,22 @@ static struct ctab_constant *get_constant_by_name(struct ID3DXConstantTableImpl 
     return NULL;
 }
 
-static struct ctab_constant *is_valid_sub_constant(struct ctab_constant *parent, struct ctab_constant *constant)
+static struct ctab_constant *is_valid_sub_constant(struct ctab_constant *parent, D3DXHANDLE handle)
 {
+    struct ctab_constant *c;
     UINT i, count;
 
-    /* all variable have at least elements = 1, but no elements */
+    /* all variable have at least elements = 1, but not always elements */
     if (!parent->constants) return NULL;
 
-    if (parent->desc.Elements > 1) count = parent->desc.Elements;
-    else count = parent->desc.StructMembers;
-
+    count = parent->desc.Elements > 1 ? parent->desc.Elements : parent->desc.StructMembers;
     for (i = 0; i < count; ++i)
     {
-        if (&parent->constants[i] == constant)
-            return constant;
+        if (handle_from_constant(&parent->constants[i]) == handle)
+            return &parent->constants[i];
 
-        if (is_valid_sub_constant(&parent->constants[i], constant))
-            return constant;
-    }
-
-    return NULL;
-}
-
-static inline struct ctab_constant *is_valid_constant(struct ID3DXConstantTableImpl *table, D3DXHANDLE handle)
-{
-    struct ctab_constant *c = constant_from_handle(handle);
-    UINT i;
-
-    if (!c) return NULL;
-
-    for (i = 0; i < table->desc.Constants; ++i)
-    {
-        if (&table->constants[i] == c)
-            return c;
-
-        if (is_valid_sub_constant(&table->constants[i], c))
-            return c;
+        c = is_valid_sub_constant(&parent->constants[i], handle);
+        if (c) return c;
     }
 
     return NULL;
@@ -743,11 +726,21 @@ static inline struct ctab_constant *is_valid_constant(struct ID3DXConstantTableI
 
 static inline struct ctab_constant *get_valid_constant(struct ID3DXConstantTableImpl *table, D3DXHANDLE handle)
 {
-    struct ctab_constant *constant = is_valid_constant(table, handle);
+    struct ctab_constant *c;
+    UINT i;
 
-    if (!constant) constant = get_constant_by_name(table, NULL, handle);
+    if (!handle) return NULL;
 
-    return constant;
+    for (i = 0; i < table->desc.Constants; ++i)
+    {
+        if (handle_from_constant(&table->constants[i]) == handle)
+            return &table->constants[i];
+
+        c = is_valid_sub_constant(&table->constants[i], handle);
+        if (c) return c;
+    }
+
+    return get_constant_by_name(table, NULL, handle);
 }
 
 static inline void set_float_shader_constant(struct ID3DXConstantTableImpl *table, IDirect3DDevice9 *device,
@@ -936,320 +929,421 @@ static D3DXHANDLE WINAPI ID3DXConstantTableImpl_GetConstantElement(ID3DXConstant
     return NULL;
 }
 
-static HRESULT set_scalar_array(ID3DXConstantTable *iface, IDirect3DDevice9 *device, D3DXHANDLE constant, const void *data,
-                               UINT count, D3DXPARAMETER_TYPE type)
+static inline DWORD get_index(const void **indata, UINT index, BOOL is_pointer)
 {
-    struct ID3DXConstantTableImpl *This = impl_from_ID3DXConstantTable(iface);
-    D3DXCONSTANT_DESC desc;
-    HRESULT hr;
-    UINT i, desc_count = 1;
-    float row[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+    if (!indata)
+        return 0;
 
-    hr = ID3DXConstantTable_GetConstantDesc(iface, constant, &desc, &desc_count);
-    if (FAILED(hr))
+    if (is_pointer)
+        return ((DWORD **)indata)[index / 16][index % 16];
+
+    return (*((DWORD **)indata))[index];
+}
+
+static UINT set(struct ID3DXConstantTableImpl *table, IDirect3DDevice9 *device, struct ctab_constant *constant,
+        const void **indata, D3DXPARAMETER_TYPE intype, UINT *size, UINT incol, D3DXPARAMETER_CLASS inclass, UINT index,
+        BOOL is_pointer)
+{
+    D3DXCONSTANT_DESC *desc = &constant->desc;
+    UINT l, i, regcount = 1, regsize = 1, cin = 1, rin = 1, ret, last = 0;
+    DWORD tmp;
+
+    /* size to small to set anything */
+    if (*size < desc->Rows * desc->Columns)
     {
-        TRACE("ID3DXConstantTable_GetConstantDesc failed: %08x\n", hr);
-        return D3DERR_INVALIDCALL;
+        *size = 0;
+        return 0;
     }
 
-    if (desc.Class != D3DXPC_SCALAR)
-        return D3D_OK;
-
-    switch (desc.RegisterSet)
+    /* D3DXPC_STRUCT is somewhat special */
+    if (desc->Class == D3DXPC_STRUCT)
     {
-        case D3DXRS_FLOAT4:
-            for (i = 0; i < min(count, desc.RegisterCount); i++)
+        FIXME("Structs are not supported, yet.\n");
+        return 0;
+    }
+
+    /* elements */
+    if (desc->Elements > 1)
+    {
+        for (i = 0; i < desc->Elements && *size > 0; ++i)
+        {
+            last += set(table, device, &constant->constants[i], indata, intype, size, incol, inclass,
+                    index + last, is_pointer);
+
+            /* adjust the vector size for matrix rows */
+            if (inclass == D3DXPC_MATRIX_ROWS && desc->Class == D3DXPC_VECTOR && (i % 4) == 3)
             {
-                /* We need the for loop since each IDirect3DDevice9_Set*ShaderConstantF expects a float4 */
-                switch(type)
+                last += 12;
+                *size = *size < 12 ? 0 : *size - 12;
+            }
+        }
+
+        return last;
+    }
+
+    switch (desc->Class)
+    {
+        case D3DXPC_SCALAR:
+        case D3DXPC_VECTOR:
+        case D3DXPC_MATRIX_ROWS:
+            regcount = min(desc->RegisterCount, desc->Rows);
+            if (inclass == D3DXPC_MATRIX_ROWS) cin = incol;
+            else rin = incol;
+            regsize = desc->Columns;
+            break;
+
+        case D3DXPC_MATRIX_COLUMNS:
+            regcount = desc->Columns;
+            if (inclass == D3DXPC_MATRIX_ROWS) rin = incol;
+            else cin = incol;
+            regsize = desc->Rows;
+            break;
+
+        default:
+            FIXME("Unhandled variable class %s\n", debug_d3dxparameter_class(desc->Class));
+            return 0;
+    }
+
+    /* specific stuff for different in types */
+    switch (inclass)
+    {
+        case D3DXPC_SCALAR:
+            ret = desc->Columns * desc->Rows;
+            *size -= desc->Columns * desc->Rows;
+            break;
+
+        case D3DXPC_VECTOR:
+            switch (desc->Class)
+            {
+                case D3DXPC_MATRIX_ROWS:
+                    if (*size < regcount * 4)
+                    {
+                        *size = 0;
+                        return 0;
+                    }
+                    ret = 4 * regcount;
+                    *size -= 4 * regcount;
+                    break;
+
+                case D3DXPC_MATRIX_COLUMNS:
+                    ret = 4 * regsize;
+                    *size -= 4 * regcount;
+                    break;
+
+                case D3DXPC_SCALAR:
+                    ret = 1;
+                    *size -= ret;
+                    break;
+
+                case D3DXPC_VECTOR:
+                    ret = 4;
+                    *size -= ret;
+                    break;
+
+                default:
+                    FIXME("Unhandled variable class %s\n", debug_d3dxparameter_class(desc->Class));
+                    return 0;
+            }
+            break;
+
+        case D3DXPC_MATRIX_ROWS:
+            switch (desc->Class)
+            {
+                case D3DXPC_MATRIX_ROWS:
+                case D3DXPC_MATRIX_COLUMNS:
+                    if (*size < 16)
+                    {
+                        *size = 0;
+                        return 0;
+                    }
+                    ret = 16;
+                    break;
+
+                case D3DXPC_SCALAR:
+                    ret = 4;
+                    break;
+
+                case D3DXPC_VECTOR:
+                    ret = 1;
+                    break;
+
+                default:
+                    FIXME("Unhandled variable class %s\n", debug_d3dxparameter_class(desc->Class));
+                    return 0;
+            }
+            *size -= ret;
+            break;
+
+        case D3DXPC_MATRIX_COLUMNS:
+            switch (desc->Class)
+            {
+                case D3DXPC_MATRIX_ROWS:
+                case D3DXPC_MATRIX_COLUMNS:
+                    if (*size < 16)
+                    {
+                        *size = 0;
+                        return 0;
+                    }
+                    ret = 16;
+                    break;
+
+                case D3DXPC_SCALAR:
+                    ret = 1;
+                    break;
+
+                case D3DXPC_VECTOR:
+                    ret = 4;
+                    break;
+
+                default:
+                    FIXME("Unhandled variable class %s\n", debug_d3dxparameter_class(desc->Class));
+                    return 0;
+            }
+            *size -= ret;
+            break;
+
+        default:
+            FIXME("Unhandled variable class %s\n", debug_d3dxparameter_class(inclass));
+            return 0;
+    }
+
+    /* set the registers */
+    switch (desc->RegisterSet)
+    {
+        case D3DXRS_BOOL:
+            regcount = min(desc->RegisterCount, desc->Columns * desc->Rows);
+            l = 0;
+            for (i = 0; i < regcount; ++i)
+            {
+                BOOL out;
+                DWORD t = get_index(indata, index + i / regsize * rin + l * cin, is_pointer);
+
+                set_number(&tmp, desc->Type, &t, intype);
+                set_number(&out, D3DXPT_BOOL, &tmp, desc->Type);
+                if (is_vertex_shader(table->desc.Version))
+                    IDirect3DDevice9_SetVertexShaderConstantB(device, desc->RegisterIndex + i, &out, 1);
+                else
+                    IDirect3DDevice9_SetPixelShaderConstantB(device, desc->RegisterIndex + i, &out, 1);
+
+                if (++l >= regsize) l = 0;
+            }
+            return ret;
+
+        case D3DXRS_INT4:
+            for (i = 0; i < regcount; ++i)
+            {
+                INT vec[4] = {0, 0, 1, 0};
+
+                for (l = 0; l < regsize; ++l)
                 {
-                    case D3DXPT_FLOAT:
-                        row[0] = ((float *)data)[i];
-                        break;
-                    case D3DXPT_INT:
-                        row[0] = (float)((int *)data)[i];
-                        break;
-                    case D3DXPT_BOOL:
-                        row[0] = ((BOOL *)data)[i] ? 1.0f : 0.0f;
-                        break;
-                    default:
-                        FIXME("Unhandled type %s\n", debug_d3dxparameter_type(type));
-                        return D3DERR_INVALIDCALL;
+                    DWORD t = get_index(indata, index + i * rin + l * cin, is_pointer);
+
+                    set_number(&tmp, desc->Type, &t, intype);
+                    set_number(&vec[l], D3DXPT_INT, &tmp, desc->Type);
                 }
-                set_float_shader_constant(This, device, desc.RegisterIndex + i, row, 1);
+                if (is_vertex_shader(table->desc.Version))
+                    IDirect3DDevice9_SetVertexShaderConstantI(device, desc->RegisterIndex + i, vec, 1);
+                else
+                    IDirect3DDevice9_SetPixelShaderConstantI(device, desc->RegisterIndex + i, vec, 1);
             }
-            break;
-        default:
-            FIXME("Unhandled register set %s\n", debug_d3dxparameter_registerset(desc.RegisterSet));
-            return E_NOTIMPL;
-    }
+            return ret;
 
-    return D3D_OK;
-}
-
-static HRESULT set_vector_array(ID3DXConstantTable *iface, IDirect3DDevice9 *device, D3DXHANDLE constant, const void *data,
-                                UINT count, D3DXPARAMETER_TYPE type)
-{
-    struct ID3DXConstantTableImpl *This = impl_from_ID3DXConstantTable(iface);
-    D3DXCONSTANT_DESC desc;
-    HRESULT hr;
-    UINT i, j, desc_count = 1;
-    float vec[4] = {0.0f, 0.0f, 0.0f, 0.0f};
-
-    hr = ID3DXConstantTable_GetConstantDesc(iface, constant, &desc, &desc_count);
-    if (FAILED(hr))
-    {
-        TRACE("ID3DXConstantTable_GetConstantDesc failed: %08x\n", hr);
-        return D3DERR_INVALIDCALL;
-    }
-
-    if (desc.Class == D3DXPC_MATRIX_ROWS || desc.Class == D3DXPC_MATRIX_COLUMNS)
-        return D3D_OK;
-
-    switch (desc.RegisterSet)
-    {
         case D3DXRS_FLOAT4:
-            for (i = 0; i < min(count, desc.RegisterCount); i++)
+            for (i = 0; i < regcount; ++i)
             {
-                switch (type)
+                FLOAT vec[4] = {0};
+
+                for (l = 0; l < regsize; ++l)
                 {
-                    case D3DXPT_FLOAT:
-                        memcpy(vec, ((float *)data) + i * desc.Columns, desc.Columns * sizeof(float));
-                        break;
-                    case D3DXPT_INT:
-                        for (j = 0; j < desc.Columns; j++)
-                            vec[j] = (float)((int *)data)[i * desc.Columns + j];
-                        break;
-                    case D3DXPT_BOOL:
-                        for (j = 0; j < desc.Columns; j++)
-                            vec[j] = ((BOOL *)data)[i * desc.Columns + j] ? 1.0f : 0.0f;
-                        break;
-                    default:
-                        FIXME("Unhandled type %s\n", debug_d3dxparameter_type(type));
-                        return D3DERR_INVALIDCALL;
+                    DWORD t = get_index(indata, index + i * rin + l * cin, is_pointer);
+
+                    set_number(&tmp, desc->Type, &t, intype);
+                    set_number(&vec[l], D3DXPT_FLOAT, &tmp, desc->Type);
                 }
-
-                set_float_shader_constant(This, device, desc.RegisterIndex + i, vec, 1);
+                if (is_vertex_shader(table->desc.Version))
+                    IDirect3DDevice9_SetVertexShaderConstantF(device, desc->RegisterIndex + i, vec, 1);
+                else
+                    IDirect3DDevice9_SetPixelShaderConstantF(device, desc->RegisterIndex + i, vec, 1);
             }
-            break;
-        default:
-            FIXME("Unhandled register set %s\n", debug_d3dxparameter_registerset(desc.RegisterSet));
-            return E_NOTIMPL;
-    }
+            return ret;
 
-    return D3D_OK;
+        default:
+            FIXME("Unhandled register set %s\n", debug_d3dxparameter_registerset(desc->RegisterSet));
+            return 0;
+    }
 }
 
-static HRESULT set_float_matrix(FLOAT *matrix, const D3DXCONSTANT_DESC *desc,
-                                UINT row_offset, UINT column_offset, UINT rows, UINT columns,
-                                const void *data, D3DXPARAMETER_TYPE type, UINT src_columns)
+static HRESULT set_scalar(struct ID3DXConstantTableImpl *table, IDirect3DDevice9 *device, D3DXHANDLE constant,
+        const void *indata, D3DXPARAMETER_TYPE intype)
 {
-    UINT i, j;
-
-    switch (type)
-    {
-        case D3DXPT_FLOAT:
-            for (i = 0; i < rows; i++)
-            {
-                for (j = 0; j < columns; j++)
-                    matrix[i * row_offset + j * column_offset] = ((FLOAT *)data)[i * src_columns + j];
-            }
-            break;
-        case D3DXPT_INT:
-            for (i = 0; i < rows; i++)
-            {
-                for (j = 0; j < columns; j++)
-                    matrix[i * row_offset + j * column_offset] = ((INT *)data)[i * src_columns + j];
-            }
-            break;
-        default:
-            FIXME("Unhandled type %s\n", debug_d3dxparameter_type(type));
-            return D3DERR_INVALIDCALL;
-    }
-
-    return D3D_OK;
-}
-
-static HRESULT set_matrix_array(ID3DXConstantTable *iface, IDirect3DDevice9 *device, D3DXHANDLE constant, const void *data,
-                                UINT count, D3DXPARAMETER_CLASS class, D3DXPARAMETER_TYPE type, UINT rows, UINT columns)
-{
-    struct ID3DXConstantTableImpl *This = impl_from_ID3DXConstantTable(iface);
-    struct ctab_constant *c = get_valid_constant(This, constant);
-    D3DXCONSTANT_DESC *desc;
-    UINT registers_per_matrix, num_rows, num_columns, i;
-    UINT row_offset = 1, column_offset = 1;
-    const DWORD *data_ptr;
-    FLOAT matrix[16] = {0.0f, 0.0f, 0.0f, 0.0f,
-                        0.0f, 0.0f, 0.0f, 0.0f,
-                        0.0f, 0.0f, 0.0f, 0.0f,
-                        0.0f, 0.0f, 0.0f, 0.0f};
+    struct ctab_constant *c = get_valid_constant(table, constant);
+    UINT count = 1;
 
     if (!c)
     {
         WARN("Invalid argument specified\n");
         return D3DERR_INVALIDCALL;
     }
-    desc = &c->desc;
 
-    if (desc->Class == D3DXPC_MATRIX_ROWS
-        || desc->Class == D3DXPC_MATRIX_COLUMNS
-        || desc->Class == D3DXPC_VECTOR
-        || desc->Class == D3DXPC_SCALAR)
+    switch (c->desc.Class)
     {
-        if (desc->Class == class) row_offset = 4;
-        else column_offset = 4;
+        case D3DXPC_SCALAR:
+            set(table, device, c, &indata, intype, &count, c->desc.Columns, D3DXPC_SCALAR, 0, FALSE);
+            return D3D_OK;
 
-        if (class == D3DXPC_MATRIX_ROWS)
-        {
-            if (desc->Class == D3DXPC_VECTOR) return D3D_OK;
+        case D3DXPC_VECTOR:
+        case D3DXPC_MATRIX_ROWS:
+        case D3DXPC_MATRIX_COLUMNS:
+        case D3DXPC_STRUCT:
+            return D3D_OK;
 
-            num_rows = desc->Rows;
-            num_columns = desc->Columns;
-        }
-        else
-        {
-            num_rows = desc->Columns;
-            num_columns = desc->Rows;
-        }
-
-        registers_per_matrix = (desc->Class == D3DXPC_MATRIX_COLUMNS) ? desc->Columns : desc->Rows;
-    }
-    else
-    {
-        FIXME("Unhandled variable class %s\n", debug_d3dxparameter_class(desc->Class));
-        return E_NOTIMPL;
-    }
-
-    switch (desc->RegisterSet)
-    {
-        case D3DXRS_FLOAT4:
-            data_ptr = data;
-            for (i = 0; i < count; i++)
-            {
-                HRESULT hr;
-
-                if (registers_per_matrix * (i + 1) > desc->RegisterCount)
-                    break;
-
-                hr = set_float_matrix(matrix, desc, row_offset, column_offset, num_rows, num_columns, data_ptr, type, columns);
-                if (FAILED(hr)) return hr;
-
-                set_float_shader_constant(This, device, desc->RegisterIndex + i * registers_per_matrix, matrix, registers_per_matrix);
-
-                data_ptr += rows * columns;
-            }
-            break;
         default:
-            FIXME("Unhandled register set %s\n", debug_d3dxparameter_registerset(desc->RegisterSet));
-            return E_NOTIMPL;
+            FIXME("Unhandled parameter class %s\n", debug_d3dxparameter_class(c->desc.Class));
+            return D3DERR_INVALIDCALL;
     }
-
-    return D3D_OK;
 }
 
-static HRESULT set_matrix_pointer_array(ID3DXConstantTable *iface, IDirect3DDevice9 *device, D3DXHANDLE constant,
-                                const D3DXMATRIX **data, UINT count, D3DXPARAMETER_CLASS class)
+static HRESULT set_scalar_array(struct ID3DXConstantTableImpl *table, IDirect3DDevice9 *device, D3DXHANDLE constant,
+        const void *indata, UINT count, D3DXPARAMETER_TYPE intype)
 {
-    struct ID3DXConstantTableImpl *This = impl_from_ID3DXConstantTable(iface);
-    D3DXCONSTANT_DESC desc;
-    HRESULT hr;
-    UINT registers_per_matrix;
-    UINT i, desc_count = 1;
-    UINT num_rows, num_columns;
-    UINT row_offset, column_offset;
-    FLOAT matrix[16] = {0.0f, 0.0f, 0.0f, 0.0f,
-                        0.0f, 0.0f, 0.0f, 0.0f,
-                        0.0f, 0.0f, 0.0f, 0.0f,
-                        0.0f, 0.0f, 0.0f, 0.0f};
+    struct ctab_constant *c = get_valid_constant(table, constant);
 
-    hr = ID3DXConstantTable_GetConstantDesc(iface, constant, &desc, &desc_count);
-    if (FAILED(hr))
+    if (!c)
     {
-        TRACE("ID3DXConstantTable_GetConstantDesc failed: %08x\n", hr);
+        WARN("Invalid argument specified\n");
         return D3DERR_INVALIDCALL;
     }
 
-    if (desc.Class == D3DXPC_MATRIX_ROWS || desc.Class == D3DXPC_MATRIX_COLUMNS)
+    switch (c->desc.Class)
     {
-        if (desc.Class == class)
-        {
-            column_offset = 1;
-            row_offset = 4;
-        }
-        else
-        {
-            column_offset = 4;
-            row_offset = 1;
-        }
+        case D3DXPC_SCALAR:
+        case D3DXPC_VECTOR:
+        case D3DXPC_MATRIX_ROWS:
+        case D3DXPC_MATRIX_COLUMNS:
+        case D3DXPC_STRUCT:
+            set(table, device, c, &indata, intype, &count, c->desc.Columns, D3DXPC_SCALAR, 0, FALSE);
+            return D3D_OK;
 
-        if (class == D3DXPC_MATRIX_ROWS)
-        {
-            num_rows = desc.Rows;
-            num_columns = desc.Columns;
-        }
-        else
-        {
-            num_rows = desc.Columns;
-            num_columns = desc.Rows;
-        }
-
-        registers_per_matrix = (desc.Class == D3DXPC_MATRIX_ROWS) ? desc.Rows : desc.Columns;
-    }
-    else if (desc.Class == D3DXPC_SCALAR)
-    {
-        registers_per_matrix = 1;
-        column_offset = 1;
-        row_offset = 1;
-        num_rows = desc.Rows;
-        num_columns = desc.Columns;
-    }
-    else if (desc.Class == D3DXPC_VECTOR)
-    {
-        registers_per_matrix = 1;
-
-        if (class == D3DXPC_MATRIX_ROWS)
-        {
-            column_offset = 1;
-            row_offset = 4;
-            num_rows = desc.Rows;
-            num_columns = desc.Columns;
-        }
-        else
-        {
-            column_offset = 4;
-            row_offset = 1;
-            num_rows = desc.Columns;
-            num_columns = desc.Rows;
-        }
-    }
-    else
-    {
-        FIXME("Unhandled variable class %s\n", debug_d3dxparameter_class(desc.Class));
-        return D3D_OK;
-    }
-
-    switch (desc.RegisterSet)
-    {
-        case D3DXRS_FLOAT4:
-            for (i = 0; i < count; i++)
-            {
-                if (registers_per_matrix * (i + 1) > desc.RegisterCount)
-                    break;
-
-                hr = set_float_matrix(matrix, &desc, row_offset, column_offset, num_rows, num_columns, *data, D3DXPT_FLOAT, 4);
-                if (FAILED(hr)) return hr;
-
-                set_float_shader_constant(This, device, desc.RegisterIndex + i * registers_per_matrix, matrix, registers_per_matrix);
-
-                data++;
-            }
-            break;
         default:
-            FIXME("Unhandled register set %s\n", debug_d3dxparameter_registerset(desc.RegisterSet));
-            return E_NOTIMPL;
+            FIXME("Unhandled parameter class %s\n", debug_d3dxparameter_class(c->desc.Class));
+            return D3DERR_INVALIDCALL;
+    }
+}
+
+static HRESULT set_vector(struct ID3DXConstantTableImpl *table, IDirect3DDevice9 *device, D3DXHANDLE constant,
+        const void *indata, D3DXPARAMETER_TYPE intype)
+{
+    struct ctab_constant *c = get_valid_constant(table, constant);
+    UINT count = 4;
+
+    if (!c)
+    {
+        WARN("Invalid argument specified\n");
+        return D3DERR_INVALIDCALL;
     }
 
-    return D3D_OK;
+    switch (c->desc.Class)
+    {
+        case D3DXPC_SCALAR:
+        case D3DXPC_VECTOR:
+        case D3DXPC_STRUCT:
+            set(table, device, c, &indata, intype, &count, 4, D3DXPC_VECTOR, 0, FALSE);
+            return D3D_OK;
+
+        case D3DXPC_MATRIX_ROWS:
+        case D3DXPC_MATRIX_COLUMNS:
+            return D3D_OK;
+
+        default:
+            FIXME("Unhandled parameter class %s\n", debug_d3dxparameter_class(c->desc.Class));
+            return D3DERR_INVALIDCALL;
+    }
+}
+
+static HRESULT set_vector_array(struct ID3DXConstantTableImpl *table, IDirect3DDevice9 *device, D3DXHANDLE constant,
+        const void *indata, UINT count, D3DXPARAMETER_TYPE intype)
+{
+    struct ctab_constant *c = get_valid_constant(table, constant);
+
+    if (!c)
+    {
+        WARN("Invalid argument specified\n");
+        return D3DERR_INVALIDCALL;
+    }
+
+    switch (c->desc.Class)
+    {
+        case D3DXPC_SCALAR:
+        case D3DXPC_VECTOR:
+        case D3DXPC_MATRIX_ROWS:
+        case D3DXPC_MATRIX_COLUMNS:
+        case D3DXPC_STRUCT:
+            count *= 4;
+            set(table, device, c, &indata, intype, &count, 4, D3DXPC_VECTOR, 0, FALSE);
+            return D3D_OK;
+
+        default:
+            FIXME("Unhandled parameter class %s\n", debug_d3dxparameter_class(c->desc.Class));
+            return D3DERR_INVALIDCALL;
+    }
+}
+
+static HRESULT set_matrix_array(struct ID3DXConstantTableImpl *table, IDirect3DDevice9 *device, D3DXHANDLE constant,
+        const void *indata, UINT count, BOOL transpose)
+{
+    struct ctab_constant *c = get_valid_constant(table, constant);
+
+    if (!c)
+    {
+        WARN("Invalid argument specified\n");
+        return D3DERR_INVALIDCALL;
+    }
+
+    switch (c->desc.Class)
+    {
+        case D3DXPC_SCALAR:
+        case D3DXPC_VECTOR:
+        case D3DXPC_MATRIX_ROWS:
+        case D3DXPC_MATRIX_COLUMNS:
+        case D3DXPC_STRUCT:
+            count *= 16;
+            set(table, device, c, &indata, D3DXPT_FLOAT, &count, 4,
+                    transpose ? D3DXPC_MATRIX_ROWS : D3DXPC_MATRIX_COLUMNS, 0, FALSE);
+            return D3D_OK;
+
+        default:
+            FIXME("Unhandled parameter class %s\n", debug_d3dxparameter_class(c->desc.Class));
+            return D3DERR_INVALIDCALL;
+    }
+}
+
+static HRESULT set_matrix_pointer_array(struct ID3DXConstantTableImpl *table, IDirect3DDevice9 *device,
+        D3DXHANDLE constant, const void **indata, UINT count, BOOL transpose)
+{
+    struct ctab_constant *c = get_valid_constant(table, constant);
+
+    if (!c)
+    {
+        WARN("Invalid argument specified\n");
+        return D3DERR_INVALIDCALL;
+    }
+
+    switch (c->desc.Class)
+    {
+        case D3DXPC_SCALAR:
+        case D3DXPC_VECTOR:
+        case D3DXPC_MATRIX_ROWS:
+        case D3DXPC_MATRIX_COLUMNS:
+        case D3DXPC_STRUCT:
+            count *= 16;
+            set(table, device, c, indata, D3DXPT_FLOAT, &count, 4,
+                    transpose ? D3DXPC_MATRIX_ROWS : D3DXPC_MATRIX_COLUMNS, 0, TRUE);
+            return D3D_OK;
+
+        default:
+            FIXME("Unhandled parameter class %s\n", debug_d3dxparameter_class(c->desc.Class));
+            return D3DERR_INVALIDCALL;
+    }
 }
 
 static HRESULT WINAPI ID3DXConstantTableImpl_SetDefaults(struct ID3DXConstantTable *iface,
@@ -1277,37 +1371,35 @@ static HRESULT WINAPI ID3DXConstantTableImpl_SetDefaults(struct ID3DXConstantTab
 }
 
 static HRESULT WINAPI ID3DXConstantTableImpl_SetValue(struct ID3DXConstantTable *iface,
-        struct IDirect3DDevice9 *device, D3DXHANDLE constant, const void *data, UINT bytes)
+        struct IDirect3DDevice9 *device, D3DXHANDLE constant, const void *data, unsigned int bytes)
 {
-    struct ID3DXConstantTableImpl *This = impl_from_ID3DXConstantTable(iface);
-    HRESULT hr;
-    UINT elements;
-    UINT count = 1;
-    D3DXCONSTANT_DESC desc;
+    struct ID3DXConstantTableImpl *table = impl_from_ID3DXConstantTable(iface);
+    struct ctab_constant *c = get_valid_constant(table, constant);
+    D3DXCONSTANT_DESC *desc;
 
-    TRACE("(%p)->(%p, %p, %p, %d)\n", This, device, constant, data, bytes);
+    TRACE("iface %p, device %p, constant %p, data %p, bytes %u\n", iface, device, constant, data, bytes);
 
-    if (!device || !constant || !data)
+    if (!device || !c || !data)
+    {
+        WARN("Invalid argument specified\n");
         return D3DERR_INVALIDCALL;
+    }
 
-    hr = ID3DXConstantTable_GetConstantDesc(iface, constant, &desc, &count);
-    if (FAILED(hr))
-        return hr;
+    desc = &c->desc;
 
-    elements = bytes / (desc.Bytes / desc.Elements);
-
-    switch (desc.Class)
+    switch (desc->Class)
     {
         case D3DXPC_SCALAR:
-            return set_scalar_array(iface, device, constant, data, elements, desc.Type);
         case D3DXPC_VECTOR:
-            return set_vector_array(iface, device, constant, data, elements, desc.Type);
         case D3DXPC_MATRIX_ROWS:
         case D3DXPC_MATRIX_COLUMNS:
-            return set_matrix_array(iface, device, constant, data, elements,
-                    D3DXPC_MATRIX_ROWS, desc.Type, desc.Rows, desc.Columns);
+        case D3DXPC_STRUCT:
+            bytes /= 4;
+            set(table, device, c, &data, desc->Type, &bytes, desc->Columns, D3DXPC_SCALAR, 0, FALSE);
+            return D3D_OK;
+
         default:
-            FIXME("Unhandled parameter class %s\n", debug_d3dxparameter_class(desc.Class));
+            FIXME("Unhandled parameter class %s\n", debug_d3dxparameter_class(desc->Class));
             return D3DERR_INVALIDCALL;
     }
 }
@@ -1317,9 +1409,9 @@ static HRESULT WINAPI ID3DXConstantTableImpl_SetBool(struct ID3DXConstantTable *
 {
     struct ID3DXConstantTableImpl *This = impl_from_ID3DXConstantTable(iface);
 
-    TRACE("(%p)->(%p, %p, %d)\n", This, device, constant, b);
+    TRACE("iface %p, device %p, constant %p, b %d\n", iface, device, constant, b);
 
-    return set_scalar_array(iface, device, constant, &b, 1, D3DXPT_BOOL);
+    return set_scalar(This, device, constant, &b, D3DXPT_BOOL);
 }
 
 static HRESULT WINAPI ID3DXConstantTableImpl_SetBoolArray(struct ID3DXConstantTable *iface,
@@ -1327,9 +1419,9 @@ static HRESULT WINAPI ID3DXConstantTableImpl_SetBoolArray(struct ID3DXConstantTa
 {
     struct ID3DXConstantTableImpl *This = impl_from_ID3DXConstantTable(iface);
 
-    TRACE("(%p)->(%p, %p, %p, %d)\n", This, device, constant, b, count);
+    TRACE("iface %p, device %p, constant %p, b %p, count %d\n", iface, device, constant, b, count);
 
-    return set_scalar_array(iface, device, constant, b, count, D3DXPT_BOOL);
+    return set_scalar_array(This, device, constant, b, count, D3DXPT_BOOL);
 }
 
 static HRESULT WINAPI ID3DXConstantTableImpl_SetInt(struct ID3DXConstantTable *iface,
@@ -1337,9 +1429,9 @@ static HRESULT WINAPI ID3DXConstantTableImpl_SetInt(struct ID3DXConstantTable *i
 {
     struct ID3DXConstantTableImpl *This = impl_from_ID3DXConstantTable(iface);
 
-    TRACE("(%p)->(%p, %p, %d)\n", This, device, constant, n);
+    TRACE("iface %p, device %p, constant %p, n %d\n", iface, device, constant, n);
 
-    return set_scalar_array(iface, device, constant, &n, 1, D3DXPT_INT);
+    return set_scalar(This, device, constant, &n, D3DXPT_INT);
 }
 
 static HRESULT WINAPI ID3DXConstantTableImpl_SetIntArray(struct ID3DXConstantTable *iface,
@@ -1347,9 +1439,9 @@ static HRESULT WINAPI ID3DXConstantTableImpl_SetIntArray(struct ID3DXConstantTab
 {
     struct ID3DXConstantTableImpl *This = impl_from_ID3DXConstantTable(iface);
 
-    TRACE("(%p)->(%p, %p, %p, %d)\n", This, device, constant, n, count);
+    TRACE("iface %p, device %p, constant %p, n %p, count %d\n", iface, device, constant, n, count);
 
-    return set_scalar_array(iface, device, constant, n, count, D3DXPT_INT);
+    return set_scalar_array(This, device, constant, n, count, D3DXPT_INT);
 }
 
 static HRESULT WINAPI ID3DXConstantTableImpl_SetFloat(struct ID3DXConstantTable *iface,
@@ -1357,9 +1449,9 @@ static HRESULT WINAPI ID3DXConstantTableImpl_SetFloat(struct ID3DXConstantTable 
 {
     struct ID3DXConstantTableImpl *This = impl_from_ID3DXConstantTable(iface);
 
-    TRACE("(%p)->(%p, %p, %f)\n", This, device, constant, f);
+    TRACE("iface %p, device %p, constant %p, f %f\n", iface, device, constant, f);
 
-    return set_scalar_array(iface, device, constant, &f, 1, D3DXPT_FLOAT);
+    return set_scalar(This, device, constant, &f, D3DXPT_FLOAT);
 }
 
 static HRESULT WINAPI ID3DXConstantTableImpl_SetFloatArray(struct ID3DXConstantTable *iface,
@@ -1367,9 +1459,9 @@ static HRESULT WINAPI ID3DXConstantTableImpl_SetFloatArray(struct ID3DXConstantT
 {
     struct ID3DXConstantTableImpl *This = impl_from_ID3DXConstantTable(iface);
 
-    TRACE("(%p)->(%p, %p, %p, %d)\n", This, device, constant, f, count);
+    TRACE("iface %p, device %p, constant %p, f %p, count %d\n", iface, device, constant, f, count);
 
-    return set_scalar_array(iface, device, constant, f, count, D3DXPT_FLOAT);
+    return set_scalar_array(This, device, constant, f, count, D3DXPT_FLOAT);
 }
 
 static HRESULT WINAPI ID3DXConstantTableImpl_SetVector(struct ID3DXConstantTable *iface,
@@ -1377,9 +1469,9 @@ static HRESULT WINAPI ID3DXConstantTableImpl_SetVector(struct ID3DXConstantTable
 {
     struct ID3DXConstantTableImpl *This = impl_from_ID3DXConstantTable(iface);
 
-    TRACE("(%p)->(%p, %p, %p)\n", This, device, constant, vector);
+    TRACE("iface %p, device %p, constant %p, vector %p\n", iface, device, constant, vector);
 
-    return set_vector_array(iface, device, constant, vector, 1, D3DXPT_FLOAT);
+    return set_vector(This, device, constant, vector, D3DXPT_FLOAT);
 }
 
 static HRESULT WINAPI ID3DXConstantTableImpl_SetVectorArray(struct ID3DXConstantTable *iface,
@@ -1387,9 +1479,9 @@ static HRESULT WINAPI ID3DXConstantTableImpl_SetVectorArray(struct ID3DXConstant
 {
     struct ID3DXConstantTableImpl *This = impl_from_ID3DXConstantTable(iface);
 
-    TRACE("(%p)->(%p, %p, %p, %d)\n", This, device, constant, vector, count);
+    TRACE("iface %p, device %p, constant %p, vector %p, count %u\n", iface, device, constant, vector, count);
 
-    return set_vector_array(iface, device, constant, vector, count, D3DXPT_FLOAT);
+    return set_vector_array(This, device, constant, vector, count, D3DXPT_FLOAT);
 }
 
 static HRESULT WINAPI ID3DXConstantTableImpl_SetMatrix(struct ID3DXConstantTable *iface,
@@ -1397,9 +1489,9 @@ static HRESULT WINAPI ID3DXConstantTableImpl_SetMatrix(struct ID3DXConstantTable
 {
     struct ID3DXConstantTableImpl *This = impl_from_ID3DXConstantTable(iface);
 
-    TRACE("(%p)->(%p, %p, %p)\n", This, device, constant, matrix);
+    TRACE("iface %p, device %p, constant %p, matrix %p\n", iface, device, constant, matrix);
 
-    return set_matrix_array(iface, device, constant, matrix, 1, D3DXPC_MATRIX_ROWS, D3DXPT_FLOAT, 4, 4);
+    return set_matrix_array(This, device, constant, matrix, 1, FALSE);
 }
 
 static HRESULT WINAPI ID3DXConstantTableImpl_SetMatrixArray(struct ID3DXConstantTable *iface,
@@ -1407,9 +1499,9 @@ static HRESULT WINAPI ID3DXConstantTableImpl_SetMatrixArray(struct ID3DXConstant
 {
     struct ID3DXConstantTableImpl *This = impl_from_ID3DXConstantTable(iface);
 
-    TRACE("(%p)->(%p, %p, %p, %d)\n", This, device, constant, matrix, count);
+    TRACE("iface %p, device %p, constant %p, matrix %p, count %u\n", iface, device, constant, matrix, count);
 
-    return set_matrix_array(iface, device, constant, matrix, count, D3DXPC_MATRIX_ROWS, D3DXPT_FLOAT, 4, 4);
+    return set_matrix_array(This, device, constant, matrix, count, FALSE);
 }
 
 static HRESULT WINAPI ID3DXConstantTableImpl_SetMatrixPointerArray(struct ID3DXConstantTable *iface,
@@ -1417,9 +1509,9 @@ static HRESULT WINAPI ID3DXConstantTableImpl_SetMatrixPointerArray(struct ID3DXC
 {
     struct ID3DXConstantTableImpl *This = impl_from_ID3DXConstantTable(iface);
 
-    TRACE("(%p)->(%p, %p, %p, %d)\n", This, device, constant, matrix, count);
+    TRACE("iface %p, device %p, constant %p, matrix %p, count %u)\n", iface, device, constant, matrix, count);
 
-    return set_matrix_pointer_array(iface, device, constant, matrix, count, D3DXPC_MATRIX_ROWS);
+    return set_matrix_pointer_array(This, device, constant, (const void **)matrix, count, FALSE);
 }
 
 static HRESULT WINAPI ID3DXConstantTableImpl_SetMatrixTranspose(struct ID3DXConstantTable *iface,
@@ -1427,9 +1519,9 @@ static HRESULT WINAPI ID3DXConstantTableImpl_SetMatrixTranspose(struct ID3DXCons
 {
     struct ID3DXConstantTableImpl *This = impl_from_ID3DXConstantTable(iface);
 
-    TRACE("(%p)->(%p, %p, %p)\n", This, device, constant, matrix);
+    TRACE("iface %p, device %p, constant %p, matrix %p\n", iface, device, constant, matrix);
 
-    return set_matrix_array(iface, device, constant, matrix, 1, D3DXPC_MATRIX_COLUMNS, D3DXPT_FLOAT, 4, 4);
+    return set_matrix_array(This, device, constant, matrix, 1, TRUE);
 }
 
 static HRESULT WINAPI ID3DXConstantTableImpl_SetMatrixTransposeArray(struct ID3DXConstantTable *iface,
@@ -1437,9 +1529,9 @@ static HRESULT WINAPI ID3DXConstantTableImpl_SetMatrixTransposeArray(struct ID3D
 {
     struct ID3DXConstantTableImpl *This = impl_from_ID3DXConstantTable(iface);
 
-    TRACE("(%p)->(%p, %p, %p, %d)\n", This, device, constant, matrix, count);
+    TRACE("iface %p, device %p, constant %p, matrix %p, count %u\n", iface, device, constant, matrix, count);
 
-    return set_matrix_array(iface, device, constant, matrix, count, D3DXPC_MATRIX_COLUMNS, D3DXPT_FLOAT, 4, 4);
+    return set_matrix_array(This, device, constant, matrix, count, TRUE);
 }
 
 static HRESULT WINAPI ID3DXConstantTableImpl_SetMatrixTransposePointerArray(struct ID3DXConstantTable *iface,
@@ -1447,9 +1539,9 @@ static HRESULT WINAPI ID3DXConstantTableImpl_SetMatrixTransposePointerArray(stru
 {
     struct ID3DXConstantTableImpl *This = impl_from_ID3DXConstantTable(iface);
 
-    TRACE("(%p)->(%p, %p, %p, %d)\n", This, device, constant, matrix, count);
+    TRACE("iface %p, device %p, constant %p, matrix %p, count %u)\n", iface, device, constant, matrix, count);
 
-    return set_matrix_pointer_array(iface, device, constant, matrix, count, D3DXPC_MATRIX_COLUMNS);
+    return set_matrix_pointer_array(This, device, constant, (const void **)matrix, count, TRUE);
 }
 
 static const struct ID3DXConstantTableVtbl ID3DXConstantTable_Vtbl =
@@ -1546,58 +1638,63 @@ static HRESULT parse_ctab_constant_type(const char *ctab, DWORD typeoffset, stru
     }
     else
     {
-        WORD offsetdiff = 0;
+        WORD offsetdiff = type->Columns * type->Rows;
+        BOOL fail = FALSE;
 
-        switch (type->Class)
+        size = type->Columns * type->Rows;
+
+        switch (regset)
         {
-            case D3DXPC_SCALAR:
-            case D3DXPC_VECTOR:
-                offsetdiff = 1;
+            case D3DXRS_BOOL:
+                fail = type->Class != D3DXPC_SCALAR && type->Class != D3DXPC_VECTOR
+                        && type->Class != D3DXPC_MATRIX_ROWS && type->Class != D3DXPC_MATRIX_COLUMNS;
+                break;
+
+            case D3DXRS_FLOAT4:
+            case D3DXRS_INT4:
+                switch (type->Class)
+                {
+                    case D3DXPC_VECTOR:
+                        size = 1;
+                        /* fall through */
+                    case D3DXPC_SCALAR:
+                        offsetdiff = type->Rows * 4;
+                        break;
+
+                    case D3DXPC_MATRIX_ROWS:
+                        offsetdiff = type->Rows * 4;
+                        size = is_element ? type->Rows : max(type->Rows, type->Columns);
+                        break;
+
+                    case D3DXPC_MATRIX_COLUMNS:
+                        offsetdiff = type->Columns * 4;
+                        size = type->Columns;
+                        break;
+
+                    default:
+                        fail = TRUE;
+                        break;
+                }
+                break;
+
+            case D3DXRS_SAMPLER:
                 size = 1;
-                break;
-
-            case D3DXPC_MATRIX_ROWS:
-                size = is_element ? type->Rows : max(type->Rows, type->Columns);
-                offsetdiff = type->Rows;
-                break;
-
-            case D3DXPC_MATRIX_COLUMNS:
-                size = type->Columns;
-                offsetdiff = type->Columns;
-                break;
-
-            case D3DXPC_OBJECT:
-                size = 1;
+                fail = type->Class != D3DXPC_OBJECT;
                 break;
 
             default:
-                FIXME("Unhandled type class %s\n", debug_d3dxparameter_class(type->Class));
+                fail = TRUE;
                 break;
         }
 
-        /* offset in bytes => offsetdiff * components(4) * sizeof(DWORD) */
-        if (offset) *offset += offsetdiff * 4 * 4;
-
-        /* int and bool registerset have different sizes */
-        if (regset == D3DXRS_INT4 || regset == D3DXRS_BOOL)
+        if (fail)
         {
-            switch (type->Class)
-            {
-                case D3DXPC_SCALAR:
-                case D3DXPC_VECTOR:
-                    size = type->Columns;
-                    break;
-
-                case D3DXPC_MATRIX_ROWS:
-                case D3DXPC_MATRIX_COLUMNS:
-                    size = 4 * type->Columns;
-                    break;
-
-                default:
-                    FIXME("Unhandled type class %s\n", debug_d3dxparameter_class(type->Class));
-                    break;
-            }
+            FIXME("Unhandled register set %s, type class %s\n", debug_d3dxparameter_registerset(regset),
+                    debug_d3dxparameter_class(type->Class));
         }
+
+        /* offset in bytes => offsetdiff * sizeof(DWORD) */
+        if (offset) *offset += offsetdiff * 4;
     }
 
     constant->desc.RegisterCount = max(0, min(max - index, size));
@@ -1711,6 +1808,18 @@ HRESULT WINAPI D3DXGetShaderConstantTableEx(const DWORD *byte_code, DWORD flags,
                 offset ? &offset : NULL, constant_info[i].Name, constant_info[i].RegisterSet);
         if (hr != D3D_OK)
             goto error;
+
+        /*
+         * Set the register count, it may differ for D3DXRS_INT4, because somehow
+         * it makes the assumption that the register size is 1 instead of 4, so the
+         * count is 4 times bigger. This holds true only for toplevel shader
+         * constants. The count of elements and members is always based on a
+         * register size of 4.
+         */
+        if (object->constants[i].desc.RegisterSet == D3DXRS_INT4)
+        {
+            object->constants[i].desc.RegisterCount = constant_info[i].RegisterCount;
+        }
     }
 
     *constant_table = &object->ID3DXConstantTable_iface;
