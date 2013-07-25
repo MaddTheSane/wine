@@ -830,7 +830,7 @@
 @ cdecl _mkgmtime32(ptr) MSVCRT__mkgmtime32
 @ cdecl _mkgmtime64(ptr) MSVCRT__mkgmtime64
 @ cdecl _mktemp(str) MSVCRT__mktemp
-# stub _mktemp_s(str long)
+@ cdecl _mktemp_s(str long) MSVCRT__mktemp_s
 @ cdecl _mktime32(ptr) MSVCRT__mktime32
 @ cdecl _mktime64(ptr) MSVCRT__mktime64
 @ cdecl _msize(ptr)
@@ -1180,7 +1180,7 @@
 @ cdecl _wmakepath_s(ptr long wstr wstr wstr wstr)
 @ cdecl _wmkdir(wstr) MSVCRT__wmkdir
 @ cdecl _wmktemp(wstr) MSVCRT__wmktemp
-# stub _wmktemp_s(wstr long)
+@ cdecl _wmktemp_s(wstr long) MSVCRT__wmktemp_s
 @ varargs _wopen(wstr long) MSVCRT__wopen
 # stub _woutput_s
 @ stub _wperror(wstr)

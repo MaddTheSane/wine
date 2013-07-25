@@ -20,6 +20,7 @@
 
 #define COBJMACROS
 
+#include <stdio.h>
 #include <stdarg.h>
 #include "windef.h"
 #include "winbase.h"
@@ -97,6 +98,62 @@ static const WCHAR ltW[] = {'<',0};
 static const WCHAR gtW[] = {'>',0};
 static const WCHAR commentW[] = {'<','!','-','-',0};
 static const WCHAR piW[] = {'<','?',0};
+
+static const char *debugstr_nodetype(XmlNodeType nodetype)
+{
+    static const char* type_names[] =
+    {
+        "None",
+        "Element",
+        "Attribute",
+        "Text",
+        "CDATA",
+        "",
+        "",
+        "ProcessingInstruction",
+        "Comment",
+        "",
+        "DocumentType",
+        "",
+        "",
+        "Whitespace",
+        "",
+        "EndElement",
+        "",
+        "XmlDeclaration"
+    };
+
+    if (nodetype > _XmlNodeType_Last)
+    {
+        static char buf[25];
+        sprintf(buf, "unknown type=%d", nodetype);
+        return buf;
+    }
+    return type_names[nodetype];
+}
+
+static const char *debugstr_prop(XmlReaderProperty prop)
+{
+    static const char* prop_names[] =
+    {
+        "MultiLanguage",
+        "ConformanceLevel",
+        "RandomAccess",
+        "XmlResolver",
+        "DtdProcessing",
+        "ReadState",
+        "MaxElementDepth",
+        "MaxEntityExpansion"
+    };
+
+    if (prop > _XmlReaderProperty_Last)
+    {
+        static char buf[25];
+        sprintf(buf, "unknown property=%d", prop);
+        return buf;
+    }
+    return prop_names[prop];
+}
 
 struct xml_encoding_data
 {
@@ -189,6 +246,7 @@ typedef struct
     struct list elements;
     strval strvalues[StringValue_Last];
     UINT depth;
+    UINT max_depth;
     BOOL empty_element;
     WCHAR *resume[XmlReadResume_Last]; /* pointers used to resume reader */
 } xmlreader;
@@ -370,9 +428,13 @@ static void reader_clear_elements(xmlreader *reader)
 
 static HRESULT reader_inc_depth(xmlreader *reader)
 {
-    /* FIXME: handle XmlReaderProperty_MaxElementDepth property */
-    reader->depth++;
+    if (++reader->depth > reader->max_depth) return SC_E_MAXELEMENTDEPTH;
     return S_OK;
+}
+
+static void reader_dec_depth(xmlreader *reader)
+{
+    if (reader->depth > 1) reader->depth--;
 }
 
 static HRESULT reader_push_element(xmlreader *reader, strval *qname)
@@ -412,6 +474,7 @@ static void reader_pop_element(xmlreader *reader)
         list_remove(&elem->entry);
         reader_free_strvalued(reader, &elem->qname);
         reader_free(reader, elem);
+        reader_dec_depth(reader);
     }
 }
 
@@ -1080,6 +1143,7 @@ static HRESULT reader_parse_xmldecl(xmlreader *reader)
     if (reader_cmp(reader, declcloseW)) return WC_E_XMLDECL;
     reader_skipn(reader, 2);
 
+    reader_inc_depth(reader);
     reader->nodetype = XmlNodeType_XmlDeclaration;
     reader_set_strvalue(reader, StringValue_LocalName, &strval_empty);
     reader_set_strvalue(reader, StringValue_QualifiedName, &strval_empty);
@@ -1983,6 +2047,9 @@ static HRESULT reader_parse_nextnode(xmlreader *reader)
 {
     HRESULT hr;
 
+    if (!is_reader_pending(reader))
+        reader_clear_attrs(reader);
+
     while (1)
     {
         switch (reader->instate)
@@ -2184,7 +2251,7 @@ static HRESULT WINAPI xmlreader_GetProperty(IXmlReader* iface, UINT property, LO
 {
     xmlreader *This = impl_from_IXmlReader(iface);
 
-    TRACE("(%p %u %p)\n", This, property, value);
+    TRACE("(%p)->(%s %p)\n", This, debugstr_prop(property), value);
 
     if (!value) return E_INVALIDARG;
 
@@ -2208,7 +2275,7 @@ static HRESULT WINAPI xmlreader_SetProperty(IXmlReader* iface, UINT property, LO
 {
     xmlreader *This = impl_from_IXmlReader(iface);
 
-    TRACE("(%p %u %lu)\n", iface, property, value);
+    TRACE("(%p)->(%s %lu)\n", This, debugstr_prop(property), value);
 
     switch (property)
     {
@@ -2237,7 +2304,11 @@ static HRESULT WINAPI xmlreader_Read(IXmlReader* iface, XmlNodeType *nodetype)
     hr = reader_parse_nextnode(This);
     if (oldtype == XmlNodeType_None && This->nodetype != oldtype)
         This->state = XmlReadState_Interactive;
-    if (hr == S_OK) *nodetype = This->nodetype;
+    if (hr == S_OK)
+    {
+        TRACE("node type %s\n", debugstr_nodetype(This->nodetype));
+        *nodetype = This->nodetype;
+    }
 
     return hr;
 }
@@ -2595,6 +2666,7 @@ HRESULT WINAPI CreateXmlReader(REFIID riid, void **obj, IMalloc *imalloc)
     reader->attr = NULL;
     list_init(&reader->elements);
     reader->depth = 0;
+    reader->max_depth = 256;
     reader->empty_element = FALSE;
     memset(reader->resume, 0, sizeof(reader->resume));
 

@@ -1566,7 +1566,7 @@
 @ cdecl _mkgmtime32(ptr) msvcrt._mkgmtime32
 @ cdecl _mkgmtime64(ptr) msvcrt._mkgmtime64
 @ cdecl _mktemp(str) msvcrt._mktemp
-@ stub _mktemp_s
+@ cdecl _mktemp_s(str long) msvcrt._mktemp_s
 @ cdecl _mktime32(ptr) msvcrt._mktime32
 @ cdecl _mktime64(ptr) msvcrt._mktime64
 @ cdecl _msize(ptr) msvcrt._msize
@@ -1919,7 +1919,7 @@
 @ cdecl _wmakepath_s(ptr long wstr wstr wstr wstr) msvcrt._wmakepath_s
 @ cdecl _wmkdir(wstr) msvcrt._wmkdir
 @ cdecl _wmktemp(wstr) msvcrt._wmktemp
-@ stub _wmktemp_s
+@ cdecl _wmktemp_s(wstr long) msvcrt._wmktemp_s
 @ varargs _wopen(wstr long) msvcrt._wopen
 @ cdecl _wperror(wstr) msvcrt._wperror
 @ extern _wpgmptr msvcrt._wpgmptr

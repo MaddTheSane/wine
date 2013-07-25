@@ -1682,6 +1682,45 @@ MSVCRT_intptr_t CDECL MSVCRT__get_osfhandle(int fd)
 }
 
 /*********************************************************************
+ *		_mktemp_s (MSVCRT.@)
+ */
+int CDECL MSVCRT__mktemp_s(char *pattern, MSVCRT_size_t size)
+{
+    DWORD len, xno, id;
+
+    if(!MSVCRT_CHECK_PMT(pattern!=NULL))
+        return MSVCRT_EINVAL;
+
+    for(len=0; len<size; len++)
+        if(!pattern[len])
+            break;
+    if(!MSVCRT_CHECK_PMT(len!=size && len>=6)) {
+        if(size)
+            pattern[0] = 0;
+        return MSVCRT_EINVAL;
+    }
+
+    for(xno=1; xno<=6; xno++)
+        if(!MSVCRT_CHECK_PMT(pattern[len-xno] == 'X'))
+            return MSVCRT_EINVAL;
+
+    id = GetCurrentProcessId();
+    for(xno=1; xno<6; xno++) {
+        pattern[len-xno] = id%10 + '0';
+        id /= 10;
+    }
+
+    for(pattern[len-6]='a'; pattern[len-6]<='z'; pattern[len-6]++) {
+        if(GetFileAttributesA(pattern) == INVALID_FILE_ATTRIBUTES)
+            return 0;
+    }
+
+    pattern[0] = 0;
+    *MSVCRT__errno() = MSVCRT_EEXIST;
+    return MSVCRT_EEXIST;
+}
+
+/*********************************************************************
  *		_mktemp (MSVCRT.@)
  */
 char * CDECL MSVCRT__mktemp(char *pattern)
@@ -1691,9 +1730,12 @@ char * CDECL MSVCRT__mktemp(char *pattern)
   int id;
   char letter = 'a';
 
+  if(!pattern)
+      return NULL;
+
   while(*pattern)
     numX = (*pattern++ == 'X')? numX + 1 : 0;
-  if (numX < 5)
+  if (numX < 6)
     return NULL;
   pattern--;
   id = GetCurrentProcessId();
@@ -1708,11 +1750,49 @@ char * CDECL MSVCRT__mktemp(char *pattern)
   do
   {
     *pattern = letter++;
-    if (GetFileAttributesA(retVal) == INVALID_FILE_ATTRIBUTES &&
-        GetLastError() == ERROR_FILE_NOT_FOUND)
+    if (GetFileAttributesA(retVal) == INVALID_FILE_ATTRIBUTES)
       return retVal;
   } while(letter <= 'z');
   return NULL;
+}
+
+/*********************************************************************
+ *		_wmktemp_s (MSVCRT.@)
+ */
+int CDECL MSVCRT__wmktemp_s(MSVCRT_wchar_t *pattern, MSVCRT_size_t size)
+{
+    DWORD len, xno, id;
+
+    if(!MSVCRT_CHECK_PMT(pattern!=NULL))
+        return MSVCRT_EINVAL;
+
+    for(len=0; len<size; len++)
+        if(!pattern[len])
+            break;
+    if(!MSVCRT_CHECK_PMT(len!=size && len>=6)) {
+        if(size)
+            pattern[0] = 0;
+        return MSVCRT_EINVAL;
+    }
+
+    for(xno=1; xno<=6; xno++)
+        if(!MSVCRT_CHECK_PMT(pattern[len-xno] == 'X'))
+            return MSVCRT_EINVAL;
+
+    id = GetCurrentProcessId();
+    for(xno=1; xno<6; xno++) {
+        pattern[len-xno] = id%10 + '0';
+        id /= 10;
+    }
+
+    for(pattern[len-6]='a'; pattern[len-6]<='z'; pattern[len-6]++) {
+        if(GetFileAttributesW(pattern) == INVALID_FILE_ATTRIBUTES)
+            return 0;
+    }
+
+    pattern[0] = 0;
+    *MSVCRT__errno() = MSVCRT_EEXIST;
+    return MSVCRT_EEXIST;
 }
 
 /*********************************************************************
@@ -1725,9 +1805,12 @@ MSVCRT_wchar_t * CDECL MSVCRT__wmktemp(MSVCRT_wchar_t *pattern)
   int id;
   MSVCRT_wchar_t letter = 'a';
 
+  if(!pattern)
+      return NULL;
+
   while(*pattern)
     numX = (*pattern++ == 'X')? numX + 1 : 0;
-  if (numX < 5)
+  if (numX < 6)
     return NULL;
   pattern--;
   id = GetCurrentProcessId();
@@ -1741,8 +1824,7 @@ MSVCRT_wchar_t * CDECL MSVCRT__wmktemp(MSVCRT_wchar_t *pattern)
   pattern++;
   do
   {
-    if (GetFileAttributesW(retVal) == INVALID_FILE_ATTRIBUTES &&
-        GetLastError() == ERROR_FILE_NOT_FOUND)
+    if (GetFileAttributesW(retVal) == INVALID_FILE_ATTRIBUTES)
       return retVal;
     *pattern = letter++;
   } while(letter != '|');

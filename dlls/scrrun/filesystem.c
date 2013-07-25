@@ -728,28 +728,126 @@ static HRESULT WINAPI filesys_GetDriveName(IFileSystem3 *iface, BSTR Path,
     return E_NOTIMPL;
 }
 
+static inline DWORD get_parent_folder_name(const WCHAR *path, DWORD len)
+{
+    int i;
+
+    if(!path)
+        return 0;
+
+    for(i=len-1; i>=0; i--)
+        if(path[i]!='/' && path[i]!='\\')
+            break;
+
+    for(; i>=0; i--)
+        if(path[i]=='/' || path[i]=='\\')
+            break;
+
+    for(; i>=0; i--)
+        if(path[i]!='/' && path[i]!='\\')
+            break;
+
+    if(i < 0)
+        return 0;
+
+    if(path[i]==':' && i==1)
+        i++;
+    return i+1;
+}
+
 static HRESULT WINAPI filesys_GetParentFolderName(IFileSystem3 *iface, BSTR Path,
                                             BSTR *pbstrResult)
 {
-    FIXME("%p %s %p\n", iface, debugstr_w(Path), pbstrResult);
+    DWORD len;
 
-    return E_NOTIMPL;
+    TRACE("%p %s %p\n", iface, debugstr_w(Path), pbstrResult);
+
+    if(!pbstrResult)
+        return E_POINTER;
+
+    len = get_parent_folder_name(Path, SysStringLen(Path));
+    if(!len) {
+        *pbstrResult = NULL;
+        return S_OK;
+    }
+
+    *pbstrResult = SysAllocStringLen(Path, len);
+    if(!*pbstrResult)
+        return E_OUTOFMEMORY;
+    return S_OK;
 }
 
 static HRESULT WINAPI filesys_GetFileName(IFileSystem3 *iface, BSTR Path,
                                             BSTR *pbstrResult)
 {
-    FIXME("%p %s %p\n", iface, debugstr_w(Path), pbstrResult);
+    int i, end;
 
-    return E_NOTIMPL;
+    TRACE("%p %s %p\n", iface, debugstr_w(Path), pbstrResult);
+
+    if(!pbstrResult)
+        return E_POINTER;
+
+    if(!Path) {
+        *pbstrResult = NULL;
+        return S_OK;
+    }
+
+    for(end=strlenW(Path)-1; end>=0; end--)
+        if(Path[end]!='/' && Path[end]!='\\')
+            break;
+
+    for(i=end; i>=0; i--)
+        if(Path[i]=='/' || Path[i]=='\\')
+            break;
+    i++;
+
+    if(i>end || (i==0 && end==1 && Path[1]==':')) {
+        *pbstrResult = NULL;
+        return S_OK;
+    }
+
+    *pbstrResult = SysAllocStringLen(Path+i, end-i+1);
+    if(!*pbstrResult)
+        return E_OUTOFMEMORY;
+    return S_OK;
 }
 
 static HRESULT WINAPI filesys_GetBaseName(IFileSystem3 *iface, BSTR Path,
                                             BSTR *pbstrResult)
 {
-    FIXME("%p %s %p\n", iface, debugstr_w(Path), pbstrResult);
+    int i, end;
 
-    return E_NOTIMPL;
+    TRACE("%p %s %p\n", iface, debugstr_w(Path), pbstrResult);
+
+    if(!pbstrResult)
+        return E_POINTER;
+
+    if(!Path) {
+        *pbstrResult = NULL;
+        return S_OK;
+    }
+
+    for(end=strlenW(Path)-1; end>=0; end--)
+        if(Path[end]!='/' && Path[end]!='\\')
+            break;
+
+    for(i=end; i>=0; i--) {
+        if(Path[i]=='.' && Path[end+1]!='.')
+            end = i-1;
+        if(Path[i]=='/' || Path[i]=='\\')
+            break;
+    }
+    i++;
+
+    if((i>end && Path[end+1]!='.') || (i==0 && end==1 && Path[1]==':')) {
+        *pbstrResult = NULL;
+        return S_OK;
+    }
+
+    *pbstrResult = SysAllocStringLen(Path+i, end-i+1);
+    if(!*pbstrResult)
+        return E_OUTOFMEMORY;
+    return S_OK;
 }
 
 static HRESULT WINAPI filesys_GetExtensionName(IFileSystem3 *iface, BSTR Path,

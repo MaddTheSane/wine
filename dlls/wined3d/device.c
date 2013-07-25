@@ -1329,6 +1329,7 @@ HRESULT CDECL wined3d_device_uninit_3d(struct wined3d_device *device)
     /* Destroy the shader backend. Note that this has to happen after all shaders are destroyed. */
     device->blitter->free_private(device);
     device->shader_backend->shader_free_private(device);
+    destroy_dummy_textures(device, gl_info);
 
     /* Release the buffers (with sanity checks)*/
     if (device->onscreen_depth_stencil)
@@ -4251,18 +4252,18 @@ HRESULT CDECL wined3d_device_validate_device(const struct wined3d_device *device
 
         if (state->sampler_states[i][WINED3D_SAMP_MAG_FILTER] != WINED3D_TEXF_POINT)
         {
-            WARN("Non-filterable texture and mag filter enabled on samper %u, returning E_FAIL\n", i);
+            WARN("Non-filterable texture and mag filter enabled on sampler %u, returning E_FAIL\n", i);
             return E_FAIL;
         }
         if (state->sampler_states[i][WINED3D_SAMP_MIN_FILTER] != WINED3D_TEXF_POINT)
         {
-            WARN("Non-filterable texture and min filter enabled on samper %u, returning E_FAIL\n", i);
+            WARN("Non-filterable texture and min filter enabled on sampler %u, returning E_FAIL\n", i);
             return E_FAIL;
         }
         if (state->sampler_states[i][WINED3D_SAMP_MIP_FILTER] != WINED3D_TEXF_NONE
                 && state->sampler_states[i][WINED3D_SAMP_MIP_FILTER] != WINED3D_TEXF_POINT)
         {
-            WARN("Non-filterable texture and mip filter enabled on samper %u, returning E_FAIL\n", i);
+            WARN("Non-filterable texture and mip filter enabled on sampler %u, returning E_FAIL\n", i);
             return E_FAIL;
         }
     }
