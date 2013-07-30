@@ -1060,3 +1060,222 @@ HRESULT __RPC_STUB IRowsetNotify_OnRowsetChange_Stub(IRowsetNotify* This, IRowse
     TRACE("(%p)->(%p %d %d %d)\n", This, rowset, reason, phase, cantdeny);
     return IRowsetNotify_OnRowsetChange(This, rowset, reason, phase, cantdeny);
 }
+
+
+HRESULT CALLBACK ISourcesRowset_GetSourcesRowset_Proxy(ISourcesRowset* This, IUnknown *pUnkOuter, REFIID riid, ULONG cPropertySets,
+                              DBPROPSET rgProperties[], IUnknown **ppSourcesRowset)
+{
+    HRESULT hr;
+    IErrorInfo *error;
+
+    TRACE("(%p)->(%p %s %d %p %p)\n", This, pUnkOuter, debugstr_guid(riid), cPropertySets, rgProperties, ppSourcesRowset);
+
+    hr = ISourcesRowset_RemoteGetSourcesRowset_Proxy(This, pUnkOuter, riid, cPropertySets, rgProperties, ppSourcesRowset, 0, NULL, &error);
+    if(error)
+    {
+        SetErrorInfo(0, error);
+        IErrorInfo_Release(error);
+    }
+
+    return hr;
+}
+
+HRESULT __RPC_STUB ISourcesRowset_GetSourcesRowset_Stub(ISourcesRowset* This, IUnknown *pUnkOuter, REFIID riid, ULONG cPropertySets,
+                                 DBPROPSET *rgProperties, IUnknown **ppSourcesRowset, ULONG cTotalProps, DBPROPSTATUS *rgPropStatus,
+                                 IErrorInfo **ppErrorInfoRem)
+{
+    HRESULT hr;
+
+    TRACE("(%p)->(%p %s %d %p %p %d %p %p)\n", This, pUnkOuter, debugstr_guid(riid), cPropertySets, rgProperties, ppSourcesRowset,
+                                cTotalProps, rgPropStatus, ppErrorInfoRem);
+
+    *ppErrorInfoRem = NULL;
+    hr = ISourcesRowset_GetSourcesRowset(This, pUnkOuter, riid, cPropertySets, rgProperties, ppSourcesRowset);
+    if(FAILED(hr))
+        GetErrorInfo(0, ppErrorInfoRem);
+
+    return hr;
+}
+
+HRESULT CALLBACK IErrorRecords_GetRecordCount_Proxy(IErrorRecords* This, ULONG *records)
+{
+    HRESULT hr;
+    IErrorInfo *error;
+
+    TRACE("(%p)->%p\n", This, records);
+
+    hr = IErrorRecords_RemoteGetRecordCount_Proxy(This, records, &error);
+    if(error)
+    {
+        SetErrorInfo(0, error);
+        IErrorInfo_Release(error);
+    }
+
+    return hr;
+}
+
+HRESULT __RPC_STUB IErrorRecords_GetRecordCount_Stub(IErrorRecords* This, ULONG *pcRecords, IErrorInfo **ppErrorInfoRem)
+{
+    HRESULT hr;
+
+    TRACE("(%p)->%p %p\n", This, pcRecords, ppErrorInfoRem);
+
+    *ppErrorInfoRem = NULL;
+    hr = IErrorRecords_GetRecordCount(This, pcRecords);
+    if(FAILED(hr))
+        GetErrorInfo(0, ppErrorInfoRem);
+
+    return hr;
+}
+
+HRESULT CALLBACK IErrorRecords_GetErrorParameters_Proxy(IErrorRecords* This, ULONG ulRecordNum, DISPPARAMS *pdispparams)
+{
+    HRESULT hr;
+    IErrorInfo *error;
+
+    TRACE("(%p)->%d %p\n", This, ulRecordNum, pdispparams);
+
+    hr = IErrorRecords_RemoteGetErrorParameters_Proxy(This, ulRecordNum, pdispparams, &error);
+    if(error)
+    {
+        SetErrorInfo(0, error);
+        IErrorInfo_Release(error);
+    }
+
+    return hr;
+}
+
+HRESULT __RPC_STUB IErrorRecords_GetErrorParameters_Stub(IErrorRecords* This, ULONG ulRecordNum, DISPPARAMS *pdispparams,
+    IErrorInfo **ppErrorInfoRem)
+{
+    HRESULT hr;
+
+    TRACE("(%p)->%d %p %p\n", This, ulRecordNum, pdispparams, ppErrorInfoRem);
+
+    *ppErrorInfoRem = NULL;
+    hr = IErrorRecords_GetErrorParameters(This, ulRecordNum, pdispparams);
+    if(FAILED(hr))
+        GetErrorInfo(0, ppErrorInfoRem);
+
+    return hr;
+}
+
+HRESULT CALLBACK IErrorRecords_GetErrorInfo_Proxy(IErrorRecords* This, ULONG ulRecordNum, LCID lcid, IErrorInfo **ppErrorInfo)
+{
+    HRESULT hr;
+    IErrorInfo *error;
+
+    TRACE("(%p)->%d %d %p\n", This, ulRecordNum, lcid, ppErrorInfo);
+
+    hr = IErrorRecords_RemoteGetErrorInfo_Proxy(This, ulRecordNum, lcid, ppErrorInfo, &error);
+    if(error)
+    {
+        SetErrorInfo(0, error);
+        IErrorInfo_Release(error);
+    }
+
+    return hr;
+}
+
+HRESULT __RPC_STUB IErrorRecords_GetErrorInfo_Stub(IErrorRecords* This, ULONG ulRecordNum, LCID lcid,
+    IErrorInfo **ppErrorInfo, IErrorInfo **ppErrorInfoRem)
+{
+    HRESULT hr;
+
+    TRACE("(%p)->%d %d %p %p\n", This, ulRecordNum, lcid, ppErrorInfo, ppErrorInfoRem);
+
+    *ppErrorInfoRem = NULL;
+    hr = IErrorRecords_GetErrorInfo(This, ulRecordNum, lcid, ppErrorInfo);
+    if(FAILED(hr))
+        GetErrorInfo(0, ppErrorInfoRem);
+
+    return hr;
+}
+
+HRESULT CALLBACK IErrorRecords_GetCustomErrorObject_Proxy(IErrorRecords* This, ULONG ulRecordNum, REFIID riid,
+    IUnknown **ppObject)
+{
+    HRESULT hr;
+    IErrorInfo *error;
+
+    TRACE("(%p)->%d %s %p\n", This, ulRecordNum, debugstr_guid(riid), ppObject);
+
+    hr = IErrorRecords_RemoteGetCustomErrorObject_Proxy(This, ulRecordNum, riid, ppObject, &error);
+    if(error)
+    {
+        SetErrorInfo(0, error);
+        IErrorInfo_Release(error);
+    }
+    return hr;
+}
+
+HRESULT __RPC_STUB IErrorRecords_GetCustomErrorObject_Stub(IErrorRecords* This, ULONG ulRecordNum, REFIID riid,
+    IUnknown **ppObject, IErrorInfo **ppErrorInfoRem)
+{
+    HRESULT hr;
+
+    TRACE("(%p)->%d %s %p %p\n", This, ulRecordNum, debugstr_guid(riid), ppObject, ppErrorInfoRem);
+
+    *ppErrorInfoRem = NULL;
+    hr = IErrorRecords_GetCustomErrorObject(This, ulRecordNum, riid, ppObject);
+    if(FAILED(hr))
+        GetErrorInfo(0, ppErrorInfoRem);
+
+    return hr;
+}
+
+HRESULT CALLBACK IErrorRecords_GetBasicErrorInfo_Proxy(IErrorRecords* This, ULONG ulRecordNum, ERRORINFO *pErrorInfo)
+{
+    TRACE("(%p)->%d %p\n", This, ulRecordNum, pErrorInfo);
+
+    return IErrorRecords_GetBasicErrorInfo_Proxy(This, ulRecordNum, pErrorInfo);
+}
+
+HRESULT __RPC_STUB IErrorRecords_GetBasicErrorInfo_Stub(IErrorRecords* This, ULONG ulRecordNum, ERRORINFO *pErrorInfo,
+    IErrorInfo **ppErrorInfoRem)
+{
+    HRESULT hr;
+
+    TRACE("(%p)->%d %p %p\n", This, ulRecordNum, pErrorInfo, ppErrorInfoRem);
+
+    *ppErrorInfoRem = NULL;
+    hr = IErrorRecords_GetBasicErrorInfo(This, ulRecordNum, pErrorInfo);
+    if(FAILED(hr))
+        GetErrorInfo(0, ppErrorInfoRem);
+
+    return hr;
+}
+
+HRESULT CALLBACK IErrorRecords_AddErrorRecord_Proxy(IErrorRecords* This, ERRORINFO *pErrorInfo, DWORD dwLookupID,
+    DISPPARAMS *pdispparams, IUnknown *punkCustomError, DWORD dwDynamicErrorID)
+{
+    HRESULT hr;
+    IErrorInfo *error;
+
+    TRACE("(%p)->%p %d %p %p %d\n", This, pErrorInfo, dwLookupID, pdispparams, punkCustomError, dwDynamicErrorID);
+
+    hr = IErrorRecords_RemoteAddErrorRecord_Proxy(This, pErrorInfo, dwLookupID, pdispparams, punkCustomError,
+        dwDynamicErrorID, &error);
+    if(error)
+    {
+        SetErrorInfo(0, error);
+        IErrorInfo_Release(error);
+    }
+    return hr;
+}
+
+HRESULT __RPC_STUB IErrorRecords_AddErrorRecord_Stub(IErrorRecords* This, ERRORINFO *pErrorInfo, DWORD dwLookupID,
+    DISPPARAMS *pdispparams, IUnknown *punkCustomError, DWORD dwDynamicErrorID, IErrorInfo **ppErrorInfoRem)
+{
+    HRESULT hr;
+
+    TRACE("(%p)->%p %d %p %p %d %p\n", This, pErrorInfo, dwLookupID, pdispparams, punkCustomError,
+                        dwDynamicErrorID, ppErrorInfoRem);
+
+    *ppErrorInfoRem = NULL;
+    hr = IErrorRecords_AddErrorRecord(This, pErrorInfo, dwLookupID, pdispparams, punkCustomError, dwDynamicErrorID);
+    if(FAILED(hr))
+        GetErrorInfo(0, ppErrorInfoRem);
+
+    return hr;
+}

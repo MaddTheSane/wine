@@ -391,6 +391,119 @@ static void test_GetBaseName(void)
     }
 }
 
+static void test_GetAbsolutePathName(void)
+{
+    static const WCHAR dir1[] = {'t','e','s','t','_','d','i','r','1',0};
+    static const WCHAR dir2[] = {'t','e','s','t','_','d','i','r','2',0};
+    static const WCHAR dir_match1[] = {'t','e','s','t','_','d','i','r','*',0};
+    static const WCHAR dir_match2[] = {'t','e','s','t','_','d','i','*',0};
+    static const WCHAR cur_dir[] = {'.',0};
+
+    WIN32_FIND_DATAW fdata;
+    HANDLE find;
+    WCHAR buf[MAX_PATH];
+    BSTR path, result;
+    HRESULT hr;
+
+    hr = IFileSystem3_GetAbsolutePathName(fs3, NULL, NULL);
+    ok(hr == E_POINTER, "GetAbsolutePathName returned %x, expected E_POINTER\n", hr);
+
+    hr = IFileSystem3_GetAbsolutePathName(fs3, NULL, &result);
+    ok(hr == S_OK, "GetAbsolutePathName returned %x, expected S_OK\n", hr);
+    GetFullPathNameW(cur_dir, MAX_PATH, buf, NULL);
+    ok(!lstrcmpW(buf, result), "result = %s, expected %s\n", wine_dbgstr_w(result), wine_dbgstr_w(buf));
+    SysFreeString(result);
+
+    find = FindFirstFileW(dir_match2, &fdata);
+    if(find != INVALID_HANDLE_VALUE) {
+        skip("GetAbsolutePathName tests\n");
+        FindClose(find);
+        return;
+    }
+
+    path = SysAllocString(dir_match1);
+    hr = IFileSystem3_GetAbsolutePathName(fs3, path, &result);
+    ok(hr == S_OK, "GetAbsolutePathName returned %x, expected S_OK\n", hr);
+    GetFullPathNameW(dir_match1, MAX_PATH, buf, NULL);
+    ok(!lstrcmpW(buf, result), "result = %s, expected %s\n", wine_dbgstr_w(result), wine_dbgstr_w(buf));
+    SysFreeString(result);
+
+    ok(CreateDirectoryW(dir1, NULL), "CreateDirectory(%s) failed\n", wine_dbgstr_w(dir1));
+    hr = IFileSystem3_GetAbsolutePathName(fs3, path, &result);
+    ok(hr == S_OK, "GetAbsolutePathName returned %x, expected S_OK\n", hr);
+    GetFullPathNameW(dir1, MAX_PATH, buf, NULL);
+    ok(!lstrcmpW(buf, result), "result = %s, expected %s\n", wine_dbgstr_w(result), wine_dbgstr_w(buf));
+    SysFreeString(result);
+
+    ok(CreateDirectoryW(dir2, NULL), "CreateDirectory(%s) failed\n", wine_dbgstr_w(dir2));
+    hr = IFileSystem3_GetAbsolutePathName(fs3, path, &result);
+    ok(hr == S_OK, "GetAbsolutePathName returned %x, expected S_OK\n", hr);
+    if(!lstrcmpW(buf, result)) {
+        ok(!lstrcmpW(buf, result), "result = %s, expected %s\n",
+                wine_dbgstr_w(result), wine_dbgstr_w(buf));
+    }else {
+        GetFullPathNameW(dir2, MAX_PATH, buf, NULL);
+        ok(!lstrcmpW(buf, result), "result = %s, expected %s\n",
+                wine_dbgstr_w(result), wine_dbgstr_w(buf));
+    }
+    SysFreeString(result);
+
+    SysFreeString(path);
+    path = SysAllocString(dir_match2);
+    hr = IFileSystem3_GetAbsolutePathName(fs3, path, &result);
+    ok(hr == S_OK, "GetAbsolutePathName returned %x, expected S_OK\n", hr);
+    GetFullPathNameW(dir_match2, MAX_PATH, buf, NULL);
+    ok(!lstrcmpW(buf, result), "result = %s, expected %s\n", wine_dbgstr_w(result), wine_dbgstr_w(buf));
+    SysFreeString(result);
+    SysFreeString(path);
+
+    RemoveDirectoryW(dir1);
+    RemoveDirectoryW(dir2);
+}
+
+static void test_GetFile(void)
+{
+    static const WCHAR get_file[] = {'g','e','t','_','f','i','l','e','.','t','s','t',0};
+
+    BSTR path = SysAllocString(get_file);
+    IFile *file;
+    HRESULT hr;
+    HANDLE hf;
+
+    hr = IFileSystem3_GetFile(fs3, path, NULL);
+    ok(hr == E_POINTER, "GetFile returned %x, expected E_POINTER\n", hr);
+    hr = IFileSystem3_GetFile(fs3, NULL, &file);
+    ok(hr == E_INVALIDARG, "GetFile returned %x, expected E_INVALIDARG\n", hr);
+
+    hf = CreateFileW(path, GENERIC_WRITE, 0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    if(hf != INVALID_HANDLE_VALUE) {
+        CloseHandle(hf);
+        skip("File already exists, skipping GetFile tests\n");
+        SysFreeString(path);
+        return;
+    }
+
+    file = (IFile*)0xdeadbeef;
+    hr = IFileSystem3_GetFile(fs3, path, &file);
+    ok(!file, "file != NULL\n");
+    ok(hr == CTL_E_FILENOTFOUND, "GetFile returned %x, expected CTL_E_FILENOTFOUND\n", hr);
+
+    hf = CreateFileW(path, GENERIC_WRITE, 0, NULL, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, NULL);
+    if(hf == INVALID_HANDLE_VALUE) {
+        skip("Can't create temporary file\n");
+        SysFreeString(path);
+        return;
+    }
+    CloseHandle(hf);
+
+    hr = IFileSystem3_GetFile(fs3, path, &file);
+    ok(hr == S_OK, "GetFile returned %x, expected S_OK\n", hr);
+    IFile_Release(file);
+
+    DeleteFileW(path);
+    SysFreeString(path);
+}
+
 START_TEST(filesystem)
 {
     HRESULT hr;
@@ -411,6 +524,8 @@ START_TEST(filesystem)
     test_GetParentFolderName();
     test_GetFileName();
     test_GetBaseName();
+    test_GetAbsolutePathName();
+    test_GetFile();
 
     IFileSystem3_Release(fs3);
 

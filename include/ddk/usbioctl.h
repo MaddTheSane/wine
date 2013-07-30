@@ -1,5 +1,5 @@
 /*
- * Copyright 2012 Alistair Leslie-Hughes
+ * Copyright (C) 2013 Damjan Jovanovic
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -15,33 +15,11 @@
  * License along with this library; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA
  */
-#ifndef _SCRRUN_PRIVATE_H_
-#define _SCRRUN_PRIVATE_H
 
-extern HRESULT WINAPI FileSystem_CreateInstance(IClassFactory*,IUnknown*,REFIID,void**) DECLSPEC_HIDDEN;
-extern HRESULT WINAPI Dictionary_CreateInstance(IClassFactory*,IUnknown*,REFIID,void**) DECLSPEC_HIDDEN;
+#ifndef __DDK_USBIOCTL_H__
+#define __DDK_USBIOCTL_H__
 
-typedef enum tid_t
-{
-    NULL_tid,
-    IDictionary_tid,
-    IFileSystem3_tid,
-    IFolder_tid,
-    ITextStream_tid,
-    IFile_tid,
-    LAST_tid
-} tid_t;
+#define IOCTL_INTERNAL_USB_SUBMIT_URB  \
+  CTL_CODE(FILE_DEVICE_USB, USB_SUBMIT_URB, METHOD_NEITHER, FILE_ANY_ACCESS)
 
-HRESULT get_typeinfo(tid_t tid, ITypeInfo **typeinfo) DECLSPEC_HIDDEN;
-
-static inline void *heap_alloc(size_t len)
-{
-    return HeapAlloc(GetProcessHeap(), 0, len);
-}
-
-static inline BOOL heap_free(void *mem)
-{
-    return HeapFree(GetProcessHeap(), 0, mem);
-}
-
-#endif
+#endif /* __DDK_USBIOCTL_H__ */
