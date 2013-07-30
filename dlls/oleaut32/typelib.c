@@ -2356,7 +2356,7 @@ MSFT_DoFuncs(TLBContext*     pcx,
             MSFT_ParameterInfo paraminfo;
 
             ptfd->funcdesc.lprgelemdescParam =
-                heap_alloc_zero(pFuncRec->nrargs * sizeof(ELEMDESC));
+                heap_alloc_zero(pFuncRec->nrargs * (sizeof(ELEMDESC) + sizeof(PARAMDESCEX)));
 
             ptfd->pParamDesc = TLBParDesc_Constructor(pFuncRec->nrargs);
 
@@ -2390,7 +2390,7 @@ MSFT_DoFuncs(TLBContext*     pcx,
 
                     PARAMDESC* pParamDesc = &elemdesc->u.paramdesc;
 
-                    pParamDesc->pparamdescex = heap_alloc_zero(sizeof(PARAMDESCEX));
+                    pParamDesc->pparamdescex = (PARAMDESCEX*)(ptfd->funcdesc.lprgelemdescParam+pFuncRec->nrargs)+j;
                     pParamDesc->pparamdescex->cBytes = sizeof(PARAMDESCEX);
 
 		    MSFT_ReadValue(&(pParamDesc->pparamdescex->varDefaultValue),
@@ -4577,6 +4577,7 @@ static ULONG WINAPI ITypeLib2_fnRelease( ITypeLib2 *iface)
       TLBImpLib *pImpLib, *pImpLibNext;
       TLBRefType *ref_type;
       TLBString *tlbstr, *tlbstr_next;
+      TLBGuid *tlbguid, *tlbguid_next;
       void *cursor2;
       int i;
 
@@ -4594,12 +4595,19 @@ static ULONG WINAPI ITypeLib2_fnRelease( ITypeLib2 *iface)
 
       LIST_FOR_EACH_ENTRY_SAFE(tlbstr, tlbstr_next, &This->string_list, TLBString, entry) {
           list_remove(&tlbstr->entry);
+          SysFreeString(tlbstr->str);
           heap_free(tlbstr);
       }
 
       LIST_FOR_EACH_ENTRY_SAFE(tlbstr, tlbstr_next, &This->name_list, TLBString, entry) {
           list_remove(&tlbstr->entry);
+          SysFreeString(tlbstr->str);
           heap_free(tlbstr);
+      }
+
+      LIST_FOR_EACH_ENTRY_SAFE(tlbguid, tlbguid_next, &This->guid_list, TLBGuid, entry) {
+          list_remove(&tlbguid->entry);
+          heap_free(tlbguid);
       }
 
       TLB_FreeCustData(&This->custdata_list);
@@ -5433,10 +5441,7 @@ static void ITypeInfoImpl_Destroy(ITypeInfoImpl *This)
         {
             ELEMDESC *elemdesc = &pFInfo->funcdesc.lprgelemdescParam[j];
             if (elemdesc->u.paramdesc.wParamFlags & PARAMFLAG_FHASDEFAULT)
-            {
                 VariantClear(&elemdesc->u.paramdesc.pparamdescex->varDefaultValue);
-                heap_free(elemdesc->u.paramdesc.pparamdescex);
-            }
             TLB_FreeCustData(&pFInfo->pParamDesc[j].custdata_list);
         }
         heap_free(pFInfo->funcdesc.lprgelemdescParam);

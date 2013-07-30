@@ -466,6 +466,9 @@ static void test_GetFile(void)
     static const WCHAR get_file[] = {'g','e','t','_','f','i','l','e','.','t','s','t',0};
 
     BSTR path = SysAllocString(get_file);
+    FileAttribute fa;
+    VARIANT size;
+    DWORD gfa;
     IFile *file;
     HRESULT hr;
     HANDLE hf;
@@ -488,7 +491,7 @@ static void test_GetFile(void)
     ok(!file, "file != NULL\n");
     ok(hr == CTL_E_FILENOTFOUND, "GetFile returned %x, expected CTL_E_FILENOTFOUND\n", hr);
 
-    hf = CreateFileW(path, GENERIC_WRITE, 0, NULL, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, NULL);
+    hf = CreateFileW(path, GENERIC_WRITE, 0, NULL, CREATE_NEW, FILE_ATTRIBUTE_READONLY, NULL);
     if(hf == INVALID_HANDLE_VALUE) {
         skip("Can't create temporary file\n");
         SysFreeString(path);
@@ -498,10 +501,153 @@ static void test_GetFile(void)
 
     hr = IFileSystem3_GetFile(fs3, path, &file);
     ok(hr == S_OK, "GetFile returned %x, expected S_OK\n", hr);
+
+    hr = IFile_get_Attributes(file, &fa);
+    gfa = GetFileAttributesW(get_file) & ~FILE_ATTRIBUTE_NORMAL;
+    ok(hr == S_OK, "get_Attributes returned %x, expected S_OK\n", hr);
+    ok(fa == gfa, "fa = %x, expected %x\n", fa, gfa);
+
+    hr = IFile_get_Size(file, &size);
+    ok(hr == S_OK, "get_Size returned %x, expected S_OK\n", hr);
+    ok(V_VT(&size) == VT_I4, "V_VT(&size) = %d, expected VT_I4\n", V_VT(&size));
+    ok(V_I4(&size) == 0, "V_I4(&size) = %d, expected 0\n", V_I4(&size));
     IFile_Release(file);
 
-    DeleteFileW(path);
+    hr = IFileSystem3_DeleteFile(fs3, path, FALSE);
+    ok(hr==CTL_E_PERMISSIONDENIED || broken(hr==S_OK),
+            "DeleteFile returned %x, expected CTL_E_PERMISSIONDENIED\n", hr);
+    if(hr != S_OK) {
+        hr = IFileSystem3_DeleteFile(fs3, path, TRUE);
+        ok(hr == S_OK, "DeleteFile returned %x, expected S_OK\n", hr);
+    }
+    hr = IFileSystem3_DeleteFile(fs3, path, TRUE);
+    ok(hr == CTL_E_FILENOTFOUND, "DeleteFile returned %x, expected CTL_E_FILENOTFOUND\n", hr);
+
     SysFreeString(path);
+}
+
+static inline BOOL create_file(const WCHAR *name)
+{
+    HANDLE f = CreateFileW(name, GENERIC_WRITE, 0, NULL, CREATE_NEW, 0, NULL);
+    CloseHandle(f);
+    return f != INVALID_HANDLE_VALUE;
+}
+
+static inline void create_path(const WCHAR *folder, const WCHAR *name, WCHAR *ret)
+{
+    DWORD len = lstrlenW(folder);
+    memmove(ret, folder, len*sizeof(WCHAR));
+    ret[len] = '\\';
+    memmove(ret+len+1, name, (lstrlenW(name)+1)*sizeof(WCHAR));
+}
+
+static void test_CopyFolder(void)
+{
+    static const WCHAR filesystem3_dir[] = {'f','i','l','e','s','y','s','t','e','m','3','_','t','e','s','t',0};
+    static const WCHAR s1[] = {'s','r','c','1',0};
+    static const WCHAR s[] = {'s','r','c','*',0};
+    static const WCHAR d[] = {'d','s','t',0};
+    static const WCHAR empty[] = {0};
+
+    WCHAR tmp[MAX_PATH];
+    BSTR bsrc, bdst;
+    HRESULT hr;
+
+    if(!CreateDirectoryW(filesystem3_dir, NULL)) {
+        skip("can't create temporary directory\n");
+        return;
+    }
+
+    create_path(filesystem3_dir, s1, tmp);
+    bsrc = SysAllocString(tmp);
+    create_path(filesystem3_dir, d, tmp);
+    bdst = SysAllocString(tmp);
+    hr = IFileSystem3_CopyFile(fs3, bsrc, bdst, VARIANT_TRUE);
+    ok(hr == CTL_E_FILENOTFOUND, "CopyFile returned %x, expected CTL_E_FILENOTFOUND\n", hr);
+
+    hr = IFileSystem3_CopyFolder(fs3, bsrc, bdst, VARIANT_TRUE);
+    ok(hr == CTL_E_PATHNOTFOUND, "CopyFolder returned %x, expected CTL_E_PATHNOTFOUND\n", hr);
+
+    ok(create_file(bsrc), "can't create %s file\n", wine_dbgstr_w(bsrc));
+    hr = IFileSystem3_CopyFile(fs3, bsrc, bdst, VARIANT_TRUE);
+    ok(hr == S_OK, "CopyFile returned %x, expected S_OK\n", hr);
+
+    hr = IFileSystem3_CopyFolder(fs3, bsrc, bdst, VARIANT_TRUE);
+    ok(hr == CTL_E_PATHNOTFOUND, "CopyFolder returned %x, expected CTL_E_PATHNOTFOUND\n", hr);
+
+    hr = IFileSystem3_DeleteFile(fs3, bsrc, VARIANT_FALSE);
+    ok(hr == S_OK, "DeleteFile returned %x, expected S_OK\n", hr);
+
+    ok(CreateDirectoryW(bsrc, NULL), "can't create %s\n", wine_dbgstr_w(bsrc));
+    hr = IFileSystem3_CopyFile(fs3, bsrc, bdst, VARIANT_TRUE);
+    ok(hr == CTL_E_FILENOTFOUND, "CopyFile returned %x, expected CTL_E_FILENOTFOUND\n", hr);
+
+    hr = IFileSystem3_CopyFolder(fs3, bsrc, bdst, VARIANT_TRUE);
+    ok(hr == CTL_E_FILEALREADYEXISTS, "CopyFolder returned %x, expected CTL_E_FILEALREADYEXISTS\n", hr);
+
+    hr = IFileSystem3_DeleteFile(fs3, bdst, VARIANT_TRUE);
+    ok(hr == S_OK, "DeleteFile returned %x, expected S_OK\n", hr);
+
+    hr = IFileSystem3_CopyFolder(fs3, bsrc, bdst, VARIANT_TRUE);
+    ok(hr == S_OK, "CopyFolder returned %x, expected S_OK\n", hr);
+
+    hr = IFileSystem3_CopyFolder(fs3, bsrc, bdst, VARIANT_TRUE);
+    ok(hr == S_OK, "CopyFolder returned %x, expected S_OK\n", hr);
+    create_path(tmp, s1, tmp);
+    ok(GetFileAttributesW(tmp) == INVALID_FILE_ATTRIBUTES,
+            "%s file exists\n", wine_dbgstr_w(tmp));
+
+    create_path(filesystem3_dir, d, tmp);
+    create_path(tmp, empty, tmp);
+    SysFreeString(bdst);
+    bdst = SysAllocString(tmp);
+    hr = IFileSystem3_CopyFolder(fs3, bsrc, bdst, VARIANT_TRUE);
+    ok(hr == S_OK, "CopyFolder returned %x, expected S_OK\n", hr);
+    create_path(tmp, s1, tmp);
+    ok(GetFileAttributesW(tmp) != INVALID_FILE_ATTRIBUTES,
+            "%s directory doesn't exist\n", wine_dbgstr_w(tmp));
+    ok(RemoveDirectoryW(tmp), "can't remove %s directory\n", wine_dbgstr_w(tmp));
+    create_path(filesystem3_dir, d, tmp);
+    SysFreeString(bdst);
+    bdst = SysAllocString(tmp);
+
+
+    create_path(filesystem3_dir, s, tmp);
+    SysFreeString(bsrc);
+    bsrc = SysAllocString(tmp);
+    hr = IFileSystem3_CopyFolder(fs3, bsrc, bdst, VARIANT_TRUE);
+    ok(hr == S_OK, "CopyFolder returned %x, expected S_OK\n", hr);
+    create_path(filesystem3_dir, d, tmp);
+    create_path(tmp, s1, tmp);
+    ok(GetFileAttributesW(tmp) != INVALID_FILE_ATTRIBUTES,
+            "%s directory doesn't exist\n", wine_dbgstr_w(tmp));
+
+    hr = IFileSystem3_DeleteFolder(fs3, bdst, VARIANT_FALSE);
+    ok(hr == S_OK, "DeleteFolder returned %x, expected S_OK\n", hr);
+
+    hr = IFileSystem3_CopyFolder(fs3, bsrc, bdst, VARIANT_TRUE);
+    ok(hr == CTL_E_PATHNOTFOUND, "CopyFolder returned %x, expected CTL_E_PATHNOTFOUND\n", hr);
+
+    create_path(filesystem3_dir, s1, tmp);
+    SysFreeString(bsrc);
+    bsrc = SysAllocString(tmp);
+    create_path(tmp, s1, tmp);
+    ok(create_file(tmp), "can't create %s file\n", wine_dbgstr_w(tmp));
+    hr = IFileSystem3_CopyFolder(fs3, bsrc, bdst, VARIANT_FALSE);
+    ok(hr == S_OK, "CopyFolder returned %x, expected S_OK\n", hr);
+
+    hr = IFileSystem3_CopyFolder(fs3, bsrc, bdst, VARIANT_FALSE);
+    ok(hr == CTL_E_FILEALREADYEXISTS, "CopyFolder returned %x, expected CTL_E_FILEALREADYEXISTS\n", hr);
+
+    hr = IFileSystem3_CopyFolder(fs3, bsrc, bdst, VARIANT_TRUE);
+    ok(hr == S_OK, "CopyFolder returned %x, expected S_OK\n", hr);
+    SysFreeString(bsrc);
+    SysFreeString(bdst);
+
+    bsrc = SysAllocString(filesystem3_dir);
+    hr = IFileSystem3_DeleteFolder(fs3, bsrc, VARIANT_FALSE);
+    ok(hr == S_OK, "DeleteFolder returned %x, expected S_OK\n", hr);
+    SysFreeString(bsrc);
 }
 
 START_TEST(filesystem)
@@ -526,6 +672,7 @@ START_TEST(filesystem)
     test_GetBaseName();
     test_GetAbsolutePathName();
     test_GetFile();
+    test_CopyFolder();
 
     IFileSystem3_Release(fs3);
 

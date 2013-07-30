@@ -1888,11 +1888,32 @@ static HRESULT WINAPI MXAttributes_clear(IMXAttributes *iface)
     return S_OK;
 }
 
+static mxattribute *get_attribute_byindex(mxattributes *attrs, int index)
+{
+    if (index < 0 || index >= attrs->length) return NULL;
+    return &attrs->attr[index];
+}
+
 static HRESULT WINAPI MXAttributes_removeAttribute(IMXAttributes *iface, int index)
 {
     mxattributes *This = impl_from_IMXAttributes( iface );
-    FIXME("(%p)->(%d): stub\n", This, index);
-    return E_NOTIMPL;
+    mxattribute *dst;
+
+    TRACE("(%p)->(%d)\n", This, index);
+
+    if (!(dst = get_attribute_byindex(This, index))) return E_INVALIDARG;
+
+    /* no need to remove last attribute, just make it inaccessible */
+    if (index + 1 == This->length)
+    {
+        This->length--;
+        return S_OK;
+    }
+
+    memmove(dst, dst + 1, (This->length-index-1)*sizeof(*dst));
+    This->length--;
+
+    return S_OK;
 }
 
 static HRESULT WINAPI MXAttributes_setAttribute(IMXAttributes *iface, int index,
@@ -1915,29 +1936,61 @@ static HRESULT WINAPI MXAttributes_setLocalName(IMXAttributes *iface, int index,
     BSTR localName)
 {
     mxattributes *This = impl_from_IMXAttributes( iface );
-    FIXME("(%p)->(%d %s): stub\n", This, index, debugstr_w(localName));
-    return E_NOTIMPL;
+    mxattribute *attr;
+
+    TRACE("(%p)->(%d %s)\n", This, index, debugstr_w(localName));
+
+    if (!(attr = get_attribute_byindex(This, index))) return E_INVALIDARG;
+
+    SysFreeString(attr->local);
+    attr->local = SysAllocString(localName);
+
+    return S_OK;
 }
 
 static HRESULT WINAPI MXAttributes_setQName(IMXAttributes *iface, int index, BSTR QName)
 {
     mxattributes *This = impl_from_IMXAttributes( iface );
-    FIXME("(%p)->(%d %s): stub\n", This, index, debugstr_w(QName));
-    return E_NOTIMPL;
+    mxattribute *attr;
+
+    TRACE("(%p)->(%d %s)\n", This, index, debugstr_w(QName));
+
+    if (!(attr = get_attribute_byindex(This, index))) return E_INVALIDARG;
+
+    SysFreeString(attr->qname);
+    attr->qname = SysAllocString(QName);
+
+    return S_OK;
 }
 
 static HRESULT WINAPI MXAttributes_setURI(IMXAttributes *iface, int index, BSTR uri)
 {
     mxattributes *This = impl_from_IMXAttributes( iface );
-    FIXME("(%p)->(%d %s): stub\n", This, index, debugstr_w(uri));
-    return E_NOTIMPL;
+    mxattribute *attr;
+
+    TRACE("(%p)->(%d %s)\n", This, index, debugstr_w(uri));
+
+    if (!(attr = get_attribute_byindex(This, index))) return E_INVALIDARG;
+
+    SysFreeString(attr->uri);
+    attr->uri = SysAllocString(uri);
+
+    return S_OK;
 }
 
 static HRESULT WINAPI MXAttributes_setValue(IMXAttributes *iface, int index, BSTR value)
 {
     mxattributes *This = impl_from_IMXAttributes( iface );
-    FIXME("(%p)->(%d %s): stub\n", This, index, debugstr_w(value));
-    return E_NOTIMPL;
+    mxattribute *attr;
+
+    TRACE("(%p)->(%d %s)\n", This, index, debugstr_w(value));
+
+    if (!(attr = get_attribute_byindex(This, index))) return E_INVALIDARG;
+
+    SysFreeString(attr->value);
+    attr->value = SysAllocString(value);
+
+    return S_OK;
 }
 
 static const IMXAttributesVtbl MXAttributesVtbl = {

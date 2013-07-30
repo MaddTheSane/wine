@@ -140,6 +140,7 @@
 
 #include "wine/debug.h"
 #include "wine/server.h"
+#include "wine/unicode.h"
 
 #ifndef HAVE_NETINET_TCP_FSM_H
 #define TCPS_ESTABLISHED  1
@@ -1815,6 +1816,14 @@ static DWORD get_tcp_table_sizes( TCP_TABLE_CLASS class, DWORD row_count, DWORD 
         if (row_size) *row_size = sizeof(MIB_TCPROW_OWNER_PID);
         break;
     }
+    case TCP_TABLE_OWNER_MODULE_LISTENER:
+    case TCP_TABLE_OWNER_MODULE_CONNECTIONS:
+    case TCP_TABLE_OWNER_MODULE_ALL:
+    {
+        table_size = FIELD_OFFSET(MIB_TCPTABLE_OWNER_MODULE, table[row_count]);
+        if (row_size) *row_size = sizeof(MIB_TCPROW_OWNER_MODULE);
+        break;
+    }
     default:
         ERR("unhandled class %u\n", class);
         return 0;
@@ -1824,7 +1833,7 @@ static DWORD get_tcp_table_sizes( TCP_TABLE_CLASS class, DWORD row_count, DWORD 
 
 static MIB_TCPTABLE *append_tcp_row( TCP_TABLE_CLASS class, HANDLE heap, DWORD flags,
                                      MIB_TCPTABLE *table, DWORD *count,
-                                     const MIB_TCPROW_OWNER_PID *row, DWORD row_size )
+                                     const MIB_TCPROW_OWNER_MODULE *row, DWORD row_size )
 {
     if (table->dwNumEntries >= *count)
     {
@@ -1981,11 +1990,38 @@ static unsigned int find_owning_pid( struct pid_map *map, unsigned int num_entri
 #endif
 }
 
+static BOOL match_class( TCP_TABLE_CLASS class, MIB_TCP_STATE state )
+{
+    switch (class)
+    {
+    case TCP_TABLE_BASIC_ALL:
+    case TCP_TABLE_OWNER_PID_ALL:
+    case TCP_TABLE_OWNER_MODULE_ALL:
+        return TRUE;
+
+    case TCP_TABLE_BASIC_LISTENER:
+    case TCP_TABLE_OWNER_PID_LISTENER:
+    case TCP_TABLE_OWNER_MODULE_LISTENER:
+        if (state == MIB_TCP_STATE_LISTEN) return TRUE;
+        return FALSE;
+
+    case TCP_TABLE_BASIC_CONNECTIONS:
+    case TCP_TABLE_OWNER_PID_CONNECTIONS:
+    case TCP_TABLE_OWNER_MODULE_CONNECTIONS:
+        if (state == MIB_TCP_STATE_ESTAB) return TRUE;
+        return FALSE;
+
+    default:
+        ERR( "unhandled class %u\n", class );
+        return FALSE;
+    }
+}
+
 DWORD build_tcp_table( TCP_TABLE_CLASS class, void **tablep, BOOL order, HANDLE heap, DWORD flags,
                        DWORD *size )
 {
     MIB_TCPTABLE *table;
-    MIB_TCPROW_OWNER_PID row;
+    MIB_TCPROW_OWNER_MODULE row;
     DWORD ret = NO_ERROR, count = 16, table_size, row_size;
 
     if (!(table_size = get_tcp_table_sizes( class, count, &row_size )))
@@ -2007,7 +2043,7 @@ DWORD build_tcp_table( TCP_TABLE_CLASS class, void **tablep, BOOL order, HANDLE 
             unsigned int dummy, num_entries = 0;
             int inode;
 
-            if (class == TCP_TABLE_OWNER_PID_ALL) map = get_pid_map( &num_entries );
+            if (class >= TCP_TABLE_OWNER_PID_LISTENER) map = get_pid_map( &num_entries );
 
             /* skip header line */
             ptr = fgets(buf, sizeof(buf), fp);
@@ -2020,9 +2056,15 @@ DWORD build_tcp_table( TCP_TABLE_CLASS class, void **tablep, BOOL order, HANDLE 
                 row.dwLocalPort = htons( row.dwLocalPort );
                 row.dwRemotePort = htons( row.dwRemotePort );
                 row.dwState = TCPStateToMIBState( row.dwState );
-                if (class == TCP_TABLE_OWNER_PID_ALL)
-                    row.dwOwningPid = find_owning_pid( map, num_entries, inode );
+                if (!match_class( class, row.dwState )) continue;
 
+                if (class >= TCP_TABLE_OWNER_PID_LISTENER)
+                    row.dwOwningPid = find_owning_pid( map, num_entries, inode );
+                if (class >= TCP_TABLE_OWNER_MODULE_LISTENER)
+                {
+                    row.liCreateTimestamp.QuadPart = 0; /* FIXME */
+                    memset( &row.OwningModuleInfo, 0, sizeof(row.OwningModuleInfo) );
+                }
                 if (!(table = append_tcp_row( class, heap, flags, table, &count, &row, row_size )))
                     break;
             }
@@ -2048,6 +2090,7 @@ DWORD build_tcp_table( TCP_TABLE_CLASS class, void **tablep, BOOL order, HANDLE 
                     row.dwRemoteAddr = entry->tcpConnRemAddress;
                     row.dwRemotePort = htons( entry->tcpConnRemPort );
                     row.dwState = entry->tcpConnState;
+                    if (!match_class( class, row.dwState )) continue;
                     if (!(table = append_tcp_row( class, heap, flags, table, &count, &row, row_size )))
                         break;
                 }
@@ -2128,6 +2171,7 @@ DWORD build_tcp_table( TCP_TABLE_CLASS class, void **tablep, BOOL order, HANDLE 
             row.dwRemoteAddr = pINData->inp_faddr.s_addr;
             row.dwRemotePort = pINData->inp_fport;
             row.dwState = TCPStateToMIBState (pTCPData->t_state);
+            if (!match_class( class, row.dwState )) continue;
             if (!(table = append_tcp_row( class, heap, flags, table, &count, &row, row_size )))
                 break;
         }
@@ -2270,8 +2314,7 @@ DWORD build_udp_table( UDP_TABLE_CLASS class, void **tablep, BOOL order, HANDLE 
             unsigned int dummy, num_entries = 0;
             int inode;
 
-            if (class == UDP_TABLE_OWNER_PID || class == UDP_TABLE_OWNER_MODULE)
-                map = get_pid_map( &num_entries );
+            if (class >= UDP_TABLE_OWNER_PID) map = get_pid_map( &num_entries );
 
             /* skip header line */
             ptr = fgets( buf, sizeof(buf), fp );
@@ -2281,8 +2324,15 @@ DWORD build_udp_table( UDP_TABLE_CLASS class, void **tablep, BOOL order, HANDLE 
                     &row.dwLocalAddr, &row.dwLocalPort, &inode ) != 4)
                     continue;
                 row.dwLocalPort = htons( row.dwLocalPort );
-                if (class == UDP_TABLE_OWNER_PID || class == UDP_TABLE_OWNER_MODULE)
+
+                if (class >= UDP_TABLE_OWNER_PID)
                     row.dwOwningPid = find_owning_pid( map, num_entries, inode );
+                if (class >= UDP_TABLE_OWNER_MODULE)
+                {
+                    row.liCreateTimestamp.QuadPart = 0; /* FIXME */
+                    row.u.dwFlags = 0;
+                    memset( &row.OwningModuleInfo, 0, sizeof(row.OwningModuleInfo) );
+                }
                 if (!(table = append_udp_row( class, heap, flags, table, &count, &row, row_size )))
                     break;
             }
