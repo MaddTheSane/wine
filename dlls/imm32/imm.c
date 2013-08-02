@@ -2606,8 +2606,9 @@ LPINPUTCONTEXT WINAPI ImmLockIMC(HIMC hIMC)
 BOOL WINAPI ImmUnlockIMC(HIMC hIMC)
 {
     InputContextData *data = hIMC;
-    data->dwLock--;
-    return (data->dwLock!=0);
+    if (data->dwLock)
+        data->dwLock--;
+    return TRUE;
 }
 
 /***********************************************************************
@@ -2664,7 +2665,8 @@ BOOL WINAPI ImmUnlockIMCC(HIMCC imcc)
     IMCCInternal *internal;
     internal = imcc;
 
-    internal->dwLock --;
+    if (internal->dwLock)
+        internal->dwLock --;
     return (internal->dwLock!=0);
 }
 

@@ -28,6 +28,7 @@
 #include "msdadc.h"
 #include "msdasc.h"
 #include "shlobj.h"
+#include "msdaguid.h"
 #include "initguid.h"
 
 #include "wine/test.h"
@@ -125,16 +126,24 @@ static void test_errorinfo(void)
     IUnknown *unk = NULL;
 
     hr = CoCreateInstance(&CSLID_MSDAER, NULL, CLSCTX_INPROC_SERVER, &IID_IUnknown,(void**)&unk);
-    todo_wine ok(hr == S_OK, "got %08x\n", hr);
+    ok(hr == S_OK, "got %08x\n", hr);
     if(hr == S_OK)
     {
         IErrorInfo *errorinfo;
+        IErrorRecords *errrecs;
 
         hr = IUnknown_QueryInterface(unk, &IID_IErrorInfo, (void**)&errorinfo);
         ok(hr == S_OK, "got %08x\n", hr);
         if(hr == S_OK)
         {
             IErrorInfo_Release(errorinfo);
+        }
+
+        hr = IUnknown_QueryInterface(unk, &IID_IErrorRecords, (void**)&errrecs);
+        ok(hr == S_OK, "got %08x\n", hr);
+        if(hr == S_OK)
+        {
+            IErrorRecords_Release(errrecs);
         }
 
         IUnknown_Release(unk);
@@ -177,6 +186,17 @@ static void test_initializationstring(void)
     }
 }
 
+static void test_rowposition(void)
+{
+    IRowPosition *rowpos;
+    HRESULT hr;
+
+    hr = CoCreateInstance(&CLSID_OLEDB_ROWPOSITIONLIBRARY, NULL, CLSCTX_INPROC_SERVER, &IID_IRowPosition, (void**)&rowpos);
+    ok(hr == S_OK, "got %08x\n", hr);
+
+    IRowPosition_Release(rowpos);
+}
+
 START_TEST(database)
 {
     OleInitialize(NULL);
@@ -184,6 +204,9 @@ START_TEST(database)
     test_database();
     test_errorinfo();
     test_initializationstring();
+
+    /* row position */
+    test_rowposition();
 
     OleUninitialize();
 }

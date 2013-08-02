@@ -640,11 +640,18 @@ BUILTINFLAG
 EXTRACFLAGS
 LIBKSTAT
 LIBOPENAL
-LIBMPG123
+MPG123_LIBS
+MPG123_CFLAGS
+TIFF_LIBS
+TIFF_CFLAGS
 PNG_LIBS
 PNG_CFLAGS
+JPEG_LIBS
+JPEG_CFLAGS
 FONTCONFIGINCL
 CUPSINCL
+CAPI20_LIBS
+CAPI20_CFLAGS
 OSS4INCL
 ALSALIBS
 GSTREAMER_LIBS
@@ -886,8 +893,16 @@ FREETYPE_CFLAGS
 FREETYPE_LIBS
 GSTREAMER_CFLAGS
 GSTREAMER_LIBS
+CAPI20_CFLAGS
+CAPI20_LIBS
+JPEG_CFLAGS
+JPEG_LIBS
 PNG_CFLAGS
-PNG_LIBS'
+PNG_LIBS
+TIFF_CFLAGS
+TIFF_LIBS
+MPG123_CFLAGS
+MPG123_LIBS'
 
 
 # Initialize some variables set by options.
@@ -1607,8 +1622,18 @@ Some influential environment variables:
               C compiler flags for gstreamer-app-0.10, overriding pkg-config
   GSTREAMER_LIBS
               Linker flags for gstreamer-app-0.10, overriding pkg-config
+  CAPI20_CFLAGS
+              C compiler flags for capi20, overriding pkg-config
+  CAPI20_LIBS Linker flags for capi20, overriding pkg-config
+  JPEG_CFLAGS C compiler flags for libjpeg, overriding pkg-config
+  JPEG_LIBS   Linker flags for libjpeg, overriding pkg-config
   PNG_CFLAGS  C compiler flags for libpng, overriding pkg-config
   PNG_LIBS    Linker flags for libpng, overriding pkg-config
+  TIFF_CFLAGS C compiler flags for libtiff, overriding pkg-config
+  TIFF_LIBS   Linker flags for libtiff, overriding pkg-config
+  MPG123_CFLAGS
+              C compiler flags for libmpg123, overriding pkg-config
+  MPG123_LIBS Linker flags for libmpg123, overriding pkg-config
 
 Use these variables to override the choices made by `configure' or to help
 it to find libraries and programs with nonstandard names/locations.
@@ -2608,7 +2633,7 @@ fi
 
 # Check whether --with-capi was given.
 if test "${with_capi+set}" = set; then :
-  withval=$with_capi; if test "x$withval" = "xno"; then ac_cv_header_capi20_h=no; ac_cv_header_linux_capi_h=no; fi
+  withval=$with_capi;
 fi
 
 
@@ -2704,7 +2729,7 @@ fi
 
 # Check whether --with-jpeg was given.
 if test "${with_jpeg+set}" = set; then :
-  withval=$with_jpeg; if test "x$withval" = "xno"; then ac_cv_header_jpeglib_h=no; fi
+  withval=$with_jpeg;
 fi
 
 
@@ -2716,7 +2741,7 @@ fi
 
 # Check whether --with-mpg123 was given.
 if test "${with_mpg123+set}" = set; then :
-  withval=$with_mpg123; if test "x$withval" = "xno"; then ac_cv_header_mpg123_h=no; fi
+  withval=$with_mpg123;
 fi
 
 
@@ -2770,7 +2795,7 @@ fi
 
 # Check whether --with-tiff was given.
 if test "${with_tiff+set}" = set; then :
-  withval=$with_tiff; if test "x$withval" = "xno"; then ac_cv_header_tiffio_h=no; fi
+  withval=$with_tiff;
 fi
 
 
@@ -5192,17 +5217,19 @@ fi
 
 
 fi
-if test -z "$ac_cv_prog_PKG_CONFIG"; then
-  ac_ct_PKG_CONFIG=$PKG_CONFIG
+if test -n "$ac_cv_prog_PKG_CONFIG"; then
+  PKG_CONFIG="$ac_cv_prog_PKG_CONFIG"
+elif test "$cross_compiling" != yes; then
+  unset ac_cv_prog_PKG_CONFIG
   # Extract the first word of "pkg-config", so it can be a program name with args.
 set dummy pkg-config; ac_word=$2
 { $as_echo "$as_me:${as_lineno-$LINENO}: checking for $ac_word" >&5
 $as_echo_n "checking for $ac_word... " >&6; }
-if ${ac_cv_prog_ac_ct_PKG_CONFIG+:} false; then :
+if ${ac_cv_prog_PKG_CONFIG+:} false; then :
   $as_echo_n "(cached) " >&6
 else
-  if test -n "$ac_ct_PKG_CONFIG"; then
-  ac_cv_prog_ac_ct_PKG_CONFIG="$ac_ct_PKG_CONFIG" # Let the user override the test.
+  if test -n "$PKG_CONFIG"; then
+  ac_cv_prog_PKG_CONFIG="$PKG_CONFIG" # Let the user override the test.
 else
 as_save_IFS=$IFS; IFS=$PATH_SEPARATOR
 for as_dir in $PATH
@@ -5211,7 +5238,7 @@ do
   test -z "$as_dir" && as_dir=.
     for ac_exec_ext in '' $ac_executable_extensions; do
   if as_fn_executable_p "$as_dir/$ac_word$ac_exec_ext"; then
-    ac_cv_prog_ac_ct_PKG_CONFIG="pkg-config"
+    ac_cv_prog_PKG_CONFIG="pkg-config"
     $as_echo "$as_me:${as_lineno-$LINENO}: found $as_dir/$ac_word$ac_exec_ext" >&5
     break 2
   fi
@@ -5221,30 +5248,17 @@ IFS=$as_save_IFS
 
 fi
 fi
-ac_ct_PKG_CONFIG=$ac_cv_prog_ac_ct_PKG_CONFIG
-if test -n "$ac_ct_PKG_CONFIG"; then
-  { $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_ct_PKG_CONFIG" >&5
-$as_echo "$ac_ct_PKG_CONFIG" >&6; }
+PKG_CONFIG=$ac_cv_prog_PKG_CONFIG
+if test -n "$PKG_CONFIG"; then
+  { $as_echo "$as_me:${as_lineno-$LINENO}: result: $PKG_CONFIG" >&5
+$as_echo "$PKG_CONFIG" >&6; }
 else
   { $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
 $as_echo "no" >&6; }
 fi
 
-  if test "x$ac_ct_PKG_CONFIG" = x; then
-    PKG_CONFIG=""
-  else
-    case $cross_compiling:$ac_tool_warned in
-yes:)
-{ $as_echo "$as_me:${as_lineno-$LINENO}: WARNING: using cross tools not prefixed with host triplet" >&5
-$as_echo "$as_me: WARNING: using cross tools not prefixed with host triplet" >&2;}
-ac_tool_warned=yes ;;
-esac
-    PKG_CONFIG=$ac_ct_PKG_CONFIG
-  fi
-else
-  PKG_CONFIG="$ac_cv_prog_PKG_CONFIG"
-fi
 
+fi
 
 if test "x$enable_maintainer_mode" != "xyes"
 then
@@ -5934,7 +5948,6 @@ for ac_header in \
 	arpa/inet.h \
 	arpa/nameser.h \
 	asm/types.h \
-	capi20.h \
 	curses.h \
 	direct.h \
 	dirent.h \
@@ -5951,7 +5964,6 @@ for ac_header in \
 	ieeefp.h \
 	inet/mib2.h \
 	io.h \
-	jpeglib.h \
 	kstat.h \
 	lber.h \
 	ldap.h \
@@ -5977,7 +5989,6 @@ for ac_header in \
 	machine/limits.h \
 	machine/sysarch.h \
 	mntent.h \
-	mpg123.h \
 	ncurses.h \
 	netdb.h \
 	netinet/in.h \
@@ -6038,7 +6049,6 @@ for ac_header in \
 	sys/wait.h \
 	syscall.h \
 	termios.h \
-	tiffio.h \
 	unistd.h \
 	utime.h \
 	valgrind/memcheck.h \
@@ -6362,20 +6372,6 @@ ac_fn_c_check_header_compile "$LINENO" "$ac_header" "$as_ac_Header" "#ifdef HAVE
 if eval test \"x\$"$as_ac_Header"\" = x"yes"; then :
   cat >>confdefs.h <<_ACEOF
 #define `$as_echo "HAVE_$ac_header" | $as_tr_cpp` 1
-_ACEOF
-
-fi
-
-done
-
-
-for ac_header in linux/capi.h
-do :
-  ac_fn_c_check_header_compile "$LINENO" "linux/capi.h" "ac_cv_header_linux_capi_h" "#define __user
-"
-if test "x$ac_cv_header_linux_capi_h" = xyes; then :
-  cat >>confdefs.h <<_ACEOF
-#define HAVE_LINUX_CAPI_H 1
 _ACEOF
 
 fi
@@ -9597,13 +9593,13 @@ then
 elif test -n "$PKG_CONFIG"; then :
   XML2_CFLAGS=`$PKG_CONFIG --cflags libxml-2.0 2>/dev/null`
 fi
-XML2_CFLAGS=${XML2_CFLAGS:-`xml2-config --cflags 2>/dev/null`}
+test "$cross_compiling" = yes || XML2_CFLAGS=${XML2_CFLAGS:-`xml2-config --cflags 2>/dev/null`}
 if test -n "$XML2_LIBS"; then :
 
 elif test -n "$PKG_CONFIG"; then :
   XML2_LIBS=`$PKG_CONFIG --libs libxml-2.0 2>/dev/null`
 fi
-XML2_LIBS=${XML2_LIBS:-`xml2-config --libs 2>/dev/null`}
+test "$cross_compiling" = yes || XML2_LIBS=${XML2_LIBS:-`xml2-config --libs 2>/dev/null`}
 XML2_LIBS=${XML2_LIBS:-"-lxml2"}
 ac_save_CPPFLAGS=$CPPFLAGS
 CPPFLAGS="$CPPFLAGS $XML2_CFLAGS"
@@ -9909,13 +9905,13 @@ then
 elif test -n "$PKG_CONFIG"; then :
   XSLT_CFLAGS=`$PKG_CONFIG --cflags libxslt 2>/dev/null`
 fi
-XSLT_CFLAGS=${XSLT_CFLAGS:-`xslt-config --cflags 2>/dev/null`}
+test "$cross_compiling" = yes || XSLT_CFLAGS=${XSLT_CFLAGS:-`xslt-config --cflags 2>/dev/null`}
 if test -n "$XSLT_LIBS"; then :
 
 elif test -n "$PKG_CONFIG"; then :
   XSLT_LIBS=`$PKG_CONFIG --libs libxslt 2>/dev/null`
 fi
-XSLT_LIBS=${XSLT_LIBS:-`xslt-config --libs 2>/dev/null`}
+test "$cross_compiling" = yes || XSLT_LIBS=${XSLT_LIBS:-`xslt-config --libs 2>/dev/null`}
 XSLT_LIBS=${XSLT_LIBS:-"-lxml2"}
 ac_save_CPPFLAGS=$CPPFLAGS
 CPPFLAGS="$CPPFLAGS $XSLT_CFLAGS"
@@ -10439,13 +10435,13 @@ then
 elif test -n "$PKG_CONFIG"; then :
   SANE_CFLAGS=`$PKG_CONFIG --cflags libsane 2>/dev/null`
 fi
-SANE_CFLAGS=${SANE_CFLAGS:-`sane-config --cflags 2>/dev/null`}
+test "$cross_compiling" = yes || SANE_CFLAGS=${SANE_CFLAGS:-`sane-config --cflags 2>/dev/null`}
 if test -n "$SANE_LIBS"; then :
 
 elif test -n "$PKG_CONFIG"; then :
   SANE_LIBS=`$PKG_CONFIG --libs libsane 2>/dev/null`
 fi
-SANE_LIBS=${SANE_LIBS:-`sane-config --ldflags 2>/dev/null`}
+test "$cross_compiling" = yes || SANE_LIBS=${SANE_LIBS:-`sane-config --ldflags 2>/dev/null`}
 
 ac_save_CPPFLAGS=$CPPFLAGS
 CPPFLAGS="$CPPFLAGS $SANE_CFLAGS"
@@ -10595,13 +10591,13 @@ then
 elif test -n "$PKG_CONFIG"; then :
   GPHOTO2_CFLAGS=`$PKG_CONFIG --cflags libgphoto2 2>/dev/null`
 fi
-GPHOTO2_CFLAGS=${GPHOTO2_CFLAGS:-`gphoto2-config --cflags 2>/dev/null`}
+test "$cross_compiling" = yes || GPHOTO2_CFLAGS=${GPHOTO2_CFLAGS:-`gphoto2-config --cflags 2>/dev/null`}
 if test -n "$GPHOTO2_LIBS"; then :
 
 elif test -n "$PKG_CONFIG"; then :
   GPHOTO2_LIBS=`$PKG_CONFIG --libs libgphoto2 2>/dev/null`
 fi
-GPHOTO2_LIBS=${GPHOTO2_LIBS:-`gphoto2-config --libs 2>/dev/null`}
+test "$cross_compiling" = yes || GPHOTO2_LIBS=${GPHOTO2_LIBS:-`gphoto2-config --libs 2>/dev/null`}
 GPHOTO2_LIBS=${GPHOTO2_LIBS:-"-lgphoto2"}
 ac_save_CPPFLAGS=$CPPFLAGS
 CPPFLAGS="$CPPFLAGS $GPHOTO2_CFLAGS"
@@ -10665,13 +10661,13 @@ test -z "$GPHOTO2_LIBS" || GPHOTO2_LIBS=`echo " $GPHOTO2_LIBS" | sed 's/ -L\([^/
 elif test -n "$PKG_CONFIG"; then :
   GPHOTO2_PORT_CFLAGS=`$PKG_CONFIG --cflags libgphoto2_port 2>/dev/null`
 fi
-GPHOTO2_PORT_CFLAGS=${GPHOTO2_PORT_CFLAGS:-`gphoto2-port-config --cflags 2>/dev/null`}
+test "$cross_compiling" = yes || GPHOTO2_PORT_CFLAGS=${GPHOTO2_PORT_CFLAGS:-`gphoto2-port-config --cflags 2>/dev/null`}
 if test -n "$GPHOTO2_PORT_LIBS"; then :
 
 elif test -n "$PKG_CONFIG"; then :
   GPHOTO2_PORT_LIBS=`$PKG_CONFIG --libs libgphoto2_port 2>/dev/null`
 fi
-GPHOTO2_PORT_LIBS=${GPHOTO2_PORT_LIBS:-`gphoto2-port-config --libs 2>/dev/null`}
+test "$cross_compiling" = yes || GPHOTO2_PORT_LIBS=${GPHOTO2_PORT_LIBS:-`gphoto2-port-config --libs 2>/dev/null`}
 GPHOTO2_PORT_LIBS=${GPHOTO2_PORT_LIBS:-"-lgphoto2_port"}
 ac_save_CPPFLAGS=$CPPFLAGS
 CPPFLAGS="$CPPFLAGS $GPHOTO2_PORT_CFLAGS"
@@ -10885,13 +10881,13 @@ then
 elif test -n "$PKG_CONFIG"; then :
   FREETYPE_CFLAGS=`$PKG_CONFIG --cflags freetype2 2>/dev/null`
 fi
-FREETYPE_CFLAGS=${FREETYPE_CFLAGS:-`(freetype-config --cflags || freetype2-config --cflags) 2>/dev/null`}
+test "$cross_compiling" = yes || FREETYPE_CFLAGS=${FREETYPE_CFLAGS:-`(freetype-config --cflags || freetype2-config --cflags) 2>/dev/null`}
 if test -n "$FREETYPE_LIBS"; then :
 
 elif test -n "$PKG_CONFIG"; then :
   FREETYPE_LIBS=`$PKG_CONFIG --libs freetype2 2>/dev/null`
 fi
-FREETYPE_LIBS=${FREETYPE_LIBS:-`(freetype-config --libs || freetype2-config --libs) 2>/dev/null`}
+test "$cross_compiling" = yes || FREETYPE_LIBS=${FREETYPE_LIBS:-`(freetype-config --libs || freetype2-config --libs) 2>/dev/null`}
 FREETYPE_LIBS=${FREETYPE_LIBS:-"-lfreetype"}
 ac_save_CPPFLAGS=$CPPFLAGS
 CPPFLAGS="$CPPFLAGS $FREETYPE_CFLAGS"
@@ -11447,16 +11443,46 @@ fi
     fi
 fi
 
-
-if test "$ac_cv_header_capi20_h" = "yes" -a "$ac_cv_header_linux_capi_h" = "yes"
+if test "x$with_capi" != "xno"
 then
-    { $as_echo "$as_me:${as_lineno-$LINENO}: checking for -lcapi20" >&5
+    if test -n "$CAPI20_CFLAGS"; then :
+
+elif test -n "$PKG_CONFIG"; then :
+  CAPI20_CFLAGS=`$PKG_CONFIG --cflags capi20 2>/dev/null`
+fi
+
+if test -n "$CAPI20_LIBS"; then :
+
+elif test -n "$PKG_CONFIG"; then :
+  CAPI20_LIBS=`$PKG_CONFIG --libs capi20 2>/dev/null`
+fi
+
+
+ac_save_CPPFLAGS=$CPPFLAGS
+CPPFLAGS="$CPPFLAGS $CAPI20_CFLAGS"
+    for ac_header in capi20.h linux/capi.h
+do :
+  as_ac_Header=`$as_echo "ac_cv_header_$ac_header" | $as_tr_sh`
+ac_fn_c_check_header_compile "$LINENO" "$ac_header" "$as_ac_Header" "#define __user
+"
+if eval test \"x\$"$as_ac_Header"\" = x"yes"; then :
+  cat >>confdefs.h <<_ACEOF
+#define `$as_echo "HAVE_$ac_header" | $as_tr_cpp` 1
+_ACEOF
+
+fi
+
+done
+
+    if test "$ac_cv_header_capi20_h" = "yes" -a "$ac_cv_header_linux_capi_h" = "yes"
+    then
+        { $as_echo "$as_me:${as_lineno-$LINENO}: checking for -lcapi20" >&5
 $as_echo_n "checking for -lcapi20... " >&6; }
 if ${ac_cv_lib_soname_capi20+:} false; then :
   $as_echo_n "(cached) " >&6
 else
   ac_check_soname_save_LIBS=$LIBS
-LIBS="-lcapi20  $LIBS"
+LIBS="-lcapi20 $CAPI20_LIBS $LIBS"
   cat confdefs.h - <<_ACEOF >conftest.$ac_ext
 /* end confdefs.h.  */
 
@@ -11503,6 +11529,11 @@ _ACEOF
 
 
 fi
+    fi
+CPPFLAGS=$ac_save_CPPFLAGS
+test -z "$CAPI20_CFLAGS" || CAPI20_CFLAGS=`echo " $CAPI20_CFLAGS" | sed 's/ -I\([^/]\)/ -I\$(top_builddir)\/\1/g'`
+test -z "$CAPI20_LIBS" || CAPI20_LIBS=`echo " $CAPI20_LIBS" | sed 's/ -L\([^/]\)/ -L\$(top_builddir)\/\1/g'`
+
 fi
 if test "x$ac_cv_lib_soname_capi20" = "x"; then :
   case "x$with_capi" in
@@ -11802,15 +11833,44 @@ This is an error since --with-gsm was requested." "$LINENO" 5 ;;
 esac
 fi
 
-if test "$ac_cv_header_jpeglib_h" = "yes"
+if test "x$with_jpeg" != "xno"
 then
-    { $as_echo "$as_me:${as_lineno-$LINENO}: checking for -ljpeg" >&5
+    if test -n "$JPEG_CFLAGS"; then :
+
+elif test -n "$PKG_CONFIG"; then :
+  JPEG_CFLAGS=`$PKG_CONFIG --cflags libjpeg 2>/dev/null`
+fi
+
+if test -n "$JPEG_LIBS"; then :
+
+elif test -n "$PKG_CONFIG"; then :
+  JPEG_LIBS=`$PKG_CONFIG --libs libjpeg 2>/dev/null`
+fi
+
+
+ac_save_CPPFLAGS=$CPPFLAGS
+CPPFLAGS="$CPPFLAGS $JPEG_CFLAGS"
+for ac_header in jpeglib.h
+do :
+  ac_fn_c_check_header_mongrel "$LINENO" "jpeglib.h" "ac_cv_header_jpeglib_h" "$ac_includes_default"
+if test "x$ac_cv_header_jpeglib_h" = xyes; then :
+  cat >>confdefs.h <<_ACEOF
+#define HAVE_JPEGLIB_H 1
+_ACEOF
+
+fi
+
+done
+
+        if test "$ac_cv_header_jpeglib_h" = "yes"
+        then
+            { $as_echo "$as_me:${as_lineno-$LINENO}: checking for -ljpeg" >&5
 $as_echo_n "checking for -ljpeg... " >&6; }
 if ${ac_cv_lib_soname_jpeg+:} false; then :
   $as_echo_n "(cached) " >&6
 else
   ac_check_soname_save_LIBS=$LIBS
-LIBS="-ljpeg  $LIBS"
+LIBS="-ljpeg $JPEG_LIBS $LIBS"
   cat confdefs.h - <<_ACEOF >conftest.$ac_ext
 /* end confdefs.h.  */
 
@@ -11846,7 +11906,7 @@ fi
 if test "x$ac_cv_lib_soname_jpeg" = "x"; then :
   { $as_echo "$as_me:${as_lineno-$LINENO}: result: not found" >&5
 $as_echo "not found" >&6; }
-
+       JPEG_CFLAGS=""
 else
   { $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_cv_lib_soname_jpeg" >&5
 $as_echo "$ac_cv_lib_soname_jpeg" >&6; }
@@ -11857,6 +11917,13 @@ _ACEOF
 
 
 fi
+        else
+            JPEG_CFLAGS=""
+        fi
+CPPFLAGS=$ac_save_CPPFLAGS
+test -z "$JPEG_CFLAGS" || JPEG_CFLAGS=`echo " $JPEG_CFLAGS" | sed 's/ -I\([^/]\)/ -I\$(top_builddir)\/\1/g'`
+test -z "$JPEG_LIBS" || JPEG_LIBS=`echo " $JPEG_LIBS" | sed 's/ -L\([^/]\)/ -L\$(top_builddir)\/\1/g'`
+
 fi
 if test "x$ac_cv_lib_soname_jpeg" = "x"; then :
   case "x$with_jpeg" in
@@ -11874,13 +11941,13 @@ then
 elif test -n "$PKG_CONFIG"; then :
   PNG_CFLAGS=`$PKG_CONFIG --cflags libpng 2>/dev/null`
 fi
-PNG_CFLAGS=${PNG_CFLAGS:-$X_CFLAGS}
+test "$cross_compiling" = yes || PNG_CFLAGS=${PNG_CFLAGS:-$X_CFLAGS}
 if test -n "$PNG_LIBS"; then :
 
 elif test -n "$PKG_CONFIG"; then :
   PNG_LIBS=`$PKG_CONFIG --libs libpng 2>/dev/null`
 fi
-PNG_LIBS=${PNG_LIBS:-$X_LIBS}
+test "$cross_compiling" = yes || PNG_LIBS=${PNG_LIBS:-$X_LIBS}
 
 ac_save_CPPFLAGS=$CPPFLAGS
 CPPFLAGS="$CPPFLAGS $PNG_CFLAGS"
@@ -11984,15 +12051,44 @@ This is an error since --with-png was requested." "$LINENO" 5 ;;
 esac
 fi
 
-if test "$ac_cv_header_tiffio_h" = "yes"
+if test "x$with_tiff" != "xno"
 then
-    { $as_echo "$as_me:${as_lineno-$LINENO}: checking for -ltiff" >&5
+    if test -n "$TIFF_CFLAGS"; then :
+
+elif test -n "$PKG_CONFIG"; then :
+  TIFF_CFLAGS=`$PKG_CONFIG --cflags libtiff 2>/dev/null`
+fi
+
+if test -n "$TIFF_LIBS"; then :
+
+elif test -n "$PKG_CONFIG"; then :
+  TIFF_LIBS=`$PKG_CONFIG --libs libtiff 2>/dev/null`
+fi
+
+
+ac_save_CPPFLAGS=$CPPFLAGS
+CPPFLAGS="$CPPFLAGS $TIFF_CFLAGS"
+for ac_header in tiffio.h
+do :
+  ac_fn_c_check_header_mongrel "$LINENO" "tiffio.h" "ac_cv_header_tiffio_h" "$ac_includes_default"
+if test "x$ac_cv_header_tiffio_h" = xyes; then :
+  cat >>confdefs.h <<_ACEOF
+#define HAVE_TIFFIO_H 1
+_ACEOF
+
+fi
+
+done
+
+        if test "$ac_cv_header_tiffio_h" = "yes"
+        then
+            { $as_echo "$as_me:${as_lineno-$LINENO}: checking for -ltiff" >&5
 $as_echo_n "checking for -ltiff... " >&6; }
 if ${ac_cv_lib_soname_tiff+:} false; then :
   $as_echo_n "(cached) " >&6
 else
   ac_check_soname_save_LIBS=$LIBS
-LIBS="-ltiff  $LIBS"
+LIBS="-ltiff $TIFF_LIBS $LIBS"
   cat confdefs.h - <<_ACEOF >conftest.$ac_ext
 /* end confdefs.h.  */
 
@@ -12039,6 +12135,11 @@ _ACEOF
 
 
 fi
+        fi
+CPPFLAGS=$ac_save_CPPFLAGS
+test -z "$TIFF_CFLAGS" || TIFF_CFLAGS=`echo " $TIFF_CFLAGS" | sed 's/ -I\([^/]\)/ -I\$(top_builddir)\/\1/g'`
+test -z "$TIFF_LIBS" || TIFF_LIBS=`echo " $TIFF_LIBS" | sed 's/ -L\([^/]\)/ -L\$(top_builddir)\/\1/g'`
+
 fi
 if test "x$ac_cv_lib_soname_tiff" = "x"; then :
   case "x$with_tiff" in
@@ -12049,15 +12150,44 @@ This is an error since --with-tiff was requested." "$LINENO" 5 ;;
 esac
 fi
 
-if test "$ac_cv_header_mpg123_h" = "yes"
+if test "x$with_mpg123" != "xno"
 then
-    { $as_echo "$as_me:${as_lineno-$LINENO}: checking for mpg123_feed in -lmpg123" >&5
+    if test -n "$MPG123_CFLAGS"; then :
+
+elif test -n "$PKG_CONFIG"; then :
+  MPG123_CFLAGS=`$PKG_CONFIG --cflags libmpg123 2>/dev/null`
+fi
+
+if test -n "$MPG123_LIBS"; then :
+
+elif test -n "$PKG_CONFIG"; then :
+  MPG123_LIBS=`$PKG_CONFIG --libs libmpg123 2>/dev/null`
+fi
+
+MPG123_LIBS=${MPG123_LIBS:-"-lmpg123"}
+ac_save_CPPFLAGS=$CPPFLAGS
+CPPFLAGS="$CPPFLAGS $MPG123_CFLAGS"
+for ac_header in mpg123.h
+do :
+  ac_fn_c_check_header_mongrel "$LINENO" "mpg123.h" "ac_cv_header_mpg123_h" "$ac_includes_default"
+if test "x$ac_cv_header_mpg123_h" = xyes; then :
+  cat >>confdefs.h <<_ACEOF
+#define HAVE_MPG123_H 1
+_ACEOF
+
+fi
+
+done
+
+        if test "$ac_cv_header_mpg123_h" = "yes"
+        then
+            { $as_echo "$as_me:${as_lineno-$LINENO}: checking for mpg123_feed in -lmpg123" >&5
 $as_echo_n "checking for mpg123_feed in -lmpg123... " >&6; }
 if ${ac_cv_lib_mpg123_mpg123_feed+:} false; then :
   $as_echo_n "(cached) " >&6
 else
   ac_check_lib_save_LIBS=$LIBS
-LIBS="-lmpg123  $LIBS"
+LIBS="-lmpg123 $MPG123_LIBS $LIBS"
 cat confdefs.h - <<_ACEOF >conftest.$ac_ext
 /* end confdefs.h.  */
 
@@ -12088,9 +12218,18 @@ fi
 { $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_cv_lib_mpg123_mpg123_feed" >&5
 $as_echo "$ac_cv_lib_mpg123_mpg123_feed" >&6; }
 if test "x$ac_cv_lib_mpg123_mpg123_feed" = xyes; then :
-  LIBMPG123="-lmpg123"
-
+  :
+else
+  MPG123_LIBS=""
 fi
+
+        else
+            MPG123_CFLAGS=""
+            MPG123_LIBS=""
+        fi
+CPPFLAGS=$ac_save_CPPFLAGS
+test -z "$MPG123_CFLAGS" || MPG123_CFLAGS=`echo " $MPG123_CFLAGS" | sed 's/ -I\([^/]\)/ -I\$(top_builddir)\/\1/g'`
+test -z "$MPG123_LIBS" || MPG123_LIBS=`echo " $MPG123_LIBS" | sed 's/ -L\([^/]\)/ -L\$(top_builddir)\/\1/g'`
 
 fi
 if test "x$ac_cv_lib_mpg123_mpg123_feed" != xyes -a x"$ac_cv_header_CoreAudio_CoreAudio_h" != xyes; then :

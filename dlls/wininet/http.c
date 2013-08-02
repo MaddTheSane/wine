@@ -2032,24 +2032,35 @@ static DWORD str_to_buffer(const WCHAR *str, void *buffer, DWORD *size, BOOL uni
     int len;
     if (unicode)
     {
-        len = strlenW(str);
+        WCHAR *buf = buffer;
+
+        if (str) len = strlenW(str);
+        else len = 0;
         if (*size < (len + 1) * sizeof(WCHAR))
         {
             *size = (len + 1) * sizeof(WCHAR);
             return ERROR_INSUFFICIENT_BUFFER;
         }
-        strcpyW(buffer, str);
+        if (str) strcpyW(buf, str);
+        else buf[0] = 0;
+
         *size = len;
         return ERROR_SUCCESS;
     }
     else
     {
-        len = WideCharToMultiByte(CP_ACP, 0, str, -1, buffer, *size, NULL, NULL);
+        char *buf = buffer;
+
+        if (str) len = WideCharToMultiByte(CP_ACP, 0, str, -1, NULL, 0, NULL, NULL);
+        else len = 1;
         if (*size < len)
         {
             *size = len;
             return ERROR_INSUFFICIENT_BUFFER;
         }
+        if (str) WideCharToMultiByte(CP_ACP, 0, str, -1, buf, *size, NULL, NULL);
+        else buf[0] = 0;
+
         *size = len - 1;
         return ERROR_SUCCESS;
     }
@@ -4832,7 +4843,6 @@ static DWORD HTTP_HttpSendRequestW(http_request_t *request, LPCWSTR lpszHeaders,
     LPWSTR requestString = NULL;
     INT responseLen;
     BOOL loop_next;
-    static const WCHAR szPost[] = { 'P','O','S','T',0 };
     static const WCHAR szContentLength[] =
         { 'C','o','n','t','e','n','t','-','L','e','n','g','t','h',':',' ','%','l','i','\r','\n',0 };
     WCHAR contentLengthStr[sizeof szContentLength/2 /* includes \r\n */ + 20 /* int */ ];
@@ -4870,7 +4880,7 @@ static DWORD HTTP_HttpSendRequestW(http_request_t *request, LPCWSTR lpszHeaders,
         static const WCHAR pragma_nocache[] = {'P','r','a','g','m','a',':',' ','n','o','-','c','a','c','h','e','\r','\n',0};
         HTTP_HttpAddRequestHeadersW(request, pragma_nocache, strlenW(pragma_nocache), HTTP_ADDREQ_FLAG_ADD_IF_NEW);
     }
-    if ((request->hdr.dwFlags & INTERNET_FLAG_NO_CACHE_WRITE) && !strcmpW(request->verb, szPost))
+    if ((request->hdr.dwFlags & INTERNET_FLAG_NO_CACHE_WRITE) && strcmpW(request->verb, szGET))
     {
         static const WCHAR cache_control[] = {'C','a','c','h','e','-','C','o','n','t','r','o','l',':',
                                               ' ','n','o','-','c','a','c','h','e','\r','\n',0};

@@ -401,7 +401,7 @@ static void test_GetAbsolutePathName(void)
 
     WIN32_FIND_DATAW fdata;
     HANDLE find;
-    WCHAR buf[MAX_PATH];
+    WCHAR buf[MAX_PATH], buf2[MAX_PATH];
     BSTR path, result;
     HRESULT hr;
 
@@ -424,22 +424,23 @@ static void test_GetAbsolutePathName(void)
     path = SysAllocString(dir_match1);
     hr = IFileSystem3_GetAbsolutePathName(fs3, path, &result);
     ok(hr == S_OK, "GetAbsolutePathName returned %x, expected S_OK\n", hr);
-    GetFullPathNameW(dir_match1, MAX_PATH, buf, NULL);
-    ok(!lstrcmpW(buf, result), "result = %s, expected %s\n", wine_dbgstr_w(result), wine_dbgstr_w(buf));
+    GetFullPathNameW(dir_match1, MAX_PATH, buf2, NULL);
+    ok(!lstrcmpW(buf2, result), "result = %s, expected %s\n", wine_dbgstr_w(result), wine_dbgstr_w(buf2));
     SysFreeString(result);
 
     ok(CreateDirectoryW(dir1, NULL), "CreateDirectory(%s) failed\n", wine_dbgstr_w(dir1));
     hr = IFileSystem3_GetAbsolutePathName(fs3, path, &result);
     ok(hr == S_OK, "GetAbsolutePathName returned %x, expected S_OK\n", hr);
     GetFullPathNameW(dir1, MAX_PATH, buf, NULL);
-    ok(!lstrcmpW(buf, result), "result = %s, expected %s\n", wine_dbgstr_w(result), wine_dbgstr_w(buf));
+    ok(!lstrcmpW(buf, result) || broken(!lstrcmpW(buf2, result)), "result = %s, expected %s\n",
+                wine_dbgstr_w(result), wine_dbgstr_w(buf));
     SysFreeString(result);
 
     ok(CreateDirectoryW(dir2, NULL), "CreateDirectory(%s) failed\n", wine_dbgstr_w(dir2));
     hr = IFileSystem3_GetAbsolutePathName(fs3, path, &result);
     ok(hr == S_OK, "GetAbsolutePathName returned %x, expected S_OK\n", hr);
-    if(!lstrcmpW(buf, result)) {
-        ok(!lstrcmpW(buf, result), "result = %s, expected %s\n",
+    if(!lstrcmpW(buf, result) || !lstrcmpW(buf2, result)) {
+        ok(!lstrcmpW(buf, result) || broken(!lstrcmpW(buf2, result)), "result = %s, expected %s\n",
                 wine_dbgstr_w(result), wine_dbgstr_w(buf));
     }else {
         GetFullPathNameW(dir2, MAX_PATH, buf, NULL);
@@ -478,9 +479,7 @@ static void test_GetFile(void)
     hr = IFileSystem3_GetFile(fs3, NULL, &file);
     ok(hr == E_INVALIDARG, "GetFile returned %x, expected E_INVALIDARG\n", hr);
 
-    hf = CreateFileW(path, GENERIC_WRITE, 0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-    if(hf != INVALID_HANDLE_VALUE) {
-        CloseHandle(hf);
+    if(GetFileAttributesW(path) != INVALID_FILE_ATTRIBUTES) {
         skip("File already exists, skipping GetFile tests\n");
         SysFreeString(path);
         return;
@@ -503,7 +502,9 @@ static void test_GetFile(void)
     ok(hr == S_OK, "GetFile returned %x, expected S_OK\n", hr);
 
     hr = IFile_get_Attributes(file, &fa);
-    gfa = GetFileAttributesW(get_file) & ~FILE_ATTRIBUTE_NORMAL;
+    gfa = GetFileAttributesW(get_file) & (FILE_ATTRIBUTE_READONLY | FILE_ATTRIBUTE_HIDDEN |
+            FILE_ATTRIBUTE_SYSTEM | FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_ARCHIVE |
+            FILE_ATTRIBUTE_REPARSE_POINT | FILE_ATTRIBUTE_COMPRESSED);
     ok(hr == S_OK, "get_Attributes returned %x, expected S_OK\n", hr);
     ok(fa == gfa, "fa = %x, expected %x\n", fa, gfa);
 

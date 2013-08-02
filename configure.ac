@@ -33,8 +33,7 @@ AC_ARG_ENABLE(maintainer-mode, AS_HELP_STRING([--enable-maintainer-mode],[enable
 
 AC_ARG_WITH(alsa,      AS_HELP_STRING([--without-alsa],[do not use the Alsa sound support]),
             [if test "x$withval" = "xno"; then ac_cv_header_sys_asoundlib_h=no; ac_cv_header_alsa_asoundlib_h=no; fi])
-AC_ARG_WITH(capi,      AS_HELP_STRING([--without-capi],[do not use CAPI (ISDN support)]),
-            [if test "x$withval" = "xno"; then ac_cv_header_capi20_h=no; ac_cv_header_linux_capi_h=no; fi])
+AC_ARG_WITH(capi,      AS_HELP_STRING([--without-capi],[do not use CAPI (ISDN support)]))
 AC_ARG_WITH(cms,       AS_HELP_STRING([--without-cms],[do not use CMS (color management support)]))
 AC_ARG_WITH(coreaudio, AS_HELP_STRING([--without-coreaudio],[do not use the CoreAudio sound support]),
             [if test "x$withval" = "xno"; then ac_cv_header_CoreAudio_CoreAudio_h=no; fi])
@@ -54,12 +53,10 @@ AC_ARG_WITH(gsm,       AS_HELP_STRING([--without-gsm],[do not use libgsm (GSM 06
             [if test "x$withval" = "xno"; then ac_cv_header_gsm_h=no; ac_cv_header_gsm_gsm_h=no; fi])
 AC_ARG_WITH(gstreamer, AS_HELP_STRING([--without-gstreamer],[do not use GStreamer (codecs support)]))
 AC_ARG_WITH(hal,       AS_HELP_STRING([--without-hal],[do not use HAL (dynamic device support)]))
-AC_ARG_WITH(jpeg,      AS_HELP_STRING([--without-jpeg],[do not use JPEG]),
-            [if test "x$withval" = "xno"; then ac_cv_header_jpeglib_h=no; fi])
+AC_ARG_WITH(jpeg,      AS_HELP_STRING([--without-jpeg],[do not use JPEG]))
 AC_ARG_WITH(ldap,      AS_HELP_STRING([--without-ldap],[do not use LDAP]),
             [if test "x$withval" = "xno"; then ac_cv_header_ldap_h=no; ac_cv_header_lber_h=no; fi])
-AC_ARG_WITH(mpg123,    AS_HELP_STRING([--without-mpg123],[do not use the mpg123 library]),
-            [if test "x$withval" = "xno"; then ac_cv_header_mpg123_h=no; fi])
+AC_ARG_WITH(mpg123,    AS_HELP_STRING([--without-mpg123],[do not use the mpg123 library]))
 AC_ARG_WITH(openal,    AS_HELP_STRING([--without-openal],[do not use OpenAL]),
             [if test "x$withval" = "xno"; then ac_cv_header_AL_al_h=no; ac_cv_header_OpenAL_al_h=no; fi])
 AC_ARG_WITH(opencl,    AS_HELP_STRING([--without-opencl],[do not use OpenCL]),
@@ -71,8 +68,7 @@ AC_ARG_WITH(png,       AS_HELP_STRING([--without-png],[do not use PNG]))
 AC_ARG_WITH(pthread,   AS_HELP_STRING([--without-pthread],[do not use the pthread library]),
             [if test "x$withval" = "xno"; then ac_cv_header_pthread_h=no; fi])
 AC_ARG_WITH(sane,      AS_HELP_STRING([--without-sane],[do not use SANE (scanner support)]))
-AC_ARG_WITH(tiff,       AS_HELP_STRING([--without-tiff],[do not use TIFF]),
-            [if test "x$withval" = "xno"; then ac_cv_header_tiffio_h=no; fi])
+AC_ARG_WITH(tiff,      AS_HELP_STRING([--without-tiff],[do not use TIFF]))
 AC_ARG_WITH(v4l,       AS_HELP_STRING([--without-v4l],[do not use v4l1 (v4l support)]))
 AC_ARG_WITH(xcomposite,AS_HELP_STRING([--without-xcomposite],[do not use the Xcomposite extension]),
             [if test "x$withval" = "xno"; then ac_cv_header_X11_extensions_Xcomposite_h=no; fi])
@@ -413,7 +409,6 @@ AC_CHECK_HEADERS(\
 	arpa/inet.h \
 	arpa/nameser.h \
 	asm/types.h \
-	capi20.h \
 	curses.h \
 	direct.h \
 	dirent.h \
@@ -430,7 +425,6 @@ AC_CHECK_HEADERS(\
 	ieeefp.h \
 	inet/mib2.h \
 	io.h \
-	jpeglib.h \
 	kstat.h \
 	lber.h \
 	ldap.h \
@@ -456,7 +450,6 @@ AC_CHECK_HEADERS(\
 	machine/limits.h \
 	machine/sysarch.h \
 	mntent.h \
-	mpg123.h \
 	ncurses.h \
 	netdb.h \
 	netinet/in.h \
@@ -517,7 +510,6 @@ AC_CHECK_HEADERS(\
 	sys/wait.h \
 	syscall.h \
 	termios.h \
-	tiffio.h \
 	unistd.h \
 	utime.h \
 	valgrind/memcheck.h \
@@ -666,9 +658,6 @@ AC_CHECK_HEADERS([linux/videodev.h linux/videodev2.h libv4l1.h],,,
 #ifdef HAVE_ASM_TYPES_H
 #include <asm/types.h>
 #endif])
-
-dnl Check for broken kernel header that doesn't define __user
-AC_CHECK_HEADERS([linux/capi.h],,,[#define __user])
 
 dnl **** Check for working dll ****
 
@@ -1591,10 +1580,15 @@ then
 fi
 
 dnl **** Check for capi4linux ****
-
-if test "$ac_cv_header_capi20_h" = "yes" -a "$ac_cv_header_linux_capi_h" = "yes"
+if test "x$with_capi" != "xno"
 then
-    WINE_CHECK_SONAME(capi20,capi20_register)
+    WINE_PACKAGE_FLAGS(CAPI20,[capi20],,,,
+     dnl Check for broken kernel header that doesn't define __user
+    [AC_CHECK_HEADERS([capi20.h linux/capi.h],,,[#define __user])
+    if test "$ac_cv_header_capi20_h" = "yes" -a "$ac_cv_header_linux_capi_h" = "yes"
+    then
+        WINE_CHECK_SONAME(capi20,capi20_register,,,[$CAPI20_LIBS])
+    fi])
 fi
 WINE_NOTICE_WITH(capi,[test "x$ac_cv_lib_soname_capi20" = "x"],
                  [libcapi20 ${notice_platform}development files not found, ISDN won't be supported.])
@@ -1646,9 +1640,16 @@ WINE_NOTICE_WITH(gsm,[test "x$ac_cv_lib_soname_gsm" = "x"],
                  [libgsm ${notice_platform}development files not found, gsm 06.10 codec won't be supported.])
 
 dnl **** Check for libjpeg ****
-if test "$ac_cv_header_jpeglib_h" = "yes"
+if test "x$with_jpeg" != "xno"
 then
-    WINE_CHECK_SONAME(jpeg,jpeg_start_decompress)
+    WINE_PACKAGE_FLAGS(JPEG,[libjpeg],,,,
+        [AC_CHECK_HEADERS([jpeglib.h])
+        if test "$ac_cv_header_jpeglib_h" = "yes"
+        then
+            WINE_CHECK_SONAME(jpeg,jpeg_start_decompress,,[JPEG_CFLAGS=""],[$JPEG_LIBS])
+        else
+            JPEG_CFLAGS=""
+        fi])
 fi
 WINE_WARNING_WITH(jpeg,[test "x$ac_cv_lib_soname_jpeg" = "x"],
                  [libjpeg ${notice_platform}development files not found, JPEG won't be supported.])
@@ -1672,17 +1673,30 @@ WINE_WARNING_WITH(png,[test "x$ac_cv_lib_soname_png" = "x"],
                  [libpng ${notice_platform}development files not found, PNG won't be supported.])
 
 dnl **** Check for libtiff ****
-if test "$ac_cv_header_tiffio_h" = "yes"
+if test "x$with_tiff" != "xno"
 then
-    WINE_CHECK_SONAME(tiff,TIFFClientOpen)
+    WINE_PACKAGE_FLAGS(TIFF,[libtiff],,,,
+        [AC_CHECK_HEADERS([tiffio.h])
+        if test "$ac_cv_header_tiffio_h" = "yes"
+        then
+            WINE_CHECK_SONAME(tiff,TIFFClientOpen,,,[$TIFF_LIBS])
+        fi])
 fi
 WINE_NOTICE_WITH(tiff,[test "x$ac_cv_lib_soname_tiff" = "x"],
                  [libtiff ${notice_platform}development files not found, TIFF won't be supported.])
 
 dnl **** Check for mpg123 ****
-if test "$ac_cv_header_mpg123_h" = "yes"
+if test "x$with_mpg123" != "xno"
 then
-    AC_CHECK_LIB(mpg123,mpg123_feed,[AC_SUBST(LIBMPG123,"-lmpg123")])
+    WINE_PACKAGE_FLAGS(MPG123,[libmpg123],[-lmpg123],,,
+        [AC_CHECK_HEADERS([mpg123.h])
+        if test "$ac_cv_header_mpg123_h" = "yes"
+        then
+            AC_CHECK_LIB(mpg123,mpg123_feed,[:],[MPG123_LIBS=""],[$MPG123_LIBS])
+        else
+            MPG123_CFLAGS=""
+            MPG123_LIBS=""
+        fi])
 fi
 WINE_NOTICE_WITH(mpg123,[test "x$ac_cv_lib_mpg123_mpg123_feed" != xyes -a x"$ac_cv_header_CoreAudio_CoreAudio_h" != xyes],
                  [libmpg123 ${notice_platform}development files not found (or too old), mp3 codec won't be supported.])
