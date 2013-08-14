@@ -422,7 +422,7 @@ static inline BOOL is_hierarchical_uri(const WCHAR **ptr, const parse_data *data
     else if(is_hierarchical_scheme(data->scheme_type) && (*ptr)[0] == '\\' && (*ptr)[1] == '\\') {
         *ptr += 2;
         return TRUE;
-    } else if(check_hierarchical(ptr))
+    } else if(data->scheme_type != URL_SCHEME_MAILTO && check_hierarchical(ptr))
         return TRUE;
 
     *ptr = start;
@@ -891,7 +891,7 @@ static BOOL ipv6_to_number(const ipv6_address *address, USHORT number[8]) {
                 /* Means we just passed the elision and need to add its values to
                  * 'number' before we do anything else.
                  */
-                DWORD j = 0;
+                INT j;
                 for(j = 0; j < address->elision_size; j+=2)
                     number[cur_component++] = 0;
 
@@ -904,7 +904,8 @@ static BOOL ipv6_to_number(const ipv6_address *address, USHORT number[8]) {
 
     /* Case when the elision appears after the h16 components. */
     if(!already_passed_elision && address->elision) {
-        for(i = 0; i < address->elision_size; i+=2)
+        INT j;
+        for(j = 0; j < address->elision_size; j+=2)
             number[cur_component++] = 0;
     }
 
@@ -1916,8 +1917,15 @@ static BOOL parse_path_hierarchical(const WCHAR **ptr, parse_data *data, DWORD f
 static BOOL parse_path_opaque(const WCHAR **ptr, parse_data *data, DWORD flags) {
     const BOOL known_scheme = data->scheme_type != URL_SCHEME_UNKNOWN;
     const BOOL is_file = data->scheme_type == URL_SCHEME_FILE;
+    const BOOL is_mailto = data->scheme_type == URL_SCHEME_MAILTO;
 
-    data->path = *ptr;
+    if (is_mailto && (*ptr)[0] == '/' && (*ptr)[1] == '/')
+    {
+        if ((*ptr)[2]) data->path = *ptr + 2;
+        else data->path = NULL;
+    }
+    else
+        data->path = *ptr;
 
     while(!is_path_delim(**ptr)) {
         if(**ptr == '%' && known_scheme) {
@@ -1937,7 +1945,7 @@ static BOOL parse_path_opaque(const WCHAR **ptr, parse_data *data, DWORD flags) 
         ++(*ptr);
     }
 
-    data->path_len = *ptr - data->path;
+    if (data->path) data->path_len = *ptr - data->path;
     TRACE("(%p %p %x): Parsed opaque URI path %s len=%d\n", ptr, data, flags,
         debugstr_wn(data->path, data->path_len), data->path_len);
     return TRUE;
@@ -6460,7 +6468,7 @@ static HRESULT combine_uri(Uri *base, Uri *relative, DWORD flags, IUri **result,
             return E_OUTOFMEMORY;
         }
 
-        parse_uri(&data, 0);
+        parse_uri(&data, Uri_CREATE_ALLOW_IMPLICIT_FILE_SCHEME);
 
         hr = Uri_Construct(NULL, (void**)&ret);
         if(FAILED(hr)) {
@@ -6799,7 +6807,7 @@ HRESULT WINAPI CoInternetCombineUrlEx(IUri *pBaseUri, LPCWSTR pwzRelativeUrl, DW
         }
     }
 
-    hr = CreateUri(pwzRelativeUrl, Uri_CREATE_ALLOW_RELATIVE, 0, &relative);
+    hr = CreateUri(pwzRelativeUrl, Uri_CREATE_ALLOW_RELATIVE|Uri_CREATE_ALLOW_IMPLICIT_FILE_SCHEME, 0, &relative);
     if(FAILED(hr)) {
         *ppCombinedUri = NULL;
         return hr;

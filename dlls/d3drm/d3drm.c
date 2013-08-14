@@ -137,56 +137,47 @@ static HRESULT WINAPI IDirect3DRMImpl_CreateObject(IDirect3DRM* iface, REFCLSID 
     return E_NOTIMPL;
 }
 
-static HRESULT WINAPI IDirect3DRMImpl_CreateFrame(IDirect3DRM* iface, LPDIRECT3DRMFRAME parent_frame, LPDIRECT3DRMFRAME * frame)
+static HRESULT WINAPI IDirect3DRMImpl_CreateFrame(IDirect3DRM *iface,
+        IDirect3DRMFrame *parent_frame, IDirect3DRMFrame **frame)
 {
-    IDirect3DRMImpl *This = impl_from_IDirect3DRM(iface);
+    TRACE("iface %p, parent_frame %p, frame %p.\n", iface, parent_frame, frame);
 
-    TRACE("(%p/%p)->(%p,%p)\n", iface, This, parent_frame, frame);
-
-    return Direct3DRMFrame_create(&IID_IDirect3DRMFrame, (IUnknown*)parent_frame, (IUnknown**)frame);
+    return Direct3DRMFrame_create(&IID_IDirect3DRMFrame, (IUnknown *)parent_frame, (IUnknown **)frame);
 }
 
-static HRESULT WINAPI IDirect3DRMImpl_CreateMesh(IDirect3DRM* iface, LPDIRECT3DRMMESH * ppMesh)
+static HRESULT WINAPI IDirect3DRMImpl_CreateMesh(IDirect3DRM *iface, IDirect3DRMMesh **mesh)
 {
-    IDirect3DRMImpl *This = impl_from_IDirect3DRM(iface);
+    IDirect3DRMImpl *d3drm = impl_from_IDirect3DRM(iface);
 
-    TRACE("(%p/%p)->(%p)\n", iface, This, ppMesh);
+    TRACE("iface %p, mesh %p.\n", iface, mesh);
 
-    return IDirect3DRM3_CreateMesh(&This->IDirect3DRM3_iface, ppMesh);
+    return IDirect3DRM3_CreateMesh(&d3drm->IDirect3DRM3_iface, mesh);
 }
 
-static HRESULT WINAPI IDirect3DRMImpl_CreateMeshBuilder(IDirect3DRM* iface, LPDIRECT3DRMMESHBUILDER * ppMeshBuilder)
+static HRESULT WINAPI IDirect3DRMImpl_CreateMeshBuilder(IDirect3DRM *iface, IDirect3DRMMeshBuilder **mesh_builder)
 {
-    IDirect3DRMImpl *This = impl_from_IDirect3DRM(iface);
+    TRACE("iface %p, mesh_builder %p.\n", iface, mesh_builder);
 
-    TRACE("(%p/%p)->(%p)\n", iface, This, ppMeshBuilder);
-
-    return Direct3DRMMeshBuilder_create(&IID_IDirect3DRMMeshBuilder, (IUnknown**)ppMeshBuilder);
+    return Direct3DRMMeshBuilder_create(&IID_IDirect3DRMMeshBuilder, (IUnknown **)mesh_builder);
 }
 
-static HRESULT WINAPI IDirect3DRMImpl_CreateFace(IDirect3DRM* iface, LPDIRECT3DRMFACE * ppFace)
+static HRESULT WINAPI IDirect3DRMImpl_CreateFace(IDirect3DRM* iface, IDirect3DRMFace **face)
 {
-    IDirect3DRMImpl *This = impl_from_IDirect3DRM(iface);
+    TRACE("iface %p, face %p.\n", iface, face);
 
-    FIXME("(%p/%p)->(%p): stub\n", iface, This, ppFace);
+    return Direct3DRMFace_create(&IID_IDirect3DRMFace, (IUnknown **)face);
+}
+
+static HRESULT WINAPI IDirect3DRMImpl_CreateAnimation(IDirect3DRM *iface, IDirect3DRMAnimation **animation)
+{
+    FIXME("iface %p, animation %p stub!\n", iface, animation);
 
     return E_NOTIMPL;
 }
 
-static HRESULT WINAPI IDirect3DRMImpl_CreateAnimation(IDirect3DRM* iface, LPDIRECT3DRMANIMATION * ppAnimation)
+static HRESULT WINAPI IDirect3DRMImpl_CreateAnimationSet(IDirect3DRM *iface, IDirect3DRMAnimationSet **set)
 {
-    IDirect3DRMImpl *This = impl_from_IDirect3DRM(iface);
-
-    FIXME("(%p/%p)->(%p): stub\n", iface, This, ppAnimation);
-
-    return E_NOTIMPL;
-}
-
-static HRESULT WINAPI IDirect3DRMImpl_CreateAnimationSet(IDirect3DRM* iface, LPDIRECT3DRMANIMATIONSET * ppAnimationSet)
-{
-    IDirect3DRMImpl *This = impl_from_IDirect3DRM(iface);
-
-    FIXME("(%p/%p)->(%p): stub\n", iface, This, ppAnimationSet);
+    FIXME("iface %p, set %p stub!\n", iface, set);
 
     return E_NOTIMPL;
 }
@@ -201,43 +192,43 @@ static HRESULT WINAPI IDirect3DRMImpl_CreateTexture(IDirect3DRM *iface,
     return Direct3DRMTexture_create(&IID_IDirect3DRMTexture, (IUnknown **)texture);
 }
 
-static HRESULT WINAPI IDirect3DRMImpl_CreateLight(IDirect3DRM* iface, D3DRMLIGHTTYPE type,
-                                                    D3DCOLOR color, LPDIRECT3DRMLIGHT* Light)
+static HRESULT WINAPI IDirect3DRMImpl_CreateLight(IDirect3DRM *iface,
+        D3DRMLIGHTTYPE type, D3DCOLOR color, IDirect3DRMLight **light)
 {
-    IDirect3DRMImpl *This = impl_from_IDirect3DRM(iface);
+    IDirect3DRMImpl *d3drm = impl_from_IDirect3DRM(iface);
 
-    TRACE("(%p/%p)->(%d,%d,%p)\n", iface, This, type, color, Light);
+    TRACE("iface %p, type %#x, color 0x%08x, light %p.\n", iface, type, color, light);
 
-    return IDirect3DRM3_CreateLight(&This->IDirect3DRM3_iface, type, color, Light);
+    return IDirect3DRM3_CreateLight(&d3drm->IDirect3DRM3_iface, type, color, light);
 }
 
-static HRESULT WINAPI IDirect3DRMImpl_CreateLightRGB(IDirect3DRM* iface, D3DRMLIGHTTYPE type,
-                                                       D3DVALUE red, D3DVALUE green, D3DVALUE blue,
-                                                       LPDIRECT3DRMLIGHT* Light)
+static HRESULT WINAPI IDirect3DRMImpl_CreateLightRGB(IDirect3DRM *iface, D3DRMLIGHTTYPE type,
+        D3DVALUE red, D3DVALUE green, D3DVALUE blue, IDirect3DRMLight **light)
 {
-    IDirect3DRMImpl *This = impl_from_IDirect3DRM(iface);
+    IDirect3DRMImpl *d3drm = impl_from_IDirect3DRM(iface);
 
-    TRACE("(%p/%p)->(%d,%f,%f,%f,%p)\n", iface, This, type, red, green, blue, Light);
+    TRACE("iface %p, type %#x, red %.8e, green %.8e, blue %.8e, light %p.\n",
+            iface, type, red, green, blue, light);
 
-    return IDirect3DRM3_CreateLightRGB(&This->IDirect3DRM3_iface, type, red, green, blue, Light);
+    return IDirect3DRM3_CreateLightRGB(&d3drm->IDirect3DRM3_iface, type, red, green, blue, light);
 }
 
-static HRESULT WINAPI IDirect3DRMImpl_CreateMaterial(IDirect3DRM* iface, D3DVALUE power, LPDIRECT3DRMMATERIAL * material)
+static HRESULT WINAPI IDirect3DRMImpl_CreateMaterial(IDirect3DRM *iface,
+        D3DVALUE power, IDirect3DRMMaterial **material)
 {
-    IDirect3DRMImpl *This = impl_from_IDirect3DRM(iface);
+    IDirect3DRMImpl *d3drm = impl_from_IDirect3DRM(iface);
 
-    TRACE("(%p/%p)->(%f,%p)\n", iface, This, power, material);
+    TRACE("iface %p, power %.8e, material %p.\n", iface, power, material);
 
-    return IDirect3DRM3_CreateMaterial(&This->IDirect3DRM3_iface, power, (LPDIRECT3DRMMATERIAL2*)material);
+    return IDirect3DRM3_CreateMaterial(&d3drm->IDirect3DRM3_iface, power, (IDirect3DRMMaterial2 **)material);
 }
 
-static HRESULT WINAPI IDirect3DRMImpl_CreateDevice(IDirect3DRM* iface, DWORD width, DWORD height, LPDIRECT3DRMDEVICE * ppDevice)
+static HRESULT WINAPI IDirect3DRMImpl_CreateDevice(IDirect3DRM *iface,
+        DWORD width, DWORD height, IDirect3DRMDevice **device)
 {
-    IDirect3DRMImpl *This = impl_from_IDirect3DRM(iface);
+    FIXME("iface %p, width %u, height %u, device %p partial stub!\n", iface, width, height, device);
 
-    FIXME("(%p/%p)->(%u,%u,%p): partial stub\n", iface, This, width, height, ppDevice);
-
-    return Direct3DRMDevice_create(&IID_IDirect3DRMDevice, (IUnknown**)ppDevice);
+    return Direct3DRMDevice_create(&IID_IDirect3DRMDevice, (IUnknown **)device);
 }
 
 static HRESULT WINAPI IDirect3DRMImpl_CreateDeviceFromSurface(IDirect3DRM *iface, GUID *pGUID,
@@ -283,59 +274,59 @@ static HRESULT WINAPI IDirect3DRMImpl_CreateTextureFromSurface(IDirect3DRM *ifac
     return E_NOTIMPL;
 }
 
-static HRESULT WINAPI IDirect3DRMImpl_CreateShadow(IDirect3DRM* iface, LPDIRECT3DRMVISUAL pVisual, LPDIRECT3DRMLIGHT pLight, D3DVALUE px, D3DVALUE py, D3DVALUE pz, D3DVALUE nx, D3DVALUE ny, D3DVALUE nz, LPDIRECT3DRMVISUAL * ppVisual)
+static HRESULT WINAPI IDirect3DRMImpl_CreateShadow(IDirect3DRM *iface, IDirect3DRMVisual *visual,
+        IDirect3DRMLight *light, D3DVALUE px, D3DVALUE py, D3DVALUE pz, D3DVALUE nx, D3DVALUE ny, D3DVALUE nz,
+        IDirect3DRMVisual **shadow)
 {
-    IDirect3DRMImpl *This = impl_from_IDirect3DRM(iface);
-
-    FIXME("(%p/%p)->(%p,%p,%f,%f,%f,%f,%f,%f,%p): stub\n", iface, This, pVisual, pLight, px, py, pz, nx, ny, nz, ppVisual);
+    FIXME("iface %p, visual %p, light %p, px %.8e, py %.8e, pz %.8e, nx %.8e, ny %.8e, nz %.8e, shadow %p stub!\n",
+            iface, visual, light, px, py, pz, nx, ny, nz, shadow);
 
     return E_NOTIMPL;
 }
 
-static HRESULT WINAPI IDirect3DRMImpl_CreateViewport(IDirect3DRM* iface, LPDIRECT3DRMDEVICE pDevice, LPDIRECT3DRMFRAME pFrame, DWORD xpos, DWORD ypos, DWORD width, DWORD height, LPDIRECT3DRMVIEWPORT * ppViewport)
+static HRESULT WINAPI IDirect3DRMImpl_CreateViewport(IDirect3DRM *iface, IDirect3DRMDevice *device,
+        IDirect3DRMFrame *camera, DWORD x, DWORD y, DWORD width, DWORD height, IDirect3DRMViewport **viewport)
 {
-    IDirect3DRMImpl *This = impl_from_IDirect3DRM(iface);
+    FIXME("iface %p, device %p, camera %p, x %u, y %u, width %u, height %u, viewport %p partial stub!\n",
+            iface, device, camera, x, y, width, height, viewport);
 
-    FIXME("(%p/%p)->(%p,%p,%d,%d,%d,%d,%p): partial stub\n", iface, This, pDevice, pFrame,
-          xpos, ypos, width, height, ppViewport);
-
-    return Direct3DRMViewport_create(&IID_IDirect3DRMViewport, (IUnknown**)ppViewport);
+    return Direct3DRMViewport_create(&IID_IDirect3DRMViewport, (IUnknown **)viewport);
 }
 
-static HRESULT WINAPI IDirect3DRMImpl_CreateWrap(IDirect3DRM* iface, D3DRMWRAPTYPE type, LPDIRECT3DRMFRAME pFrame, D3DVALUE ox, D3DVALUE oy, D3DVALUE oz, D3DVALUE dx, D3DVALUE dy, D3DVALUE dz, D3DVALUE ux, D3DVALUE uy, D3DVALUE uz, D3DVALUE ou, D3DVALUE ov, D3DVALUE su, D3DVALUE sv, LPDIRECT3DRMWRAP * ppWrap)
+static HRESULT WINAPI IDirect3DRMImpl_CreateWrap(IDirect3DRM *iface, D3DRMWRAPTYPE type, IDirect3DRMFrame *frame,
+        D3DVALUE ox, D3DVALUE oy, D3DVALUE oz, D3DVALUE dx, D3DVALUE dy, D3DVALUE dz,
+        D3DVALUE ux, D3DVALUE uy, D3DVALUE uz, D3DVALUE ou, D3DVALUE ov, D3DVALUE su, D3DVALUE sv,
+        IDirect3DRMWrap **wrap)
 {
-    IDirect3DRMImpl *This = impl_from_IDirect3DRM(iface);
-
-    FIXME("(%p/%p)->(%d,%p,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%p): stub\n", iface, This, type, pFrame, ox, oy, oz, dx, dy, dz, ux, uy, uz, ou, ov, su, sv, ppWrap);
+    FIXME("iface %p, type %#x, frame %p, ox %.8e, oy %.8e, oz %.8e, dx %.8e, dy %.8e, dz %.8e, "
+            "ux %.8e, uy %.8e, uz %.8e, ou %.8e, ov %.8e, su %.8e, sv %.8e, wrap %p stub!\n",
+            iface, type, frame, ox, oy, oz, dx, dy, dz, ux, uy, uz, ou, ov, su, sv, wrap);
 
     return E_NOTIMPL;
 }
 
-static HRESULT WINAPI IDirect3DRMImpl_CreateUserVisual(IDirect3DRM* iface, D3DRMUSERVISUALCALLBACK cb, LPVOID pArg, LPDIRECT3DRMUSERVISUAL * ppUserVisual)
+static HRESULT WINAPI IDirect3DRMImpl_CreateUserVisual(IDirect3DRM *iface,
+        D3DRMUSERVISUALCALLBACK cb, void *ctx, IDirect3DRMUserVisual **visual)
 {
-    IDirect3DRMImpl *This = impl_from_IDirect3DRM(iface);
-
-    FIXME("(%p/%p)->(%p,%p,%p): stub\n", iface, This, cb, pArg, ppUserVisual);
+    FIXME("iface %p, cb %p, ctx %p visual %p stub!\n", iface, cb, ctx, visual);
 
     return E_NOTIMPL;
 }
 
-static HRESULT WINAPI IDirect3DRMImpl_LoadTexture(IDirect3DRM* iface, const char * filename, LPDIRECT3DRMTEXTURE * ppTexture)
+static HRESULT WINAPI IDirect3DRMImpl_LoadTexture(IDirect3DRM *iface,
+        const char *filename, IDirect3DRMTexture **texture)
 {
-    IDirect3DRMImpl *This = impl_from_IDirect3DRM(iface);
+    FIXME("iface %p, filename %s, texture %p stub!\n", iface, debugstr_a(filename), texture);
 
-    FIXME("(%p/%p)->(%s,%p): stub\n", iface, This, filename, ppTexture);
-
-    return E_NOTIMPL;
+    return Direct3DRMTexture_create(&IID_IDirect3DRMTexture, (IUnknown **)texture);
 }
 
-static HRESULT WINAPI IDirect3DRMImpl_LoadTextureFromResource(IDirect3DRM* iface, HRSRC rs, LPDIRECT3DRMTEXTURE * ppTexture)
+static HRESULT WINAPI IDirect3DRMImpl_LoadTextureFromResource(IDirect3DRM *iface,
+        HRSRC resource, IDirect3DRMTexture **texture)
 {
-    IDirect3DRMImpl *This = impl_from_IDirect3DRM(iface);
+    FIXME("iface %p, resource %p, texture %p stub!\n", iface, resource, texture);
 
-    FIXME("(%p/%p)->(%p,%p): stub\n", iface, This, rs, ppTexture);
-
-    return E_NOTIMPL;
+    return Direct3DRMTexture_create(&IID_IDirect3DRMTexture, (IUnknown **)texture);
 }
 
 static HRESULT WINAPI IDirect3DRMImpl_SetSearchPath(IDirect3DRM* iface, LPCSTR path)
@@ -383,20 +374,17 @@ static HRESULT WINAPI IDirect3DRMImpl_SetDefaultTextureShades(IDirect3DRM* iface
     return E_NOTIMPL;
 }
 
-static HRESULT WINAPI IDirect3DRMImpl_GetDevices(IDirect3DRM* iface, LPDIRECT3DRMDEVICEARRAY * ppDeviceArray)
+static HRESULT WINAPI IDirect3DRMImpl_GetDevices(IDirect3DRM *iface, IDirect3DRMDeviceArray **array)
 {
-    IDirect3DRMImpl *This = impl_from_IDirect3DRM(iface);
-
-    FIXME("(%p/%p)->(%p): stub\n", iface, This, ppDeviceArray);
+    FIXME("iface %p, array %p stub!\n", iface, array);
 
     return E_NOTIMPL;
 }
 
-static HRESULT WINAPI IDirect3DRMImpl_GetNamedObject(IDirect3DRM* iface, const char * pName, LPDIRECT3DRMOBJECT * ppObject)
+static HRESULT WINAPI IDirect3DRMImpl_GetNamedObject(IDirect3DRM *iface,
+        const char *name, IDirect3DRMObject **object)
 {
-    IDirect3DRMImpl *This = impl_from_IDirect3DRM(iface);
-
-    FIXME("(%p/%p)->(%s,%p): stub\n", iface, This, pName, ppObject);
+    FIXME("iface %p, name %s, object %p stub!\n", iface, debugstr_a(name), object);
 
     return E_NOTIMPL;
 }
@@ -410,20 +398,26 @@ static HRESULT WINAPI IDirect3DRMImpl_EnumerateObjects(IDirect3DRM* iface, D3DRM
     return E_NOTIMPL;
 }
 
-static HRESULT WINAPI IDirect3DRMImpl_Load(IDirect3DRM* iface, LPVOID pObjSource, LPVOID pObjID, LPIID * ppGUIDs, DWORD nb_GUIDs, D3DRMLOADOPTIONS LOFlags, D3DRMLOADCALLBACK LoadProc, LPVOID pArgLP, D3DRMLOADTEXTURECALLBACK LoadTextureProc, LPVOID pArgLTP, LPDIRECT3DRMFRAME pParentFrame)
+static HRESULT WINAPI IDirect3DRMImpl_Load(IDirect3DRM *iface, void *source, void *object_id, IID **iids,
+        DWORD iid_count, D3DRMLOADOPTIONS flags, D3DRMLOADCALLBACK load_cb, void *load_ctx,
+        D3DRMLOADTEXTURECALLBACK load_tex_cb, void *load_tex_ctx, IDirect3DRMFrame *parent_frame)
 {
-    IDirect3DRMImpl *This = impl_from_IDirect3DRM(iface);
-    LPDIRECT3DRMFRAME3 pParentFrame3 = NULL;
+    IDirect3DRMImpl *d3drm = impl_from_IDirect3DRM(iface);
+    IDirect3DRMFrame3 *parent_frame3 = NULL;
     HRESULT hr = D3DRM_OK;
 
-    TRACE("(%p/%p)->(%p,%p,%p,%d,%d,%p,%p,%p,%p,%p)\n", iface, This, pObjSource, pObjID, ppGUIDs, nb_GUIDs, LOFlags, LoadProc, pArgLP, LoadTextureProc, pArgLTP, pParentFrame);
+    TRACE("iface %p, source %p, object_id %p, iids %p, iid_count %u, flags %#x, "
+            "load_cb %p, load_ctx %p, load_tex_cb %p, load_tex_ctx %p, parent_frame %p.\n",
+            iface, source, object_id, iids, iid_count, flags,
+            load_cb, load_ctx, load_tex_cb, load_tex_ctx, parent_frame);
 
-    if (pParentFrame)
-        hr = IDirect3DRMFrame_QueryInterface(pParentFrame, &IID_IDirect3DRMFrame3, (void**)&pParentFrame3);
+    if (parent_frame)
+        hr = IDirect3DRMFrame_QueryInterface(parent_frame, &IID_IDirect3DRMFrame3, (void **)&parent_frame3);
     if (SUCCEEDED(hr))
-        hr = IDirect3DRM3_Load(&This->IDirect3DRM3_iface, pObjSource, pObjID, ppGUIDs, nb_GUIDs, LOFlags, LoadProc, pArgLP, LoadTextureProc, pArgLTP, pParentFrame3);
-    if (pParentFrame3)
-        IDirect3DRMFrame3_Release(pParentFrame3);
+        hr = IDirect3DRM3_Load(&d3drm->IDirect3DRM3_iface, source, object_id, iids, iid_count,
+                flags, load_cb, load_ctx, load_tex_cb, load_tex_ctx, parent_frame3);
+    if (parent_frame3)
+        IDirect3DRMFrame3_Release(parent_frame3);
 
     return hr;
 }
@@ -510,8 +504,8 @@ static HRESULT WINAPI IDirect3DRM2Impl_CreateObject(IDirect3DRM2* iface, REFCLSI
     return E_NOTIMPL;
 }
 
-static HRESULT WINAPI IDirect3DRM2Impl_CreateFrame(IDirect3DRM2* iface, LPDIRECT3DRMFRAME parent_frame,
-                                                   LPDIRECT3DRMFRAME2 * frame)
+static HRESULT WINAPI IDirect3DRM2Impl_CreateFrame(IDirect3DRM2 *iface,
+        IDirect3DRMFrame *parent_frame, IDirect3DRMFrame2 **frame)
 {
     IDirect3DRMImpl *This = impl_from_IDirect3DRM2(iface);
 
@@ -520,50 +514,39 @@ static HRESULT WINAPI IDirect3DRM2Impl_CreateFrame(IDirect3DRM2* iface, LPDIRECT
     return Direct3DRMFrame_create(&IID_IDirect3DRMFrame2, (IUnknown*)parent_frame, (IUnknown**)frame);
 }
 
-static HRESULT WINAPI IDirect3DRM2Impl_CreateMesh(IDirect3DRM2* iface, LPDIRECT3DRMMESH * ppMesh)
+static HRESULT WINAPI IDirect3DRM2Impl_CreateMesh(IDirect3DRM2 *iface, IDirect3DRMMesh **mesh)
 {
-    IDirect3DRMImpl *This = impl_from_IDirect3DRM2(iface);
+    IDirect3DRMImpl *d3drm = impl_from_IDirect3DRM2(iface);
 
-    TRACE("(%p/%p)->(%p)\n", iface, This, ppMesh);
+    TRACE("iface %p, mesh %p.\n", iface, mesh);
 
-    return IDirect3DRM3_CreateMesh(&This->IDirect3DRM3_iface, ppMesh);
+    return IDirect3DRM3_CreateMesh(&d3drm->IDirect3DRM3_iface, mesh);
 }
 
-static HRESULT WINAPI IDirect3DRM2Impl_CreateMeshBuilder(IDirect3DRM2* iface,
-                                                         LPDIRECT3DRMMESHBUILDER2 * ppMeshBuilder)
+static HRESULT WINAPI IDirect3DRM2Impl_CreateMeshBuilder(IDirect3DRM2 *iface, IDirect3DRMMeshBuilder2 **mesh_builder)
 {
-    IDirect3DRMImpl *This = impl_from_IDirect3DRM2(iface);
+    TRACE("iface %p, mesh_builder %p.\n", iface, mesh_builder);
 
-    TRACE("(%p/%p)->(%p)\n", iface, This, ppMeshBuilder);
-
-    return Direct3DRMMeshBuilder_create(&IID_IDirect3DRMMeshBuilder2, (IUnknown**)ppMeshBuilder);
+    return Direct3DRMMeshBuilder_create(&IID_IDirect3DRMMeshBuilder2, (IUnknown **)mesh_builder);
 }
 
-static HRESULT WINAPI IDirect3DRM2Impl_CreateFace(IDirect3DRM2* iface, LPDIRECT3DRMFACE * ppFace)
+static HRESULT WINAPI IDirect3DRM2Impl_CreateFace(IDirect3DRM2 *iface, IDirect3DRMFace **face)
 {
-    IDirect3DRMImpl *This = impl_from_IDirect3DRM2(iface);
+    TRACE("iface %p, face %p.\n", iface, face);
 
-    FIXME("(%p/%p)->(%p): stub\n", iface, This, ppFace);
+    return Direct3DRMFace_create(&IID_IDirect3DRMFace, (IUnknown **)face);
+}
+
+static HRESULT WINAPI IDirect3DRM2Impl_CreateAnimation(IDirect3DRM2 *iface, IDirect3DRMAnimation **animation)
+{
+    FIXME("iface %p, animation %p stub!\n", iface, animation);
 
     return E_NOTIMPL;
 }
 
-static HRESULT WINAPI IDirect3DRM2Impl_CreateAnimation(IDirect3DRM2* iface,
-                                                       LPDIRECT3DRMANIMATION * ppAnimation)
+static HRESULT WINAPI IDirect3DRM2Impl_CreateAnimationSet(IDirect3DRM2 *iface, IDirect3DRMAnimationSet **set)
 {
-    IDirect3DRMImpl *This = impl_from_IDirect3DRM2(iface);
-
-    FIXME("(%p/%p)->(%p): stub\n", iface, This, ppAnimation);
-
-    return E_NOTIMPL;
-}
-
-static HRESULT WINAPI IDirect3DRM2Impl_CreateAnimationSet(IDirect3DRM2* iface,
-                                                          LPDIRECT3DRMANIMATIONSET * ppAnimationSet)
-{
-    IDirect3DRMImpl *This = impl_from_IDirect3DRM2(iface);
-
-    FIXME("(%p/%p)->(%p): stub\n", iface, This, ppAnimationSet);
+    FIXME("iface %p, set %p stub!\n", iface, set);
 
     return E_NOTIMPL;
 }
@@ -578,45 +561,43 @@ static HRESULT WINAPI IDirect3DRM2Impl_CreateTexture(IDirect3DRM2 *iface,
     return Direct3DRMTexture_create(&IID_IDirect3DRMTexture2, (IUnknown **)texture);
 }
 
-static HRESULT WINAPI IDirect3DRM2Impl_CreateLight(IDirect3DRM2* iface, D3DRMLIGHTTYPE type,
-                                                     D3DCOLOR color, LPDIRECT3DRMLIGHT* Light)
+static HRESULT WINAPI IDirect3DRM2Impl_CreateLight(IDirect3DRM2 *iface,
+        D3DRMLIGHTTYPE type, D3DCOLOR color, IDirect3DRMLight **light)
 {
-    IDirect3DRMImpl *This = impl_from_IDirect3DRM2(iface);
+    IDirect3DRMImpl *d3drm = impl_from_IDirect3DRM2(iface);
 
-    TRACE("(%p/%p)->(%d,%d,%p)\n", iface, This, type, color, Light);
+    TRACE("iface %p, type %#x, color 0x%08x, light %p.\n", iface, type, color, light);
 
-    return IDirect3DRM3_CreateLight(&This->IDirect3DRM3_iface, type, color, Light);
+    return IDirect3DRM3_CreateLight(&d3drm->IDirect3DRM3_iface, type, color, light);
 }
 
-static HRESULT WINAPI IDirect3DRM2Impl_CreateLightRGB(IDirect3DRM2* iface, D3DRMLIGHTTYPE type,
-                                                        D3DVALUE red, D3DVALUE green, D3DVALUE blue,
-                                                        LPDIRECT3DRMLIGHT* Light)
+static HRESULT WINAPI IDirect3DRM2Impl_CreateLightRGB(IDirect3DRM2 *iface, D3DRMLIGHTTYPE type,
+        D3DVALUE red, D3DVALUE green, D3DVALUE blue, IDirect3DRMLight **light)
 {
-    IDirect3DRMImpl *This = impl_from_IDirect3DRM2(iface);
+    IDirect3DRMImpl *d3drm = impl_from_IDirect3DRM2(iface);
 
-    TRACE("(%p/%p)->(%d,%f,%f,%f,%p)\n", iface, This, type, red, green, blue, Light);
+    TRACE("iface %p, type %#x, red %.8e, green %.8e, blue %.8e, light %p.\n",
+            iface, type, red, green, blue, light);
 
-    return IDirect3DRM3_CreateLightRGB(&This->IDirect3DRM3_iface, type, red, green, blue, Light);
+    return IDirect3DRM3_CreateLightRGB(&d3drm->IDirect3DRM3_iface, type, red, green, blue, light);
 }
 
-static HRESULT WINAPI IDirect3DRM2Impl_CreateMaterial(IDirect3DRM2* iface, D3DVALUE power,
-                                                      LPDIRECT3DRMMATERIAL * material)
+static HRESULT WINAPI IDirect3DRM2Impl_CreateMaterial(IDirect3DRM2 *iface,
+        D3DVALUE power, IDirect3DRMMaterial **material)
 {
-    IDirect3DRMImpl *This = impl_from_IDirect3DRM2(iface);
+    IDirect3DRMImpl *d3drm = impl_from_IDirect3DRM2(iface);
 
-    TRACE("(%p/%p)->(%f,%p)\n", iface, This, power, material);
+    TRACE("iface %p, power %.8e, material %p.\n", iface, power, material);
 
-    return IDirect3DRM3_CreateMaterial(&This->IDirect3DRM3_iface, power, (LPDIRECT3DRMMATERIAL2*)material);
+    return IDirect3DRM3_CreateMaterial(&d3drm->IDirect3DRM3_iface, power, (IDirect3DRMMaterial2 **)material);
 }
 
-static HRESULT WINAPI IDirect3DRM2Impl_CreateDevice(IDirect3DRM2* iface, DWORD width, DWORD height,
-                                                    LPDIRECT3DRMDEVICE2 * ppDevice)
+static HRESULT WINAPI IDirect3DRM2Impl_CreateDevice(IDirect3DRM2 *iface,
+        DWORD width, DWORD height, IDirect3DRMDevice2 **device)
 {
-    IDirect3DRMImpl *This = impl_from_IDirect3DRM2(iface);
+    FIXME("iface %p, width %u, height %u, device %p.\n", iface, width, height, device);
 
-    FIXME("(%p/%p)->(%u,%u,%p): partial stub\n", iface, This, width, height, ppDevice);
-
-    return Direct3DRMDevice_create(&IID_IDirect3DRMDevice2, (IUnknown**)ppDevice);
+    return Direct3DRMDevice_create(&IID_IDirect3DRMDevice2, (IUnknown **)device);
 }
 
 static HRESULT WINAPI IDirect3DRM2Impl_CreateDeviceFromSurface(IDirect3DRM2 *iface, GUID *pGUID,
@@ -662,81 +643,60 @@ static HRESULT WINAPI IDirect3DRM2Impl_CreateTextureFromSurface(IDirect3DRM2 *if
     return E_NOTIMPL;
 }
 
-static HRESULT WINAPI IDirect3DRM2Impl_CreateShadow(IDirect3DRM2* iface, LPDIRECT3DRMVISUAL pVisual,
-                                                    LPDIRECT3DRMLIGHT pLight,
-                                                    D3DVALUE px, D3DVALUE py, D3DVALUE pz,
-                                                    D3DVALUE nx, D3DVALUE ny, D3DVALUE nz,
-                                                    LPDIRECT3DRMVISUAL * ppVisual)
+static HRESULT WINAPI IDirect3DRM2Impl_CreateShadow(IDirect3DRM2 *iface, IDirect3DRMVisual *visual,
+        IDirect3DRMLight *light, D3DVALUE px, D3DVALUE py, D3DVALUE pz, D3DVALUE nx, D3DVALUE ny, D3DVALUE nz,
+        IDirect3DRMVisual **shadow)
 {
-    IDirect3DRMImpl *This = impl_from_IDirect3DRM2(iface);
-
-    FIXME("(%p/%p)->(%p,%p,%f,%f,%f,%f,%f,%f,%p): stub\n", iface, This, pVisual, pLight, px, py, pz,
-                                                           nx, ny, nz, ppVisual);
+    FIXME("iface %p, visual %p, light %p, px %.8e, py %.8e, pz %.8e, nx %.8e, ny %.8e, nz %.8e, shadow %p stub!\n",
+            iface, visual, light, px, py, pz, nx, ny, nz, shadow);
 
     return E_NOTIMPL;
 }
 
-static HRESULT WINAPI IDirect3DRM2Impl_CreateViewport(IDirect3DRM2* iface,
-                                                      LPDIRECT3DRMDEVICE pDevice,
-                                                      LPDIRECT3DRMFRAME pFrame,
-                                                      DWORD xpos, DWORD ypos,
-                                                      DWORD width, DWORD height,
-                                                      LPDIRECT3DRMVIEWPORT * ppViewport)
+static HRESULT WINAPI IDirect3DRM2Impl_CreateViewport(IDirect3DRM2 *iface, IDirect3DRMDevice *device,
+        IDirect3DRMFrame *camera, DWORD x, DWORD y, DWORD width, DWORD height, IDirect3DRMViewport **viewport)
 {
-    IDirect3DRMImpl *This = impl_from_IDirect3DRM2(iface);
+    FIXME("iface %p, device %p, camera %p, x %u, y %u, width %u, height %u, viewport %p partial stub!\n",
+            iface, device, camera, x, y, width, height, viewport);
 
-    FIXME("(%p/%p)->(%p,%p,%d,%d,%d,%d,%p): partial stub\n", iface, This, pDevice, pFrame,
-          xpos, ypos, width, height, ppViewport);
-
-    return Direct3DRMViewport_create(&IID_IDirect3DRMViewport, (IUnknown**)ppViewport);
+    return Direct3DRMViewport_create(&IID_IDirect3DRMViewport, (IUnknown **)viewport);
 }
 
-static HRESULT WINAPI IDirect3DRM2Impl_CreateWrap(IDirect3DRM2* iface, D3DRMWRAPTYPE type,
-                                                  LPDIRECT3DRMFRAME pFrame,
-                                                  D3DVALUE ox, D3DVALUE oy, D3DVALUE oz,
-                                                  D3DVALUE dx, D3DVALUE dy, D3DVALUE dz,
-                                                  D3DVALUE ux, D3DVALUE uy, D3DVALUE uz,
-                                                  D3DVALUE ou, D3DVALUE ov, D3DVALUE su,
-                                                  D3DVALUE sv, LPDIRECT3DRMWRAP * ppWrap)
+static HRESULT WINAPI IDirect3DRM2Impl_CreateWrap(IDirect3DRM2 *iface, D3DRMWRAPTYPE type, IDirect3DRMFrame *frame,
+        D3DVALUE ox, D3DVALUE oy, D3DVALUE oz, D3DVALUE dx, D3DVALUE dy, D3DVALUE dz,
+        D3DVALUE ux, D3DVALUE uy, D3DVALUE uz, D3DVALUE ou, D3DVALUE ov, D3DVALUE su, D3DVALUE sv,
+        IDirect3DRMWrap **wrap)
 {
-    IDirect3DRMImpl *This = impl_from_IDirect3DRM2(iface);
-
-    FIXME("(%p/%p)->(%d,%p,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%p): stub\n", iface, This, type,
-          pFrame, ox, oy, oz, dx, dy, dz, ux, uy, uz, ou, ov, su, sv, ppWrap);
+    FIXME("iface %p, type %#x, frame %p, ox %.8e, oy %.8e, oz %.8e, dx %.8e, dy %.8e, dz %.8e, "
+            "ux %.8e, uy %.8e, uz %.8e, ou %.8e, ov %.8e, su %.8e, sv %.8e, wrap %p stub!\n",
+            iface, type, frame, ox, oy, oz, dx, dy, dz, ux, uy, uz, ou, ov, su, sv, wrap);
 
     return E_NOTIMPL;
 }
 
-static HRESULT WINAPI IDirect3DRM2Impl_CreateUserVisual(IDirect3DRM2* iface,
-                                                        D3DRMUSERVISUALCALLBACK cb, LPVOID pArg,
-                                                        LPDIRECT3DRMUSERVISUAL * ppUserVisual)
+static HRESULT WINAPI IDirect3DRM2Impl_CreateUserVisual(IDirect3DRM2 *iface,
+        D3DRMUSERVISUALCALLBACK cb, void *ctx, IDirect3DRMUserVisual **visual)
 {
-    IDirect3DRMImpl *This = impl_from_IDirect3DRM2(iface);
-
-    FIXME("(%p/%p)->(%p,%p,%p): stub\n", iface, This, cb, pArg, ppUserVisual);
+    FIXME("iface %p, cb %p, ctx %p, visual %p stub!\n", iface, cb, ctx, visual);
 
     return E_NOTIMPL;
 }
 
-static HRESULT WINAPI IDirect3DRM2Impl_LoadTexture(IDirect3DRM2* iface, const char * filename,
-                                                   LPDIRECT3DRMTEXTURE2 * ppTexture)
+static HRESULT WINAPI IDirect3DRM2Impl_LoadTexture(IDirect3DRM2 *iface,
+        const char *filename, IDirect3DRMTexture2 **texture)
 {
-    IDirect3DRMImpl *This = impl_from_IDirect3DRM2(iface);
+    FIXME("iface %p, filename %s, texture %p stub!\n", iface, debugstr_a(filename), texture);
 
-    FIXME("(%p/%p)->(%s,%p): stub\n", iface, This, filename, ppTexture);
-
-    return E_NOTIMPL;
+    return Direct3DRMTexture_create(&IID_IDirect3DRMTexture2, (IUnknown **)texture);
 }
 
-static HRESULT WINAPI IDirect3DRM2Impl_LoadTextureFromResource(IDirect3DRM2* iface, HMODULE hModule,
-                                                               LPCSTR strName, LPCSTR strType,
-                                                               LPDIRECT3DRMTEXTURE2 * ppTexture)
+static HRESULT WINAPI IDirect3DRM2Impl_LoadTextureFromResource(IDirect3DRM2 *iface, HMODULE module,
+        const char *resource_name, const char *resource_type, IDirect3DRMTexture2 **texture)
 {
-    IDirect3DRMImpl *This = impl_from_IDirect3DRM2(iface);
+    FIXME("iface %p, resource_name %s, resource_type %s, texture %p stub!\n",
+            iface, debugstr_a(resource_name), debugstr_a(resource_type), texture);
 
-    FIXME("(%p/%p)->(%p,%p,%p,%p): stub\n", iface, This, hModule, strName, strType, ppTexture);
-
-    return E_NOTIMPL;
+    return Direct3DRMTexture_create(&IID_IDirect3DRMTexture2, (IUnknown **)texture);
 }
 
 static HRESULT WINAPI IDirect3DRM2Impl_SetSearchPath(IDirect3DRM2* iface, LPCSTR path)
@@ -785,22 +745,17 @@ static HRESULT WINAPI IDirect3DRM2Impl_SetDefaultTextureShades(IDirect3DRM2* ifa
     return E_NOTIMPL;
 }
 
-static HRESULT WINAPI IDirect3DRM2Impl_GetDevices(IDirect3DRM2* iface,
-                                                  LPDIRECT3DRMDEVICEARRAY * ppDeviceArray)
+static HRESULT WINAPI IDirect3DRM2Impl_GetDevices(IDirect3DRM2 *iface, IDirect3DRMDeviceArray **array)
 {
-    IDirect3DRMImpl *This = impl_from_IDirect3DRM2(iface);
-
-    FIXME("(%p/%p)->(%p): stub\n", iface, This, ppDeviceArray);
+    FIXME("iface %p, array %p stub!\n", iface, array);
 
     return E_NOTIMPL;
 }
 
-static HRESULT WINAPI IDirect3DRM2Impl_GetNamedObject(IDirect3DRM2* iface, const char * pName,
-                                                      LPDIRECT3DRMOBJECT * ppObject)
+static HRESULT WINAPI IDirect3DRM2Impl_GetNamedObject(IDirect3DRM2 *iface,
+        const char *name, IDirect3DRMObject **object)
 {
-    IDirect3DRMImpl *This = impl_from_IDirect3DRM2(iface);
-
-    FIXME("(%p/%p)->(%s,%p): stub\n", iface, This, pName, ppObject);
+    FIXME("iface %p, name %s, object %p stub!\n", iface, debugstr_a(name), object);
 
     return E_NOTIMPL;
 }
@@ -815,25 +770,26 @@ static HRESULT WINAPI IDirect3DRM2Impl_EnumerateObjects(IDirect3DRM2* iface, D3D
     return E_NOTIMPL;
 }
 
-static HRESULT WINAPI IDirect3DRM2Impl_Load(IDirect3DRM2* iface, LPVOID pObjSource, LPVOID pObjID,
-                                            LPIID * ppGUIDs, DWORD nb_GUIDs,
-                                            D3DRMLOADOPTIONS LOFlags, D3DRMLOADCALLBACK LoadProc,
-                                            LPVOID pArgLP, D3DRMLOADTEXTURECALLBACK LoadTextureProc,
-                                            LPVOID pArgLTP, LPDIRECT3DRMFRAME pParentFrame)
+static HRESULT WINAPI IDirect3DRM2Impl_Load(IDirect3DRM2 *iface, void *source, void *object_id, IID **iids,
+        DWORD iid_count, D3DRMLOADOPTIONS flags, D3DRMLOADCALLBACK load_cb, void *load_ctx,
+        D3DRMLOADTEXTURECALLBACK load_tex_cb, void *load_tex_ctx, IDirect3DRMFrame *parent_frame)
 {
-    IDirect3DRMImpl *This = impl_from_IDirect3DRM2(iface);
-    LPDIRECT3DRMFRAME3 pParentFrame3 = NULL;
+    IDirect3DRMImpl *d3drm = impl_from_IDirect3DRM2(iface);
+    IDirect3DRMFrame3 *parent_frame3 = NULL;
     HRESULT hr = D3DRM_OK;
 
-    TRACE("(%p/%p)->(%p,%p,%p,%d,%d,%p,%p,%p,%p,%p)\n", iface, This, pObjSource, pObjID,
-          ppGUIDs, nb_GUIDs, LOFlags, LoadProc, pArgLP, LoadTextureProc, pArgLTP, pParentFrame);
+    TRACE("iface %p, source %p, object_id %p, iids %p, iid_count %u, flags %#x, "
+            "load_cb %p, load_ctx %p, load_tex_cb %p, load_tex_ctx %p, parent_frame %p.\n",
+            iface, source, object_id, iids, iid_count, flags,
+            load_cb, load_ctx, load_tex_cb, load_tex_ctx, parent_frame);
 
-    if (pParentFrame)
-        hr = IDirect3DRMFrame_QueryInterface(pParentFrame, &IID_IDirect3DRMFrame3, (void**)&pParentFrame3);
+    if (parent_frame)
+        hr = IDirect3DRMFrame_QueryInterface(parent_frame, &IID_IDirect3DRMFrame3, (void **)&parent_frame3);
     if (SUCCEEDED(hr))
-        hr = IDirect3DRM3_Load(&This->IDirect3DRM3_iface, pObjSource, pObjID, ppGUIDs, nb_GUIDs, LOFlags, LoadProc, pArgLP, LoadTextureProc, pArgLTP, pParentFrame3);
-    if (pParentFrame3)
-        IDirect3DRMFrame3_Release(pParentFrame3);
+        hr = IDirect3DRM3_Load(&d3drm->IDirect3DRM3_iface, source, object_id, iids, iid_count,
+                flags, load_cb, load_ctx, load_tex_cb, load_tex_ctx, parent_frame3);
+    if (parent_frame3)
+        IDirect3DRMFrame3_Release(parent_frame3);
 
     return hr;
 }
@@ -930,60 +886,45 @@ static HRESULT WINAPI IDirect3DRM3Impl_CreateObject(IDirect3DRM3* iface, REFCLSI
     return E_NOTIMPL;
 }
 
-static HRESULT WINAPI IDirect3DRM3Impl_CreateFrame(IDirect3DRM3* iface, LPDIRECT3DRMFRAME3 parent_frame,
-                                                   LPDIRECT3DRMFRAME3* frame)
+static HRESULT WINAPI IDirect3DRM3Impl_CreateFrame(IDirect3DRM3 *iface,
+        IDirect3DRMFrame3 *parent, IDirect3DRMFrame3 **frame)
 {
-    IDirect3DRMImpl *This = impl_from_IDirect3DRM3(iface);
+    TRACE("iface %p, parent %p, frame %p.\n", iface, parent, frame);
 
-    TRACE("(%p/%p)->(%p,%p)\n", iface, This, parent_frame, frame);
-
-    return Direct3DRMFrame_create(&IID_IDirect3DRMFrame3, (IUnknown*)parent_frame, (IUnknown**)frame);
+    return Direct3DRMFrame_create(&IID_IDirect3DRMFrame3, (IUnknown *)parent, (IUnknown **)frame);
 }
 
-static HRESULT WINAPI IDirect3DRM3Impl_CreateMesh(IDirect3DRM3* iface, LPDIRECT3DRMMESH* Mesh)
+static HRESULT WINAPI IDirect3DRM3Impl_CreateMesh(IDirect3DRM3 *iface, IDirect3DRMMesh **mesh)
 {
-    IDirect3DRMImpl *This = impl_from_IDirect3DRM3(iface);
+    TRACE("iface %p, mesh %p.\n", iface, mesh);
 
-    TRACE("(%p/%p)->(%p)\n", iface, This, Mesh);
-
-    return Direct3DRMMesh_create(Mesh);
+    return Direct3DRMMesh_create(mesh);
 }
 
-static HRESULT WINAPI IDirect3DRM3Impl_CreateMeshBuilder(IDirect3DRM3* iface,
-                                                         LPDIRECT3DRMMESHBUILDER3* ppMeshBuilder)
+static HRESULT WINAPI IDirect3DRM3Impl_CreateMeshBuilder(IDirect3DRM3 *iface, IDirect3DRMMeshBuilder3 **mesh_builder)
 {
-    IDirect3DRMImpl *This = impl_from_IDirect3DRM3(iface);
+    TRACE("iface %p, mesh_builder %p.\n", iface, mesh_builder);
 
-    TRACE("(%p/%p)->(%p)\n", iface, This, ppMeshBuilder);
-
-    return Direct3DRMMeshBuilder_create(&IID_IDirect3DRMMeshBuilder3, (IUnknown**)ppMeshBuilder);
+    return Direct3DRMMeshBuilder_create(&IID_IDirect3DRMMeshBuilder3, (IUnknown **)mesh_builder);
 }
 
-static HRESULT WINAPI IDirect3DRM3Impl_CreateFace(IDirect3DRM3* iface, LPDIRECT3DRMFACE2* Face)
+static HRESULT WINAPI IDirect3DRM3Impl_CreateFace(IDirect3DRM3 *iface, IDirect3DRMFace2 **face)
 {
-    IDirect3DRMImpl *This = impl_from_IDirect3DRM3(iface);
+    TRACE("iface %p, face %p.\n", iface, face);
 
-    FIXME("(%p/%p)->(%p): stub\n", iface, This, Face);
+    return Direct3DRMFace_create(&IID_IDirect3DRMFace2, (IUnknown **)face);
+}
+
+static HRESULT WINAPI IDirect3DRM3Impl_CreateAnimation(IDirect3DRM3 *iface, IDirect3DRMAnimation2 **animation)
+{
+    FIXME("iface %p, animation %p stub!\n", iface, animation);
 
     return E_NOTIMPL;
 }
 
-static HRESULT WINAPI IDirect3DRM3Impl_CreateAnimation(IDirect3DRM3* iface,
-                                                       LPDIRECT3DRMANIMATION2* Animation)
+static HRESULT WINAPI IDirect3DRM3Impl_CreateAnimationSet(IDirect3DRM3 *iface, IDirect3DRMAnimationSet2 **set)
 {
-    IDirect3DRMImpl *This = impl_from_IDirect3DRM3(iface);
-
-    FIXME("(%p/%p)->(%p): stub\n", iface, This, Animation);
-
-    return E_NOTIMPL;
-}
-
-static HRESULT WINAPI IDirect3DRM3Impl_CreateAnimationSet(IDirect3DRM3* iface,
-                                                          LPDIRECT3DRMANIMATIONSET2* AnimationSet)
-{
-    IDirect3DRMImpl *This = impl_from_IDirect3DRM3(iface);
-
-    FIXME("(%p/%p)->(%p): stub\n", iface, This, AnimationSet);
+    FIXME("iface %p, set %p stub!\n", iface, set);
 
     return E_NOTIMPL;
 }
@@ -998,69 +939,58 @@ static HRESULT WINAPI IDirect3DRM3Impl_CreateTexture(IDirect3DRM3 *iface,
     return Direct3DRMTexture_create(&IID_IDirect3DRMTexture3, (IUnknown **)texture);
 }
 
-static HRESULT WINAPI IDirect3DRM3Impl_CreateLight(IDirect3DRM3* iface, D3DRMLIGHTTYPE type,
-                                                     D3DCOLOR color, LPDIRECT3DRMLIGHT* Light)
+static HRESULT WINAPI IDirect3DRM3Impl_CreateLight(IDirect3DRM3 *iface,
+        D3DRMLIGHTTYPE type, D3DCOLOR color, IDirect3DRMLight **light)
 {
-    IDirect3DRMImpl *This = impl_from_IDirect3DRM3(iface);
-    HRESULT ret;
+    HRESULT hr;
 
-    FIXME("(%p/%p)->(%d,%d,%p): partial stub\n", iface, This, type, color, Light);
+    FIXME("iface %p, type %#x, color 0x%08x, light %p partial stub!\n", iface, type, color, light);
 
-    ret = Direct3DRMLight_create((IUnknown**)Light);
-
-    if (SUCCEEDED(ret))
+    if (SUCCEEDED(hr = Direct3DRMLight_create((IUnknown **)light)))
     {
-        IDirect3DRMLight_SetType(*Light, type);
-        IDirect3DRMLight_SetColor(*Light, color);
+        IDirect3DRMLight_SetType(*light, type);
+        IDirect3DRMLight_SetColor(*light, color);
     }
 
-    return ret;
+    return hr;
 }
 
-static HRESULT WINAPI IDirect3DRM3Impl_CreateLightRGB(IDirect3DRM3* iface, D3DRMLIGHTTYPE type,
-                                                        D3DVALUE red, D3DVALUE green, D3DVALUE blue,
-                                                        LPDIRECT3DRMLIGHT* Light)
+static HRESULT WINAPI IDirect3DRM3Impl_CreateLightRGB(IDirect3DRM3 *iface, D3DRMLIGHTTYPE type,
+        D3DVALUE red, D3DVALUE green, D3DVALUE blue, IDirect3DRMLight **light)
 {
-    IDirect3DRMImpl *This = impl_from_IDirect3DRM3(iface);
-    HRESULT ret;
+    HRESULT hr;
 
-    FIXME("(%p/%p)->(%d,%f,%f,%f,%p): partial stub\n", iface, This, type, red, green, blue, Light);
+    FIXME("iface %p, type %#x, red %.8e, green %.8e, blue %.8e, light %p partial stub!\n",
+            iface, type, red, green, blue, light);
 
-    ret = Direct3DRMLight_create((IUnknown**)Light);
-
-    if (SUCCEEDED(ret))
+    if (SUCCEEDED(hr = Direct3DRMLight_create((IUnknown **)light)))
     {
-        IDirect3DRMLight_SetType(*Light, type);
-        IDirect3DRMLight_SetColorRGB(*Light, red, green, blue);
+        IDirect3DRMLight_SetType(*light, type);
+        IDirect3DRMLight_SetColorRGB(*light, red, green, blue);
     }
 
-    return ret;
+    return hr;
 }
 
-static HRESULT WINAPI IDirect3DRM3Impl_CreateMaterial(IDirect3DRM3* iface, D3DVALUE power,
-                                                      LPDIRECT3DRMMATERIAL2* material)
+static HRESULT WINAPI IDirect3DRM3Impl_CreateMaterial(IDirect3DRM3 *iface,
+        D3DVALUE power, IDirect3DRMMaterial2 **material)
 {
-    IDirect3DRMImpl *This = impl_from_IDirect3DRM3(iface);
-    HRESULT ret;
+    HRESULT hr;
 
-    TRACE("(%p/%p)->(%f,%p)\n", iface, This, power, material);
+    TRACE("iface %p, power %.8e, material %p.\n", iface, power, material);
 
-    ret = Direct3DRMMaterial_create(material);
-
-    if (SUCCEEDED(ret))
+    if (SUCCEEDED(hr = Direct3DRMMaterial_create(material)))
         IDirect3DRMMaterial2_SetPower(*material, power);
 
-    return ret;
+    return hr;
 }
 
-static HRESULT WINAPI IDirect3DRM3Impl_CreateDevice(IDirect3DRM3* iface, DWORD width, DWORD height,
-                                                    LPDIRECT3DRMDEVICE3* device)
+static HRESULT WINAPI IDirect3DRM3Impl_CreateDevice(IDirect3DRM3 *iface,
+        DWORD width, DWORD height, IDirect3DRMDevice3 **device)
 {
-    IDirect3DRMImpl *This = impl_from_IDirect3DRM3(iface);
+    FIXME("iface %p, width %u, height %u, device %p partial stub!\n", iface, width, height, device);
 
-    FIXME("(%p/%p)->(%d,%d,%p): partial stub\n", iface, This, width, height, device);
-
-    return Direct3DRMDevice_create(&IID_IDirect3DRMDevice3, (IUnknown**)device);
+    return Direct3DRMDevice_create(&IID_IDirect3DRMDevice3, (IUnknown **)device);
 }
 
 static HRESULT WINAPI IDirect3DRM3Impl_CreateDeviceFromSurface(IDirect3DRM3 *iface, GUID *pGUID,
@@ -1095,16 +1025,11 @@ static HRESULT WINAPI IDirect3DRM3Impl_CreateDeviceFromClipper(IDirect3DRM3 *ifa
     return Direct3DRMDevice_create(&IID_IDirect3DRMDevice3, (IUnknown**)device);
 }
 
-static HRESULT WINAPI IDirect3DRM3Impl_CreateShadow(IDirect3DRM3* iface, LPUNKNOWN Visual1,
-                                                    LPDIRECT3DRMLIGHT Light, D3DVALUE px,
-                                                    D3DVALUE py, D3DVALUE pz, D3DVALUE nx,
-                                                    D3DVALUE ny, D3DVALUE nz,
-                                                    LPDIRECT3DRMSHADOW2* Visual2)
+static HRESULT WINAPI IDirect3DRM3Impl_CreateShadow(IDirect3DRM3 *iface, IUnknown *object, IDirect3DRMLight *light,
+        D3DVALUE px, D3DVALUE py, D3DVALUE pz, D3DVALUE nx, D3DVALUE ny, D3DVALUE nz, IDirect3DRMShadow2 **shadow)
 {
-    IDirect3DRMImpl *This = impl_from_IDirect3DRM3(iface);
-
-    FIXME("(%p/%p)->(%p,%p,%f,%f,%f,%f,%f,%f,%p): stub\n", iface, This, Visual1, Light, px, py, pz,
-          nx, ny, nz, Visual2);
+    FIXME("iface %p, object %p, light %p, px %.8e, py %.8e, pz %.8e, nx %.8e, ny %.8e, nz %.8e, shadow %p stub!\n",
+            iface, object, light, px, py, pz, nx, ny, nz, shadow);
 
     return E_NOTIMPL;
 }
@@ -1119,66 +1044,50 @@ static HRESULT WINAPI IDirect3DRM3Impl_CreateTextureFromSurface(IDirect3DRM3 *if
     return E_NOTIMPL;
 }
 
-static HRESULT WINAPI IDirect3DRM3Impl_CreateViewport(IDirect3DRM3* iface,
-                                                      LPDIRECT3DRMDEVICE3 Device,
-                                                      LPDIRECT3DRMFRAME3 frame, DWORD xpos,
-                                                      DWORD ypos, DWORD width, DWORD height,
-                                                      LPDIRECT3DRMVIEWPORT2* viewport)
+static HRESULT WINAPI IDirect3DRM3Impl_CreateViewport(IDirect3DRM3 *iface, IDirect3DRMDevice3 *device,
+        IDirect3DRMFrame3 *camera, DWORD x, DWORD y, DWORD width, DWORD height, IDirect3DRMViewport2 **viewport)
 {
-    IDirect3DRMImpl *This = impl_from_IDirect3DRM3(iface);
+    FIXME("iface %p, device %p, camera %p, x %u, y %u, width %u, height %u, viewport %p partial stub!\n",
+            iface, device, camera, x, y, width, height, viewport);
 
-    FIXME("(%p/%p)->(%p,%p,%d,%d,%d,%d,%p): stub\n", iface, This, Device, frame, xpos, ypos, width,
-          height, viewport);
-
-    return Direct3DRMViewport_create(&IID_IDirect3DRMViewport2, (IUnknown**)viewport);
+    return Direct3DRMViewport_create(&IID_IDirect3DRMViewport2, (IUnknown **)viewport);
 }
 
-static HRESULT WINAPI IDirect3DRM3Impl_CreateWrap(IDirect3DRM3* iface, D3DRMWRAPTYPE type,
-                                                  LPDIRECT3DRMFRAME3 frame,
-                                                  D3DVALUE ox, D3DVALUE oy, D3DVALUE oz,
-                                                  D3DVALUE dx, D3DVALUE dy, D3DVALUE dz,
-                                                  D3DVALUE ux, D3DVALUE uy, D3DVALUE uz,
-                                                  D3DVALUE ou, D3DVALUE ov, D3DVALUE su,
-                                                  D3DVALUE sv, LPDIRECT3DRMWRAP* wrap)
+static HRESULT WINAPI IDirect3DRM3Impl_CreateWrap(IDirect3DRM3 *iface, D3DRMWRAPTYPE type, IDirect3DRMFrame3 *frame,
+        D3DVALUE ox, D3DVALUE oy, D3DVALUE oz, D3DVALUE dx, D3DVALUE dy, D3DVALUE dz,
+        D3DVALUE ux, D3DVALUE uy, D3DVALUE uz, D3DVALUE ou, D3DVALUE ov, D3DVALUE su, D3DVALUE sv,
+        IDirect3DRMWrap **wrap)
 {
-    IDirect3DRMImpl *This = impl_from_IDirect3DRM3(iface);
-
-    FIXME("(%p/%p)->(%d,%p,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%p): stub\n", iface, This, type,
-          frame, ox, oy, oz, dx, dy, dz, ux, uy, uz, ou, ov, su, sv, wrap);
+    FIXME("iface %p, type %#x, frame %p, ox %.8e, oy %.8e, oz %.8e, dx %.8e, dy %.8e, dz %.8e, "
+            "ux %.8e, uy %.8e, uz %.8e, ou %.8e, ov %.8e, su %.8e, sv %.8e, wrap %p stub!\n",
+            iface, type, frame, ox, oy, oz, dx, dy, dz, ux, uy, uz, ou, ov, su, sv, wrap);
 
     return E_NOTIMPL;
 }
 
-static HRESULT WINAPI IDirect3DRM3Impl_CreateUserVisual(IDirect3DRM3* iface,
-                                                        D3DRMUSERVISUALCALLBACK cb, LPVOID arg,
-                                                        LPDIRECT3DRMUSERVISUAL* UserVisual)
+static HRESULT WINAPI IDirect3DRM3Impl_CreateUserVisual(IDirect3DRM3 *iface,
+        D3DRMUSERVISUALCALLBACK cb, void *ctx, IDirect3DRMUserVisual **visual)
 {
-    IDirect3DRMImpl *This = impl_from_IDirect3DRM3(iface);
-
-    FIXME("(%p/%p)->(%p,%p,%p): stub\n", iface, This, cb, arg, UserVisual);
+    FIXME("iface %p, cb %p, ctx %p, visual %p stub!\n", iface, cb, ctx, visual);
 
     return E_NOTIMPL;
 }
 
-static HRESULT WINAPI IDirect3DRM3Impl_LoadTexture(IDirect3DRM3* iface, const char* filename,
-                                                   LPDIRECT3DRMTEXTURE3* Texture)
+static HRESULT WINAPI IDirect3DRM3Impl_LoadTexture(IDirect3DRM3 *iface,
+        const char *filename, IDirect3DRMTexture3 **texture)
 {
-    IDirect3DRMImpl *This = impl_from_IDirect3DRM3(iface);
+    FIXME("iface %p, filename %s, texture %p stub!\n", iface, debugstr_a(filename), texture);
 
-    FIXME("(%p/%p)->(%s,%p): stub\n", iface, This, filename, Texture);
-
-    return E_NOTIMPL;
+    return Direct3DRMTexture_create(&IID_IDirect3DRMTexture3, (IUnknown **)texture);
 }
 
-static HRESULT WINAPI IDirect3DRM3Impl_LoadTextureFromResource(IDirect3DRM3* iface, HMODULE mod,
-                                                               LPCSTR strName, LPCSTR strType,
-                                                               LPDIRECT3DRMTEXTURE3 * ppTexture)
+static HRESULT WINAPI IDirect3DRM3Impl_LoadTextureFromResource(IDirect3DRM3 *iface, HMODULE module,
+        const char *resource_name, const char *resource_type, IDirect3DRMTexture3 **texture)
 {
-    IDirect3DRMImpl *This = impl_from_IDirect3DRM3(iface);
+    FIXME("iface %p, module %p, resource_name %s, resource_type %s, texture %p stub!\n",
+            iface, module, debugstr_a(resource_name), debugstr_a(resource_type), texture);
 
-    FIXME("(%p/%p)->(%p,%p,%p,%p): stub\n", iface, This, mod, strName, strType, ppTexture);
-
-    return E_NOTIMPL;
+    return Direct3DRMTexture_create(&IID_IDirect3DRMTexture3, (IUnknown **)texture);
 }
 
 static HRESULT WINAPI IDirect3DRM3Impl_SetSearchPath(IDirect3DRM3* iface, LPCSTR path)
@@ -1227,22 +1136,17 @@ static HRESULT WINAPI IDirect3DRM3Impl_SetDefaultTextureShades(IDirect3DRM3* ifa
     return E_NOTIMPL;
 }
 
-static HRESULT WINAPI IDirect3DRM3Impl_GetDevices(IDirect3DRM3* iface,
-                                                  LPDIRECT3DRMDEVICEARRAY* DeviceArray)
+static HRESULT WINAPI IDirect3DRM3Impl_GetDevices(IDirect3DRM3 *iface, IDirect3DRMDeviceArray **array)
 {
-    IDirect3DRMImpl *This = impl_from_IDirect3DRM3(iface);
-
-    FIXME("(%p/%p)->(%p): stub\n", iface, This, DeviceArray);
+    FIXME("iface %p, array %p stub!\n", iface, array);
 
     return E_NOTIMPL;
 }
 
-static HRESULT WINAPI IDirect3DRM3Impl_GetNamedObject(IDirect3DRM3* iface, const char* Name,
-                                                      LPDIRECT3DRMOBJECT* Object)
+static HRESULT WINAPI IDirect3DRM3Impl_GetNamedObject(IDirect3DRM3 *iface,
+        const char *name, IDirect3DRMObject **object)
 {
-    IDirect3DRMImpl *This = impl_from_IDirect3DRM3(iface);
-
-    FIXME("(%p/%p)->(%s,%p): stub\n", iface, This, Name, Object);
+    FIXME("iface %p, name %s, object %p stub!\n", iface, debugstr_a(name), object);
 
     return E_NOTIMPL;
 }
@@ -1447,13 +1351,10 @@ end:
     return ret;
 }
 
-static HRESULT WINAPI IDirect3DRM3Impl_Load(IDirect3DRM3* iface, LPVOID ObjSource, LPVOID ObjID,
-                                            LPIID* GUIDs, DWORD nb_GUIDs, D3DRMLOADOPTIONS LOFlags,
-                                            D3DRMLOADCALLBACK LoadProc, LPVOID ArgLP,
-                                            D3DRMLOADTEXTURECALLBACK LoadTextureProc, LPVOID ArgLTP,
-                                            LPDIRECT3DRMFRAME3 ParentFrame)
+static HRESULT WINAPI IDirect3DRM3Impl_Load(IDirect3DRM3 *iface, void *source, void *object_id, IID **iids,
+        DWORD iid_count, D3DRMLOADOPTIONS flags, D3DRMLOADCALLBACK load_cb, void *load_ctx,
+        D3DRMLOADTEXTURECALLBACK load_tex_cb, void *load_tex_ctx, IDirect3DRMFrame3 *parent_frame)
 {
-    IDirect3DRMImpl *This = impl_from_IDirect3DRM3(iface);
     DXFILELOADOPTIONS load_options;
     LPDIRECTXFILE pDXFile = NULL;
     LPDIRECTXFILEENUMOBJECT pEnumObject = NULL;
@@ -1465,25 +1366,27 @@ static HRESULT WINAPI IDirect3DRM3Impl_Load(IDirect3DRM3* iface, LPVOID ObjSourc
     HRESULT ret = D3DRMERR_BADOBJECT;
     DWORD i;
 
-    TRACE("(%p/%p)->(%p,%p,%p,%d,%d,%p,%p,%p,%p,%p)\n", iface, This, ObjSource, ObjID, GUIDs,
-          nb_GUIDs, LOFlags, LoadProc, ArgLP, LoadTextureProc, ArgLTP, ParentFrame);
+    TRACE("iface %p, source %p, object_id %p, iids %p, iid_count %u, flags %#x, "
+            "load_cb %p, load_ctx %p, load_tex_cb %p, load_tex_ctx %p, parent_frame %p.\n",
+            iface, source, object_id, iids, iid_count, flags,
+            load_cb, load_ctx, load_tex_cb, load_tex_ctx, parent_frame);
 
     TRACE("Looking for GUIDs:\n");
-    for (i = 0; i < nb_GUIDs; i++)
-        TRACE("- %s (%s)\n", debugstr_guid(GUIDs[i]), get_IID_string(GUIDs[i]));
+    for (i = 0; i < iid_count; ++i)
+        TRACE("- %s (%s)\n", debugstr_guid(iids[i]), get_IID_string(iids[i]));
 
-    if (LOFlags == D3DRMLOAD_FROMMEMORY)
+    if (flags == D3DRMLOAD_FROMMEMORY)
     {
         load_options = DXFILELOAD_FROMMEMORY;
     }
-    else if (LOFlags == D3DRMLOAD_FROMFILE)
+    else if (flags == D3DRMLOAD_FROMFILE)
     {
         load_options = DXFILELOAD_FROMFILE;
-        TRACE("Loading from file %s\n", debugstr_a(ObjSource));
+        TRACE("Loading from file %s\n", debugstr_a(source));
     }
     else
     {
-        FIXME("Load options %d not supported yet\n", LOFlags);
+        FIXME("Load options %#x not supported yet.\n", flags);
         return E_NOTIMPL;
     }
 
@@ -1495,7 +1398,7 @@ static HRESULT WINAPI IDirect3DRM3Impl_Load(IDirect3DRM3* iface, LPVOID ObjSourc
     if (hr != DXFILE_OK)
         goto end;
 
-    hr = IDirectXFile_CreateEnumObject(pDXFile, ObjSource, load_options, &pEnumObject);
+    hr = IDirectXFile_CreateEnumObject(pDXFile, source, load_options, &pEnumObject);
     if (hr != DXFILE_OK)
         goto end;
 
@@ -1545,7 +1448,7 @@ static HRESULT WINAPI IDirect3DRM3Impl_Load(IDirect3DRM3* iface, LPVOID ObjSourc
             goto end;
         }
 
-        ret = load_data(iface, pData, GUIDs, nb_GUIDs, LoadProc, ArgLP, LoadTextureProc, ArgLTP, ParentFrame);
+        ret = load_data(iface, pData, iids, iid_count, load_cb, load_ctx, load_tex_cb, load_tex_ctx, parent_frame);
         if (ret != D3DRM_OK)
             goto end;
 
@@ -1604,13 +1507,10 @@ static HRESULT WINAPI IDirect3DRM3Impl_UnregisterClient(IDirect3DRM3* iface, REF
     return E_NOTIMPL;
 }
 
-static HRESULT WINAPI IDirect3DRM3Impl_CreateClippedVisual(IDirect3DRM3* iface,
-                                                           LPDIRECT3DRMVISUAL vis,
-                                                           LPDIRECT3DRMCLIPPEDVISUAL* clippedvis)
+static HRESULT WINAPI IDirect3DRM3Impl_CreateClippedVisual(IDirect3DRM3 *iface,
+        IDirect3DRMVisual *visual, IDirect3DRMClippedVisual **clipped_visual)
 {
-    IDirect3DRMImpl *This = impl_from_IDirect3DRM3(iface);
-
-    FIXME("(%p/%p)->(%p, %p): stub\n", iface, This, vis, clippedvis);
+    FIXME("iface %p, visual %p, clipped_visual %p stub!\n", iface, visual, clipped_visual);
 
     return E_NOTIMPL;
 }
@@ -1678,14 +1578,13 @@ static const struct IDirect3DRM3Vtbl Direct3DRM3_Vtbl =
     IDirect3DRM3Impl_GetOptions
 };
 
-HRESULT Direct3DRM_create(IUnknown** ppObj)
+HRESULT WINAPI Direct3DRMCreate(IDirect3DRM **d3drm)
 {
-    IDirect3DRMImpl* object;
+    IDirect3DRMImpl *object;
 
-    TRACE("(%p)\n", ppObj);
+    TRACE("d3drm %p.\n", d3drm);
 
-    object = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(IDirect3DRMImpl));
-    if (!object)
+    if (!(object = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(*object))))
         return E_OUTOFMEMORY;
 
     object->IDirect3DRM_iface.lpVtbl = &Direct3DRM_Vtbl;
@@ -1693,7 +1592,7 @@ HRESULT Direct3DRM_create(IUnknown** ppObj)
     object->IDirect3DRM3_iface.lpVtbl = &Direct3DRM3_Vtbl;
     object->ref = 1;
 
-    *ppObj = (IUnknown*)&object->IDirect3DRM_iface;
+    *d3drm = &object->IDirect3DRM_iface;
 
     return S_OK;
 }

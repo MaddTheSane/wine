@@ -162,11 +162,11 @@ typedef struct _IFilterGraphImpl {
     IGraphConfig IGraphConfig_iface;
     IMediaPosition IMediaPosition_iface;
     IObjectWithSite IObjectWithSite_iface;
+    IGraphVersion IGraphVersion_iface;
     /* IAMGraphStreams */
     /* IAMStats */
     /* IFilterChain */
     /* IFilterMapper2 */
-    /* IGraphVersion */
     /* IQueueCommand */
     /* IRegisterServiceProvider */
     /* IResourceMananger */
@@ -179,7 +179,7 @@ typedef struct _IFilterGraphImpl {
     IFilterMapper2 * pFilterMapper2;
     IBaseFilter ** ppFiltersInGraph;
     LPWSTR * pFilterNames;
-    int nFilters;
+    ULONG nFilters;
     int filterCapacity;
     LONG nameIndex;
     IReferenceClock *refClock;
@@ -204,6 +204,7 @@ typedef struct _IFilterGraphImpl {
     LONGLONG stop_position;
     LONG recursioncount;
     IUnknown *pSite;
+    LONG version;
 } IFilterGraphImpl;
 
 static inline IFilterGraphImpl *impl_from_IUnknown(IUnknown *iface)
@@ -269,6 +270,9 @@ static HRESULT WINAPI FilterGraphInner_QueryInterface(IUnknown *iface, REFIID ri
     } else if (IsEqualGUID(&IID_IFilterMapper3, riid)) {
         *ppvObj = This->pFilterMapper2;
         TRACE("   returning IFilterMapper3 interface from aggregated filtermapper (%p)\n", *ppvObj);
+    } else if (IsEqualGUID(&IID_IGraphVersion, riid)) {
+        *ppvObj = &This->IGraphConfig_iface;
+        TRACE("   returning IGraphConfig interface (%p)\n", *ppvObj);
     } else {
         *ppvObj = NULL;
 	FIXME("unknown interface %s\n", debugstr_guid(riid));
@@ -454,6 +458,7 @@ static HRESULT WINAPI FilterGraph2_AddFilter(IFilterGraph2 *iface, IBaseFilter *
         This->ppFiltersInGraph[This->nFilters] = pFilter;
         This->pFilterNames[This->nFilters] = wszFilterName;
         This->nFilters++;
+        This->version++;
         IBaseFilter_SetSyncSource(pFilter, This->refClock);
     }
     else
@@ -539,6 +544,7 @@ static HRESULT WINAPI FilterGraph2_RemoveFilter(IFilterGraph2 *iface, IBaseFilte
                 memmove(This->ppFiltersInGraph+i, This->ppFiltersInGraph+i+1, sizeof(IBaseFilter*)*(This->nFilters - 1 - i));
                 memmove(This->pFilterNames+i, This->pFilterNames+i+1, sizeof(LPWSTR)*(This->nFilters - 1 - i));
                 This->nFilters--;
+                This->version++;
                 /* Invalidate interfaces in the cache */
                 for (i = 0; i < This->nItfCacheEntries; i++)
                     if (pFilter == This->ItfCacheEntries[i].filter)
@@ -562,7 +568,7 @@ static HRESULT WINAPI FilterGraph2_EnumFilters(IFilterGraph2 *iface, IEnumFilter
 
     TRACE("(%p/%p)->(%p)\n", This, iface, ppEnum);
 
-    return IEnumFiltersImpl_Construct(This->ppFiltersInGraph, This->nFilters, ppEnum);
+    return IEnumFiltersImpl_Construct(&This->IGraphVersion_iface, &This->ppFiltersInGraph, &This->nFilters, ppEnum);
 }
 
 static HRESULT WINAPI FilterGraph2_FindFilterByName(IFilterGraph2 *iface, LPCWSTR pName,
@@ -802,9 +808,8 @@ static HRESULT WINAPI FilterGraph2_SetDefaultSyncSource(IFilterGraph2 *iface)
     return hr;
 }
 
-static HRESULT GetFilterInfo(IMoniker* pMoniker, GUID* pclsid, VARIANT* pvar)
+static HRESULT GetFilterInfo(IMoniker* pMoniker, VARIANT* pvar)
 {
-    static const WCHAR wszClsidName[] = {'C','L','S','I','D',0};
     static const WCHAR wszFriendlyName[] = {'F','r','i','e','n','d','l','y','N','a','m','e',0};
     IPropertyBag * pPropBagCat = NULL;
     HRESULT hr;
@@ -814,18 +819,10 @@ static HRESULT GetFilterInfo(IMoniker* pMoniker, GUID* pclsid, VARIANT* pvar)
     hr = IMoniker_BindToStorage(pMoniker, NULL, NULL, &IID_IPropertyBag, (LPVOID*)&pPropBagCat);
 
     if (SUCCEEDED(hr))
-        hr = IPropertyBag_Read(pPropBagCat, wszClsidName, pvar, NULL);
-
-    if (SUCCEEDED(hr))
-        hr = CLSIDFromString(V_UNION(pvar, bstrVal), pclsid);
-
-    VariantClear(pvar);
-
-    if (SUCCEEDED(hr))
         hr = IPropertyBag_Read(pPropBagCat, wszFriendlyName, pvar, NULL);
 
     if (SUCCEEDED(hr))
-        TRACE("Moniker = %s - %s\n", debugstr_guid(pclsid), debugstr_w(V_UNION(pvar, bstrVal)));
+        TRACE("Moniker = %s\n", debugstr_w(V_UNION(pvar, bstrVal)));
 
     if (pPropBagCat)
         IPropertyBag_Release(pPropBagCat);
@@ -1018,15 +1015,29 @@ static HRESULT WINAPI FilterGraph2_Connect(IFilterGraph2 *iface, IPin *ppinOut, 
         IBaseFilter* pfilter = NULL;
         IAMGraphBuilderCallback *callback = NULL;
 
-        hr = GetFilterInfo(pMoniker, &clsid, &var);
-        IMoniker_Release(pMoniker);
+        hr = GetFilterInfo(pMoniker, &var);
         if (FAILED(hr)) {
             WARN("Unable to retrieve filter info (%x)\n", hr);
             goto error;
         }
 
+        hr = IMoniker_BindToObject(pMoniker, NULL, NULL, &IID_IBaseFilter, (LPVOID*)&pfilter);
+        IMoniker_Release(pMoniker);
+        if (FAILED(hr)) {
+            WARN("Unable to create filter (%x), trying next one\n", hr);
+            goto error;
+        }
+
+        hr = IBaseFilter_GetClassID(pfilter, &clsid);
+        if (FAILED(hr))
+        {
+            IBaseFilter_Release(pfilter);
+            goto error;
+	}
+
         if (IsEqualGUID(&clsid, &FilterCLSID)) {
             /* Skip filter (same as the one the output pin belongs to) */
+            IBaseFilter_Release(pfilter);
             goto error;
         }
 
@@ -1044,12 +1055,6 @@ static HRESULT WINAPI FilterGraph2_Connect(IFilterGraph2 *iface, IPin *ppinOut, 
                     goto error;
                 }
             }
-        }
-
-        hr = CoCreateInstance(&clsid, NULL, CLSCTX_INPROC_SERVER, &IID_IBaseFilter, (LPVOID*)&pfilter);
-        if (FAILED(hr)) {
-            WARN("Unable to create filter (%x), trying next one\n", hr);
-            goto error;
         }
 
         if (callback)
@@ -1381,20 +1386,19 @@ static HRESULT WINAPI FilterGraph2_Render(IFilterGraph2 *iface, IPin *ppinOut)
         while (IEnumMoniker_Next(pEnumMoniker, 1, &pMoniker, &nb) == S_OK)
         {
             VARIANT var;
-            GUID clsid;
             IPin* ppinfilter;
             IBaseFilter* pfilter = NULL;
             IEnumPins* penumpins = NULL;
             ULONG pin;
 
-            hr = GetFilterInfo(pMoniker, &clsid, &var);
-            IMoniker_Release(pMoniker);
+            hr = GetFilterInfo(pMoniker, &var);
             if (FAILED(hr)) {
                 WARN("Unable to retrieve filter info (%x)\n", hr);
                 goto error;
             }
 
-            hr = CoCreateInstance(&clsid, NULL, CLSCTX_INPROC_SERVER, &IID_IBaseFilter, (LPVOID*)&pfilter);
+            hr = IMoniker_BindToObject(pMoniker, NULL, NULL, &IID_IBaseFilter, (LPVOID*)&pfilter);
+            IMoniker_Release(pMoniker);
             if (FAILED(hr))
             {
                 WARN("Unable to create filter (%x), trying next one\n", hr);
@@ -1550,61 +1554,97 @@ static HRESULT WINAPI FilterGraph2_RenderFile(IFilterGraph2 *iface, LPCWSTR lpcw
     return hr;
 }
 
+static HRESULT CreateFilterInstanceAndLoadFile(GUID* clsid, LPCOLESTR pszFileName, IBaseFilter **filter)
+{
+    IFileSourceFilter *source = NULL;
+    HRESULT hr = CoCreateInstance(clsid, NULL, CLSCTX_INPROC_SERVER, &IID_IBaseFilter, (LPVOID*)filter);
+    TRACE("CLSID: %s\n", debugstr_guid(clsid));
+    if (FAILED(hr))
+        return hr;
+
+    hr = IBaseFilter_QueryInterface(*filter, &IID_IFileSourceFilter, (LPVOID*)&source);
+    if (FAILED(hr))
+    {
+        IBaseFilter_Release(*filter);
+        return hr;
+    }
+
+    /* Load the file in the file source filter */
+    hr = IFileSourceFilter_Load(source, pszFileName, NULL);
+    IFileSourceFilter_Release(source);
+    if (FAILED(hr)) {
+        WARN("Load (%x)\n", hr);
+        IBaseFilter_Release(*filter);
+        return hr;
+    }
+
+    return hr;
+}
+
 /* Some filters implement their own asynchronous reader (Theoretically they all should, try to load it first */
 static HRESULT GetFileSourceFilter(LPCOLESTR pszFileName, IBaseFilter **filter)
 {
-    static const WCHAR wszReg[] = {'M','e','d','i','a',' ','T','y','p','e','\\','E','x','t','e','n','s','i','o','n','s',0};
-    HRESULT hr = S_OK;
-    HKEY extkey;
-    LONG lRet;
+    HRESULT hr;
+    GUID clsid;
+    IAsyncReader * pReader = NULL;
+    IFileSourceFilter* pSource = NULL;
+    IPin * pOutputPin = NULL;
+    static const WCHAR wszOutputPinName[] = { 'O','u','t','p','u','t',0 };
 
-    lRet = RegOpenKeyExW(HKEY_CLASSES_ROOT, wszReg, 0, KEY_READ, &extkey);
-    hr = HRESULT_FROM_WIN32(lRet);
+    /* Try to find a match without reading the file first */
+    hr = GetClassMediaFile(NULL, pszFileName, NULL, NULL, &clsid);
 
-    if (SUCCEEDED(hr))
-    {
-        static const WCHAR filtersource[] = {'S','o','u','r','c','e',' ','F','i','l','t','e','r',0};
-        WCHAR *ext = PathFindExtensionW(pszFileName);
-        WCHAR clsid_key[39];
-        GUID clsid;
-        DWORD size = sizeof(clsid_key);
-        HKEY pathkey;
+    if (!hr)
+        return CreateFilterInstanceAndLoadFile(&clsid, pszFileName, filter);
 
-        if (!ext)
-        {
-            CloseHandle(extkey);
-            return E_FAIL;
-        }
-
-        lRet = RegOpenKeyExW(extkey, ext, 0, KEY_READ, &pathkey);
-        hr = HRESULT_FROM_WIN32(lRet);
-        CloseHandle(extkey);
-        if (FAILED(hr))
-            return hr;
-
-        lRet = RegQueryValueExW(pathkey, filtersource, NULL, NULL, (LPBYTE)clsid_key, &size);
-        hr = HRESULT_FROM_WIN32(lRet);
-        CloseHandle(pathkey);
-        if (FAILED(hr))
-            return hr;
-
-        CLSIDFromString(clsid_key, &clsid);
-
-        TRACE("CLSID: %s\n", debugstr_guid(&clsid));
-        hr = CoCreateInstance(&clsid, NULL, CLSCTX_INPROC_SERVER, &IID_IBaseFilter, (LPVOID*)filter);
-        if (SUCCEEDED(hr))
-        {
-            IFileSourceFilter *source = NULL;
-            hr = IBaseFilter_QueryInterface(*filter, &IID_IFileSourceFilter, (LPVOID*)&source);
-            if (SUCCEEDED(hr))
-                IFileSourceFilter_Release(source);
-            else
-                IBaseFilter_Release(*filter);
-        }
-    }
+    /* Now create a AyncReader instance, to check for signature bytes in the file */
+    hr = CoCreateInstance(&CLSID_AsyncReader, NULL, CLSCTX_INPROC_SERVER, &IID_IBaseFilter, (LPVOID*)filter);
     if (FAILED(hr))
-        *filter = NULL;
-    return hr;
+        return hr;
+
+    hr = IBaseFilter_QueryInterface(*filter, &IID_IFileSourceFilter, (LPVOID *)&pSource);
+    if (FAILED(hr))
+    {
+        IBaseFilter_Release(*filter);
+        return hr;
+    }
+
+    hr = IFileSourceFilter_Load(pSource, pszFileName, NULL);
+    IFileSourceFilter_Release(pSource);
+    if (FAILED(hr))
+    {
+        IBaseFilter_Release(*filter);
+        return hr;
+    }
+
+    hr = IBaseFilter_FindPin(*filter, wszOutputPinName, &pOutputPin);
+    if (FAILED(hr))
+    {
+        IBaseFilter_Release(*filter);
+        return hr;
+    }
+
+    hr = IPin_QueryInterface(pOutputPin, &IID_IAsyncReader, (LPVOID *)&pReader);
+    IPin_Release(pOutputPin);
+    if (FAILED(hr))
+    {
+        IBaseFilter_Release(*filter);
+        return hr;
+    }
+
+    /* Try again find a match */
+    hr = GetClassMediaFile(pReader, pszFileName, NULL, NULL, &clsid);
+    IAsyncReader_Release(pReader);
+
+    if (!hr)
+    {
+        /* Release the AsyncReader filter and create the matching one */
+        IBaseFilter_Release(*filter);
+        return CreateFilterInstanceAndLoadFile(&clsid, pszFileName, filter);
+    }
+
+    /* Return the AsyncReader filter */
+    return S_OK;
 }
 
 static HRESULT WINAPI FilterGraph2_AddSourceFilter(IFilterGraph2 *iface, LPCWSTR lpcwstrFileName,
@@ -1621,9 +1661,6 @@ static HRESULT WINAPI FilterGraph2_AddSourceFilter(IFilterGraph2 *iface, LPCWSTR
 
     /* Try from file name first, then fall back to default asynchronous reader */
     hr = GetFileSourceFilter(lpcwstrFileName, &preader);
-
-    if (FAILED(hr))
-        hr = CoCreateInstance(&CLSID_AsyncReader, NULL, CLSCTX_INPROC_SERVER, &IID_IBaseFilter, (LPVOID*)&preader);
     if (FAILED(hr)) {
         WARN("Unable to create file source filter (%x)\n", hr);
         return hr;
@@ -1642,13 +1679,7 @@ static HRESULT WINAPI FilterGraph2_AddSourceFilter(IFilterGraph2 *iface, LPCWSTR
         goto error;
     }
 
-    /* Load the file in the file source filter */
-    hr = IFileSourceFilter_Load(pfile, lpcwstrFileName, NULL);
-    if (FAILED(hr)) {
-        WARN("Load (%x)\n", hr);
-        goto error;
-    }
-
+    /* The file has been already loaded */
     IFileSourceFilter_GetCurFile(pfile, &filename, &mt);
     if (FAILED(hr)) {
         WARN("GetCurFile (%x)\n", hr);
@@ -2420,49 +2451,29 @@ static HRESULT WINAPI MediaSeeking_GetStopPosition(IMediaSeeking *iface, LONGLON
     return hr;
 }
 
-static HRESULT WINAPI FoundCurrentPosition(IFilterGraphImpl *This, IMediaSeeking *seek, DWORD_PTR pposition)
-{
-    HRESULT hr;
-    LONGLONG pos = 0, *ppos = (LONGLONG*)pposition;
-
-    hr = IMediaSeeking_GetCurrentPosition(seek, &pos);
-    if (FAILED(hr))
-        return hr;
-
-    if (*ppos < 0 || pos < *ppos)
-        *ppos = pos;
-    return hr;
-}
-
 static HRESULT WINAPI MediaSeeking_GetCurrentPosition(IMediaSeeking *iface, LONGLONG *pCurrent)
 {
     IFilterGraphImpl *This = impl_from_IMediaSeeking(iface);
-    HRESULT hr;
+    LONGLONG time = 0;
 
     if (!pCurrent)
         return E_POINTER;
 
     EnterCriticalSection(&This->cs);
-    *pCurrent = -1;
-    hr = all_renderers_seek(This, FoundCurrentPosition, (DWORD_PTR)pCurrent);
-    if (hr == E_NOTIMPL) {
-        LONGLONG time = 0;
-        if (This->state == State_Running && This->refClock && This->start_time >= 0)
-        {
-            IReferenceClock_GetTime(This->refClock, &time);
-            if (time)
-                time -= This->start_time;
-        }
-        if (This->pause_time > 0)
-            time += This->pause_time;
-        *pCurrent = time;
-        hr = S_OK;
+    if (This->state == State_Running && This->refClock && This->start_time >= 0)
+    {
+        IReferenceClock_GetTime(This->refClock, &time);
+        if (time)
+            time -= This->start_time;
     }
+    if (This->pause_time > 0)
+        time += This->pause_time;
+    *pCurrent = time;
     LeaveCriticalSection(&This->cs);
 
     TRACE("Time: %u.%03u\n", (DWORD)(*pCurrent / 10000000), (DWORD)((*pCurrent / 10000)%1000));
 
-    return hr;
+    return S_OK;
 }
 
 static HRESULT WINAPI MediaSeeking_ConvertTimeFormat(IMediaSeeking *iface, LONGLONG *pTarget,
@@ -5547,6 +5558,53 @@ static const IGraphConfigVtbl IGraphConfig_VTable =
     GraphConfig_RemoveFilterEx
 };
 
+static inline IFilterGraphImpl *impl_from_IGraphVersion(IGraphVersion *iface)
+{
+    return CONTAINING_RECORD(iface, IFilterGraphImpl, IGraphVersion_iface);
+}
+
+static HRESULT WINAPI GraphVersion_QueryInterface(IGraphVersion *iface, REFIID riid, void **ppv)
+{
+    IFilterGraphImpl *This = impl_from_IGraphVersion(iface);
+
+    return IUnknown_QueryInterface(This->outer_unk, riid, ppv);
+}
+
+static ULONG WINAPI GraphVersion_AddRef(IGraphVersion *iface)
+{
+    IFilterGraphImpl *This = impl_from_IGraphVersion(iface);
+
+    return IUnknown_AddRef(This->outer_unk);
+}
+
+static ULONG WINAPI GraphVersion_Release(IGraphVersion *iface)
+{
+    IFilterGraphImpl *This = impl_from_IGraphVersion(iface);
+
+    return IUnknown_Release(This->outer_unk);
+}
+
+static HRESULT WINAPI GraphVersion_QueryVersion(IGraphVersion *iface, LONG *pVersion)
+{
+    IFilterGraphImpl *This = impl_from_IGraphVersion(iface);
+
+    if(!pVersion)
+        return E_POINTER;
+
+    TRACE("(%p)->(%p): current version %i\n", This, pVersion, This->version);
+
+    *pVersion = This->version;
+    return S_OK;
+}
+
+static const IGraphVersionVtbl IGraphVersion_VTable =
+{
+    GraphVersion_QueryInterface,
+    GraphVersion_AddRef,
+    GraphVersion_Release,
+    GraphVersion_QueryVersion,
+};
+
 static const IUnknownVtbl IInner_VTable =
 {
     FilterGraphInner_QueryInterface,
@@ -5579,6 +5637,7 @@ HRESULT FilterGraph_create(IUnknown *pUnkOuter, LPVOID *ppObj)
     fimpl->IGraphConfig_iface.lpVtbl = &IGraphConfig_VTable;
     fimpl->IMediaPosition_iface.lpVtbl = &IMediaPosition_VTable;
     fimpl->IObjectWithSite_iface.lpVtbl = &IObjectWithSite_VTable;
+    fimpl->IGraphVersion_iface.lpVtbl = &IGraphVersion_VTable;
     fimpl->ref = 1;
     fimpl->ppFiltersInGraph = NULL;
     fimpl->pFilterNames = NULL;
@@ -5606,6 +5665,7 @@ HRESULT FilterGraph_create(IUnknown *pUnkOuter, LPVOID *ppObj)
     fimpl->stop_position = -1;
     fimpl->punkFilterMapper2 = NULL;
     fimpl->recursioncount = 0;
+    fimpl->version = 0;
 
     if (pUnkOuter)
         fimpl->outer_unk = pUnkOuter;

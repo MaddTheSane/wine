@@ -982,6 +982,7 @@ static HRESULT WINAPI HTMLElement2_get_dir(IHTMLElement2 *iface, BSTR *p)
         return S_OK;
     }
 
+    nsAString_Init(&dir_str, NULL);
     nsres = nsIDOMHTMLElement_GetDir(This->nselem, &dir_str);
     return return_nsstr(nsres, &dir_str, p);
 }
@@ -1116,12 +1117,27 @@ static HRESULT WINAPI HTMLElement2_get_oncontextmenu(IHTMLElement2 *iface, VARIA
     return E_NOTIMPL;
 }
 
-static HRESULT WINAPI HTMLElement2_insertAdjecentElement(IHTMLElement2 *iface, BSTR where,
+static HRESULT WINAPI HTMLElement2_insertAdjacentElement(IHTMLElement2 *iface, BSTR where,
         IHTMLElement *insertedElement, IHTMLElement **inserted)
 {
     HTMLElement *This = impl_from_IHTMLElement2(iface);
-    FIXME("(%p)->(%s %p %p)\n", This, debugstr_w(where), insertedElement, inserted);
-    return E_NOTIMPL;
+    HTMLDOMNode *ret_node;
+    HTMLElement *elem;
+    HRESULT hres;
+
+    TRACE("(%p)->(%s %p %p)\n", This, debugstr_w(where), insertedElement, inserted);
+
+    elem = unsafe_impl_from_IHTMLElement(insertedElement);
+    if(!elem)
+        return E_INVALIDARG;
+
+    hres = insert_adjacent_node(This, where, elem->node.nsnode, &ret_node);
+    if(FAILED(hres))
+        return hres;
+
+    hres = IHTMLDOMNode_QueryInterface(&ret_node->IHTMLDOMNode_iface, &IID_IHTMLElement, (void**)inserted);
+    IHTMLDOMNode_Release(&ret_node->IHTMLDOMNode_iface);
+    return hres;
 }
 
 static HRESULT WINAPI HTMLElement2_applyElement(IHTMLElement2 *iface, IHTMLElement *apply,
@@ -1132,14 +1148,14 @@ static HRESULT WINAPI HTMLElement2_applyElement(IHTMLElement2 *iface, IHTMLEleme
     return E_NOTIMPL;
 }
 
-static HRESULT WINAPI HTMLElement2_getAdjecentText(IHTMLElement2 *iface, BSTR where, BSTR *text)
+static HRESULT WINAPI HTMLElement2_getAdjacentText(IHTMLElement2 *iface, BSTR where, BSTR *text)
 {
     HTMLElement *This = impl_from_IHTMLElement2(iface);
     FIXME("(%p)->(%s %p)\n", This, debugstr_w(where), text);
     return E_NOTIMPL;
 }
 
-static HRESULT WINAPI HTMLElement2_replaceAdjecentText(IHTMLElement2 *iface, BSTR where,
+static HRESULT WINAPI HTMLElement2_replaceAdjacentText(IHTMLElement2 *iface, BSTR where,
                                                        BSTR newText, BSTR *oldText)
 {
     HTMLElement *This = impl_from_IHTMLElement2(iface);
@@ -1238,22 +1254,22 @@ static HRESULT WINAPI HTMLElement2_getElementsByTagName(IHTMLElement2 *iface, BS
                                                        IHTMLElementCollection **pelColl)
 {
     HTMLElement *This = impl_from_IHTMLElement2(iface);
-    nsIDOMNodeList *nslist;
+    nsIDOMHTMLCollection *nscol;
     nsAString tag_str;
     nsresult nsres;
 
     TRACE("(%p)->(%s %p)\n", This, debugstr_w(v), pelColl);
 
     nsAString_InitDepend(&tag_str, v);
-    nsres = nsIDOMHTMLElement_GetElementsByTagName(This->nselem, &tag_str, &nslist);
+    nsres = nsIDOMHTMLElement_GetElementsByTagName(This->nselem, &tag_str, &nscol);
     nsAString_Finish(&tag_str);
     if(NS_FAILED(nsres)) {
         ERR("GetElementByTagName failed: %08x\n", nsres);
         return E_FAIL;
     }
 
-    *pelColl = create_collection_from_nodelist(This->node.doc, nslist);
-    nsIDOMNodeList_Release(nslist);
+    *pelColl = create_collection_from_htmlcol(This->node.doc, nscol);
+    nsIDOMHTMLCollection_Release(nscol);
     return S_OK;
 }
 
@@ -1348,10 +1364,10 @@ static const IHTMLElement2Vtbl HTMLElement2Vtbl = {
     HTMLElement2_mergeAttributes,
     HTMLElement2_put_oncontextmenu,
     HTMLElement2_get_oncontextmenu,
-    HTMLElement2_insertAdjecentElement,
+    HTMLElement2_insertAdjacentElement,
     HTMLElement2_applyElement,
-    HTMLElement2_getAdjecentText,
-    HTMLElement2_replaceAdjecentText,
+    HTMLElement2_getAdjacentText,
+    HTMLElement2_replaceAdjacentText,
     HTMLElement2_get_canHandleChildren,
     HTMLElement2_addBehavior,
     HTMLElement2_removeBehavior,

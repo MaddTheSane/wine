@@ -22,6 +22,10 @@
 #define COBJMACROS
 #define CONST_VTABLE
 
+#include <windef.h>
+#include <winbase.h>
+#include <winuser.h>
+
 #include <atlbase.h>
 #include <mshtml.h>
 
@@ -355,6 +359,12 @@ static void test_cp(void)
     DWORD cookie = 0;
     HRESULT hres;
 
+    hres = AtlAdvise(NULL, (IUnknown*)0xdeed0000, &CLSID_Test, &cookie);
+    ok(hres == E_INVALIDARG, "expect E_INVALIDARG, returned %08x\n", hres);
+
+    hres = AtlUnadvise(NULL, &CLSID_Test, 0xdeadbeef);
+    ok(hres == E_INVALIDARG, "expect E_INVALIDARG, returned %08x\n", hres);
+
     hres = AtlAdvise((IUnknown*)&ConnectionPointContainer, (IUnknown*)0xdead0000, &CLSID_Test, &cookie);
     ok(hres == S_OK, "AtlAdvise failed: %08x\n", hres);
     ok(cookie == 0xdeadbeef, "cookie = %x\n", cookie);
@@ -562,6 +572,32 @@ static void test_source_iface(void)
     ok(maj_ver == 4 && min_ver == 0, "ver = %d.%d\n", maj_ver, min_ver);
 }
 
+static void test_ax_win(void)
+{
+    BOOL ret;
+    WNDCLASSEXW wcex;
+    static const WCHAR AtlAxWin100[] = {'A','t','l','A','x','W','i','n','1','0','0',0};
+    static const WCHAR AtlAxWinLic100[] = {'A','t','l','A','x','W','i','n','L','i','c','1','0','0',0};
+    static HMODULE hinstance = 0;
+
+    ret = AtlAxWinInit();
+    ok(ret, "AtlAxWinInit failed\n");
+
+    hinstance = GetModuleHandleA(NULL);
+
+    memset(&wcex, 0, sizeof(wcex));
+    wcex.cbSize = sizeof(wcex);
+    ret = GetClassInfoExW(hinstance, AtlAxWin100, &wcex);
+    ok(ret, "AtlAxWin100 has not registered\n");
+    ok(wcex.style == (CS_GLOBALCLASS | CS_DBLCLKS), "wcex.style %08x\n", wcex.style);
+
+    memset(&wcex, 0, sizeof(wcex));
+    wcex.cbSize = sizeof(wcex);
+    ret = GetClassInfoExW(hinstance, AtlAxWinLic100, &wcex);
+    ok(ret, "AtlAxWinLic100 has not registered\n");
+    ok(wcex.style == (CS_GLOBALCLASS | CS_DBLCLKS), "wcex.style %08x\n", wcex.style);
+}
+
 START_TEST(atl)
 {
     CoInitialize(NULL);
@@ -571,6 +607,7 @@ START_TEST(atl)
     test_typelib();
     test_cp();
     test_source_iface();
+    test_ax_win();
 
     CoUninitialize();
 }

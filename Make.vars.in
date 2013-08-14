@@ -30,13 +30,11 @@ BISON           = @BISON@
 FLEX            = @FLEX@
 EXEEXT          = @EXEEXT@
 OBJEXT          = @OBJEXT@
-LIBEXT          = @LIBEXT@
 DLLEXT          = @DLLEXT@
 FAKEEXT         = $(DLLEXT:.so=.fake)
 TOOLSEXT        = @TOOLSEXT@
 IMPLIBEXT       = @IMPLIBEXT@
 DLLTOOL         = @DLLTOOL@
-DLLWRAP         = @DLLWRAP@
 AR              = @AR@
 ARFLAGS         = @ARFLAGS@
 RANLIB          = @RANLIB@

@@ -221,7 +221,7 @@ BOOL WINAPI ChooseFontW(LPCHOOSEFONTW lpChFont)
     if (TRACE_ON(commdlg))
         _dump_cf_flags(lpChFont->Flags);
 
-    if (lpChFont->Flags & (CF_SELECTSCRIPT | CF_NOVERTFONTS ))
+    if (lpChFont->Flags & CF_SELECTSCRIPT)
         FIXME(": unimplemented flag (ignored)\n");
 
     return DialogBoxIndirectParamW(COMDLG32_hInstance, template,
@@ -274,7 +274,7 @@ BOOL WINAPI ChooseFontA(LPCHOOSEFONTA lpChFont)
     }
     if (TRACE_ON(commdlg))
         _dump_cf_flags(lpChFont->Flags);
-    if (lpChFont->Flags & (CF_SELECTSCRIPT | CF_NOVERTFONTS ))
+    if (lpChFont->Flags & CF_SELECTSCRIPT)
         FIXME(": unimplemented flag (ignored)\n");
 
     return DialogBoxIndirectParamA(COMDLG32_hInstance, template,
@@ -324,6 +324,9 @@ static INT AddFontFamily(const ENUMLOGFONTEXW *lpElfex, const NEWTEXTMETRICEXW *
             return 1;
     if (lpcf->Flags & CF_TTONLY)
         if (!(nFontType & TRUETYPE_FONTTYPE))
+            return 1;
+    if (lpcf->Flags & CF_NOVERTFONTS)
+        if (lplf->lfFaceName[0] == '@')
             return 1;
 
     if (e) e->added++;
@@ -782,7 +785,7 @@ static LRESULT CFn_WMMeasureItem(HWND hDlg, LPARAM lParam)
     /* use MAX of bitmap height and tm.tmHeight .*/
     hdc=GetDC(hDlg);
     if(!hdc) return 0;
-    hfontprev = SelectObject( hdc, GetStockObject( DEFAULT_GUI_FONT ) );
+    hfontprev = SelectObject( hdc, (HFONT)SendMessageW( hDlg, WM_GETFONT, 0, 0 ));
     GetTextMetricsW(hdc, &tm);
     if( tm.tmHeight > lpmi->itemHeight) lpmi->itemHeight = tm.tmHeight;
     SelectObject(hdc, hfontprev);
@@ -801,7 +804,7 @@ static LRESULT CFn_WMDrawItem(LPARAM lParam)
     COLORREF cr, oldText=0, oldBk=0;
     RECT rect;
     int nFontType;
-    int idx;
+    int cx, cy, idx;
     LPDRAWITEMSTRUCT lpdi = (LPDRAWITEMSTRUCT)lParam;
 
     if (lpdi->itemID == (UINT)-1)  /* got no items */
@@ -830,9 +833,10 @@ static LRESULT CFn_WMDrawItem(LPARAM lParam)
         {
         case cmb1:
             /* TRACE(commdlg,"WM_Drawitem cmb1\n"); */
+            ImageList_GetIconSize( himlTT, &cx, &cy);
             SendMessageW(lpdi->hwndItem, CB_GETLBTEXT, lpdi->itemID,
                          (LPARAM)buffer);
-            TextOutW(lpdi->hDC, lpdi->rcItem.left + TTBITMAP_XSIZE + 10,
+            TextOutW(lpdi->hDC, lpdi->rcItem.left + cx + 4,
                      lpdi->rcItem.top, buffer, lstrlenW(buffer));
             nFontType = SendMessageW(lpdi->hwndItem, CB_GETITEMDATA, lpdi->itemID,0L);
             idx = -1;
@@ -848,7 +852,7 @@ static LRESULT CFn_WMDrawItem(LPARAM lParam)
                 idx = 1; /* picture: printer */
             if( idx >= 0)
                 ImageList_Draw( himlTT, idx, lpdi->hDC, lpdi->rcItem.left,
-                        lpdi->rcItem.top, ILD_TRANSPARENT);
+                                (lpdi->rcItem.top + lpdi->rcItem.bottom - cy) / 2, ILD_TRANSPARENT);
             break;
         case cmb2:
         case cmb3:

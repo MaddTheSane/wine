@@ -56,8 +56,6 @@ WINE_DECLARE_DEBUG_CHANNEL(key);
 
 #define MAX_PACK_COUNT 4
 
-#define SYS_TIMER_RATE  55   /* min. timer rate in ms (actually 54.925)*/
-
 /* the various structures that can be sent in messages, in platform-independent layout */
 struct packed_CREATESTRUCTW
 {
@@ -586,6 +584,17 @@ static BOOL CALLBACK broadcast_message_callback( HWND hwnd, LPARAM lparam )
     return TRUE;
 }
 
+DWORD get_input_codepage( void )
+{
+    DWORD cp;
+    int ret;
+    HKL hkl = GetKeyboardLayout( 0 );
+
+    ret = GetLocaleInfoW( LOWORD(hkl), LOCALE_IDEFAULTANSICODEPAGE | LOCALE_RETURN_NUMBER,
+                          (WCHAR *)&cp, sizeof(cp) / sizeof(WCHAR) );
+    if (!ret) cp = CP_ACP;
+    return cp;
+}
 
 /***********************************************************************
  *		map_wparam_AtoW
@@ -596,6 +605,7 @@ BOOL map_wparam_AtoW( UINT message, WPARAM *wparam, enum wm_char_mapping mapping
 {
     char ch[2];
     WCHAR wch[2];
+    DWORD cp = get_input_codepage();
 
     wch[0] = wch[1] = 0;
     switch(message)
@@ -614,7 +624,7 @@ BOOL map_wparam_AtoW( UINT message, WPARAM *wparam, enum wm_char_mapping mapping
             {
                 ch[0] = low;
                 ch[1] = HIBYTE(*wparam);
-                RtlMultiByteToUnicodeN( wch, sizeof(wch), NULL, ch, 2 );
+                MultiByteToWideChar( cp, 0, ch, 2, wch, 2 );
                 TRACE( "map %02x,%02x -> %04x mapping %u\n", (BYTE)ch[0], (BYTE)ch[1], wch[0], mapping );
                 if (data) data->lead_byte[mapping] = 0;
             }
@@ -622,14 +632,14 @@ BOOL map_wparam_AtoW( UINT message, WPARAM *wparam, enum wm_char_mapping mapping
             {
                 ch[0] = data->lead_byte[mapping];
                 ch[1] = low;
-                RtlMultiByteToUnicodeN( wch, sizeof(wch), NULL, ch, 2 );
+                MultiByteToWideChar( cp, 0, ch, 2, wch, 2 );
                 TRACE( "map stored %02x,%02x -> %04x mapping %u\n", (BYTE)ch[0], (BYTE)ch[1], wch[0], mapping );
                 data->lead_byte[mapping] = 0;
             }
             else if (!IsDBCSLeadByte( low ))
             {
                 ch[0] = low;
-                RtlMultiByteToUnicodeN( wch, sizeof(wch), NULL, ch, 1 );
+                MultiByteToWideChar( cp, 0, ch, 1, wch, 2 );
                 TRACE( "map %02x -> %04x\n", (BYTE)ch[0], wch[0] );
                 if (data) data->lead_byte[mapping] = 0;
             }
@@ -657,14 +667,14 @@ BOOL map_wparam_AtoW( UINT message, WPARAM *wparam, enum wm_char_mapping mapping
     case WM_MENUCHAR:
         ch[0] = LOBYTE(*wparam);
         ch[1] = HIBYTE(*wparam);
-        RtlMultiByteToUnicodeN( wch, sizeof(wch), NULL, ch, 2 );
+        MultiByteToWideChar( cp, 0, ch, 2, wch, 2 );
         *wparam = MAKEWPARAM(wch[0], wch[1]);
         break;
     case WM_IME_CHAR:
         ch[0] = HIBYTE(*wparam);
         ch[1] = LOBYTE(*wparam);
-        if (ch[0]) RtlMultiByteToUnicodeN( wch, sizeof(wch[0]), NULL, ch, 2 );
-        else RtlMultiByteToUnicodeN( wch, sizeof(wch[0]), NULL, ch + 1, 1 );
+        if (ch[0]) MultiByteToWideChar( cp, 0, ch, 2, wch, 2 );
+        else MultiByteToWideChar( cp, 0, ch + 1, 1, wch, 1 );
         *wparam = MAKEWPARAM(wch[0], HIWORD(*wparam));
         break;
     }
@@ -679,9 +689,10 @@ BOOL map_wparam_AtoW( UINT message, WPARAM *wparam, enum wm_char_mapping mapping
  */
 static void map_wparam_WtoA( MSG *msg, BOOL remove )
 {
-    BYTE ch[2];
+    BYTE ch[4];
     WCHAR wch[2];
     DWORD len;
+    DWORD cp = get_input_codepage();
 
     switch(msg->message)
     {
@@ -690,7 +701,7 @@ static void map_wparam_WtoA( MSG *msg, BOOL remove )
         {
             wch[0] = LOWORD(msg->wParam);
             ch[0] = ch[1] = 0;
-            RtlUnicodeToMultiByteN( (LPSTR)ch, 2, &len, wch, sizeof(wch[0]) );
+            len = WideCharToMultiByte( cp, 0, wch, 1, (LPSTR)ch, 2, NULL, NULL );
             if (len == 2)  /* DBCS char */
             {
                 struct wm_char_mapping_data *data = get_user_thread_info()->wmchar_data;
@@ -718,13 +729,13 @@ static void map_wparam_WtoA( MSG *msg, BOOL remove )
         wch[0] = LOWORD(msg->wParam);
         wch[1] = HIWORD(msg->wParam);
         ch[0] = ch[1] = 0;
-        RtlUnicodeToMultiByteN( (LPSTR)ch, 2, NULL, wch, sizeof(wch) );
+        WideCharToMultiByte( cp, 0, wch, 2, (LPSTR)ch, 4, NULL, NULL );
         msg->wParam = MAKEWPARAM( ch[0] | (ch[1] << 8), 0 );
         break;
     case WM_IME_CHAR:
         wch[0] = LOWORD(msg->wParam);
         ch[0] = ch[1] = 0;
-        RtlUnicodeToMultiByteN( (LPSTR)ch, 2, &len, wch, sizeof(wch[0]) );
+        len = WideCharToMultiByte( cp, 0, wch, 1, (LPSTR)ch, 2, NULL, NULL );
         if (len == 2)
             msg->wParam = MAKEWPARAM( (ch[0] << 8) | ch[1], HIWORD(msg->wParam) );
         else
@@ -2453,8 +2464,8 @@ static BOOL process_keyboard_message( MSG *msg, UINT hw_id, HWND hwnd_filter,
     }
     accept_hardware_message( hw_id, remove, 0 );
 
-    if ( msg->message == WM_KEYDOWN || msg->message == WM_KEYUP )
-        if ( ImmProcessKey(msg->hwnd, GetKeyboardLayout(0), msg->wParam, msg->lParam, 0) )
+    if ( remove && msg->message == WM_KEYDOWN )
+        if (ImmProcessKey(msg->hwnd, GetKeyboardLayout(0), msg->wParam, msg->lParam, 0) )
             msg->wParam = VK_PROCESSKEY;
 
     return TRUE;
@@ -3672,12 +3683,17 @@ void WINAPI PostQuitMessage( INT exit_code )
 }
 
 /* check for driver events if we detect that the app is not properly consuming messages */
-static inline void check_for_driver_events(void)
+static inline void check_for_driver_events( UINT msg )
 {
     if (get_user_thread_info()->message_count > 200)
     {
         flush_window_surfaces( FALSE );
         USER_Driver->pMsgWaitForMultipleObjectsEx( 0, NULL, 0, QS_ALLINPUT, 0 );
+    }
+    else if (msg == WM_TIMER || msg == WM_SYSTIMER)
+    {
+        /* driver events should have priority over timers, so make sure we'll check for them soon */
+        get_user_thread_info()->message_count += 100;
     }
     else get_user_thread_info()->message_count++;
 }
@@ -3690,7 +3706,7 @@ BOOL WINAPI DECLSPEC_HOTPATCH PeekMessageW( MSG *msg_out, HWND hwnd, UINT first,
     MSG msg;
 
     USER_CheckNotLock();
-    check_for_driver_events();
+    check_for_driver_events( 0 );
 
     if (!peek_message( &msg, hwnd, first, last, flags, 0 ))
     {
@@ -3701,6 +3717,8 @@ BOOL WINAPI DECLSPEC_HOTPATCH PeekMessageW( MSG *msg_out, HWND hwnd, UINT first,
         /* if we received driver events, check again for a pending message */
         if (ret == WAIT_TIMEOUT || !peek_message( &msg, hwnd, first, last, flags, 0 )) return FALSE;
     }
+
+    check_for_driver_events( msg.message );
 
     /* copy back our internal safe copy of message data to msg_out.
      * msg_out is a variable from the *program*, so it can't be used
@@ -3737,7 +3755,7 @@ BOOL WINAPI DECLSPEC_HOTPATCH GetMessageW( MSG *msg, HWND hwnd, UINT first, UINT
     unsigned int mask = QS_POSTMESSAGE | QS_SENDMESSAGE;  /* Always selected */
 
     USER_CheckNotLock();
-    check_for_driver_events();
+    check_for_driver_events( 0 );
 
     if (first || last)
     {
@@ -3755,6 +3773,7 @@ BOOL WINAPI DECLSPEC_HOTPATCH GetMessageW( MSG *msg, HWND hwnd, UINT first, UINT
         flush_window_surfaces( TRUE );
         wow_handlers.wait_message( 1, &server_queue, INFINITE, mask, 0 );
     }
+    check_for_driver_events( msg->message );
 
     return (msg->message != WM_QUIT);
 }
@@ -4385,12 +4404,16 @@ UINT_PTR WINAPI SetTimer( HWND hwnd, UINT_PTR id, UINT timeout, TIMERPROC proc )
 
     if (proc) winproc = WINPROC_AllocProc( (WNDPROC)proc, FALSE );
 
+    /* MSDN states that the minimum timeout should be USER_TIMER_MINIMUM (10.0 ms), but testing
+     * indicates that the true minimum is closer to 15.6 ms. */
+    timeout = min( max( 15, timeout ), USER_TIMER_MAXIMUM );
+
     SERVER_START_REQ( set_win_timer )
     {
         req->win    = wine_server_user_handle( hwnd );
         req->msg    = WM_TIMER;
         req->id     = id;
-        req->rate   = max( timeout, SYS_TIMER_RATE );
+        req->rate   = timeout;
         req->lparam = (ULONG_PTR)winproc;
         if (!wine_server_call_err( req ))
         {
@@ -4416,12 +4439,16 @@ UINT_PTR WINAPI SetSystemTimer( HWND hwnd, UINT_PTR id, UINT timeout, TIMERPROC 
 
     if (proc) winproc = WINPROC_AllocProc( (WNDPROC)proc, FALSE );
 
+    /* MSDN states that the minimum timeout should be USER_TIMER_MINIMUM (10.0 ms), but testing
+     * indicates that the true minimum is closer to 15.6 ms. */
+    timeout = min( max( 15, timeout ), USER_TIMER_MAXIMUM );
+
     SERVER_START_REQ( set_win_timer )
     {
         req->win    = wine_server_user_handle( hwnd );
         req->msg    = WM_SYSTIMER;
         req->id     = id;
-        req->rate   = max( timeout, SYS_TIMER_RATE );
+        req->rate   = timeout;
         req->lparam = (ULONG_PTR)winproc;
         if (!wine_server_call_err( req ))
         {

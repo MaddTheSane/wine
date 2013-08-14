@@ -107,7 +107,7 @@ static ME_DisplayItem *split_run_extents(ME_WrapContext *wc, ME_DisplayItem *ite
 static int find_split_point( ME_Context *c, int cx, ME_Run *run )
 {
     if (!run->len || cx <= 0) return 0;
-    return ME_CharFromPointContext( c, cx, run, FALSE );
+    return ME_CharFromPointContext( c, cx, run, FALSE, FALSE );
 }
 
 static ME_DisplayItem *ME_MakeRow(int height, int baseline, int width)
@@ -188,7 +188,6 @@ static void ME_InsertRowStart(ME_WrapContext *wc, const ME_DisplayItem *pEnd)
         {
           /* Exclude space characters from run width.
            * Other whitespace or delimiters are not treated this way. */
-          SIZE sz;
           int len = p->member.run.len;
           WCHAR *text = get_text( &p->member.run, len - 1 );
 
@@ -199,13 +198,9 @@ static void ME_InsertRowStart(ME_WrapContext *wc, const ME_DisplayItem *pEnd)
           if (len)
           {
               if (len == p->member.run.len)
-              {
                   width += p->member.run.nWidth;
-              } else {
-                  sz = ME_GetRunSize(wc->context, &para->member.para,
-                                     &p->member.run, len, p->member.run.pt.x);
-                  width += sz.cx;
-              }
+              else
+                  width += ME_PointFromCharContext( wc->context, &p->member.run, len, FALSE );
           }
           bSkippingSpaces = !len;
         } else if (!(p->member.run.nFlags & MERF_ENDPARA))
@@ -233,6 +228,7 @@ static void ME_InsertRowStart(ME_WrapContext *wc, const ME_DisplayItem *pEnd)
     shift = max((wc->nAvailWidth-width)/2, 0);
   if (align == PFA_RIGHT)
     shift = max(wc->nAvailWidth-width, 0);
+  row->member.row.pt.x = row->member.row.nLMargin + shift;
   for (p = wc->pRowStart; p!=pEnd; p = p->next)
   {
     if (p->type==diRun) { /* FIXME add more run types */

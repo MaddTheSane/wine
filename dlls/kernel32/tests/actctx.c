@@ -24,6 +24,8 @@
 #include <winnls.h>
 #include <stdio.h>
 
+#include "initguid.h"
+
 static BOOL   (WINAPI *pActivateActCtx)(HANDLE,ULONG_PTR*);
 static HANDLE (WINAPI *pCreateActCtxW)(PCACTCTXW);
 static BOOL   (WINAPI *pDeactivateActCtx)(DWORD,ULONG_PTR);
@@ -32,6 +34,7 @@ static BOOL   (WINAPI *pGetCurrentActCtx)(HANDLE *);
 static BOOL   (WINAPI *pIsDebuggerPresent)(void);
 static BOOL   (WINAPI *pQueryActCtxW)(DWORD,HANDLE,PVOID,ULONG,PVOID,SIZE_T,SIZE_T*);
 static VOID   (WINAPI *pReleaseActCtx)(HANDLE);
+static BOOL   (WINAPI *pFindActCtxSectionGuid)(DWORD,const GUID*,ULONG,const GUID*,PACTCTX_SECTION_KEYED_DATA);
 
 static const char* strw(LPCWSTR x)
 {
@@ -41,6 +44,18 @@ static const char* strw(LPCWSTR x)
     if (!x) return "(nil)";
     else while ((*p++ = *x++));
     return buffer;
+}
+
+static const char *debugstr_guid(REFIID riid)
+{
+    static char buf[50];
+
+    sprintf(buf, "{%08x-%04x-%04x-%02x%02x-%02x%02x%02x%02x%02x%02x}",
+            riid->Data1, riid->Data2, riid->Data3, riid->Data4[0],
+            riid->Data4[1], riid->Data4[2], riid->Data4[3], riid->Data4[4],
+            riid->Data4[5], riid->Data4[6], riid->Data4[7]);
+
+    return buf;
 }
 
 #ifdef __i386__
@@ -68,12 +83,21 @@ static const char manifest2[] =
 "</dependency>"
 "</assembly>";
 
+DEFINE_GUID(IID_CoTest, 0x12345678, 0x1234, 0x5678, 0x12, 0x34, 0x11, 0x11, 0x22, 0x22, 0x33, 0x33);
+DEFINE_GUID(IID_TlibTest, 0x99999999, 0x8888, 0x7777, 0x66, 0x66, 0x55, 0x55, 0x55, 0x55, 0x55, 0x55);
+
 static const char manifest3[] =
 "<assembly xmlns=\"urn:schemas-microsoft-com:asm.v1\" manifestVersion=\"1.0\">"
 "<assemblyIdentity version=\"1.2.3.4\"  name=\"Wine.Test\" type=\"win32\""
 " publicKeyToken=\"6595b6414666f1df\" />"
 "<file name=\"testlib.dll\">"
 "<windowClass>wndClass</windowClass>"
+"    <comClass description=\"Test com class\""
+"              clsid=\"{12345678-1234-5678-1234-111122223333}\""
+"              tlbid=\"{99999999-8888-7777-6666-555555555555}\""
+"              threadingModel=\"Neutral\""
+"              progid=\"ProgId.ProgId\""
+"    />"
 "</file>"
 "</assembly>";
 
@@ -693,10 +717,16 @@ static void test_create_fail(void)
     test_create_and_fail(manifest2, wrong_depmanifest1, 0 );
 }
 
+struct dllredirect_keyed_data
+{
+    ULONG size;
+    ULONG unk;
+    DWORD res[3];
+};
+
 static void test_find_dll_redirection(HANDLE handle, LPCWSTR libname, ULONG exid, int line)
 {
     ACTCTX_SECTION_KEYED_DATA data;
-    DWORD *p;
     BOOL ret;
 
     memset(&data, 0xfe, sizeof(data));
@@ -717,10 +747,19 @@ static void test_find_dll_redirection(HANDLE handle, LPCWSTR libname, ULONG exid
     ok_(__FILE__, line)(data.lpData != NULL, "data.lpData == NULL\n");
     ok_(__FILE__, line)(data.ulLength == 20, "data.ulLength=%u\n", data.ulLength);
 
-    p = data.lpData;
-    if(ret && p) todo_wine {
-        ok_(__FILE__, line)(p[0] == 20 && p[1] == 2 && p[2] == 0 && p[3] == 0 && p[4] == 0,
-           "wrong data %u,%u,%u,%u,%u\n",p[0], p[1], p[2], p[3], p[4]);
+    if (data.lpData)
+    {
+        struct dllredirect_keyed_data *dlldata = (struct dllredirect_keyed_data*)data.lpData;
+todo_wine
+        ok_(__FILE__, line)(dlldata->size == data.ulLength, "got wrong size %d\n", dlldata->size);
+
+if (dlldata->size == data.ulLength)
+{
+        ok_(__FILE__, line)(dlldata->unk == 2, "got wrong field value %d\n", dlldata->unk);
+        ok_(__FILE__, line)(dlldata->res[0] == 0, "got wrong res[0] value %d\n", dlldata->res[0]);
+        ok_(__FILE__, line)(dlldata->res[1] == 0, "got wrong res[1] value %d\n", dlldata->res[1]);
+        ok_(__FILE__, line)(dlldata->res[2] == 0, "got wrong res[2] value %d\n", dlldata->res[2]);
+}
     }
 
     ok_(__FILE__, line)(data.lpSectionGlobalData == NULL, "data.lpSectionGlobalData != NULL\n");
@@ -763,8 +802,20 @@ static void test_find_dll_redirection(HANDLE handle, LPCWSTR libname, ULONG exid
     pReleaseActCtx(handle);
 }
 
+struct wndclass_keyed_data
+{
+    DWORD size;
+    DWORD reserved;
+    DWORD classname_len;
+    DWORD classname_offset;
+    DWORD modulename_len;
+    DWORD modulename_offset; /* offset relative to section base */
+    WCHAR strdata[1];
+};
+
 static void test_find_window_class(HANDLE handle, LPCWSTR clsname, ULONG exid, int line)
 {
+    struct wndclass_keyed_data *wnddata;
     ACTCTX_SECTION_KEYED_DATA data;
     BOOL ret;
 
@@ -781,16 +832,55 @@ static void test_find_window_class(HANDLE handle, LPCWSTR clsname, ULONG exid, i
         return;
     }
 
+    wnddata = (struct wndclass_keyed_data*)data.lpData;
+
     ok_(__FILE__, line)(data.cbSize == sizeof(data), "data.cbSize=%u\n", data.cbSize);
     ok_(__FILE__, line)(data.ulDataFormatVersion == 1, "data.ulDataFormatVersion=%u\n", data.ulDataFormatVersion);
     ok_(__FILE__, line)(data.lpData != NULL, "data.lpData == NULL\n");
-    /* ok_(__FILE__, line)(data.ulLength == ??, "data.ulLength=%u\n", data.ulLength); */
+todo_wine
+    ok_(__FILE__, line)(wnddata->size == FIELD_OFFSET(struct wndclass_keyed_data, strdata), "got %d for header size\n", wnddata->size);
+    if (data.lpData && wnddata->size == FIELD_OFFSET(struct wndclass_keyed_data, strdata))
+    {
+        static const WCHAR verW[] = {'6','.','5','.','4','.','3','!',0};
+        WCHAR buff[50];
+        WCHAR *ptr;
+        ULONG len;
+
+        ok_(__FILE__, line)(wnddata->reserved == 0, "got reserved as %d\n", wnddata->reserved);
+        /* redirect class name (versioned or not) is stored just after header data */
+        ok_(__FILE__, line)(wnddata->classname_offset == wnddata->size, "got name offset as %d\n", wnddata->classname_offset);
+        ok_(__FILE__, line)(wnddata->modulename_len > 0, "got module name length as %d\n", wnddata->modulename_len);
+
+        /* expected versioned name */
+        lstrcpyW(buff, verW);
+        lstrcatW(buff, clsname);
+        ptr = (WCHAR*)((BYTE*)wnddata + wnddata->size);
+        ok_(__FILE__, line)(!lstrcmpW(ptr, buff), "got wrong class name %s, expected %s\n", wine_dbgstr_w(ptr), wine_dbgstr_w(buff));
+        ok_(__FILE__, line)(lstrlenW(ptr)*sizeof(WCHAR) == wnddata->classname_len,
+            "got wrong class name length %d, expected %d\n", wnddata->classname_len, lstrlenW(ptr));
+
+        /* data length is simply header length + string data length including nulls */
+        len = wnddata->size + wnddata->classname_len + wnddata->modulename_len + 2*sizeof(WCHAR);
+        ok_(__FILE__, line)(data.ulLength == len, "got wrong data length %d, expected %d\n", data.ulLength, len);
+
+        if (data.ulSectionTotalLength > wnddata->modulename_offset)
+        {
+            WCHAR *modulename, *sectionptr;
+
+            /* just compare pointers */
+            modulename = (WCHAR*)((BYTE*)wnddata + wnddata->size + wnddata->classname_len + sizeof(WCHAR));
+            sectionptr = (WCHAR*)((BYTE*)data.lpSectionBase + wnddata->modulename_offset);
+            ok_(__FILE__, line)(modulename == sectionptr, "got wrong name offset %p, expected %p\n", sectionptr, modulename);
+        }
+    }
+
     ok_(__FILE__, line)(data.lpSectionGlobalData == NULL, "data.lpSectionGlobalData != NULL\n");
     ok_(__FILE__, line)(data.ulSectionGlobalDataLength == 0, "data.ulSectionGlobalDataLength=%u\n",
        data.ulSectionGlobalDataLength);
     ok_(__FILE__, line)(data.lpSectionBase != NULL, "data.lpSectionBase == NULL\n");
-    /* ok_(__FILE__, line)(data.ulSectionTotalLength == 0, "data.ulSectionTotalLength=%u\n",
-       data.ulSectionTotalLength); FIXME */
+todo_wine
+    ok_(__FILE__, line)(data.ulSectionTotalLength > 0, "data.ulSectionTotalLength=%u\n",
+       data.ulSectionTotalLength);
     ok_(__FILE__, line)(data.hActCtx == NULL, "data.hActCtx=%p\n", data.hActCtx);
     ok_(__FILE__, line)(data.ulAssemblyRosterIndex == exid, "data.ulAssemblyRosterIndex=%u, expected %u\n",
        data.ulAssemblyRosterIndex, exid);
@@ -897,6 +987,105 @@ static void test_basic_info(HANDLE handle, int line)
         ok_(__FILE__, line) (basic.dwFlags == 0, "unexpected flags %x\n",basic.dwFlags);
         ok_(__FILE__, line) (basic.hActCtx == handle, "unexpected handle\n");
     }
+}
+
+enum comclass_threadingmodel {
+    ThreadingModel_Apartment = 1,
+    ThreadingModel_Free      = 2,
+    ThreadingModel_Both      = 4,
+    ThreadingModel_Neutral   = 5
+};
+
+enum comclass_miscfields {
+    MiscStatus          = 0x1,
+    MiscStatusIcon      = 0x2,
+    MiscStatusContent   = 0x4,
+    MiscStatusThumbnail = 0x8
+};
+
+struct comclass_keyed_data {
+    DWORD size;
+    BYTE reserved;
+    BYTE miscmask;
+    BYTE unk[2];
+    DWORD model;
+    GUID clsid;
+    GUID unkguid;
+    GUID clsid2;
+    GUID tlid;
+    DWORD modulename_len;
+    DWORD modulename_offset;
+    DWORD progid_len;
+    DWORD progid_offset;
+    DWORD res2[7];
+    WCHAR strdata[1];
+};
+
+static void test_find_com_redirection(HANDLE handle, const GUID *clsid, const GUID *tlid, ULONG exid, int line)
+{
+    struct comclass_keyed_data *comclass;
+    ACTCTX_SECTION_KEYED_DATA data;
+    BOOL ret;
+
+    memset(&data, 0xfe, sizeof(data));
+    data.cbSize = sizeof(data);
+
+    ret = pFindActCtxSectionGuid(0, NULL,
+                                    ACTIVATION_CONTEXT_SECTION_COM_SERVER_REDIRECTION,
+                                    clsid, &data);
+todo_wine
+    ok_(__FILE__, line)(ret, "FindActCtxSectionGuid failed: %u\n", GetLastError());
+    if(!ret)
+    {
+        skip("couldn't find guid %s\n", debugstr_guid(clsid));
+        return;
+    }
+
+    comclass = (struct comclass_keyed_data*)data.lpData;
+
+    ok_(__FILE__, line)(data.cbSize == sizeof(data), "data.cbSize=%u\n", data.cbSize);
+    ok_(__FILE__, line)(data.ulDataFormatVersion == 1, "data.ulDataFormatVersion=%u\n", data.ulDataFormatVersion);
+    ok_(__FILE__, line)(data.lpData != NULL, "data.lpData == NULL\n");
+    ok_(__FILE__, line)(comclass->size == FIELD_OFFSET(struct comclass_keyed_data, strdata), "got %d for header size\n", comclass->size);
+    if (data.lpData && comclass->size == FIELD_OFFSET(struct comclass_keyed_data, strdata))
+    {
+        static const WCHAR progid[] = {'P','r','o','g','I','d','.','P','r','o','g','I','d',0};
+        WCHAR *ptr;
+        ULONG len;
+
+        ok_(__FILE__, line)(comclass->reserved == 0, "got reserved as %d\n", comclass->reserved);
+        ok_(__FILE__, line)(comclass->miscmask == 0, "got miscmask as %02x\n", comclass->miscmask);
+        ok_(__FILE__, line)(comclass->unk[0] == 0, "got unk[0] as %02x\n", comclass->unk[0]);
+        ok_(__FILE__, line)(comclass->unk[1] == 0, "got unk[1] as %02x\n", comclass->unk[1]);
+        ok_(__FILE__, line)(comclass->model == ThreadingModel_Neutral, "got model %d\n", comclass->model);
+        ok_(__FILE__, line)(IsEqualGUID(&comclass->clsid, clsid), "got wrong clsid %s\n", debugstr_guid(&comclass->clsid));
+        ok_(__FILE__, line)(IsEqualGUID(&comclass->clsid2, clsid), "got wrong clsid2 %s\n", debugstr_guid(&comclass->clsid2));
+        ok_(__FILE__, line)(IsEqualGUID(&comclass->tlid, tlid), "got wrong tlid %s\n", debugstr_guid(&comclass->tlid));
+        ok_(__FILE__, line)(comclass->modulename_len > 0, "got modulename len %d\n", comclass->modulename_len);
+        ok_(__FILE__, line)(comclass->progid_offset == comclass->size, "got progid offset %d\n", comclass->progid_offset);
+
+        ptr = (WCHAR*)((BYTE*)comclass + comclass->size);
+        ok_(__FILE__, line)(!lstrcmpW(ptr, progid), "got wrong progid %s, expected %s\n", wine_dbgstr_w(ptr), wine_dbgstr_w(progid));
+        ok_(__FILE__, line)(lstrlenW(ptr)*sizeof(WCHAR) == comclass->progid_len,
+            "got progid name length %d, expected %d\n", comclass->progid_len, lstrlenW(ptr));
+
+        /* data length is simply header length + string data length including nulls */
+        len = comclass->size + comclass->progid_len + sizeof(WCHAR);
+        ok_(__FILE__, line)(data.ulLength == len, "got wrong data length %d, expected %d\n", data.ulLength, len);
+
+        /* keyed data structure doesn't include module name, it's available from section data */
+        ok_(__FILE__, line)(data.ulSectionTotalLength > comclass->modulename_offset, "got wrong offset %d\n", comclass->modulename_offset);
+    }
+
+    ok_(__FILE__, line)(data.lpSectionGlobalData != NULL, "data.lpSectionGlobalData == NULL\n");
+    ok_(__FILE__, line)(data.ulSectionGlobalDataLength > 0, "data.ulSectionGlobalDataLength=%u\n",
+       data.ulSectionGlobalDataLength);
+    ok_(__FILE__, line)(data.lpSectionBase != NULL, "data.lpSectionBase == NULL\n");
+    ok_(__FILE__, line)(data.ulSectionTotalLength > 0, "data.ulSectionTotalLength=%u\n",
+       data.ulSectionTotalLength);
+    ok_(__FILE__, line)(data.hActCtx == NULL, "data.hActCtx=%p\n", data.hActCtx);
+    ok_(__FILE__, line)(data.ulAssemblyRosterIndex == exid, "data.ulAssemblyRosterIndex=%u, expected %u\n",
+       data.ulAssemblyRosterIndex, exid);
 }
 
 static void test_actctx(void)
@@ -1038,6 +1227,7 @@ static void test_actctx(void)
         ok(b, "ActivateActCtx failed: %u\n", GetLastError());
         test_find_dll_redirection(handle, testlib_dll, 1, __LINE__);
         test_find_dll_redirection(handle, testlib_dll, 1, __LINE__);
+        test_find_com_redirection(handle, &IID_CoTest, &IID_TlibTest, 1, __LINE__);
         test_find_string_fail();
         b = pDeactivateActCtx(0, cookie);
         ok(b, "DeactivateActCtx failed: %u\n", GetLastError());
@@ -1212,6 +1402,7 @@ static BOOL init_funcs(void)
     X(IsDebuggerPresent);
     X(QueryActCtxW);
     X(ReleaseActCtx);
+    X(FindActCtxSectionGuid);
 #undef X
 
     return TRUE;

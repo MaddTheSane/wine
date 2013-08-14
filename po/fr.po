@@ -2109,7 +2109,7 @@ msgstr "É&tat du certificat :"
 
 #: cryptui.rc:221
 msgid "Disclaimer"
-msgstr "Avis de non-responsabilité"
+msgstr "Clause de non-responsabilité"
 
 #: cryptui.rc:228
 msgid "More &Info"
@@ -3476,7 +3476,8 @@ msgid ""
 "updated here until you restart this applet."
 msgstr ""
 "Après l'activation ou désactivation d'un périphérique, la liste des "
-"joysticks connectés ne sera pas mise à jour à moins de redémarrer l'applet."
+"joysticks connectés ne sera pas mise à jour à moins de redémarrer cette "
+"applet."
 
 #: joy.rc:47
 msgid "Test Joystick"
@@ -5156,7 +5157,7 @@ msgstr "Tous les privilèges n'ont pas été accordés.\n"
 
 #: winerror.mc:1911
 msgid "Some security IDs not mapped.\n"
-msgstr "Mappage partiel des ID de sécurité.\n"
+msgstr "Certains IDs de sécurité n'ont pas de correspondance.\n"
 
 #: winerror.mc:1916
 msgid "No quotas for account.\n"
@@ -5280,7 +5281,7 @@ msgstr "Compte utilisateur désactivé.\n"
 
 #: winerror.mc:2066
 msgid "No security ID mapped.\n"
-msgstr "Aucun mappage d'ID de sécurité.\n"
+msgstr "Aucune correspondance pour les IDs de sécurité.\n"
 
 #: winerror.mc:2071
 msgid "Too many LUIDs requested.\n"
@@ -5389,7 +5390,7 @@ msgstr "Erreur interne.\n"
 
 #: winerror.mc:2201
 msgid "Generic access types not mapped.\n"
-msgstr "Types d'accès génériques non mappés.\n"
+msgstr "Pas de correspondance pour les types d'accès génériques.\n"
 
 #: winerror.mc:2206
 msgid "Bad descriptor format.\n"
@@ -5501,7 +5502,7 @@ msgstr "Membre invalide.\n"
 
 #: winerror.mc:2346
 msgid "Too many SIDs.\n"
-msgstr "Trop d'ID de sécurité (SID).\n"
+msgstr "Trop de SIDs.\n"
 
 #: winerror.mc:2351
 msgid "Cross-encrypted LM password required.\n"
@@ -5993,7 +5994,7 @@ msgstr "UUID de chaîne invalide.\n"
 
 #: winerror.mc:2961
 msgid "Invalid endpoint format.\n"
-msgstr "Format du point d'extrémité invalide.\n"
+msgstr "Format du point de terminaison invalide.\n"
 
 #: winerror.mc:2966
 msgid "Invalid network address.\n"
@@ -6001,7 +6002,7 @@ msgstr "Adresse réseau invalide.\n"
 
 #: winerror.mc:2971
 msgid "No endpoint found.\n"
-msgstr "Point d'extrémité introuvable.\n"
+msgstr "Point de terminaison introuvable.\n"
 
 #: winerror.mc:2976
 msgid "Invalid timeout value.\n"
@@ -6049,7 +6050,7 @@ msgstr "Pas de séquence de protocole.\n"
 
 #: winerror.mc:3031
 msgid "Can't create endpoint.\n"
-msgstr "Ne peut créer de point d'extrémité.\n"
+msgstr "Ne peut créer le point de terminaison.\n"
 
 #: winerror.mc:3036
 msgid "Out of resources.\n"
@@ -6113,7 +6114,7 @@ msgstr "Pas d'adresse réseau.\n"
 
 #: winerror.mc:3116
 msgid "Duplicate endpoint.\n"
-msgstr "Point d'extrémité dupliqué.\n"
+msgstr "Point de terminaison dupliqué.\n"
 
 #: winerror.mc:3121
 msgid "Unknown authentication type.\n"
@@ -6165,7 +6166,7 @@ msgstr "Ne peut effectuer l'opération.\n"
 
 #: winerror.mc:3181
 msgid "Endpoints not registered.\n"
-msgstr "Points d'extrémité non enregistrés.\n"
+msgstr "Points de terminaison non enregistrés.\n"
 
 #: winerror.mc:3186
 msgid "Nothing to export.\n"
@@ -6376,7 +6377,7 @@ msgid "No more bindings.\n"
 msgstr "Il n'y a plus de liaisons.\n"
 
 #: winerror.mc:3446
-msgid "Can't logon with interdomain trust account.\n"
+msgid "Can't logon with inter-domain trust account.\n"
 msgstr "Ne peut se connecter avec un compte d'approbation inter-domaines.\n"
 
 #: winerror.mc:3451
@@ -6487,7 +6488,7 @@ msgstr "Membre de groupe introuvable.\n"
 #: winerror.mc:3581
 msgid "Can't create endpoint mapper DB.\n"
 msgstr ""
-"Impossible de créer la base de données de mappeur de points d'extrémités.\n"
+"Impossible de créer la base de données du mappeur de point de terminaison.\n"
 
 #: winerror.mc:3586
 msgid "Invalid object.\n"
@@ -8918,50 +8919,46 @@ msgstr ""
 "La commande spécifiée nécessite un paramètre entier. Veuillez en fournir un."
 
 #: winmm.rc:108
-#, fuzzy
 msgid ""
 "All wave devices that can play files in the current format are in use. Wait "
 "until a wave device is free, and then try again."
 msgstr ""
-"Tous les périphériques audio capables de jouer des fichiers sous ce format "
-"sont en cours d'utilisation. Attendez qu'un périphérique audio soit libre, "
+"Tous les périphériques audio capables de jouer des fichiers dans ce format "
+"sont en cours d'utilisation. Attendez qu'un périphérique audio se libère, "
 "puis essayez à nouveau."
 
 #: winmm.rc:109
-#, fuzzy
 msgid ""
 "Cannot set the current wave device for play back because it is in use. Wait "
 "until the device is free, and then try again."
 msgstr ""
-"Le périphérique audio de lecture est en cours d'utilisation. Attendez qu'il "
-"soit disponible, puis essayez à nouveau."
+"Impossible de sélectionner le périphérique audio actuel pour la lecture car "
+"il est en cours d'utilisation. Attendez qu'il se libère, puis essayez à "
+"nouveau."
 
 #: winmm.rc:110
-#, fuzzy
 msgid ""
 "All wave devices that can record files in the current format are in use. "
 "Wait until a wave device is free, and then try again."
 msgstr ""
-"Tous les périphériques audio capables d'enregistrer des fichiers sous ce "
-"format sont en cours d'utilisation. Attendez qu'un périphérique audio soit "
-"libre, puis essayez à nouveau."
+"Tous les périphériques audio capables d'enregistrer des fichiers dans ce "
+"format sont en cours d'utilisation. Attendez qu'un périphérique audio se "
+"libère, puis essayez à nouveau."
 
 #: winmm.rc:111
-#, fuzzy
 msgid ""
 "Cannot set the current wave device for recording because it is in use. Wait "
 "until the device is free, and then try again."
 msgstr ""
-"Le périphérique audio d'enregistrement est en cours d'utilisation. Attendez "
-"qu'il soit libre, puis essayez à nouveau."
+"Impossible de sélectionner le périphérique audio actuel pour "
+"l'enregistrement car il est en cours d'utilisation. Attendez qu'il se "
+"libère, puis essayez à nouveau."
 
 #: winmm.rc:112
-#, fuzzy
 msgid "Any compatible waveform playback device may be used."
 msgstr "N'importe quel périphérique audio de lecture peut être utilisé."
 
 #: winmm.rc:113
-#, fuzzy
 msgid "Any compatible waveform recording device may be used."
 msgstr "N'importe quel périphérique audio d'enregistrement peut être utilisé."
 
@@ -8971,8 +8968,8 @@ msgid ""
 "No wave device that can play files in the current format is installed. Use "
 "the Drivers option to install the wave device."
 msgstr ""
-"Aucun périphérique audio capable de jouer des fichiers sous le format en "
-"cours n'a été installé."
+"Aucun périphérique audio capable de jouer des fichiers dans le format en "
+"cours n'est présent. "
 
 #: winmm.rc:115
 msgid ""
@@ -8987,8 +8984,8 @@ msgid ""
 "No wave device that can record files in the current format is installed. Use "
 "the Drivers option to install the wave device."
 msgstr ""
-"Aucun périphérique audio capable d'enregistrer des fichiers sous le format "
-"en cours n'a été installé."
+"Aucun périphérique audio capable d'enregistrer des fichiers dans le format "
+"en cours n'est présent."
 
 #: winmm.rc:117
 msgid ""
@@ -9193,7 +9190,7 @@ msgstr "Syntaxe DN invalide"
 
 #: wldap32.rc:62
 msgid "Is Leaf"
-msgstr "Est une feuille"
+msgstr "L'objet est une feuille"
 
 #: wldap32.rc:63
 msgid "Alias Dereference Problem"
@@ -9245,7 +9242,7 @@ msgstr "Violation de classe d'objet"
 
 #: wldap32.rc:93
 msgid "Not allowed on Non-leaf"
-msgstr "Interdit sur des non-feuilles"
+msgstr "Interdit sur les objets non-feuille"
 
 #: wldap32.rc:94
 msgid "Not allowed on RDN"
@@ -9335,7 +9332,7 @@ msgstr "Boucle lors du traitement des référants"
 msgid "Referral hop limit exceeded"
 msgstr "Limite du nombre de référants dépassée"
 
-#: attrib.rc:27 cmd.rc:325
+#: attrib.rc:27 cmd.rc:322
 msgid ""
 "Not Yet Implemented\n"
 "\n"
@@ -9343,7 +9340,7 @@ msgstr ""
 "Pas encore implémenté\n"
 "\n"
 
-#: attrib.rc:28 cmd.rc:328
+#: attrib.rc:28 cmd.rc:325
 msgid "%1: File Not Found\n"
 msgstr "%1 : fichier non trouvé\n"
 
@@ -9474,7 +9471,7 @@ msgstr "DATE affiche ou modifie la date système.\n"
 
 #: cmd.rc:48
 msgid "DEL <filename> deletes a file or set of files.\n"
-msgstr "DEL <fichiers> efface un fichier ou un groupe de fichiers.\n"
+msgstr "DEL <fichier> efface un fichier ou un groupe de fichiers.\n"
 
 #: cmd.rc:49
 msgid "DIR lists the contents of a directory.\n"
@@ -9502,27 +9499,20 @@ msgstr ""
 
 #: cmd.rc:61
 msgid "ERASE <filename> deletes a file or set of files.\n"
-msgstr "ERASE <fichiers> efface un ou plusieurs fichiers.\n"
+msgstr "ERASE <fichier> efface un ou plusieurs fichiers.\n"
 
-#: cmd.rc:69
+#: cmd.rc:66
 msgid ""
 "The FOR command is used to execute a command for each of a set of files.\n"
 "\n"
 "Syntax: FOR %variable IN (set) DO command\n"
-"\n"
-"The requirement to double the % sign when using FOR in a batch file does\n"
-"not exist in wine's cmd.\n"
 msgstr ""
 "La commande FOR sert à exécuter une commande pour chaque fichier d'une liste "
 "de fichiers.\n"
 "\n"
 "Syntaxe : FOR %variable IN (liste) DO commande\n"
-"\n"
-"La nécessité de doubler le signe « % » lorsque l'on utilise FOR dans un "
-"fichier batch\n"
-"n'est pas présente dans le cmd de wine.\n"
 
-#: cmd.rc:81
+#: cmd.rc:78
 msgid ""
 "The GOTO command transfers execution to another statement within a\n"
 "batch file.\n"
@@ -9548,7 +9538,7 @@ msgstr ""
 "\n"
 "GOTO n'a pas d'effet si utilisé interactivement.\n"
 
-#: cmd.rc:84
+#: cmd.rc:81
 msgid ""
 "HELP <command> shows brief help details on a topic.\n"
 "HELP without an argument shows all CMD built-in commands.\n"
@@ -9556,7 +9546,7 @@ msgstr ""
 "HELP <commande> affiche une brève aide sur une commande donnée.\n"
 "HELP sans argument affiche toutes les commandes intégrées de CMD.\n"
 
-#: cmd.rc:94
+#: cmd.rc:91
 msgid ""
 "IF is used to conditionally execute a command.\n"
 "\n"
@@ -9576,7 +9566,7 @@ msgstr ""
 "Dans la deuxième forme de la commande, chaîne1 et chaîne2 doivent être\n"
 "entre guillemets. La comparaison est insensible à la casse.\n"
 
-#: cmd.rc:100
+#: cmd.rc:97
 msgid ""
 "LABEL is used to set a disk volume label.\n"
 "\n"
@@ -9590,15 +9580,15 @@ msgstr ""
 "La commande demande le nouveau nom de volume pour le lecteur spécifié.\n"
 "Vous pouvez afficher le nom de volume avec la commande VOL.\n"
 
-#: cmd.rc:103
+#: cmd.rc:100
 msgid "MD <name> is the short version of MKDIR. It creates a subdirectory.\n"
 msgstr "MD <nom> est la version courte de MKDIR. Elle crée un répertoire.\n"
 
-#: cmd.rc:104
+#: cmd.rc:101
 msgid "MKDIR <name> creates a subdirectory.\n"
 msgstr "MKDIR <nom> crée un répertoire.\n"
 
-#: cmd.rc:111
+#: cmd.rc:108
 msgid ""
 "MOVE relocates a file or directory to a new point within the file system.\n"
 "\n"
@@ -9617,7 +9607,7 @@ msgstr ""
 "MOVE échoue si l'ancien et le nouvel emplacement sont sur des lecteurs DOS "
 "différents.\n"
 
-#: cmd.rc:122
+#: cmd.rc:119
 msgid ""
 "PATH displays or changes the cmd search path.\n"
 "\n"
@@ -9639,7 +9629,7 @@ msgstr ""
 "d'environnement PATH, par exemple :\n"
 "PATH %PATH%;c:\\temp\n"
 
-#: cmd.rc:128
+#: cmd.rc:125
 msgid ""
 "PAUSE displays a message on the screen asking the user to press a key.\n"
 "\n"
@@ -9647,14 +9637,15 @@ msgid ""
 "of a previous command before it scrolls off the screen.\n"
 msgstr ""
 "PAUSE affiche un message à l'écran demandant à l'utilisateur d'appuyer sur "
-"une touche.\n"
+"une\n"
+"touche.\n"
 "\n"
 "Principalement utilisé dans des fichiers batchs pour permettre à "
 "l'utilisateur\n"
 "de lire la sortie de la dernière commande avant qu'elle ne disparaisse de "
 "l'écran.\n"
 
-#: cmd.rc:149
+#: cmd.rc:146
 msgid ""
 "PROMPT sets the command-line prompt.\n"
 "\n"
@@ -9693,14 +9684,14 @@ msgstr ""
 "\n"
 "Notez qu'entrer la commande PROMPT sans texte d'invite remet l'invite\n"
 "à sa valeur par défaut, à savoir le répertoire courant (incluant la lettre\n"
-"du lecteur courant) suivi d'un signe « plus grand que » (>).\n"
+"du lecteur courant) suivi d'un signe « plus grand que » (>).\n"
 "(c.-à-d. la commande PROMPT $p$g).\n"
 "\n"
 "L'invite peut aussi être adaptée en modifiant la variable d'environnement\n"
 "PROMPT ; ainsi la commande « SET PROMPT=texte » a le même effet que « PROMPT "
 "texte ».\n"
 
-#: cmd.rc:153
+#: cmd.rc:150
 msgid ""
 "A command line beginning with REM (followed by a space) performs no\n"
 "action, and can therefore be used as a comment in a batch file.\n"
@@ -9708,24 +9699,24 @@ msgstr ""
 "Une ligne de commande commençant par REM (suivi d'une espace) n'induit\n"
 "aucune action, et peut donc servir de commentaire dans un fichier batch.\n"
 
-#: cmd.rc:156
+#: cmd.rc:153
 msgid "REN <filename> is the short version of RENAME. It renames a file.\n"
 msgstr ""
 "REN <fichier> est la version courte de RENAME. Elle renomme un fichier.\n"
 
-#: cmd.rc:157
+#: cmd.rc:154
 msgid "RENAME <filename> renames a file.\n"
 msgstr "RENAME <fichier> renomme un fichier.\n"
 
-#: cmd.rc:159
+#: cmd.rc:156
 msgid "RD <dir> is the short version of RMDIR. It deletes a subdirectory.\n"
-msgstr "RD est la version courte de RMDIR. Elle efface un répertoire.\n"
+msgstr "RD <rép> est la version courte de RMDIR. Elle efface un répertoire.\n"
 
-#: cmd.rc:160
+#: cmd.rc:157
 msgid "RMDIR <dir> deletes a subdirectory.\n"
-msgstr "RMDIR efface un sous-répertoire.\n"
+msgstr "RMDIR <rép> efface un sous-répertoire.\n"
 
-#: cmd.rc:204
+#: cmd.rc:201
 msgid ""
 "SET displays or changes the cmd environment variables.\n"
 "\n"
@@ -9763,7 +9754,7 @@ msgstr ""
 "l'environnement\n"
 "du système d'exploitation dans cmd.\n"
 
-#: cmd.rc:209
+#: cmd.rc:206
 msgid ""
 "SHIFT is used in a batch file to remove one parameter from the head of\n"
 "the list, so parameter 2 becomes parameter 1 and so on. It has no effect\n"
@@ -9775,7 +9766,7 @@ msgstr ""
 "sans effet\n"
 "s'il est appelé depuis la ligne de commande.\n"
 
-#: cmd.rc:186 start.rc:50
+#: cmd.rc:183 start.rc:50
 msgid ""
 "Start a program, or open a document in the program normally used for files "
 "with that suffix.\n"
@@ -9835,15 +9826,15 @@ msgstr ""
 "/ProgIDOpen   Ouvrir un document via le programme identifié par progID.\n"
 "/?            Afficher cette aide et se terminer.\n"
 
-#: cmd.rc:211
+#: cmd.rc:208
 msgid "TIME sets or shows the current system time.\n"
 msgstr "TIME règle ou affiche l'heure système courante.\n"
 
-#: cmd.rc:213
+#: cmd.rc:210
 msgid "TITLE <string> sets the window title for the cmd window.\n"
 msgstr "TITLE <chaîne> définit le titre de la fenêtre pour la session cmd.\n"
 
-#: cmd.rc:217
+#: cmd.rc:214
 msgid ""
 "TYPE <filename> copies <filename> to the console device (or elsewhere\n"
 "if redirected). No check is made that the file is readable text.\n"
@@ -9852,7 +9843,7 @@ msgstr ""
 "si redirigé). Aucun test n'est fait pour voir si le fichier contient bien du "
 "texte.\n"
 
-#: cmd.rc:226
+#: cmd.rc:223
 msgid ""
 "VERIFY is used to set, clear or test the verify flag. Valid forms are:\n"
 "\n"
@@ -9871,15 +9862,15 @@ msgstr ""
 "\n"
 "L'indicateur de vérification n'a pas de fonction dans Wine.\n"
 
-#: cmd.rc:229
+#: cmd.rc:226
 msgid "VER displays the version of cmd you are running.\n"
 msgstr "VER affiche la version de cmd utilisée.\n"
 
-#: cmd.rc:231
+#: cmd.rc:228
 msgid "VOL shows the volume label of a disk device.\n"
 msgstr "VOL affiche le nom de volume d'un lecteur de disque.\n"
 
-#: cmd.rc:235
+#: cmd.rc:232
 msgid ""
 "ENDLOCAL ends localization of environment changes in a batch file\n"
 "which were introduced by a preceding SETLOCAL.\n"
@@ -9887,7 +9878,7 @@ msgstr ""
 "ENDLOCAL met fin aux modifications locales de l'environnement dans\n"
 "un fichier batch, introduites à la suite d'un SETLOCAL préalable.\n"
 
-#: cmd.rc:243
+#: cmd.rc:240
 msgid ""
 "SETLOCAL starts localization of environment changes in a batch file.\n"
 "\n"
@@ -9906,7 +9897,7 @@ msgstr ""
 "jusqu'à la fin du fichier), après quoi les réglages antérieurs de\n"
 "l'environnement sont restaurés.\n"
 
-#: cmd.rc:246
+#: cmd.rc:243
 msgid ""
 "PUSHD <directoryname> saves the current directory onto a\n"
 "stack, and then changes the current directory to the supplied one.\n"
@@ -9914,13 +9905,13 @@ msgstr ""
 "PUSHD <répertoire> enregistre le répertoire courant sur\n"
 "une pile et remplace le répertoire courant par le répertoire spécifié.\n"
 
-#: cmd.rc:248
+#: cmd.rc:245
 msgid "POPD changes current directory to the last one saved with PUSHD.\n"
 msgstr ""
 "POPD remplace le répertoire courant par le dernier enregistré à l'aide de\n"
 "PUSHD.\n"
 
-#: cmd.rc:256
+#: cmd.rc:253
 msgid ""
 "ASSOC shows or modifies file extension associations.\n"
 "\n"
@@ -9942,7 +9933,7 @@ msgstr ""
 "Si aucun type de fichiers n'est spécifié après le signe égal, supprime "
 "l'association courante, si elle existe.\n"
 
-#: cmd.rc:267
+#: cmd.rc:264
 msgid ""
 "FTYPE shows or modifies open commands associated with file types.\n"
 "\n"
@@ -9967,11 +9958,11 @@ msgstr ""
 "Ne spécifier aucune commande après le signe égal supprime la commande "
 "d'ouverture associée au type de fichier spécifié.\n"
 
-#: cmd.rc:269
+#: cmd.rc:266
 msgid "MORE displays output of files or piped input in pages.\n"
 msgstr "MORE affiche le contenu de fichiers ou l'entrée standard par pages.\n"
 
-#: cmd.rc:273
+#: cmd.rc:270
 msgid ""
 "CHOICE displays a text and waits, until the User\n"
 "presses an allowed Key from a selectable list.\n"
@@ -9982,7 +9973,7 @@ msgstr ""
 "CHOICE est principalement utilisé pour construire une sélection de menu dans "
 "un fichier batch.\n"
 
-#: cmd.rc:277
+#: cmd.rc:274
 msgid ""
 "EXIT terminates the current command session and returns\n"
 "to the operating system or shell from which you invoked cmd.\n"
@@ -9990,7 +9981,7 @@ msgstr ""
 "EXIT termine la session de ligne de commande et retourne\n"
 "au système d'exploitation ou au shell où vous avez invoqué cmd.\n"
 
-#: cmd.rc:315
+#: cmd.rc:312
 msgid ""
 "CMD built-in commands are:\n"
 "ASSOC\t\tShow or modify file extension associations\n"
@@ -10075,110 +10066,110 @@ msgstr ""
 "Entrez HELP <commande> pour plus d'informations sur les commandes ci-"
 "dessus.\n"
 
-#: cmd.rc:317
+#: cmd.rc:314
 msgid "Are you sure?"
 msgstr "Êtes-vous sûr(e) ?"
 
-#: cmd.rc:318 xcopy.rc:40
+#: cmd.rc:315 xcopy.rc:40
 msgctxt "Yes key"
 msgid "Y"
 msgstr "O"
 
-#: cmd.rc:319 xcopy.rc:41
+#: cmd.rc:316 xcopy.rc:41
 msgctxt "No key"
 msgid "N"
 msgstr "N"
 
-#: cmd.rc:320
+#: cmd.rc:317
 msgid "File association missing for extension %1\n"
 msgstr "Association de fichier manquante pour l'extension %1\n"
 
-#: cmd.rc:321
+#: cmd.rc:318
 msgid "No open command associated with file type '%1'\n"
 msgstr "Aucune commande d'ouverture n'est associée au type de fichier « %1 »\n"
 
-#: cmd.rc:322
+#: cmd.rc:319
 msgid "Overwrite %1?"
 msgstr "Écraser %1 ?"
 
-#: cmd.rc:323
+#: cmd.rc:320
 msgid "More..."
 msgstr "Plus..."
 
-#: cmd.rc:324
+#: cmd.rc:321
 msgid "Line in Batch processing possibly truncated. Using:\n"
 msgstr "Ligne du processus batch probablement tronquée. Utilisation de :\n"
 
-#: cmd.rc:326
+#: cmd.rc:323
 msgid "Argument missing\n"
 msgstr "Argument manquant\n"
 
-#: cmd.rc:327
+#: cmd.rc:324
 msgid "Syntax error\n"
 msgstr "Erreur de syntaxe\n"
 
-#: cmd.rc:329
+#: cmd.rc:326
 msgid "No help available for %1\n"
 msgstr "Aucune aide disponible pour %1\n"
 
-#: cmd.rc:330
+#: cmd.rc:327
 msgid "Target to GOTO not found\n"
 msgstr "La destination de l'instruction GOTO n'a pas été trouvée\n"
 
-#: cmd.rc:331
+#: cmd.rc:328
 msgid "Current Date is %1\n"
 msgstr "La date courante est %1\n"
 
-#: cmd.rc:332
+#: cmd.rc:329
 msgid "Current Time is %1\n"
 msgstr "L'heure courante est %1\n"
 
-#: cmd.rc:333
+#: cmd.rc:330
 msgid "Enter new date: "
 msgstr "Saisissez la nouvelle date : "
 
-#: cmd.rc:334
+#: cmd.rc:331
 msgid "Enter new time: "
 msgstr "Saisissez la nouvelle heure : "
 
-#: cmd.rc:335
+#: cmd.rc:332
 msgid "Environment variable %1 not defined\n"
 msgstr "La variable d'environnement %1 n'est pas définie\n"
 
-#: cmd.rc:336 xcopy.rc:38
+#: cmd.rc:333 xcopy.rc:38
 msgid "Failed to open '%1'\n"
 msgstr "Impossible d'ouvrir « %1 »\n"
 
-#: cmd.rc:337
+#: cmd.rc:334
 msgid "Cannot call batch label outside of a batch script\n"
 msgstr "Impossible d'appeler une étiquette de batch hors d'un script batch\n"
 
-#: cmd.rc:338 xcopy.rc:42
+#: cmd.rc:335 xcopy.rc:42
 msgctxt "All key"
 msgid "A"
 msgstr "T"
 
-#: cmd.rc:339
+#: cmd.rc:336
 msgid "Delete %1?"
 msgstr "Supprimer %1 ?"
 
-#: cmd.rc:340
+#: cmd.rc:337
 msgid "Echo is %1\n"
 msgstr "Echo est %1\n"
 
-#: cmd.rc:341
+#: cmd.rc:338
 msgid "Verify is %1\n"
 msgstr "Verify est %1\n"
 
-#: cmd.rc:342
+#: cmd.rc:339
 msgid "Verify must be ON or OFF\n"
 msgstr "Verify doit être ON ou OFF\n"
 
-#: cmd.rc:343
+#: cmd.rc:340
 msgid "Parameter error\n"
 msgstr "Erreur de paramètre\n"
 
-#: cmd.rc:344
+#: cmd.rc:341
 msgid ""
 "Volume Serial Number is %1!04x!-%2!04x!\n"
 "\n"
@@ -10186,74 +10177,74 @@ msgstr ""
 "Le numéro de série du volume est %1!04x!-%2!04x!\n"
 "\n"
 
-#: cmd.rc:345
+#: cmd.rc:342
 msgid "Volume label (11 characters, <Enter> for none)?"
 msgstr "Étiquette du volume (11 caractères, <Entrée> pour aucun) ?"
 
-#: cmd.rc:346
+#: cmd.rc:343
 msgid "PATH not found\n"
 msgstr "PATH non trouvé\n"
 
-#: cmd.rc:347
+#: cmd.rc:344
 msgid "Press any key to continue... "
 msgstr "Appuyez sur une touche pour continuer... "
 
-#: cmd.rc:348
+#: cmd.rc:345
 msgid "Wine Command Prompt"
 msgstr "Invite de commande Wine"
 
-#: cmd.rc:349
+#: cmd.rc:346
 msgid "Wine CMD Version %1!S!\n"
 msgstr "Wine CMD version %1!S!\n"
 
-#: cmd.rc:350
+#: cmd.rc:347
 msgid "More? "
 msgstr "Plus ? "
 
-#: cmd.rc:351
+#: cmd.rc:348
 msgid "The input line is too long.\n"
 msgstr "La ligne d'entrée est trop longue.\n"
 
-#: cmd.rc:352
+#: cmd.rc:349
 msgid "Volume in drive %1!c! is %2\n"
 msgstr "Le volume dans le lecteur %1!c! est %2\n"
 
-#: cmd.rc:353
+#: cmd.rc:350
 msgid "Volume in drive %1!c! has no label.\n"
 msgstr "Le volume dans le lecteur %1!c! n'a pas de label.\n"
 
-#: cmd.rc:354
+#: cmd.rc:351
 msgid " (Yes|No)"
 msgstr " (Oui|Non)"
 
-#: cmd.rc:355
+#: cmd.rc:352
 msgid " (Yes|No|All)"
 msgstr " (Oui|Non|Tous)"
 
-#: cmd.rc:356
+#: cmd.rc:353
 msgid ""
 "Can't recognize '%1' as an internal or external command, or batch script.\n"
 msgstr ""
 "Ne reconnaît pas « %1 » comme commande interne ou externe, ou fichier de "
 "traitement par lots.\n"
 
-#: cmd.rc:357
+#: cmd.rc:354
 msgid "Division by zero error.\n"
 msgstr "Erreur de division par zéro.\n"
 
-#: cmd.rc:358
+#: cmd.rc:355
 msgid "Expected an operand.\n"
 msgstr "Opérande attendu.\n"
 
-#: cmd.rc:359
+#: cmd.rc:356
 msgid "Expected an operator.\n"
 msgstr "Opérateur attendu.\n"
 
-#: cmd.rc:360
+#: cmd.rc:357
 msgid "Mismatch in parentheses.\n"
 msgstr "Discordance des parenthèses.\n"
 
-#: cmd.rc:361
+#: cmd.rc:358
 msgid ""
 "Badly formed number - must be one of decimal (12),\n"
 " hexadecimal (0x34) or octal (056).\n"
@@ -10279,7 +10270,7 @@ msgstr "Usage : hostname\n"
 
 #: hostname.rc:28
 msgid "Error: Invalid option '%c'.\n"
-msgstr "Erreur : option « %c » invalide.\n"
+msgstr "Erreur : option « %c » invalide.\n"
 
 #: hostname.rc:29
 msgid ""
@@ -11878,7 +11869,7 @@ msgstr "Erreur : impossible de terminer le processus « %1 ».\n"
 
 #: taskkill.rc:40
 msgid "Error: Process self-termination is not permitted.\n"
-msgstr "Erreur : un processus ne peut pas s'auto-terminer.\n"
+msgstr "Erreur : un processus ne peut pas se terminer lui-même.\n"
 
 #: taskmgr.rc:37 taskmgr.rc:108
 msgid "&New Task (Run...)"
@@ -12042,15 +12033,15 @@ msgstr "Totaux"
 
 #: taskmgr.rc:375
 msgid "Commit charge (K)"
-msgstr "Charge dédiée (Kio)"
+msgstr "Charge dédiée (K)"
 
 #: taskmgr.rc:376
 msgid "Physical memory (K)"
-msgstr "Mémoire physique (Kio)"
+msgstr "Mémoire physique (K)"
 
 #: taskmgr.rc:377
 msgid "Kernel memory (K)"
-msgstr "Mémoire noyau (Kio)"
+msgstr "Mémoire noyau (K)"
 
 #: taskmgr.rc:378 taskmgr.rc:290
 msgid "Handles"
@@ -13171,7 +13162,7 @@ msgstr "Lettre"
 
 #: winecfg.rc:75
 msgid "Drive Mapping"
-msgstr "Assignation de lecteur"
+msgstr "Dossier cible"
 
 #: winecfg.rc:76
 msgid ""
@@ -13790,15 +13781,15 @@ msgid "Not yet implemented"
 msgstr "Pas encore implémenté"
 
 #: winefile.rc:106
-msgid "CDate"
-msgstr "Dernier changement de statut (ctime)"
+msgid "Creation date"
+msgstr "Création"
 
 #: winefile.rc:107
-msgid "ADate"
+msgid "Access date"
 msgstr "Dernier accès"
 
 #: winefile.rc:108
-msgid "MDate"
+msgid "Modification date"
 msgstr "Dernière modification"
 
 #: winefile.rc:109

@@ -297,20 +297,23 @@ ME_StreamOutRTFFontAndColorTbl(ME_OutStream *pStream, ME_DisplayItem *pFirstRun,
   if (!ME_StreamOutPrint(pStream, "}\r\n"))
     return FALSE;
 
-  /* Output colors table if not empty */
-  if (pStream->nColorTblLen > 1) {
-    if (!ME_StreamOutPrint(pStream, "{\\colortbl;"))
-      return FALSE;
-    for (i = 1; i < pStream->nColorTblLen; i++) {
-      if (!ME_StreamOutPrint(pStream, "\\red%u\\green%u\\blue%u;",
-                             pStream->colortbl[i] & 0xFF,
-                             (pStream->colortbl[i] >> 8) & 0xFF,
-                             (pStream->colortbl[i] >> 16) & 0xFF))
-        return FALSE;
-    }
-    if (!ME_StreamOutPrint(pStream, "}"))
+  /* It seems like Open Office ignores \deff0 tag at RTF-header.
+     As result it can't correctly parse text before first \fN tag,
+     so we can put \f0 immediately after font table. This forces
+     parser to use the same font, that \deff0 specifies.
+     It makes OOffice happy */
+  if (!ME_StreamOutPrint(pStream, "\\f0"))
+    return FALSE;
+
+  /* Output the color table */
+  if (!ME_StreamOutPrint(pStream, "{\\colortbl;")) return FALSE; /* first entry is auto-color */
+  for (i = 1; i < pStream->nColorTblLen; i++)
+  {
+    if (!ME_StreamOutPrint(pStream, "\\red%u\\green%u\\blue%u;", pStream->colortbl[i] & 0xFF,
+                           (pStream->colortbl[i] >> 8) & 0xFF, (pStream->colortbl[i] >> 16) & 0xFF))
       return FALSE;
   }
+  if (!ME_StreamOutPrint(pStream, "}")) return FALSE;
 
   return TRUE;
 }

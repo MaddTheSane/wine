@@ -299,9 +299,10 @@ static BOOL CDECL nulldrv_CreateDesktopWindow( HWND hwnd )
 static BOOL CDECL nulldrv_CreateWindow( HWND hwnd )
 {
     static int warned;
+    HWND parent = GetAncestor( hwnd, GA_PARENT );
 
     /* HWND_MESSAGE windows don't need a graphics driver */
-    if (GetAncestor( hwnd, GA_PARENT ) == get_user_thread_info()->msg_window) return TRUE;
+    if (!parent || parent == get_user_thread_info()->msg_window) return TRUE;
     if (warned++) return FALSE;
 
     MESSAGE( "Application tried to create a window, but no driver could be loaded.\n");
@@ -340,10 +341,13 @@ static void CDECL nulldrv_ReleaseDC( HWND hwnd, HDC hdc )
 {
 }
 
-static BOOL CDECL nulldrv_ScrollDC( HDC hdc, INT dx, INT dy, const RECT *scroll, const RECT *clip,
-                                    HRGN hrgn, LPRECT update )
+static BOOL CDECL nulldrv_ScrollDC( HDC hdc, INT dx, INT dy, HRGN update )
 {
-    return FALSE;
+    RECT rect;
+
+    GetClipBox( hdc, &rect );
+    return BitBlt( hdc, rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top,
+                   hdc, rect.left - dx, rect.top - dy, SRCCOPY );
 }
 
 static void CDECL nulldrv_SetCapture( HWND hwnd, UINT flags )
@@ -678,10 +682,9 @@ static void CDECL loaderdrv_ReleaseDC( HWND hwnd, HDC hdc )
     load_driver()->pReleaseDC( hwnd, hdc );
 }
 
-static BOOL CDECL loaderdrv_ScrollDC( HDC hdc, INT dx, INT dy, const RECT *scroll, const RECT *clip,
-                                      HRGN hrgn, LPRECT update )
+static BOOL CDECL loaderdrv_ScrollDC( HDC hdc, INT dx, INT dy, HRGN update )
 {
-    return load_driver()->pScrollDC( hdc, dx, dy, scroll, clip, hrgn, update );
+    return load_driver()->pScrollDC( hdc, dx, dy, update );
 }
 
 static void CDECL loaderdrv_SetCapture( HWND hwnd, UINT flags )

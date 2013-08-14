@@ -25,6 +25,7 @@
 #include <stdarg.h>
 #ifdef SONAME_LIBGNUTLS
 #include <gnutls/gnutls.h>
+#include <gnutls/crypto.h>
 #endif
 
 #include "windef.h"
@@ -61,10 +62,11 @@ MAKE_FUNCPTR(gnutls_mac_get);
 MAKE_FUNCPTR(gnutls_mac_get_key_size);
 MAKE_FUNCPTR(gnutls_perror);
 MAKE_FUNCPTR(gnutls_protocol_get_version);
-MAKE_FUNCPTR(gnutls_set_default_priority);
+MAKE_FUNCPTR(gnutls_priority_set_direct);
 MAKE_FUNCPTR(gnutls_record_get_max_size);
 MAKE_FUNCPTR(gnutls_record_recv);
 MAKE_FUNCPTR(gnutls_record_send);
+MAKE_FUNCPTR(gnutls_server_name_set);
 MAKE_FUNCPTR(gnutls_transport_get_ptr);
 MAKE_FUNCPTR(gnutls_transport_set_errno);
 MAKE_FUNCPTR(gnutls_transport_set_ptr);
@@ -106,21 +108,46 @@ static ssize_t schan_push_adapter(gnutls_transport_ptr_t transport,
     return buff_len;
 }
 
-BOOL schan_imp_create_session(schan_imp_session *session, BOOL is_server,
-                              schan_imp_certificate_credentials cred)
+static const struct {
+    DWORD enable_flag;
+    const char *gnutls_flag;
+} protocol_priority_flags[] = {
+    {SP_PROT_TLS1_2_CLIENT, "VERS-TLS1.2"},
+    {SP_PROT_TLS1_1_CLIENT, "VERS-TLS1.1"},
+    {SP_PROT_TLS1_0_CLIENT, "VERS-TLS1.0"},
+    {SP_PROT_SSL3_CLIENT,   "VERS-SSL3.0"}
+    /* {SP_PROT_SSL2_CLIENT} is not supported by GnuTLS */
+};
+
+DWORD schan_imp_enabled_protocols(void)
+{
+    /* NOTE: No support for SSL 2.0 */
+    return SP_PROT_SSL3_CLIENT | SP_PROT_TLS1_0_CLIENT | SP_PROT_TLS1_1_CLIENT | SP_PROT_TLS1_2_CLIENT;
+}
+
+BOOL schan_imp_create_session(schan_imp_session *session, schan_credentials *cred)
 {
     gnutls_session_t *s = (gnutls_session_t*)session;
+    char priority[64] = "NORMAL", *p;
+    unsigned i;
 
-    int err = pgnutls_init(s, is_server ? GNUTLS_SERVER : GNUTLS_CLIENT);
+    int err = pgnutls_init(s, cred->credential_use == SECPKG_CRED_INBOUND ? GNUTLS_SERVER : GNUTLS_CLIENT);
     if (err != GNUTLS_E_SUCCESS)
     {
         pgnutls_perror(err);
         return FALSE;
     }
 
-    /* FIXME: We should be using the information from the credentials here. */
-    FIXME("Using hardcoded \"NORMAL\" priority\n");
-    err = pgnutls_set_default_priority(*s);
+    p = priority + strlen(priority);
+    for(i=0; i < sizeof(protocol_priority_flags)/sizeof(*protocol_priority_flags); i++) {
+        *p++ = ':';
+        *p++ = (cred->enabled_protocols & protocol_priority_flags[i].enable_flag) ? '+' : '-';
+        strcpy(p, protocol_priority_flags[i].gnutls_flag);
+        p += strlen(p);
+    }
+
+    TRACE("Using %s priority\n", debugstr_a(priority));
+    err = pgnutls_priority_set_direct(*s, priority, NULL);
     if (err != GNUTLS_E_SUCCESS)
     {
         pgnutls_perror(err);
@@ -129,7 +156,7 @@ BOOL schan_imp_create_session(schan_imp_session *session, BOOL is_server,
     }
 
     err = pgnutls_credentials_set(*s, GNUTLS_CRD_CERTIFICATE,
-                                  (gnutls_certificate_credentials_t)cred);
+                                  (gnutls_certificate_credentials_t)cred->credentials);
     if (err != GNUTLS_E_SUCCESS)
     {
         pgnutls_perror(err);
@@ -154,6 +181,13 @@ void schan_imp_set_session_transport(schan_imp_session session,
 {
     gnutls_session_t s = (gnutls_session_t)session;
     pgnutls_transport_set_ptr(s, (gnutls_transport_ptr_t)t);
+}
+
+void schan_imp_set_session_target(schan_imp_session session, const char *target)
+{
+    gnutls_session_t s = (gnutls_session_t)session;
+
+    pgnutls_server_name_set( s, GNUTLS_NAME_DNS, target, strlen(target) );
 }
 
 SECURITY_STATUS schan_imp_handshake(schan_imp_session session)
@@ -309,9 +343,9 @@ SECURITY_STATUS schan_imp_get_connection_info(schan_imp_session session,
 
     info->dwProtocol = schannel_get_protocol(proto);
     info->aiCipher = schannel_get_cipher_algid(alg);
-    info->dwCipherStrength = pgnutls_cipher_get_key_size(alg);
+    info->dwCipherStrength = pgnutls_cipher_get_key_size(alg) * 8;
     info->aiHash = schannel_get_mac_algid(mac);
-    info->dwHashStrength = pgnutls_mac_get_key_size(mac);
+    info->dwHashStrength = pgnutls_mac_get_key_size(mac) * 8;
     info->aiExch = schannel_get_kx_algid(kx);
     /* FIXME: info->dwExchStrength? */
     info->dwExchStrength = 0;
@@ -405,17 +439,17 @@ again:
     return SEC_E_OK;
 }
 
-BOOL schan_imp_allocate_certificate_credentials(schan_imp_certificate_credentials *c)
+BOOL schan_imp_allocate_certificate_credentials(schan_credentials *c)
 {
-    int ret = pgnutls_certificate_allocate_credentials((gnutls_certificate_credentials*)c);
+    int ret = pgnutls_certificate_allocate_credentials((gnutls_certificate_credentials_t*)&c->credentials);
     if (ret != GNUTLS_E_SUCCESS)
         pgnutls_perror(ret);
     return (ret == GNUTLS_E_SUCCESS);
 }
 
-void schan_imp_free_certificate_credentials(schan_imp_certificate_credentials c)
+void schan_imp_free_certificate_credentials(schan_credentials *c)
 {
-    pgnutls_certificate_free_credentials((gnutls_certificate_credentials_t)c);
+    pgnutls_certificate_free_credentials(c->credentials);
 }
 
 static void schan_gnutls_log(int level, const char *msg)
@@ -461,10 +495,11 @@ BOOL schan_imp_init(void)
     LOAD_FUNCPTR(gnutls_mac_get_key_size)
     LOAD_FUNCPTR(gnutls_perror)
     LOAD_FUNCPTR(gnutls_protocol_get_version)
-    LOAD_FUNCPTR(gnutls_set_default_priority)
+    LOAD_FUNCPTR(gnutls_priority_set_direct)
     LOAD_FUNCPTR(gnutls_record_get_max_size);
     LOAD_FUNCPTR(gnutls_record_recv);
     LOAD_FUNCPTR(gnutls_record_send);
+    LOAD_FUNCPTR(gnutls_server_name_set)
     LOAD_FUNCPTR(gnutls_transport_get_ptr)
     LOAD_FUNCPTR(gnutls_transport_set_errno)
     LOAD_FUNCPTR(gnutls_transport_set_ptr)

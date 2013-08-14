@@ -79,8 +79,10 @@ static const WCHAR mediatype_name[] = {
     'M', 'e', 'd', 'i', 'a', ' ', 'T', 'y', 'p', 'e', 0 };
 static const WCHAR subtype_name[] = {
     'S', 'u', 'b', 't', 'y', 'p', 'e', 0 };
+static const WCHAR source_filter_name[] = {
+    'S','o','u','r','c','e',' ','F','i','l','t','e','r',0};
 
-static HRESULT process_extensions(HKEY hkeyExtensions, LPCOLESTR pszFileName, GUID * majorType, GUID * minorType)
+static HRESULT process_extensions(HKEY hkeyExtensions, LPCOLESTR pszFileName, GUID * majorType, GUID * minorType, GUID * sourceFilter)
 {
     WCHAR *extension;
     LONG l;
@@ -100,17 +102,31 @@ static HRESULT process_extensions(HKEY hkeyExtensions, LPCOLESTR pszFileName, GU
     if (l)
         return E_FAIL;
 
-    size = sizeof(keying);
-    l = RegQueryValueExW(hsub, mediatype_name, NULL, NULL, (LPBYTE)keying, &size);
-    if (!l)
-        CLSIDFromString(keying, majorType);
+    if (majorType)
+    {
+        size = sizeof(keying);
+        l = RegQueryValueExW(hsub, mediatype_name, NULL, NULL, (LPBYTE)keying, &size);
+        if (!l)
+            CLSIDFromString(keying, majorType);
+    }
 
-    size = sizeof(keying);
-    if (!l)
-        l = RegQueryValueExW(hsub, subtype_name, NULL, NULL, (LPBYTE)keying, &size);
+    if (minorType)
+    {
+        size = sizeof(keying);
+        if (!l)
+            l = RegQueryValueExW(hsub, subtype_name, NULL, NULL, (LPBYTE)keying, &size);
+        if (!l)
+            CLSIDFromString(keying, minorType);
+    }
 
-    if (!l)
-        CLSIDFromString(keying, minorType);
+    if (sourceFilter)
+    {
+        size = sizeof(keying);
+        if (!l)
+            l = RegQueryValueExW(hsub, source_filter_name, NULL, NULL, (LPBYTE)keying, &size);
+        if (!l)
+            CLSIDFromString(keying, sourceFilter);
+    }
 
     RegCloseKey(hsub);
 
@@ -238,7 +254,7 @@ static HRESULT process_pattern_string(LPCWSTR wszPatternString, IAsyncReader * p
         return hr;
 }
 
-static HRESULT GetClassMediaFile(IAsyncReader * pReader, LPCOLESTR pszFileName, GUID * majorType, GUID * minorType)
+HRESULT GetClassMediaFile(IAsyncReader * pReader, LPCOLESTR pszFileName, GUID * majorType, GUID * minorType, GUID * sourceFilter)
 {
     HKEY hkeyMediaType = NULL;
     LONG lRet;
@@ -248,8 +264,12 @@ static HRESULT GetClassMediaFile(IAsyncReader * pReader, LPCOLESTR pszFileName, 
 
     TRACE("(%p, %s, %p, %p)\n", pReader, debugstr_w(pszFileName), majorType, minorType);
 
-    *majorType = GUID_NULL;
-    *minorType = GUID_NULL;
+    if(majorType)
+        *majorType = GUID_NULL;
+    if(minorType)
+        *minorType = GUID_NULL;
+    if(sourceFilter)
+        *sourceFilter = GUID_NULL;
 
     lRet = RegOpenKeyExW(HKEY_CLASSES_ROOT, wszMediaType, 0, KEY_READ, &hkeyMediaType);
     hr = HRESULT_FROM_WIN32(lRet);
@@ -272,10 +292,11 @@ static HRESULT GetClassMediaFile(IAsyncReader * pReader, LPCOLESTR pszFileName, 
             TRACE("%s\n", debugstr_w(wszMajorKeyName));
             if (!strcmpW(wszExtensions, wszMajorKeyName))
             {
-                if (process_extensions(hkeyMajor, pszFileName, majorType, minorType) == S_OK)
+                if (process_extensions(hkeyMajor, pszFileName, majorType, minorType, sourceFilter) == S_OK)
                     bFound = TRUE;
             }
-            else
+            /* We need a reader interface to check bytes */
+            else if (pReader)
             {
                 DWORD indexMinor;
 
@@ -284,6 +305,8 @@ static HRESULT GetClassMediaFile(IAsyncReader * pReader, LPCOLESTR pszFileName, 
                     HKEY hkeyMinor;
                     WCHAR wszMinorKeyName[CHARS_IN_GUID];
                     DWORD dwMinorKeyNameLen = sizeof(wszMinorKeyName) / sizeof(wszMinorKeyName[0]);
+                    WCHAR wszSourceFilterKeyName[CHARS_IN_GUID];
+                    DWORD dwSourceFilterKeyNameLen = sizeof(wszSourceFilterKeyName);
                     DWORD maxValueLen;
                     DWORD indexValue;
 
@@ -305,7 +328,6 @@ static HRESULT GetClassMediaFile(IAsyncReader * pReader, LPCOLESTR pszFileName, 
                         LPWSTR wszPatternString = HeapAlloc(GetProcessHeap(), 0, maxValueLen);
                         DWORD dwValueNameLen = sizeof(wszValueName) / sizeof(wszValueName[0]); /* remember this is in chars */
                         DWORD dwDataLen = maxValueLen; /* remember this is in bytes */
-                        static const WCHAR wszSourceFilter[] = {'S','o','u','r','c','e',' ','F','i','l','t','e','r',0};
 
                         if (RegEnumValueW(hkeyMinor, indexValue, wszValueName, &dwValueNameLen, NULL, &dwType, (LPBYTE)wszPatternString, &dwDataLen) != ERROR_SUCCESS)
                         {
@@ -313,17 +335,30 @@ static HRESULT GetClassMediaFile(IAsyncReader * pReader, LPCOLESTR pszFileName, 
                             break;
                         }
 
-                        /* if it is not the source filter value */
-                        if (strcmpW(wszValueName, wszSourceFilter))
-                        {
-                            if (process_pattern_string(wszPatternString, pReader) == S_OK)
-                            {
-                                if (SUCCEEDED(CLSIDFromString(wszMajorKeyName, majorType)) &&
-                                    SUCCEEDED(CLSIDFromString(wszMinorKeyName, minorType)))
-                                    bFound = TRUE;
-                            }
+                        if (strcmpW(wszValueName, source_filter_name)==0) {
+                            HeapFree(GetProcessHeap(), 0, wszPatternString);
+                            continue;
                         }
-                        HeapFree(GetProcessHeap(), 0, wszPatternString);
+
+                        /* if it is not the source filter value */
+                        if (process_pattern_string(wszPatternString, pReader) == S_OK)
+                        {
+                            HeapFree(GetProcessHeap(), 0, wszPatternString);
+                            if (majorType && FAILED(CLSIDFromString(wszMajorKeyName, majorType)))
+                                break;
+                            if (minorType && FAILED(CLSIDFromString(wszMinorKeyName, minorType)))
+                                break;
+                            if (sourceFilter)
+                            {
+                                /* Look up the source filter key */
+                                if (RegQueryValueExW(hkeyMinor, source_filter_name, NULL, NULL, (LPBYTE)wszSourceFilterKeyName, &dwSourceFilterKeyNameLen))
+                                    break;
+                                if (FAILED(CLSIDFromString(wszSourceFilterKeyName, sourceFilter)))
+                                    break;
+                            }
+                            bFound = TRUE;
+                        } else
+                            HeapFree(GetProcessHeap(), 0, wszPatternString);
                     }
                     CloseHandle(hkeyMinor);
                 }
@@ -339,7 +374,15 @@ static HRESULT GetClassMediaFile(IAsyncReader * pReader, LPCOLESTR pszFileName, 
         hr = E_FAIL;
     }
     else if (bFound)
-        TRACE("Found file's class: major = %s, subtype = %s\n", qzdebugstr_guid(majorType), qzdebugstr_guid(minorType));
+    {
+        TRACE("Found file's class:\n");
+	if(majorType)
+		TRACE("\tmajor = %s\n", qzdebugstr_guid(majorType));
+	if(minorType)
+		TRACE("\tsubtype = %s\n", qzdebugstr_guid(minorType));
+	if(sourceFilter)
+		TRACE("\tsource filter = %s\n", qzdebugstr_guid(sourceFilter));
+    }
 
     return hr;
 }
@@ -605,7 +648,7 @@ static HRESULT WINAPI FileSource_Load(IFileSourceFilter * iface, LPCOLESTR pszFi
             This->pmt->pUnk = NULL;
             This->pmt->lSampleSize = 0;
             This->pmt->formattype = FORMAT_None;
-            hr = GetClassMediaFile(pReader, pszFileName, &This->pmt->majortype, &This->pmt->subtype);
+            hr = GetClassMediaFile(pReader, pszFileName, &This->pmt->majortype, &This->pmt->subtype, NULL);
             if (FAILED(hr))
             {
                 CoTaskMemFree(This->pmt);

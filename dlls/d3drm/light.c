@@ -213,9 +213,7 @@ static HRESULT WINAPI IDirect3DRMLightImpl_SetColorRGB(IDirect3DRMLight* iface,
 
     TRACE("(%p/%p)->(%f,%f,%f)\n", iface, This, red, green, blue);
 
-    This->color = D3DCOLOR_ARGB(0xff, (BYTE)(red   * 255.0f),
-                                      (BYTE)(green * 255.0f),
-                                      (BYTE)(blue  * 255.0f));
+    This->color = RGBA_MAKE((BYTE)(red * 255.0f), (BYTE)(green * 255.0f), (BYTE)(blue * 255.0f), 0xff);
 
     return D3DRM_OK;
 }
@@ -361,22 +359,16 @@ static D3DRMLIGHTTYPE WINAPI IDirect3DRMLightImpl_GetType(IDirect3DRMLight* ifac
     return This->type;
 }
 
-static HRESULT WINAPI IDirect3DRMLightImpl_SetEnableFrame(IDirect3DRMLight* iface,
-                                                            LPDIRECT3DRMFRAME frame)
+static HRESULT WINAPI IDirect3DRMLightImpl_SetEnableFrame(IDirect3DRMLight *iface, IDirect3DRMFrame *frame)
 {
-    IDirect3DRMLightImpl *This = impl_from_IDirect3DRMLight(iface);
-
-    FIXME("(%p/%p)->(%p): stub\n", iface, This, frame);
+    FIXME("iface %p, frame %p stub!\n", iface, frame);
 
     return E_NOTIMPL;
 }
 
-static HRESULT WINAPI IDirect3DRMLightImpl_GetEnableFrame(IDirect3DRMLight* iface,
-                                                            LPDIRECT3DRMFRAME* frame)
+static HRESULT WINAPI IDirect3DRMLightImpl_GetEnableFrame(IDirect3DRMLight *iface, IDirect3DRMFrame **frame)
 {
-    IDirect3DRMLightImpl *This = impl_from_IDirect3DRMLight(iface);
-
-    FIXME("(%p/%p)->(%p): stub\n", iface, This, frame);
+    FIXME("iface %p, frame %p stub!\n", iface, frame);
 
     return E_NOTIMPL;
 }

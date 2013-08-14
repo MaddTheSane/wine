@@ -400,6 +400,7 @@ void WCMD_choice (const WCHAR * args) {
     while (TRUE) {
 
         /* FIXME: Add support for option /T */
+        answer[1] = 0; /* terminate single character string */
         WCMD_ReadFile(GetStdHandle(STD_INPUT_HANDLE), answer, 1, &count);
 
         if (!opt_s)
@@ -1503,8 +1504,7 @@ static void WCMD_part_execute(CMD_LIST **cmdList, const WCHAR *firstcmd,
   CMD_LIST *curPosition = *cmdList;
   int myDepth = (*cmdList)->bracketDepth;
 
-  WINE_TRACE("cmdList(%p), firstCmd(%p), doIt(%d)\n",
-             cmdList, wine_dbgstr_w(firstcmd),
+  WINE_TRACE("cmdList(%p), firstCmd(%s), doIt(%d)\n", cmdList, wine_dbgstr_w(firstcmd),
              executecmds);
 
   /* Skip leading whitespace between condition and the command */
@@ -2238,6 +2238,7 @@ void WCMD_for (WCHAR *p, CMD_LIST **cmdList) {
 
         if (!useNumbers && !doFileset) {
             WCHAR fullitem[MAX_PATH];
+            int prefixlen = 0;
 
             /* Now build the item to use / search for in the specified directory,
                as it is fully qualified in the /R case */
@@ -2246,11 +2247,12 @@ void WCMD_for (WCHAR *p, CMD_LIST **cmdList) {
               strcatW(fullitem, slashW);
               strcatW(fullitem, item);
             } else {
+              WCHAR *prefix = strrchrW(item, '\\');
+              if (prefix) prefixlen = (prefix - item) + 1;
               strcpyW(fullitem, item);
             }
 
             if (strpbrkW (fullitem, wildcards)) {
-
               hff = FindFirstFileW(fullitem, &fd);
               if (hff != INVALID_HANDLE_VALUE) {
                 do {
@@ -2271,7 +2273,9 @@ void WCMD_for (WCHAR *p, CMD_LIST **cmdList) {
                           strcatW(fullitem, slashW);
                           strcatW(fullitem, fd.cFileName);
                       } else {
-                          strcpyW(fullitem, fd.cFileName);
+                          if (prefixlen) lstrcpynW(fullitem, item, prefixlen + 1);
+                          fullitem[prefixlen] = 0x00;
+                          strcatW(fullitem, fd.cFileName);
                       }
                       doExecuted = TRUE;
 
@@ -2502,7 +2506,8 @@ void WCMD_give_help (const WCHAR *args)
 void WCMD_goto (CMD_LIST **cmdList) {
 
   WCHAR string[MAX_PATH];
-  WCHAR current[MAX_PATH];
+  WCHAR *labelend = NULL;
+  const WCHAR labelEndsW[] = {'>','<','|','&',' ',':','\t','\0'};
 
   /* Do not process any more parts of a processed multipart or multilines command */
   if (cmdList) *cmdList = NULL;
@@ -2522,25 +2527,38 @@ void WCMD_goto (CMD_LIST **cmdList) {
       return;
     }
 
-    /* Support goto :label as well as goto label */
+    /* Support goto :label as well as goto label plus remove trailing chars */
     if (*paramStart == ':') paramStart++;
+    labelend = strpbrkW(paramStart, labelEndsW);
+    if (labelend) *labelend = 0x00;
+    WINE_TRACE("goto label: '%s'\n", wine_dbgstr_w(paramStart));
 
     SetFilePointer (context -> h, 0, NULL, FILE_BEGIN);
-    while (WCMD_fgets (string, sizeof(string)/sizeof(WCHAR), context -> h)) {
+    while (*paramStart &&
+           WCMD_fgets (string, sizeof(string)/sizeof(WCHAR), context -> h)) {
       str = string;
-      while (isspaceW (*str)) str++;
-      if (*str == ':') {
-        DWORD index = 0;
-        str++;
-        while (((current[index] = str[index])) && (!isspaceW (current[index])))
-            index++;
 
-        /* ignore space at the end */
-        current[index] = 0;
-        if (lstrcmpiW (current, paramStart) == 0) return;
+      /* Ignore leading whitespace or no-echo character */
+      while (*str=='@' || isspaceW (*str)) str++;
+
+      /* If the first real character is a : then this is a label */
+      if (*str == ':') {
+        str++;
+
+        /* Skip spaces between : and label */
+        while (isspaceW (*str)) str++;
+        WINE_TRACE("str before brk %s\n", wine_dbgstr_w(str));
+
+        /* Label ends at whitespace or redirection characters */
+        labelend = strpbrkW(str, labelEndsW);
+        if (labelend) *labelend = 0x00;
+        WINE_TRACE("comparing found label %s\n", wine_dbgstr_w(str));
+
+        if (lstrcmpiW (str, paramStart) == 0) return;
       }
     }
     WCMD_output_stderr(WCMD_LoadMessage(WCMD_NOTARGET));
+    context -> skip_rest = TRUE;
   }
   return;
 }
@@ -4025,8 +4043,13 @@ void WCMD_setshow_env (WCHAR *s) {
 
     s += 2;
     while (*s && (*s==' ' || *s=='\t')) s++;
-    if (*s=='\"')
-        WCMD_strip_quotes(s);
+    /* set /P "var=value"jim ignores anything after the last quote */
+    if (*s=='\"') {
+      WCHAR *lastquote;
+      lastquote = WCMD_strip_quotes(s);
+      if (lastquote) *lastquote = 0x00;
+      WINE_TRACE("set: Stripped command line '%s'\n", wine_dbgstr_w(s));
+    }
 
     /* If no parameter, or no '=' sign, return an error */
     if (!(*s) || ((p = strchrW (s, '=')) == NULL )) {
@@ -4091,8 +4114,14 @@ void WCMD_setshow_env (WCHAR *s) {
   } else {
     DWORD gle;
 
-    if (*s=='\"')
-        WCMD_strip_quotes(s);
+    /* set "var=value"jim ignores anything after the last quote */
+    if (*s=='\"') {
+      WCHAR *lastquote;
+      lastquote = WCMD_strip_quotes(s);
+      if (lastquote) *lastquote = 0x00;
+      WINE_TRACE("set: Stripped command line '%s'\n", wine_dbgstr_w(s));
+    }
+
     p = strchrW (s, '=');
     if (p == NULL) {
       env = GetEnvironmentStringsW();

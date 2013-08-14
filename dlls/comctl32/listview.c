@@ -75,7 +75,6 @@
  * States
  *   -- LVIS_ACTIVATING (not currently supported by comctl32.dll version 6.0)
  *   -- LVIS_DROPHILITED
- *   -- LVIS_OVERLAYMASK
  *
  * Styles
  *   -- LVS_NOLABELWRAP
@@ -133,13 +132,6 @@
  *
  * Functions:
  *   -- LVGroupComparE
- *
- * Known differences in message stream from native control (not known if
- * these differences cause problems):
- *   LVM_INSERTITEM issues LVM_SETITEMSTATE and LVM_SETITEM in certain cases.
- *   LVM_SETITEM does not always issue LVN_ITEMCHANGING/LVN_ITEMCHANGED.
- *   WM_CREATE does not issue WM_QUERYUISTATE and associated registry
- *     processing for "USEDOUBLECLICKTIME".
  */
 
 #include "config.h"
@@ -3549,8 +3541,8 @@ static BOOL LISTVIEW_AddGroupSelection(LISTVIEW_INFO *infoPtr, INT nItem)
     ZeroMemory(&nmlv, sizeof(nmlv));
     nmlv.iFrom = nFirst;
     nmlv.iTo = nLast;
-    nmlv.uNewState = 0;
-    nmlv.uOldState = item.state;
+    nmlv.uOldState = 0;
+    nmlv.uNewState = item.state;
 
     notify_hdr(infoPtr, LVN_ODSTATECHANGED, (LPNMHDR)&nmlv);
     if (!IsWindow(hwndSelf))
@@ -4578,7 +4570,6 @@ static BOOL LISTVIEW_DrawItem(LISTVIEW_INFO *infoPtr, HDC hdc, INT nItem, INT nS
     NMLVCUSTOMDRAW nmlvcd;
     HIMAGELIST himl;
     LVITEMW lvItem;
-    HFONT hOldFont;
 
     TRACE("(hdc=%p, nItem=%d, nSubItem=%d, pos=%s)\n", hdc, nItem, nSubItem, wine_dbgstr_point(&pos));
 
@@ -4586,7 +4577,7 @@ static BOOL LISTVIEW_DrawItem(LISTVIEW_INFO *infoPtr, HDC hdc, INT nItem, INT nS
     lvItem.mask = LVIF_TEXT | LVIF_IMAGE | LVIF_PARAM;
     if (nSubItem == 0) lvItem.mask |= LVIF_STATE;
     if (infoPtr->uView == LV_VIEW_DETAILS) lvItem.mask |= LVIF_INDENT;
-    lvItem.stateMask = LVIS_SELECTED | LVIS_FOCUSED | LVIS_STATEIMAGEMASK | LVIS_CUT;
+    lvItem.stateMask = LVIS_SELECTED | LVIS_FOCUSED | LVIS_STATEIMAGEMASK | LVIS_CUT | LVIS_OVERLAYMASK;
     lvItem.iItem = nItem;
     lvItem.iSubItem = nSubItem;
     lvItem.state = 0;
@@ -4616,7 +4607,6 @@ static BOOL LISTVIEW_DrawItem(LISTVIEW_INFO *infoPtr, HDC hdc, INT nItem, INT nS
     /* fill in the custom draw structure */
     customdraw_fill(&nmlvcd, infoPtr, hdc, &rcBox, &lvItem);
 
-    hOldFont = GetCurrentObject(hdc, OBJ_FONT);
     if (nSubItem > 0) cdmode = infoPtr->cditemmode;
     if (cdmode & CDRF_SKIPDEFAULT) goto postpaint;
     if (cdmode & CDRF_NOTIFYITEMDRAW)
@@ -4624,7 +4614,7 @@ static BOOL LISTVIEW_DrawItem(LISTVIEW_INFO *infoPtr, HDC hdc, INT nItem, INT nS
     if (nSubItem == 0) infoPtr->cditemmode = cdsubitemmode;
     if (cdsubitemmode & CDRF_SKIPDEFAULT) goto postpaint;
     /* we have to send a CDDS_SUBITEM customdraw explicitly for subitem 0 */
-    if (nSubItem == 0 && cdsubitemmode == CDRF_NOTIFYITEMDRAW)
+    if (nSubItem == 0 && (cdsubitemmode & CDRF_NOTIFYITEMDRAW) != 0)
     {
         cdsubitemmode = notify_customdraw(infoPtr, CDDS_SUBITEM | CDDS_ITEMPREPAINT, &nmlvcd);
         if (cdsubitemmode & CDRF_SKIPDEFAULT) goto postpaint;
@@ -4707,7 +4697,7 @@ static BOOL LISTVIEW_DrawItem(LISTVIEW_INFO *infoPtr, HDC hdc, INT nItem, INT nS
         ImageList_DrawEx(himl, lvItem.iImage, hdc, rcIcon.left, rcIcon.top,
                          rcIcon.right - rcIcon.left, rcIcon.bottom - rcIcon.top, infoPtr->clrBk,
                          lvItem.state & LVIS_CUT ? RGB(255, 255, 255) : CLR_DEFAULT,
-                         style);
+                         style | (lvItem.state & LVIS_OVERLAYMASK));
     }
 
     /* Don't bother painting item being edited */
@@ -4742,8 +4732,6 @@ static BOOL LISTVIEW_DrawItem(LISTVIEW_INFO *infoPtr, HDC hdc, INT nItem, INT nS
 postpaint:
     if (cdsubitemmode & CDRF_NOTIFYPOSTPAINT)
         notify_postpaint(infoPtr, &nmlvcd);
-    if (cdsubitemmode & CDRF_NEWFONT)
-        SelectObject(hdc, hOldFont);
     return TRUE;
 }
 
@@ -4870,6 +4858,7 @@ static void LISTVIEW_RefreshReport(LISTVIEW_INFO *infoPtr, ITERATOR *i, HDC hdc,
     /* iterate through the invalidated rows */
     while(iterator_next(i))
     {
+        SelectObject(hdc, infoPtr->hFont);
 	LISTVIEW_GetItemOrigin(infoPtr, i->nItem, &Position);
 	Position.y += Origin.y;
 
@@ -5017,6 +5006,7 @@ static void LISTVIEW_RefreshList(LISTVIEW_INFO *infoPtr, ITERATOR *i, HDC hdc, D
     
     while(iterator_prev(i))
     {
+        SelectObject(hdc, infoPtr->hFont);
 	LISTVIEW_GetItemOrigin(infoPtr, i->nItem, &Position);
 	Position.x += Origin.x;
 	Position.y += Origin.y;
@@ -5040,7 +5030,7 @@ static void LISTVIEW_RefreshList(LISTVIEW_INFO *infoPtr, ITERATOR *i, HDC hdc, D
  */
 static void LISTVIEW_Refresh(LISTVIEW_INFO *infoPtr, HDC hdc, const RECT *prcErase)
 {
-    COLORREF oldTextColor = 0, oldBkColor = 0, oldClrTextBk, oldClrText;
+    COLORREF oldTextColor = 0, oldBkColor = 0;
     NMLVCUSTOMDRAW nmlvcd;
     HFONT hOldFont = 0;
     DWORD cdmode;
@@ -5097,21 +5087,12 @@ static void LISTVIEW_Refresh(LISTVIEW_INFO *infoPtr, HDC hdc, const RECT *prcEra
                hdcOrig, infoPtr->rcList.left, infoPtr->rcList.top, SRCCOPY);
     }
 
-    /* FIXME: Shouldn't need to do this */
-    oldClrTextBk = infoPtr->clrTextBk;
-    oldClrText   = infoPtr->clrText;
-   
     infoPtr->cditemmode = CDRF_DODEFAULT;
 
     GetClientRect(infoPtr->hwndSelf, &rcClient);
     customdraw_fill(&nmlvcd, infoPtr, hdc, &rcClient, 0);
     cdmode = notify_customdraw(infoPtr, CDDS_PREPAINT, &nmlvcd);
     if (cdmode & CDRF_SKIPDEFAULT) goto enddraw;
-    prepaint_setup(infoPtr, hdc, &nmlvcd, FALSE);
-
-    /* Use these colors to draw the items */
-    infoPtr->clrTextBk = nmlvcd.clrTextBk;
-    infoPtr->clrText = nmlvcd.clrText;
 
     /* nothing to draw */
     if(infoPtr->nItemCount == 0) goto enddraw;
@@ -5159,9 +5140,6 @@ enddraw:
 
     if (cdmode & CDRF_NOTIFYPOSTPAINT)
 	notify_postpaint(infoPtr, &nmlvcd);
-
-    infoPtr->clrTextBk = oldClrTextBk;
-    infoPtr->clrText = oldClrText;
 
     if(hbmp) {
         BitBlt(hdcOrig, infoPtr->rcList.left, infoPtr->rcList.top,
@@ -5343,6 +5321,7 @@ static HIMAGELIST LISTVIEW_CreateDragImage(LISTVIEW_INFO *infoPtr, INT iItem, LP
     POINT pos;
     HDC hdc, hdcOrig;
     HBITMAP hbmp, hOldbmp;
+    HFONT hOldFont;
     HIMAGELIST dragList = 0;
     TRACE("iItem=%d Count=%d\n", iItem, infoPtr->nItemCount);
 
@@ -5363,6 +5342,7 @@ static HIMAGELIST LISTVIEW_CreateDragImage(LISTVIEW_INFO *infoPtr, INT iItem, LP
     hdc = CreateCompatibleDC(hdcOrig);
     hbmp = CreateCompatibleBitmap(hdcOrig, size.cx, size.cy);
     hOldbmp = SelectObject(hdc, hbmp);
+    hOldFont = SelectObject(hdc, infoPtr->hFont);
 
     rcItem.left = rcItem.top = 0;
     rcItem.right = size.cx;
@@ -5379,6 +5359,7 @@ static HIMAGELIST LISTVIEW_CreateDragImage(LISTVIEW_INFO *infoPtr, INT iItem, LP
     else
         SelectObject(hdc, hOldbmp);
 
+    SelectObject(hdc, hOldFont);
     DeleteObject(hbmp);
     DeleteDC(hdc);
     ReleaseDC(infoPtr->hwndSelf, hdcOrig);
@@ -6277,6 +6258,7 @@ again:
     {
         lvItem.iItem = nItem;
         lvItem.iSubItem = 0;
+        lvItem.pszText = szDispText;
         if (!LISTVIEW_GetItemW(infoPtr, &lvItem)) continue;
 
 	if (lvItem.mask & LVIF_PARAM)
@@ -7916,17 +7898,6 @@ static BOOL LISTVIEW_RedrawItems(const LISTVIEW_INFO *infoPtr, INT nFirst, INT n
  *  nearest number of pixels that are a whole line. Ex: if line height
  *  is 16 and an 8 is passed, the list will be scrolled by 16. If a 7
  *  is passed, then the scroll will be 0.  (per MSDN 7/2002)
- *
- *  For:  (per experimentation with native control and CSpy ListView)
- *     LV_VIEW_ICON       scrolling in any direction is allowed
- *     LV_VIEW_SMALLICON  scrolling in any direction is allowed
- *     LV_VIEW_LIST       dx=1 = 1 column (horizontal only)
- *                           but will only scroll 1 column per message
- *                           no matter what the value.
- *                        dy must be 0 or FALSE returned.
- *     LV_VIEW_DETAILS    dx=1 = 1 pixel
- *                        dy=  see above
- *
  */
 static BOOL LISTVIEW_Scroll(LISTVIEW_INFO *infoPtr, INT dx, INT dy)
 {
@@ -8302,10 +8273,10 @@ static BOOL LISTVIEW_SetColumnWidth(LISTVIEW_INFO *infoPtr, INT nColumn, INT cx)
 	lvItem.mask = LVIF_TEXT;	
 	lvItem.iItem = 0;
 	lvItem.iSubItem = nColumn;
-	lvItem.pszText = szDispText;
 	lvItem.cchTextMax = DISP_TEXT_SIZE;
 	for (; lvItem.iItem < infoPtr->nItemCount; lvItem.iItem++)
 	{
+            lvItem.pszText = szDispText;
 	    if (!LISTVIEW_GetItemW(infoPtr, &lvItem)) continue;
 	    nLabelWidth = LISTVIEW_GetStringWidthT(infoPtr, lvItem.pszText, TRUE);
 	    if (max_cx < nLabelWidth) max_cx = nLabelWidth;

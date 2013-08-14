@@ -272,11 +272,11 @@
 @ stdcall D3DXSaveVolumeToFileW(ptr long ptr ptr ptr) d3dx9_36.D3DXSaveVolumeToFileW
 @ stdcall D3DXSHAdd(ptr long ptr ptr) d3dx9_36.D3DXSHAdd
 @ stdcall D3DXSHDot(long ptr ptr) d3dx9_36.D3DXSHDot
-@ stdcall D3DXSHEvalConeLight(long ptr long long long long ptr ptr ptr) d3dx9_36.D3DXSHEvalConeLight
+@ stdcall D3DXSHEvalConeLight(long ptr float float float float ptr ptr ptr) d3dx9_36.D3DXSHEvalConeLight
 @ stdcall D3DXSHEvalDirection(ptr long ptr) d3dx9_36.D3DXSHEvalDirection
 @ stdcall D3DXSHEvalDirectionalLight(long ptr float float float ptr ptr ptr) d3dx9_36.D3DXSHEvalDirectionalLight
-@ stdcall D3DXSHEvalHemisphereLight(long ptr long long ptr ptr ptr) d3dx9_36.D3DXSHEvalHemisphereLight
-@ stdcall D3DXSHEvalSphericalLight(long ptr long long long long ptr ptr ptr) d3dx9_36.D3DXSHEvalSphericalLight
+@ stdcall D3DXSHEvalHemisphereLight(long ptr int128 int128 ptr ptr ptr) d3dx9_36.D3DXSHEvalHemisphereLight
+@ stdcall D3DXSHEvalSphericalLight(long ptr float float float float ptr ptr ptr) d3dx9_36.D3DXSHEvalSphericalLight
 @ stdcall D3DXSHMultiply2(ptr ptr ptr) d3dx9_36.D3DXSHMultiply2
 @ stdcall D3DXSHMultiply3(ptr ptr ptr) d3dx9_36.D3DXSHMultiply3
 @ stdcall D3DXSHMultiply4(ptr ptr ptr) d3dx9_36.D3DXSHMultiply4

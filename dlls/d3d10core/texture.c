@@ -229,6 +229,7 @@ static const struct wined3d_parent_ops d3d10_texture2d_wined3d_parent_ops =
 HRESULT d3d10_texture2d_init(struct d3d10_texture2d *texture, struct d3d10_device *device,
         const D3D10_TEXTURE2D_DESC *desc)
 {
+    struct wined3d_resource_desc wined3d_desc;
     HRESULT hr;
 
     texture->ID3D10Texture2D_iface.lpVtbl = &d3d10_texture2d_vtbl;
@@ -263,10 +264,19 @@ HRESULT d3d10_texture2d_init(struct d3d10_texture2d *texture, struct d3d10_devic
     if (desc->SampleDesc.Count > 1)
         FIXME("Multisampled textures not implemented.\n");
 
-    hr = wined3d_texture_create_2d(device->wined3d_device, desc->Width, desc->Height,
-            desc->MipLevels, desc->Usage, wined3dformat_from_dxgi_format(desc->Format), WINED3D_POOL_DEFAULT,
-            texture, &d3d10_texture2d_wined3d_parent_ops, &texture->wined3d_texture);
-    if (FAILED(hr))
+    wined3d_desc.resource_type = WINED3D_RTYPE_TEXTURE;
+    wined3d_desc.format = wined3dformat_from_dxgi_format(desc->Format);
+    wined3d_desc.multisample_type = desc->SampleDesc.Count > 1 ? desc->SampleDesc.Count : WINED3D_MULTISAMPLE_NONE;
+    wined3d_desc.multisample_quality = desc->SampleDesc.Quality;
+    wined3d_desc.usage = desc->Usage;
+    wined3d_desc.pool = WINED3D_POOL_DEFAULT;
+    wined3d_desc.width = desc->Width;
+    wined3d_desc.height = desc->Height;
+    wined3d_desc.depth = 1;
+    wined3d_desc.size = 0;
+
+    if (FAILED(hr = wined3d_texture_create_2d(device->wined3d_device, &wined3d_desc, desc->MipLevels,
+            0, texture, &d3d10_texture2d_wined3d_parent_ops, &texture->wined3d_texture)))
     {
         WARN("Failed to create wined3d texture, hr %#x.\n", hr);
         if (texture->dxgi_surface)
@@ -465,6 +475,7 @@ static const struct wined3d_parent_ops d3d10_texture3d_wined3d_parent_ops =
 HRESULT d3d10_texture3d_init(struct d3d10_texture3d *texture, struct d3d10_device *device,
         const D3D10_TEXTURE3D_DESC *desc)
 {
+    struct wined3d_resource_desc wined3d_desc;
     HRESULT hr;
 
     texture->ID3D10Texture3D_iface.lpVtbl = &d3d10_texture3d_vtbl;
@@ -473,10 +484,19 @@ HRESULT d3d10_texture3d_init(struct d3d10_texture3d *texture, struct d3d10_devic
 
     FIXME("Implement DXGI<->wined3d usage conversion.\n");
 
-    hr = wined3d_texture_create_3d(device->wined3d_device, desc->Width, desc->Height, desc->Depth,
-            desc->MipLevels, desc->Usage, wined3dformat_from_dxgi_format(desc->Format), WINED3D_POOL_DEFAULT,
-            texture, &d3d10_texture3d_wined3d_parent_ops, &texture->wined3d_texture);
-    if (FAILED(hr))
+    wined3d_desc.resource_type = WINED3D_RTYPE_VOLUME_TEXTURE;
+    wined3d_desc.format = wined3dformat_from_dxgi_format(desc->Format);
+    wined3d_desc.multisample_type = WINED3D_MULTISAMPLE_NONE;
+    wined3d_desc.multisample_quality = 0;
+    wined3d_desc.usage = desc->Usage;
+    wined3d_desc.pool = WINED3D_POOL_DEFAULT;
+    wined3d_desc.width = desc->Width;
+    wined3d_desc.height = desc->Height;
+    wined3d_desc.depth = desc->Depth;
+    wined3d_desc.size = 0;
+
+    if (FAILED(hr = wined3d_texture_create_3d(device->wined3d_device, &wined3d_desc, desc->MipLevels,
+            texture, &d3d10_texture3d_wined3d_parent_ops, &texture->wined3d_texture)))
     {
         WARN("Failed to create wined3d texture, hr %#x.\n", hr);
         return hr;

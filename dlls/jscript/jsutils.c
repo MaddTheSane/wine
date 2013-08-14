@@ -294,11 +294,13 @@ HRESULT variant_to_jsval(VARIANT *var, jsval_t *r)
     case VT_BSTR: {
         jsstr_t *str;
 
-        str = jsstr_alloc_len(V_BSTR(var), SysStringLen(V_BSTR(var)));
-        if(!str)
-            return E_OUTOFMEMORY;
-        if(!V_BSTR(var))
-            str->length_flags |= JSSTR_FLAG_NULLBSTR;
+        if(V_BSTR(var)) {
+            str = jsstr_alloc_len(V_BSTR(var), SysStringLen(V_BSTR(var)));
+            if(!str)
+                return E_OUTOFMEMORY;
+        }else {
+            str = jsstr_null_bstr();
+        }
 
         *r = jsval_string(str);
         return S_OK;
@@ -351,11 +353,13 @@ HRESULT jsval_to_variant(jsval_t val, VARIANT *retv)
         jsstr_t *str = get_string(val);
 
         V_VT(retv) = VT_BSTR;
-        if(str->length_flags & JSSTR_FLAG_NULLBSTR) {
+        if(is_null_bstr(str)) {
             V_BSTR(retv) = NULL;
         }else {
-            V_BSTR(retv) = SysAllocStringLen(str->str, jsstr_length(str));
-            if(!V_BSTR(retv))
+            V_BSTR(retv) = SysAllocStringLen(NULL, jsstr_length(str));
+            if(V_BSTR(retv))
+                jsstr_flush(str, V_BSTR(retv));
+            else
                 return E_OUTOFMEMORY;
         }
         return S_OK;
@@ -500,16 +504,15 @@ static int hex_to_int(WCHAR c)
 /* ECMA-262 3rd Edition    9.3.1 */
 static HRESULT str_to_number(jsstr_t *str, double *ret)
 {
-    const WCHAR *ptr = str->str;
+    const WCHAR *ptr;
     BOOL neg = FALSE;
     DOUBLE d = 0.0;
 
     static const WCHAR infinityW[] = {'I','n','f','i','n','i','t','y'};
 
-    if(!ptr) {
-        *ret = 0;
-        return S_OK;
-    }
+    ptr = jsstr_flatten(str);
+    if(!ptr)
+        return E_OUTOFMEMORY;
 
     while(isspaceW(*ptr))
         ptr++;
@@ -736,15 +739,14 @@ HRESULT double_to_string(double n, jsstr_t **str)
 /* ECMA-262 3rd Edition    9.8 */
 HRESULT to_string(script_ctx_t *ctx, jsval_t val, jsstr_t **str)
 {
-    const WCHAR undefinedW[] = {'u','n','d','e','f','i','n','e','d',0};
     const WCHAR nullW[] = {'n','u','l','l',0};
     const WCHAR trueW[] = {'t','r','u','e',0};
     const WCHAR falseW[] = {'f','a','l','s','e',0};
 
     switch(jsval_type(val)) {
     case JSV_UNDEFINED:
-        *str = jsstr_alloc(undefinedW);
-        break;
+        *str = jsstr_undefined();
+        return S_OK;
     case JSV_NULL:
         *str = jsstr_alloc(nullW);
         break;
@@ -774,6 +776,23 @@ HRESULT to_string(script_ctx_t *ctx, jsval_t val, jsstr_t **str)
     }
 
     return *str ? S_OK : E_OUTOFMEMORY;
+}
+
+HRESULT to_flat_string(script_ctx_t *ctx, jsval_t val, jsstr_t **str, const WCHAR **ret_str)
+{
+    HRESULT hres;
+
+    hres = to_string(ctx, val, str);
+    if(FAILED(hres))
+        return hres;
+
+    *ret_str = jsstr_flatten(*str);
+    if(!*ret_str) {
+        jsstr_release(*str);
+        return E_OUTOFMEMORY;
+    }
+
+    return S_OK;
 }
 
 /* ECMA-262 3rd Edition    9.9 */
@@ -896,13 +915,15 @@ HRESULT variant_change_type(script_ctx_t *ctx, VARIANT *dst, VARIANT *src, VARTY
         if(FAILED(hres))
             break;
 
-        if(str->length_flags & JSSTR_FLAG_NULLBSTR) {
+        if(is_null_bstr(str)) {
             V_BSTR(dst) = NULL;
             break;
         }
 
-        V_BSTR(dst) = SysAllocStringLen(str->str, jsstr_length(str));
-        if(!V_BSTR(dst))
+        V_BSTR(dst) = SysAllocStringLen(NULL, jsstr_length(str));
+        if(V_BSTR(dst))
+            jsstr_flush(str, V_BSTR(dst));
+        else
             hres = E_OUTOFMEMORY;
         break;
     }

@@ -526,6 +526,7 @@ BOOL WINAPI DllMain(HINSTANCE hinst, DWORD fdwReason, LPVOID fImpLoad)
             tlsIndex = TlsAlloc();
             break;
         case DLL_PROCESS_DETACH:
+            if (fImpLoad) break;
             TlsFree(tlsIndex);
             break;
     }
@@ -649,4 +650,12 @@ HRESULT WINAPI TF_CreateLangBarMgr(ITfLangBarMgr **pppbm)
 {
     TRACE("\n");
     return LangBarMgr_Constructor(NULL,(IUnknown**)pppbm);
+}
+
+HRESULT WINAPI TF_CreateLangBarItemMgr(ITfLangBarItemMgr **pplbim)
+{
+    FIXME("stub %p\n", pplbim);
+    *pplbim = NULL;
+
+    return E_NOTIMPL;
 }

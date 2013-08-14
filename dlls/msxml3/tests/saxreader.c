@@ -168,9 +168,11 @@ typedef enum _CH {
     CH_IGNORABLEWHITESPACE,
     CH_PROCESSINGINSTRUCTION,
     CH_SKIPPEDENTITY,
+    LH_STARTCDATA,
+    LH_ENDCDATA,
     EH_ERROR,
     EH_FATALERROR,
-    EG_IGNORABLEWARNING,
+    EH_IGNORABLEWARNING,
     EVENT_LAST
 } CH;
 
@@ -187,6 +189,8 @@ static const char *event_names[EVENT_LAST] = {
     "ignorableWhitespace",
     "processingInstruction",
     "skippedEntity",
+    "startCDATA",
+    "endCDATA",
     "error",
     "fatalError",
     "ignorableWarning"
@@ -410,6 +414,8 @@ static void ok_sequence_(struct call_sequence **seq, int sequence_index,
             case CH_PUTDOCUMENTLOCATOR:
             case CH_STARTDOCUMENT:
             case CH_ENDDOCUMENT:
+            case LH_STARTCDATA:
+            case LH_ENDCDATA:
                 break;
             case CH_STARTPREFIXMAPPING:
                 /* prefix, uri */
@@ -459,7 +465,7 @@ static void ok_sequence_(struct call_sequence **seq, int sequence_index,
                          context, get_event_name(actual->id), expected->ret, actual->ret);
                 break;
             case EH_ERROR:
-            case EG_IGNORABLEWARNING:
+            case EH_IGNORABLEWARNING:
             default:
                 ok(0, "%s: callback not handled, %s\n", context, get_event_name(actual->id));
             }
@@ -569,6 +575,17 @@ static const char test_attributes[] =
 "<document xmlns:test=\"prefix_test\" xmlns=\"prefix\" test:arg1=\"arg1\" arg2=\"arg2\" test:ar3=\"arg3\">\n"
 "<node1 xmlns:p=\"test\" />"
 "</document>\n";
+
+static const char test_cdata_xml[] =
+"<?xml version=\"1.0\" ?>"
+"<a><![CDATA[Some \r\ntext\n\r\ndata\n\n]]></a>";
+
+static const char test2_cdata_xml[] =
+"<?xml version=\"1.0\" ?>"
+"<a><![CDATA[\n\r\nSome \r\ntext\n\r\ndata\n\n]]></a>";
+
+static const char test3_cdata_xml[] =
+"<?xml version=\"1.0\" ?><a><![CDATA[Some text data]]></a>";
 
 static struct call_entry content_handler_test1[] = {
     { CH_PUTDOCUMENTLOCATOR, 0, 0, S_OK },
@@ -891,6 +908,94 @@ static struct call_entry attribute_norm_alt[] = {
     { CH_STARTELEMENT, 8, 3, S_OK, "", "a", "a", attribute_norm_attrs },
     { CH_ENDELEMENT, 8, 3, S_OK, "", "a", "a" },
     { CH_ENDDOCUMENT, 9, 0, S_OK },
+    { CH_ENDTEST }
+};
+
+static struct call_entry cdata_test[] = {
+    { CH_PUTDOCUMENTLOCATOR, 0, 0, S_OK },
+    { CH_STARTDOCUMENT, 0, 0, S_OK },
+    { CH_STARTELEMENT, 1, 26, S_OK, "", "a", "a" },
+    { LH_STARTCDATA, 1, 35, S_OK },
+    { CH_CHARACTERS, 1, 35, S_OK, "Some \n" },
+    { CH_CHARACTERS, 1, 42, S_OK, "text\n\n" },
+    { CH_CHARACTERS, 1, 49, S_OK,  "data\n\n" },
+    { LH_ENDCDATA, 1, 49, S_OK },
+    { CH_ENDELEMENT, 6, 6, S_OK, "", "a", "a" },
+    { CH_ENDDOCUMENT, 0, 0, S_OK },
+    { CH_ENDTEST }
+};
+
+static struct call_entry cdata_test2[] = {
+    { CH_PUTDOCUMENTLOCATOR, 0, 0, S_OK },
+    { CH_STARTDOCUMENT, 0, 0, S_OK },
+    { CH_STARTELEMENT, 1, 26, S_OK, "", "a", "a" },
+    { LH_STARTCDATA, 1, 35, S_OK },
+    { CH_CHARACTERS, 1, 35, S_OK, "\n\n" },
+    { CH_CHARACTERS, 1, 38, S_OK, "Some \n" },
+    { CH_CHARACTERS, 1, 45, S_OK, "text\n\n" },
+    { CH_CHARACTERS, 1, 52, S_OK,  "data\n\n" },
+    { LH_ENDCDATA, 1, 52, S_OK },
+    { CH_ENDELEMENT, 8, 6, S_OK, "", "a", "a" },
+    { CH_ENDDOCUMENT, 0, 0, S_OK },
+    { CH_ENDTEST }
+};
+
+static struct call_entry cdata_test3[] = {
+    { CH_PUTDOCUMENTLOCATOR, 0, 0, S_OK },
+    { CH_STARTDOCUMENT, 0, 0, S_OK },
+    { CH_STARTELEMENT, 1, 26, S_OK, "", "a", "a" },
+    { LH_STARTCDATA, 1, 35, S_OK },
+    { CH_CHARACTERS, 1, 35, S_OK, "Some text data" },
+    { LH_ENDCDATA, 1, 35, S_OK },
+    { CH_ENDELEMENT, 1, 54, S_OK, "", "a", "a" },
+    { CH_ENDDOCUMENT, 0, 0, S_OK },
+    { CH_ENDTEST }
+};
+
+/* this is what MSXML6 does */
+static struct call_entry cdata_test_alt[] = {
+    { CH_PUTDOCUMENTLOCATOR, 1, 0, S_OK },
+    { CH_STARTDOCUMENT, 1, 22, S_OK },
+    { CH_STARTELEMENT, 1, 25, S_OK, "", "a", "a" },
+    { LH_STARTCDATA, 1, 34, S_OK },
+    { CH_CHARACTERS, 1, 40, S_OK, "Some " },
+    { CH_CHARACTERS, 2, 0, S_OK, "\n" },
+    { CH_CHARACTERS, 3, 1, S_OK, "text\n" },
+    { CH_CHARACTERS, 4, 0, S_OK, "\n" },
+    { CH_CHARACTERS, 6, 3, S_OK, "data\n\n" },
+    { LH_ENDCDATA, 6, 3, S_OK },
+    { CH_ENDELEMENT, 6, 7, S_OK, "", "a", "a" },
+    { CH_ENDDOCUMENT, 6, 7, S_OK },
+    { CH_ENDTEST }
+};
+
+static struct call_entry cdata_test2_alt[] = {
+    { CH_PUTDOCUMENTLOCATOR, 1, 0, S_OK },
+    { CH_STARTDOCUMENT, 1, 22, S_OK },
+    { CH_STARTELEMENT, 1, 25, S_OK, "", "a", "a" },
+    { LH_STARTCDATA, 1, 34, S_OK },
+    { CH_CHARACTERS, 2, 1, S_OK, "\n" },
+    { CH_CHARACTERS, 3, 0, S_OK, "\n" },
+    { CH_CHARACTERS, 3, 6, S_OK, "Some " },
+    { CH_CHARACTERS, 4, 0, S_OK, "\n" },
+    { CH_CHARACTERS, 5, 1, S_OK, "text\n" },
+    { CH_CHARACTERS, 6, 0, S_OK, "\n" },
+    { CH_CHARACTERS, 8, 3, S_OK, "data\n\n" },
+    { LH_ENDCDATA, 8, 3, S_OK },
+    { CH_ENDELEMENT, 8, 7, S_OK, "", "a", "a" },
+    { CH_ENDDOCUMENT, 8, 7, S_OK },
+    { CH_ENDTEST }
+};
+
+static struct call_entry cdata_test3_alt[] = {
+    { CH_PUTDOCUMENTLOCATOR, 1, 0, S_OK },
+    { CH_STARTDOCUMENT, 1, 22, S_OK },
+    { CH_STARTELEMENT, 1, 25, S_OK, "", "a", "a" },
+    { LH_STARTCDATA, 1, 34, S_OK },
+    { CH_CHARACTERS, 1, 51, S_OK, "Some text data" },
+    { LH_ENDCDATA, 1, 51, S_OK },
+    { CH_ENDELEMENT, 1, 55, S_OK, "", "a", "a" },
+    { CH_ENDDOCUMENT, 1, 55, S_OK },
     { CH_ENDTEST }
 };
 
@@ -1275,7 +1380,7 @@ static HRESULT WINAPI isaxerrorHandler_fatalError(
     return S_OK;
 }
 
-static HRESULT WINAPI isaxerrorHanddler_ignorableWarning(
+static HRESULT WINAPI isaxerrorHandler_ignorableWarning(
         ISAXErrorHandler* iface,
         ISAXLocator *pLocator,
         const WCHAR *pErrorMessage,
@@ -1292,7 +1397,7 @@ static const ISAXErrorHandlerVtbl errorHandlerVtbl =
     isaxerrorHandler_Release,
     isaxerrorHandler_error,
     isaxerrorHandler_fatalError,
-    isaxerrorHanddler_ignorableWarning
+    isaxerrorHandler_ignorableWarning
 };
 
 static ISAXErrorHandler errorHandler = { &errorHandlerVtbl };
@@ -1583,14 +1688,24 @@ static HRESULT WINAPI isaxlexical_endEntity(ISAXLexicalHandler *iface,
 
 static HRESULT WINAPI isaxlexical_startCDATA(ISAXLexicalHandler *iface)
 {
-    ok(0, "call not expected\n");
-    return E_NOTIMPL;
+    struct call_entry call;
+
+    init_call_entry(locator, &call);
+    call.id = LH_STARTCDATA;
+    add_call(sequences, CONTENT_HANDLER_INDEX, &call);
+
+    return get_expected_ret();
 }
 
 static HRESULT WINAPI isaxlexical_endCDATA(ISAXLexicalHandler *iface)
 {
-    ok(0, "call not expected\n");
-    return E_NOTIMPL;
+    struct call_entry call;
+
+    init_call_entry(locator, &call);
+    call.id = LH_ENDCDATA;
+    add_call(sequences, CONTENT_HANDLER_INDEX, &call);
+
+    return get_expected_ret();
 }
 
 static HRESULT WINAPI isaxlexical_comment(ISAXLexicalHandler *iface,
@@ -1880,6 +1995,27 @@ static struct msxmlsupported_data_t reader_support_data[] =
     { NULL }
 };
 
+static struct saxlexicalhandler lexicalhandler;
+static struct saxdeclhandler declhandler;
+
+static IStream *create_test_stream(const char *data, int len)
+{
+     ULARGE_INTEGER size;
+     LARGE_INTEGER pos;
+     IStream *stream;
+     ULONG written;
+
+     if (len == -1) len = strlen(data);
+     CreateStreamOnHGlobal(NULL, TRUE, &stream);
+     size.QuadPart = len;
+     IStream_SetSize(stream, size);
+     IStream_Write(stream, data, len, &written);
+     pos.QuadPart = 0;
+     IStream_Seek(stream, pos, STREAM_SEEK_SET, NULL);
+
+     return stream;
+}
+
 static void test_saxreader(void)
 {
     const struct msxmlsupported_data_t *table = reader_support_data;
@@ -1892,8 +2028,6 @@ static void test_saxreader(void)
     SAFEARRAYBOUND SADim[1];
     char *ptr = NULL;
     IStream *stream;
-    ULARGE_INTEGER size;
-    LARGE_INTEGER pos;
     ULONG written;
     HANDLE file;
     static const CHAR testXmlA[] = "test.xml";
@@ -1987,12 +2121,7 @@ static void test_saxreader(void)
 
         SafeArrayDestroy(sa);
 
-        CreateStreamOnHGlobal(NULL, TRUE, &stream);
-        size.QuadPart = strlen(testXML);
-        IStream_SetSize(stream, size);
-        IStream_Write(stream, testXML, strlen(testXML), &written);
-        pos.QuadPart = 0;
-        IStream_Seek(stream, pos, STREAM_SEEK_SET, NULL);
+        stream = create_test_stream(testXML, -1);
         V_VT(&var) = VT_UNKNOWN;
         V_UNKNOWN(&var) = (IUnknown*)stream;
 
@@ -2003,12 +2132,7 @@ static void test_saxreader(void)
 
         IStream_Release(stream);
 
-        CreateStreamOnHGlobal(NULL, TRUE, &stream);
-        size.QuadPart = strlen(test_attributes);
-        IStream_SetSize(stream, size);
-        IStream_Write(stream, test_attributes, strlen(test_attributes), &written);
-        pos.QuadPart = 0;
-        IStream_Seek(stream, pos, STREAM_SEEK_SET, NULL);
+        stream = create_test_stream(test_attributes, -1);
         V_VT(&var) = VT_UNKNOWN;
         V_UNKNOWN(&var) = (IUnknown*)stream;
 
@@ -2146,12 +2270,7 @@ static void test_saxreader(void)
         hr = ISAXXMLReader_putFeature(reader, _bstr_("http://xml.org/sax/features/namespaces"), VARIANT_FALSE);
         EXPECT_HR(hr, S_OK);
 
-        CreateStreamOnHGlobal(NULL, TRUE, &stream);
-        size.QuadPart = strlen(test_attributes);
-        IStream_SetSize(stream, size);
-        IStream_Write(stream, test_attributes, strlen(test_attributes), &written);
-        pos.QuadPart = 0;
-        IStream_Seek(stream, pos, STREAM_SEEK_SET, NULL);
+        stream = create_test_stream(test_attributes, -1);
         V_VT(&var) = VT_UNKNOWN;
         V_UNKNOWN(&var) = (IUnknown*)stream;
 
@@ -2174,12 +2293,7 @@ static void test_saxreader(void)
         hr = ISAXXMLReader_putFeature(reader, _bstr_("http://xml.org/sax/features/namespace-prefixes"), VARIANT_FALSE);
         EXPECT_HR(hr, S_OK);
 
-        CreateStreamOnHGlobal(NULL, TRUE, &stream);
-        size.QuadPart = strlen(test_attributes);
-        IStream_SetSize(stream, size);
-        IStream_Write(stream, test_attributes, strlen(test_attributes), &written);
-        pos.QuadPart = 0;
-        IStream_Seek(stream, pos, STREAM_SEEK_SET, NULL);
+        stream = create_test_stream(test_attributes, -1);
         V_VT(&var) = VT_UNKNOWN;
         V_UNKNOWN(&var) = (IUnknown*)stream;
 
@@ -2200,12 +2314,7 @@ static void test_saxreader(void)
         EXPECT_HR(hr, S_OK);
 
         /* attribute normalization */
-        CreateStreamOnHGlobal(NULL, TRUE, &stream);
-        size.QuadPart = strlen(attribute_normalize);
-        IStream_SetSize(stream, size);
-        IStream_Write(stream, attribute_normalize, strlen(attribute_normalize), &written);
-        pos.QuadPart = 0;
-        IStream_Seek(stream, pos, STREAM_SEEK_SET, NULL);
+        stream = create_test_stream(attribute_normalize, -1);
         V_VT(&var) = VT_UNKNOWN;
         V_UNKNOWN(&var) = (IUnknown*)stream;
 
@@ -2230,6 +2339,62 @@ static void test_saxreader(void)
         hr = ISAXXMLReader_putEntityResolver(reader, NULL);
         ok(hr == S_OK || broken(hr == E_FAIL), "got 0x%08x\n", hr);
 
+        /* CDATA sections */
+        init_saxlexicalhandler(&lexicalhandler, S_OK);
+
+        V_VT(&var) = VT_UNKNOWN;
+        V_UNKNOWN(&var) = (IUnknown*)&lexicalhandler.ISAXLexicalHandler_iface;
+        hr = ISAXXMLReader_putProperty(reader, _bstr_("http://xml.org/sax/properties/lexical-handler"), var);
+        ok(hr == S_OK, "got 0x%08x\n", hr);
+
+        stream = create_test_stream(test_cdata_xml, -1);
+        V_VT(&var) = VT_UNKNOWN;
+        V_UNKNOWN(&var) = (IUnknown*)stream;
+
+        if (IsEqualGUID(table->clsid, &CLSID_SAXXMLReader60))
+            test_seq = cdata_test_alt;
+        else
+            test_seq = cdata_test;
+
+        set_expected_seq(test_seq);
+        hr = ISAXXMLReader_parse(reader, var);
+        ok(hr == S_OK, "got 0x%08x\n", hr);
+        ok_sequence(sequences, CONTENT_HANDLER_INDEX, test_seq, "cdata test", TRUE);
+
+        /* 2. CDATA sections */
+        stream = create_test_stream(test2_cdata_xml, -1);
+        V_VT(&var) = VT_UNKNOWN;
+        V_UNKNOWN(&var) = (IUnknown*)stream;
+
+        if (IsEqualGUID(table->clsid, &CLSID_SAXXMLReader60))
+            test_seq = cdata_test2_alt;
+        else
+            test_seq = cdata_test2;
+
+        set_expected_seq(test_seq);
+        hr = ISAXXMLReader_parse(reader, var);
+        ok(hr == S_OK, "got 0x%08x\n", hr);
+        ok_sequence(sequences, CONTENT_HANDLER_INDEX, test_seq, "cdata test 2", TRUE);
+
+        IStream_Release(stream);
+
+        /* 3. CDATA sections */
+        stream = create_test_stream(test3_cdata_xml, -1);
+        V_VT(&var) = VT_UNKNOWN;
+        V_UNKNOWN(&var) = (IUnknown*)stream;
+
+        if (IsEqualGUID(table->clsid, &CLSID_SAXXMLReader60))
+            test_seq = cdata_test3_alt;
+        else
+            test_seq = cdata_test3;
+
+        set_expected_seq(test_seq);
+        hr = ISAXXMLReader_parse(reader, var);
+        ok(hr == S_OK, "got 0x%08x\n", hr);
+        ok_sequence(sequences, CONTENT_HANDLER_INDEX, test_seq, "cdata test 3", TRUE);
+
+        IStream_Release(stream);
+
         ISAXXMLReader_Release(reader);
         table++;
     }
@@ -2242,9 +2407,6 @@ struct saxreader_props_test_t
     const char *prop_name;
     IUnknown   *iface;
 };
-
-static struct saxlexicalhandler lexicalhandler;
-static struct saxdeclhandler declhandler;
 
 static const struct saxreader_props_test_t props_test_data[] = {
     { "http://xml.org/sax/properties/lexical-handler", (IUnknown*)&lexicalhandler.ISAXLexicalHandler_iface },

@@ -29,6 +29,7 @@
 #include "winreg.h"
 #include "ole2.h"
 #include "shlobj.h"
+#include "shlwapi.h"
 
 #include "wine/debug.h"
 
@@ -286,6 +287,7 @@ static nsresult NSAPI nsDirectoryServiceProvider2_GetFile(nsIDirectoryServicePro
         return nsIFile_Clone(profile_directory, _retval);
     }
 
+    *_retval = NULL;
     return NS_ERROR_FAILURE;
 }
 
@@ -309,8 +311,10 @@ static nsresult NSAPI nsDirectoryServiceProvider2_GetFiles(nsIDirectoryServicePr
 
             strcpyW(plugin_path+len, gecko_pluginW);
             nsres = create_nsfile(plugin_path, &plugin_directory);
-            if(NS_FAILED(nsres))
+            if(NS_FAILED(nsres)) {
+                *_retval = NULL;
                 return nsres;
+            }
         }
 
         nsres = nsIFile_Clone(plugin_directory, &file);
@@ -325,6 +329,7 @@ static nsresult NSAPI nsDirectoryServiceProvider2_GetFiles(nsIDirectoryServicePr
         return NS_OK;
     }
 
+    *_retval = NULL;
     return NS_ERROR_FAILURE;
 }
 
@@ -1106,11 +1111,13 @@ BOOL is_gecko_path(const char *path)
     if(!buf || strlenW(buf) < gecko_path_len)
         return FALSE;
 
-    buf[gecko_path_len] = 0;
     for(ptr = buf; *ptr; ptr++) {
         if(*ptr == '\\')
             *ptr = '/';
     }
+
+    UrlUnescapeW(buf, NULL, NULL, URL_UNESCAPE_INPLACE);
+    buf[gecko_path_len] = 0;
 
     ret = !strcmpiW(buf, gecko_path);
     heap_free(buf);

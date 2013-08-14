@@ -56,7 +56,6 @@ static const struct
     { "i786",    CPU_x86 },
     { "amd64",   CPU_x86_64 },
     { "x86_64",  CPU_x86_64 },
-    { "sparc",   CPU_SPARC },
     { "powerpc", CPU_POWERPC },
     { "arm",     CPU_ARM },
     { "arm64",   CPU_ARM64 },
@@ -64,7 +63,7 @@ static const struct
 };
 
 /* atexit handler to clean tmp files */
-static void cleanup_tmp_files(void)
+void cleanup_tmp_files(void)
 {
     unsigned int i;
     for (i = 0; i < nb_tmp_files; i++) if (tmp_files[i]) unlink( tmp_files[i] );
@@ -139,12 +138,23 @@ char *strmake( const char* fmt, ... )
     }
 }
 
-struct strarray *strarray_init(void)
+static struct strarray *strarray_init( const char *str )
 {
     struct strarray *array = xmalloc( sizeof(*array) );
     array->count = 0;
     array->max = 16;
     array->str = xmalloc( array->max * sizeof(*array->str) );
+    if (str) array->str[array->count++] = str;
+    return array;
+}
+
+static struct strarray *strarray_copy( const struct strarray *src )
+{
+    struct strarray *array = xmalloc( sizeof(*array) );
+    array->count = src->count;
+    array->max = src->max;
+    array->str = xmalloc( array->max * sizeof(*array->str) );
+    memcpy( array->str, src->str, array->count * sizeof(*array->str) );
     return array;
 }
 
@@ -171,6 +181,19 @@ void strarray_add( struct strarray *array, ... )
 void strarray_addv( struct strarray *array, char * const *argv )
 {
     while (*argv) strarray_add_one( array, *argv++ );
+}
+
+struct strarray *strarray_fromstring( const char *str, const char *delim )
+{
+    const char *tok;
+    struct strarray *array = strarray_init( NULL );
+    char *buf = strdup( str );
+
+    for (tok = strtok( buf, delim ); tok; tok = strtok( NULL, delim ))
+	strarray_add_one( array, strdup( tok ));
+
+    free( buf );
+    return array;
 }
 
 void strarray_free( struct strarray *array )
@@ -269,7 +292,7 @@ void spawn( struct strarray *args )
         for (i = 0; args->str[i]; i++)
             fprintf( stderr, "%s%c", args->str[i], args->str[i+1] ? ' ' : '\n' );
 
-    if ((status = spawnvp( _P_WAIT, args->str[0], args->str )))
+    if ((status = _spawnvp( _P_WAIT, args->str[0], args->str )))
     {
 	if (status > 0) fatal_error( "%s failed with status %u\n", args->str[0], status );
 	else fatal_perror( "winebuild" );
@@ -278,7 +301,7 @@ void spawn( struct strarray *args )
 }
 
 /* find a build tool in the path, trying the various names */
-char *find_tool( const char *name, const char * const *names )
+struct strarray *find_tool( const char *name, const char * const *names )
 {
     static char **dirs;
     static unsigned int count, maxlen;
@@ -339,7 +362,8 @@ char *find_tool( const char *name, const char * const *names )
             strcpy( p, *names );
             strcat( p, EXEEXT );
 
-            if (!stat( file, &st ) && S_ISREG(st.st_mode) && (st.st_mode & 0111)) return file;
+            if (!stat( file, &st ) && S_ISREG(st.st_mode) && (st.st_mode & 0111))
+                return strarray_init( file );
         }
         free( file );
         names++;
@@ -349,13 +373,16 @@ char *find_tool( const char *name, const char * const *names )
 
 struct strarray *get_as_command(void)
 {
-    static int as_is_clang = 0;
-    struct strarray *args = strarray_init();
+    struct strarray *args;
 
-    if (!as_command)
+    if (cc_command)
     {
-        as_command = find_tool( "clang", NULL );
-        if (as_command) as_is_clang = 1;
+        args = strarray_copy( cc_command );
+        strarray_add( args, "-xassembler", "-c", NULL );
+        if (force_pointer_size)
+            strarray_add_one( args, (force_pointer_size == 8) ? "-m64" : "-m32" );
+        if (cpu_option) strarray_add_one( args, strmake("-mcpu=%s", cpu_option) );
+        return args;
     }
 
     if (!as_command)
@@ -367,15 +394,9 @@ struct strarray *get_as_command(void)
     if (!as_command)
         fatal_error( "cannot find suitable assembler\n" );
 
-    strarray_add_one( args, as_command );
+    args = strarray_copy( as_command );
 
-    if (as_is_clang)
-    {
-        strarray_add( args, "-xassembler", "-c", NULL );
-        if (force_pointer_size)
-            strarray_add_one( args, (force_pointer_size == 8) ? "-m64" : "-m32" );
-    }
-    else if (force_pointer_size)
+    if (force_pointer_size)
     {
         switch (target_platform)
         {
@@ -402,7 +423,7 @@ struct strarray *get_as_command(void)
 
 struct strarray *get_ld_command(void)
 {
-    struct strarray *args = strarray_init();
+    struct strarray *args;
 
     if (!ld_command)
     {
@@ -413,7 +434,7 @@ struct strarray *get_ld_command(void)
     if (!ld_command)
         fatal_error( "cannot find suitable linker\n" );
 
-    strarray_add_one( args, ld_command );
+    args = strarray_copy( ld_command );
 
     if (force_pointer_size)
     {
@@ -451,7 +472,9 @@ const char *get_nm_command(void)
 
     if (!nm_command)
         fatal_error( "cannot find suitable name lister\n" );
-    return nm_command;
+    if (nm_command->count > 1)
+        fatal_error( "multiple arguemnts in nm command not supported yet\n" );
+    return nm_command->str[0];
 }
 
 /* get a name for a temp file, automatically cleaned up on exit */
@@ -460,8 +483,6 @@ char *get_temp_file_name( const char *prefix, const char *suffix )
     char *name;
     const char *ext, *basename;
     int fd;
-
-    if (!nb_tmp_files && !save_temps) atexit( cleanup_tmp_files );
 
     if (!prefix || !prefix[0]) prefix = "winebuild";
     if (!suffix) suffix = "";
@@ -894,7 +915,6 @@ unsigned int get_alignment(unsigned int align)
     {
     case CPU_x86:
     case CPU_x86_64:
-    case CPU_SPARC:
         if (target_platform != PLATFORM_APPLE) return align;
         /* fall through */
     case CPU_POWERPC:
@@ -919,7 +939,6 @@ unsigned int get_page_size(void)
     case CPU_POWERPC: return 4096;
     case CPU_ARM:     return 4096;
     case CPU_ARM64:   return 4096;
-    case CPU_SPARC:   return 8192;
     }
     /* unreached */
     assert(0);
@@ -933,7 +952,6 @@ unsigned int get_ptr_size(void)
     {
     case CPU_x86:
     case CPU_POWERPC:
-    case CPU_SPARC:
     case CPU_ARM:
         return 4;
     case CPU_x86_64:
@@ -1112,14 +1130,6 @@ const char *get_asm_string_keyword(void)
         return ".asciz";
     default:
         return ".string";
-    }
-}
-
-const char *get_asm_short_keyword(void)
-{
-    switch (target_platform)
-    {
-    default:            return ".short";
     }
 }
 

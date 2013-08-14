@@ -263,6 +263,8 @@ typedef struct tagFace {
     WCHAR *StyleName;
     WCHAR *FullName;
     WCHAR *file;
+    dev_t dev;
+    ino_t ino;
     void *font_data_ptr;
     DWORD font_data_size;
     FT_Long face_index;
@@ -352,6 +354,7 @@ struct tagGdiFont {
     FONTSIGNATURE fs;
     GdiFont *base_font;
     VOID *GSUB_Table;
+    const VOID *vert_feature;
     DWORD cache_num;
 };
 
@@ -534,8 +537,9 @@ static const WCHAR font_mutex_nameW[] = {'_','_','W','I','N','E','_','F','O','N'
 static const WCHAR szDefaultFallbackLink[] = {'M','i','c','r','o','s','o','f','t',' ','S','a','n','s',' ','S','e','r','i','f',0};
 static BOOL use_default_fallback = FALSE;
 
-static BOOL get_glyph_index_linked(GdiFont *font, UINT c, GdiFont **linked_font, FT_UInt *glyph);
+static BOOL get_glyph_index_linked(GdiFont *font, UINT c, GdiFont **linked_font, FT_UInt *glyph, BOOL *vert);
 static BOOL get_outline_text_metrics(GdiFont *font);
+static BOOL get_bitmap_text_metrics(GdiFont *font);
 static BOOL get_text_metrics(GdiFont *font, LPTEXTMETRICW ptm);
 static void remove_face_from_cache( Face *face );
 
@@ -581,7 +585,6 @@ static const WCHAR internal_system_link[] = {'S','o','f','t','w','a','r','e','\\
 /* These are all structures needed for the GSUB table */
 
 #define GSUB_TAG MS_MAKE_TAG('G', 'S', 'U', 'B')
-#define TATEGAKI_LOWER_BOUND  0x02F1
 
 typedef struct {
     DWORD version;
@@ -1170,69 +1173,236 @@ static void LoadSubstList(void)
 }
 
 
-/*****************************************************************
- *       get_name_table_entry
- *
- * Supply the platform, encoding, language and name ids in req
- * and if the name exists the function will fill in the string
- * and string_len members.  The string is owned by FreeType so
- * don't free it.  Returns TRUE if the name is found else FALSE.
- */
-static BOOL get_name_table_entry(FT_Face ft_face, FT_SfntName *req)
+static const LANGID mac_langid_table[] =
+{
+    MAKELANGID(LANG_ENGLISH,SUBLANG_DEFAULT),                /* TT_MAC_LANGID_ENGLISH */
+    MAKELANGID(LANG_FRENCH,SUBLANG_DEFAULT),                 /* TT_MAC_LANGID_FRENCH */
+    MAKELANGID(LANG_GERMAN,SUBLANG_DEFAULT),                 /* TT_MAC_LANGID_GERMAN */
+    MAKELANGID(LANG_ITALIAN,SUBLANG_DEFAULT),                /* TT_MAC_LANGID_ITALIAN */
+    MAKELANGID(LANG_DUTCH,SUBLANG_DEFAULT),                  /* TT_MAC_LANGID_DUTCH */
+    MAKELANGID(LANG_SWEDISH,SUBLANG_DEFAULT),                /* TT_MAC_LANGID_SWEDISH */
+    MAKELANGID(LANG_SPANISH,SUBLANG_DEFAULT),                /* TT_MAC_LANGID_SPANISH */
+    MAKELANGID(LANG_DANISH,SUBLANG_DEFAULT),                 /* TT_MAC_LANGID_DANISH */
+    MAKELANGID(LANG_PORTUGUESE,SUBLANG_DEFAULT),             /* TT_MAC_LANGID_PORTUGUESE */
+    MAKELANGID(LANG_NORWEGIAN,SUBLANG_DEFAULT),              /* TT_MAC_LANGID_NORWEGIAN */
+    MAKELANGID(LANG_HEBREW,SUBLANG_DEFAULT),                 /* TT_MAC_LANGID_HEBREW */
+    MAKELANGID(LANG_JAPANESE,SUBLANG_DEFAULT),               /* TT_MAC_LANGID_JAPANESE */
+    MAKELANGID(LANG_ARABIC,SUBLANG_DEFAULT),                 /* TT_MAC_LANGID_ARABIC */
+    MAKELANGID(LANG_FINNISH,SUBLANG_DEFAULT),                /* TT_MAC_LANGID_FINNISH */
+    MAKELANGID(LANG_GREEK,SUBLANG_DEFAULT),                  /* TT_MAC_LANGID_GREEK */
+    MAKELANGID(LANG_ICELANDIC,SUBLANG_DEFAULT),              /* TT_MAC_LANGID_ICELANDIC */
+    MAKELANGID(LANG_MALTESE,SUBLANG_DEFAULT),                /* TT_MAC_LANGID_MALTESE */
+    MAKELANGID(LANG_TURKISH,SUBLANG_DEFAULT),                /* TT_MAC_LANGID_TURKISH */
+    MAKELANGID(LANG_CROATIAN,SUBLANG_DEFAULT),               /* TT_MAC_LANGID_CROATIAN */
+    MAKELANGID(LANG_CHINESE_TRADITIONAL,SUBLANG_DEFAULT),    /* TT_MAC_LANGID_CHINESE_TRADITIONAL */
+    MAKELANGID(LANG_URDU,SUBLANG_DEFAULT),                   /* TT_MAC_LANGID_URDU */
+    MAKELANGID(LANG_HINDI,SUBLANG_DEFAULT),                  /* TT_MAC_LANGID_HINDI */
+    MAKELANGID(LANG_THAI,SUBLANG_DEFAULT),                   /* TT_MAC_LANGID_THAI */
+    MAKELANGID(LANG_KOREAN,SUBLANG_DEFAULT),                 /* TT_MAC_LANGID_KOREAN */
+    MAKELANGID(LANG_LITHUANIAN,SUBLANG_DEFAULT),             /* TT_MAC_LANGID_LITHUANIAN */
+    MAKELANGID(LANG_POLISH,SUBLANG_DEFAULT),                 /* TT_MAC_LANGID_POLISH */
+    MAKELANGID(LANG_HUNGARIAN,SUBLANG_DEFAULT),              /* TT_MAC_LANGID_HUNGARIAN */
+    MAKELANGID(LANG_ESTONIAN,SUBLANG_DEFAULT),               /* TT_MAC_LANGID_ESTONIAN */
+    MAKELANGID(LANG_LATVIAN,SUBLANG_DEFAULT),                /* TT_MAC_LANGID_LETTISH */
+    MAKELANGID(LANG_SAMI,SUBLANG_DEFAULT),                   /* TT_MAC_LANGID_SAAMISK */
+    MAKELANGID(LANG_FAEROESE,SUBLANG_DEFAULT),               /* TT_MAC_LANGID_FAEROESE */
+    MAKELANGID(LANG_FARSI,SUBLANG_DEFAULT),                  /* TT_MAC_LANGID_FARSI */
+    MAKELANGID(LANG_RUSSIAN,SUBLANG_DEFAULT),                /* TT_MAC_LANGID_RUSSIAN */
+    MAKELANGID(LANG_CHINESE_SIMPLIFIED,SUBLANG_DEFAULT),     /* TT_MAC_LANGID_CHINESE_SIMPLIFIED */
+    MAKELANGID(LANG_DUTCH,SUBLANG_DUTCH_BELGIAN),            /* TT_MAC_LANGID_FLEMISH */
+    MAKELANGID(LANG_IRISH,SUBLANG_DEFAULT),                  /* TT_MAC_LANGID_IRISH */
+    MAKELANGID(LANG_ALBANIAN,SUBLANG_DEFAULT),               /* TT_MAC_LANGID_ALBANIAN */
+    MAKELANGID(LANG_ROMANIAN,SUBLANG_DEFAULT),               /* TT_MAC_LANGID_ROMANIAN */
+    MAKELANGID(LANG_CZECH,SUBLANG_DEFAULT),                  /* TT_MAC_LANGID_CZECH */
+    MAKELANGID(LANG_SLOVAK,SUBLANG_DEFAULT),                 /* TT_MAC_LANGID_SLOVAK */
+    MAKELANGID(LANG_SLOVENIAN,SUBLANG_DEFAULT),              /* TT_MAC_LANGID_SLOVENIAN */
+    0,                                                       /* TT_MAC_LANGID_YIDDISH */
+    MAKELANGID(LANG_SERBIAN,SUBLANG_DEFAULT),                /* TT_MAC_LANGID_SERBIAN */
+    MAKELANGID(LANG_MACEDONIAN,SUBLANG_DEFAULT),             /* TT_MAC_LANGID_MACEDONIAN */
+    MAKELANGID(LANG_BULGARIAN,SUBLANG_DEFAULT),              /* TT_MAC_LANGID_BULGARIAN */
+    MAKELANGID(LANG_UKRAINIAN,SUBLANG_DEFAULT),              /* TT_MAC_LANGID_UKRAINIAN */
+    MAKELANGID(LANG_BELARUSIAN,SUBLANG_DEFAULT),             /* TT_MAC_LANGID_BYELORUSSIAN */
+    MAKELANGID(LANG_UZBEK,SUBLANG_DEFAULT),                  /* TT_MAC_LANGID_UZBEK */
+    MAKELANGID(LANG_KAZAK,SUBLANG_DEFAULT),                  /* TT_MAC_LANGID_KAZAKH */
+    MAKELANGID(LANG_AZERI,SUBLANG_AZERI_CYRILLIC),           /* TT_MAC_LANGID_AZERBAIJANI */
+    0,                                                       /* TT_MAC_LANGID_AZERBAIJANI_ARABIC_SCRIPT */
+    MAKELANGID(LANG_ARMENIAN,SUBLANG_DEFAULT),               /* TT_MAC_LANGID_ARMENIAN */
+    MAKELANGID(LANG_GEORGIAN,SUBLANG_DEFAULT),               /* TT_MAC_LANGID_GEORGIAN */
+    0,                                                       /* TT_MAC_LANGID_MOLDAVIAN */
+    MAKELANGID(LANG_KYRGYZ,SUBLANG_DEFAULT),                 /* TT_MAC_LANGID_KIRGHIZ */
+    MAKELANGID(LANG_TAJIK,SUBLANG_DEFAULT),                  /* TT_MAC_LANGID_TAJIKI */
+    MAKELANGID(LANG_TURKMEN,SUBLANG_DEFAULT),                /* TT_MAC_LANGID_TURKMEN */
+    MAKELANGID(LANG_MONGOLIAN,SUBLANG_DEFAULT),              /* TT_MAC_LANGID_MONGOLIAN */
+    MAKELANGID(LANG_MONGOLIAN,SUBLANG_MONGOLIAN_CYRILLIC_MONGOLIA), /* TT_MAC_LANGID_MONGOLIAN_CYRILLIC_SCRIPT */
+    MAKELANGID(LANG_PASHTO,SUBLANG_DEFAULT),                 /* TT_MAC_LANGID_PASHTO */
+    0,                                                       /* TT_MAC_LANGID_KURDISH */
+    MAKELANGID(LANG_KASHMIRI,SUBLANG_DEFAULT),               /* TT_MAC_LANGID_KASHMIRI */
+    MAKELANGID(LANG_SINDHI,SUBLANG_DEFAULT),                 /* TT_MAC_LANGID_SINDHI */
+    MAKELANGID(LANG_TIBETAN,SUBLANG_DEFAULT),                /* TT_MAC_LANGID_TIBETAN */
+    MAKELANGID(LANG_NEPALI,SUBLANG_DEFAULT),                 /* TT_MAC_LANGID_NEPALI */
+    MAKELANGID(LANG_SANSKRIT,SUBLANG_DEFAULT),               /* TT_MAC_LANGID_SANSKRIT */
+    MAKELANGID(LANG_MARATHI,SUBLANG_DEFAULT),                /* TT_MAC_LANGID_MARATHI */
+    MAKELANGID(LANG_BENGALI,SUBLANG_DEFAULT),                /* TT_MAC_LANGID_BENGALI */
+    MAKELANGID(LANG_ASSAMESE,SUBLANG_DEFAULT),               /* TT_MAC_LANGID_ASSAMESE */
+    MAKELANGID(LANG_GUJARATI,SUBLANG_DEFAULT),               /* TT_MAC_LANGID_GUJARATI */
+    MAKELANGID(LANG_PUNJABI,SUBLANG_DEFAULT),                /* TT_MAC_LANGID_PUNJABI */
+    MAKELANGID(LANG_ORIYA,SUBLANG_DEFAULT),                  /* TT_MAC_LANGID_ORIYA */
+    MAKELANGID(LANG_MALAYALAM,SUBLANG_DEFAULT),              /* TT_MAC_LANGID_MALAYALAM */
+    MAKELANGID(LANG_KANNADA,SUBLANG_DEFAULT),                /* TT_MAC_LANGID_KANNADA */
+    MAKELANGID(LANG_TAMIL,SUBLANG_DEFAULT),                  /* TT_MAC_LANGID_TAMIL */
+    MAKELANGID(LANG_TELUGU,SUBLANG_DEFAULT),                 /* TT_MAC_LANGID_TELUGU */
+    MAKELANGID(LANG_SINHALESE,SUBLANG_DEFAULT),              /* TT_MAC_LANGID_SINHALESE */
+    0,                                                       /* TT_MAC_LANGID_BURMESE */
+    MAKELANGID(LANG_KHMER,SUBLANG_DEFAULT),                  /* TT_MAC_LANGID_KHMER */
+    MAKELANGID(LANG_LAO,SUBLANG_DEFAULT),                    /* TT_MAC_LANGID_LAO */
+    MAKELANGID(LANG_VIETNAMESE,SUBLANG_DEFAULT),             /* TT_MAC_LANGID_VIETNAMESE */
+    MAKELANGID(LANG_INDONESIAN,SUBLANG_DEFAULT),             /* TT_MAC_LANGID_INDONESIAN */
+    0,                                                       /* TT_MAC_LANGID_TAGALOG */
+    MAKELANGID(LANG_MALAY,SUBLANG_DEFAULT),                  /* TT_MAC_LANGID_MALAY_ROMAN_SCRIPT */
+    0,                                                       /* TT_MAC_LANGID_MALAY_ARABIC_SCRIPT */
+    MAKELANGID(LANG_AMHARIC,SUBLANG_DEFAULT),                /* TT_MAC_LANGID_AMHARIC */
+    MAKELANGID(LANG_TIGRIGNA,SUBLANG_DEFAULT),               /* TT_MAC_LANGID_TIGRINYA */
+    0,                                                       /* TT_MAC_LANGID_GALLA */
+    0,                                                       /* TT_MAC_LANGID_SOMALI */
+    MAKELANGID(LANG_SWAHILI,SUBLANG_DEFAULT),                /* TT_MAC_LANGID_SWAHILI */
+    0,                                                       /* TT_MAC_LANGID_RUANDA */
+    0,                                                       /* TT_MAC_LANGID_RUNDI */
+    0,                                                       /* TT_MAC_LANGID_CHEWA */
+    MAKELANGID(LANG_MALAGASY,SUBLANG_DEFAULT),               /* TT_MAC_LANGID_MALAGASY */
+    MAKELANGID(LANG_ESPERANTO,SUBLANG_DEFAULT),              /* TT_MAC_LANGID_ESPERANTO */
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,       /* 95-111 */
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,          /* 112-127 */
+    MAKELANGID(LANG_WELSH,SUBLANG_DEFAULT),                  /* TT_MAC_LANGID_WELSH */
+    MAKELANGID(LANG_BASQUE,SUBLANG_DEFAULT),                 /* TT_MAC_LANGID_BASQUE */
+    MAKELANGID(LANG_CATALAN,SUBLANG_DEFAULT),                /* TT_MAC_LANGID_CATALAN */
+    0,                                                       /* TT_MAC_LANGID_LATIN */
+    MAKELANGID(LANG_QUECHUA,SUBLANG_DEFAULT),                /* TT_MAC_LANGID_QUECHUA */
+    0,                                                       /* TT_MAC_LANGID_GUARANI */
+    0,                                                       /* TT_MAC_LANGID_AYMARA */
+    MAKELANGID(LANG_TATAR,SUBLANG_DEFAULT),                  /* TT_MAC_LANGID_TATAR */
+    MAKELANGID(LANG_UIGHUR,SUBLANG_DEFAULT),                 /* TT_MAC_LANGID_UIGHUR */
+    0,                                                       /* TT_MAC_LANGID_DZONGKHA */
+    0,                                                       /* TT_MAC_LANGID_JAVANESE */
+    0,                                                       /* TT_MAC_LANGID_SUNDANESE */
+    MAKELANGID(LANG_GALICIAN,SUBLANG_DEFAULT),               /* TT_MAC_LANGID_GALICIAN */
+    MAKELANGID(LANG_AFRIKAANS,SUBLANG_DEFAULT),              /* TT_MAC_LANGID_AFRIKAANS */
+    MAKELANGID(LANG_BRETON,SUBLANG_DEFAULT),                 /* TT_MAC_LANGID_BRETON */
+    MAKELANGID(LANG_INUKTITUT,SUBLANG_DEFAULT),              /* TT_MAC_LANGID_INUKTITUT */
+    MAKELANGID(LANG_SCOTTISH_GAELIC,SUBLANG_DEFAULT),        /* TT_MAC_LANGID_SCOTTISH_GAELIC */
+    MAKELANGID(LANG_MANX_GAELIC,SUBLANG_DEFAULT),            /* TT_MAC_LANGID_MANX_GAELIC */
+    MAKELANGID(LANG_IRISH,SUBLANG_IRISH_IRELAND),            /* TT_MAC_LANGID_IRISH_GAELIC */
+    0,                                                       /* TT_MAC_LANGID_TONGAN */
+    0,                                                       /* TT_MAC_LANGID_GREEK_POLYTONIC */
+    MAKELANGID(LANG_GREENLANDIC,SUBLANG_DEFAULT),            /* TT_MAC_LANGID_GREELANDIC */
+    MAKELANGID(LANG_AZERI,SUBLANG_AZERI_LATIN),              /* TT_MAC_LANGID_AZERBAIJANI_ROMAN_SCRIPT */
+};
+
+static inline WORD get_mac_code_page( const FT_SfntName *name )
+{
+    if (name->encoding_id == TT_MAC_ID_SIMPLIFIED_CHINESE) return 10008;  /* special case */
+    return 10000 + name->encoding_id;
+}
+
+static int match_name_table_language( const FT_SfntName *name, LANGID lang )
+{
+    LANGID name_lang;
+
+    switch (name->platform_id)
+    {
+    case TT_PLATFORM_MICROSOFT:
+        switch (name->encoding_id)
+        {
+        case TT_MS_ID_UNICODE_CS:
+        case TT_MS_ID_SYMBOL_CS:
+            name_lang = name->language_id;
+            break;
+        default:
+            return 0;
+        }
+        break;
+    case TT_PLATFORM_MACINTOSH:
+        if (!IsValidCodePage( get_mac_code_page( name ))) return 0;
+        if (name->language_id >= sizeof(mac_langid_table)/sizeof(mac_langid_table[0])) return 0;
+        name_lang = mac_langid_table[name->language_id];
+        break;
+    case TT_PLATFORM_APPLE_UNICODE:
+        switch (name->encoding_id)
+        {
+        case TT_APPLE_ID_DEFAULT:
+        case TT_APPLE_ID_ISO_10646:
+        case TT_APPLE_ID_UNICODE_2_0:
+            if (name->language_id >= sizeof(mac_langid_table)/sizeof(mac_langid_table[0])) return 0;
+            name_lang = mac_langid_table[name->language_id];
+            break;
+        default:
+            return 0;
+        }
+        break;
+    default:
+        return 0;
+    }
+    if (name_lang == lang) return 3;
+    if (PRIMARYLANGID( name_lang ) == PRIMARYLANGID( lang )) return 2;
+    if (name_lang == MAKELANGID( LANG_ENGLISH, SUBLANG_DEFAULT )) return 1;
+    return 0;
+}
+
+static WCHAR *copy_name_table_string( const FT_SfntName *name )
+{
+    WCHAR *ret;
+    WORD codepage;
+    int i;
+
+    switch (name->platform_id)
+    {
+    case TT_PLATFORM_APPLE_UNICODE:
+    case TT_PLATFORM_MICROSOFT:
+        ret = HeapAlloc( GetProcessHeap(), 0, name->string_len + sizeof(WCHAR) );
+        for (i = 0; i < name->string_len / 2; i++)
+            ret[i] = (name->string[i * 2] << 8) | name->string[i * 2 + 1];
+        ret[i] = 0;
+        return ret;
+    case TT_PLATFORM_MACINTOSH:
+        codepage = get_mac_code_page( name );
+        i = MultiByteToWideChar( codepage, 0, (char *)name->string, name->string_len, NULL, 0 );
+        ret = HeapAlloc( GetProcessHeap(), 0, (i + 1) * sizeof(WCHAR) );
+        MultiByteToWideChar( codepage, 0, (char *)name->string, name->string_len, ret, i );
+        ret[i] = 0;
+        return ret;
+    }
+    return NULL;
+}
+
+static WCHAR *get_face_name(FT_Face ft_face, FT_UShort name_id, LANGID language_id)
 {
     FT_SfntName name;
     FT_UInt num_names, name_index;
+    int res, best_lang = 0, best_index = -1;
 
-    if(FT_IS_SFNT(ft_face))
+    if (!FT_IS_SFNT(ft_face)) return NULL;
+
+    num_names = pFT_Get_Sfnt_Name_Count( ft_face );
+
+    for (name_index = 0; name_index < num_names; name_index++)
     {
-        num_names = pFT_Get_Sfnt_Name_Count(ft_face);
-
-        for(name_index = 0; name_index < num_names; name_index++)
+        if (pFT_Get_Sfnt_Name( ft_face, name_index, &name )) continue;
+        if (name.name_id != name_id) continue;
+        res = match_name_table_language( &name, language_id );
+        if (res > best_lang)
         {
-            if(!pFT_Get_Sfnt_Name(ft_face, name_index, &name))
-            {
-                if((name.platform_id == req->platform_id) &&
-                   ((name.encoding_id == TT_MS_ID_UNICODE_CS) || (name.encoding_id == TT_MS_ID_SYMBOL_CS)) &&
-                   (name.language_id == req->language_id) &&
-                   (name.name_id     == req->name_id))
-                {
-                    req->string = name.string;
-                    req->string_len = name.string_len;
-                    return TRUE;
-                }
-            }
+            best_lang = res;
+            best_index = name_index;
         }
     }
-    req->string = NULL;
-    req->string_len = 0;
-    return FALSE;
-}
 
-static WCHAR *get_face_name(FT_Face ft_face, FT_UShort name_id, FT_UShort language_id)
-{
-    WCHAR *ret = NULL;
-    FT_SfntName name;
-
-    name.platform_id = TT_PLATFORM_MICROSOFT;
-    name.language_id = language_id;
-    name.name_id     = name_id;
-
-    if(get_name_table_entry(ft_face, &name))
+    if (best_index != -1 && !pFT_Get_Sfnt_Name( ft_face, best_index, &name ))
     {
-        FT_UInt i;
-
-        /* String is not nul terminated and string_len is a byte length. */
-        ret = HeapAlloc(GetProcessHeap(), 0, name.string_len + 2);
-        for(i = 0; i < name.string_len / 2; i++)
-        {
-            WORD *tmp = (WORD *)&name.string[i * 2];
-            ret[i] = GET_BE_WORD(*tmp);
-        }
-        ret[i] = 0;
-        TRACE("Got localised name %s\n", debugstr_w(ret));
+        WCHAR *ret = copy_name_table_string( &name );
+        TRACE( "name %u found platform %u lang %04x %s\n",
+               name_id, name.platform_id, name.language_id, debugstr_w( ret ));
+        return ret;
     }
-
-    return ret;
+    return NULL;
 }
 
 static inline BOOL faces_equal( const Face *f1, const Face *f2 )
@@ -1302,6 +1472,13 @@ static BOOL insert_face_in_family_list( Face *face, Family *family )
                   debugstr_w(family->FamilyName), debugstr_w(face->StyleName),
                   cursor->font_version, face->font_version);
 
+            if (face->file && face->dev == cursor->dev && face->ino == cursor->ino)
+            {
+                cursor->refcount++;
+                TRACE("Font %s already in list, refcount now %d\n",
+                      debugstr_w(face->file), cursor->refcount);
+                return FALSE;
+            }
             if (face->font_version <= cursor->font_version)
             {
                 TRACE("Original font %s is newer so skipping %s\n",
@@ -1445,6 +1622,38 @@ static void load_face(HKEY hkey_face, WCHAR *face_name, Family *family, void *bu
     }
 }
 
+/* move vertical fonts after their horizontal counterpart */
+/* assumes that font_list is already sorted by family name */
+static void reorder_vertical_fonts(void)
+{
+    Family *family, *next, *vert_family;
+    struct list *ptr, *vptr;
+    struct list vertical_families = LIST_INIT( vertical_families );
+
+    LIST_FOR_EACH_ENTRY_SAFE( family, next, &font_list, Family, entry )
+    {
+        if (family->FamilyName[0] != '@') continue;
+        list_remove( &family->entry );
+        list_add_tail( &vertical_families, &family->entry );
+    }
+
+    ptr = list_head( &font_list );
+    vptr = list_head( &vertical_families );
+    while (ptr && vptr)
+    {
+        family = LIST_ENTRY( ptr, Family, entry );
+        vert_family = LIST_ENTRY( vptr, Family, entry );
+        if (strcmpiW( family->FamilyName, vert_family->FamilyName + 1 ) > 0)
+        {
+            list_remove( vptr );
+            list_add_before( ptr, vptr );
+            vptr = list_head( &vertical_families );
+        }
+        else ptr = list_next( &font_list, ptr );
+    }
+    list_move_tail( &font_list, &vertical_families );
+}
+
 static void load_font_list_from_cache(HKEY hkey_font_cache)
 {
     DWORD size, family_index = 0;
@@ -1495,6 +1704,8 @@ static void load_font_list_from_cache(HKEY hkey_font_cache)
         release_family( family );
         size = sizeof(buffer);
     }
+
+    reorder_vertical_fonts();
 }
 
 static LONG create_font_cache_key(HKEY *hkey, DWORD *disposition)
@@ -1604,7 +1815,7 @@ static WCHAR *prepend_at(WCHAR *family)
 
 static void get_family_names( FT_Face ft_face, WCHAR **name, WCHAR **english, BOOL vertical )
 {
-    *english = get_face_name( ft_face, TT_NAME_ID_FONT_FAMILY, TT_MS_LANGID_ENGLISH_UNITED_STATES );
+    *english = get_face_name( ft_face, TT_NAME_ID_FONT_FAMILY, MAKELANGID(LANG_ENGLISH,SUBLANG_DEFAULT) );
     if (!*english) *english = towstr( CP_ACP, ft_face->family_name );
 
     *name = get_face_name( ft_face, TT_NAME_ID_FONT_FAMILY, GetSystemDefaultLCID() );
@@ -1761,29 +1972,30 @@ static inline void get_fontsig( FT_Face ft_face, FONTSIGNATURE *fs )
 static Face *create_face( FT_Face ft_face, FT_Long face_index, const char *file, void *font_data_ptr, DWORD font_data_size,
                           DWORD flags )
 {
+    struct stat st;
     Face *face = HeapAlloc( GetProcessHeap(), 0, sizeof(*face) );
     My_FT_Bitmap_Size *size = (My_FT_Bitmap_Size *)ft_face->available_sizes;
 
     face->refcount = 1;
     face->StyleName = get_face_name( ft_face, TT_NAME_ID_FONT_SUBFAMILY, GetSystemDefaultLangID() );
-    if (!face->StyleName)
-        face->StyleName = get_face_name( ft_face, TT_NAME_ID_FONT_SUBFAMILY, TT_MS_LANGID_ENGLISH_UNITED_STATES );
-    if (!face->StyleName)
-    {
-        face->StyleName = towstr( CP_ACP, ft_face->style_name );
-    }
+    if (!face->StyleName) face->StyleName = towstr( CP_ACP, ft_face->style_name );
 
     face->FullName = get_face_name( ft_face, TT_NAME_ID_FULL_NAME, GetSystemDefaultLangID() );
-    if (!face->FullName)
-        face->FullName = get_face_name( ft_face, TT_NAME_ID_FULL_NAME, TT_MS_LANGID_ENGLISH_UNITED_STATES );
     if (flags & ADDFONT_VERTICAL_FONT)
         face->FullName = prepend_at( face->FullName );
 
+    face->dev = 0;
+    face->ino = 0;
     if (file)
     {
         face->file = towstr( CP_UNIXCP, file );
         face->font_data_ptr = NULL;
         face->font_data_size = 0;
+        if (!stat( file, &st ))
+        {
+            face->dev = st.st_dev;
+            face->ino = st.st_ino;
+        }
     }
     else
     {
@@ -1986,8 +2198,7 @@ static int remove_font_resource( const char *file, DWORD flags )
 {
     Family *family, *family_next;
     Face *face, *face_next;
-    char *filename;
-    struct stat st, st2;
+    struct stat st;
     int count = 0;
 
     if (stat( file, &st ) == -1) return 0;
@@ -1998,14 +2209,12 @@ static int remove_font_resource( const char *file, DWORD flags )
         {
             if (!face->file) continue;
             if (LOWORD(face->flags) != LOWORD(flags)) continue;
-            filename = strWtoA( CP_UNIXCP, face->file );
-            if (!stat( filename, &st2 ) && st.st_dev == st2.st_dev && st.st_ino == st2.st_ino)
+            if (st.st_dev == face->dev && st.st_ino == face->ino)
             {
-                TRACE( "removing matching face %s\n", debugstr_w(face->file) );
+                TRACE( "removing matching face %s refcount %d\n", debugstr_w(face->file), face->refcount );
                 release_face( face );
                 count++;
             }
-            HeapFree( GetProcessHeap(), 0, filename );
 	}
         release_family( family );
     }
@@ -3391,7 +3600,7 @@ static const struct nls_update_font_list
     /* Arabic */
     { 1256, 720, "vgaoem.fon", "vgaf1256.fon", "vgas1256.fon",
       "coue1256.fon", "sere1256.fon", "smae1256.fon", "ssee1256.fon", "ssef1256.fon",
-      "Tahoma","Times New Roman", /* FIXME unverified */
+      "Microsoft Sans Serif","Times New Roman",
       "Fixedsys,178", "System,178",
       "Courier New,178", "MS Serif,178", "Small Fonts,178",
       "MS Sans Serif,178", "MS Sans Serif,178", "MS Serif,178",
@@ -3505,6 +3714,46 @@ static void set_value_key(HKEY hkey, const char *name, const char *value)
         RegDeleteValueA(hkey, name);
 }
 
+static void update_font_association_info(UINT current_ansi_codepage)
+{
+    static const char *font_assoc_reg_key = "System\\CurrentControlSet\\Control\\FontAssoc";
+    static const char *assoc_charset_subkey = "Associated Charset";
+
+    if (is_dbcs_ansi_cp(current_ansi_codepage))
+    {
+        HKEY hkey;
+        if (RegCreateKeyA(HKEY_LOCAL_MACHINE, font_assoc_reg_key, &hkey) == ERROR_SUCCESS)
+        {
+            HKEY hsubkey;
+            if (RegCreateKeyA(hkey, assoc_charset_subkey, &hsubkey) == ERROR_SUCCESS)
+            {
+                switch (current_ansi_codepage)
+                {
+                case 932:
+                    set_value_key(hsubkey, "ANSI(00)", "NO");
+                    set_value_key(hsubkey, "OEM(FF)", "NO");
+                    set_value_key(hsubkey, "SYMBOL(02)", "NO");
+                    break;
+                case 936:
+                case 949:
+                case 950:
+                    set_value_key(hsubkey, "ANSI(00)", "YES");
+                    set_value_key(hsubkey, "OEM(FF)", "YES");
+                    set_value_key(hsubkey, "SYMBOL(02)", "NO");
+                    break;
+                }
+                RegCloseKey(hsubkey);
+            }
+
+            /* TODO: Associated DefaultFonts */
+
+            RegCloseKey(hkey);
+        }
+    }
+    else
+        RegDeleteTreeA(HKEY_LOCAL_MACHINE, font_assoc_reg_key);
+}
+
 static void update_font_info(void)
 {
     static const WCHAR logpixels[] = { 'L','o','g','P','i','x','e','l','s',0 };
@@ -3538,6 +3787,7 @@ static void update_font_info(void)
     if (is_dbcs_ansi_cp(ansi_cp))
         use_default_fallback = TRUE;
 
+    buf[0] = 0;
     len = sizeof(buf);
     if (RegQueryValueExA(hkey, "Codepages", 0, &type, (BYTE *)buf, &len) == ERROR_SUCCESS && type == REG_SZ)
     {
@@ -3615,6 +3865,11 @@ static void update_font_info(void)
     }
     if (!done)
         FIXME("there is no font defaults for codepages %u,%u\n", ansi_cp, oem_cp);
+
+    /* update locale dependent font association info in registry.
+       update only when codepages changed, not logpixels. */
+    if (strcmp(buf, cpbuf) != 0)
+        update_font_association_info(ansi_cp);
 }
 
 static BOOL init_freetype(void)
@@ -3922,6 +4177,7 @@ static LONG calc_ppem_for_height(FT_Face ft_face, LONG height)
     TT_HoriHeader *pHori;
 
     LONG ppem;
+    const LONG MAX_PPEM = (1 << 16) - 1;
 
     pOS2 = pFT_Get_Sfnt_Table(ft_face, ft_sfnt_os2);
     pHori = pFT_Get_Sfnt_Table(ft_face, ft_sfnt_hhea);
@@ -3949,9 +4205,17 @@ static LONG calc_ppem_for_height(FT_Face ft_face, LONG height)
         else
             ppem = MulDiv(ft_face->units_per_EM, height,
                           pOS2->usWinAscent + pOS2->usWinDescent);
+        if(ppem > MAX_PPEM) {
+            WARN("Ignoring too large height %d, ppem %d\n", height, ppem);
+            ppem = 1;
+        }
     }
-    else
+    else if(height >= -MAX_PPEM)
         ppem = -height;
+    else {
+        WARN("Ignoring too large height %d\n", height);
+        ppem = 1;
+    }
 
     return ppem;
 }
@@ -4622,6 +4886,137 @@ done:
     return ret;
 }
 
+static const GSUB_Script* GSUB_get_script_table( const GSUB_Header* header, const char* tag)
+{
+    const GSUB_ScriptList *script;
+    const GSUB_Script *deflt = NULL;
+    int i;
+    script = (const GSUB_ScriptList*)((const BYTE*)header + GET_BE_WORD(header->ScriptList));
+
+    TRACE("%i scripts in this font\n",GET_BE_WORD(script->ScriptCount));
+    for (i = 0; i < GET_BE_WORD(script->ScriptCount); i++)
+    {
+        const GSUB_Script *scr;
+        int offset;
+
+        offset = GET_BE_WORD(script->ScriptRecord[i].Script);
+        scr = (const GSUB_Script*)((const BYTE*)script + offset);
+
+        if (strncmp(script->ScriptRecord[i].ScriptTag, tag,4)==0)
+            return scr;
+        if (strncmp(script->ScriptRecord[i].ScriptTag, "dflt",4)==0)
+            deflt = scr;
+    }
+    return deflt;
+}
+
+static const GSUB_LangSys* GSUB_get_lang_table( const GSUB_Script* script, const char* tag)
+{
+    int i;
+    int offset;
+    const GSUB_LangSys *Lang;
+
+    TRACE("Deflang %x, LangCount %i\n",GET_BE_WORD(script->DefaultLangSys), GET_BE_WORD(script->LangSysCount));
+
+    for (i = 0; i < GET_BE_WORD(script->LangSysCount) ; i++)
+    {
+        offset = GET_BE_WORD(script->LangSysRecord[i].LangSys);
+        Lang = (const GSUB_LangSys*)((const BYTE*)script + offset);
+
+        if ( strncmp(script->LangSysRecord[i].LangSysTag,tag,4)==0)
+            return Lang;
+    }
+    offset = GET_BE_WORD(script->DefaultLangSys);
+    if (offset)
+    {
+        Lang = (const GSUB_LangSys*)((const BYTE*)script + offset);
+        return Lang;
+    }
+    return NULL;
+}
+
+static const GSUB_Feature * GSUB_get_feature(const GSUB_Header *header, const GSUB_LangSys *lang, const char* tag)
+{
+    int i;
+    const GSUB_FeatureList *feature;
+    feature = (const GSUB_FeatureList*)((const BYTE*)header + GET_BE_WORD(header->FeatureList));
+
+    TRACE("%i features\n",GET_BE_WORD(lang->FeatureCount));
+    for (i = 0; i < GET_BE_WORD(lang->FeatureCount); i++)
+    {
+        int index = GET_BE_WORD(lang->FeatureIndex[i]);
+        if (strncmp(feature->FeatureRecord[index].FeatureTag,tag,4)==0)
+        {
+            const GSUB_Feature *feat;
+            feat = (const GSUB_Feature*)((const BYTE*)feature + GET_BE_WORD(feature->FeatureRecord[index].Feature));
+            return feat;
+        }
+    }
+    return NULL;
+}
+
+static const char* get_opentype_script(const GdiFont *font)
+{
+    /*
+     * I am not sure if this is the correct way to generate our script tag
+     */
+
+    switch (font->charset)
+    {
+        case ANSI_CHARSET: return "latn";
+        case BALTIC_CHARSET: return "latn"; /* ?? */
+        case CHINESEBIG5_CHARSET: return "hani";
+        case EASTEUROPE_CHARSET: return "latn"; /* ?? */
+        case GB2312_CHARSET: return "hani";
+        case GREEK_CHARSET: return "grek";
+        case HANGUL_CHARSET: return "hang";
+        case RUSSIAN_CHARSET: return "cyrl";
+        case SHIFTJIS_CHARSET: return "kana";
+        case TURKISH_CHARSET: return "latn"; /* ?? */
+        case VIETNAMESE_CHARSET: return "latn";
+        case JOHAB_CHARSET: return "latn"; /* ?? */
+        case ARABIC_CHARSET: return "arab";
+        case HEBREW_CHARSET: return "hebr";
+        case THAI_CHARSET: return "thai";
+        default: return "latn";
+    }
+}
+
+static const VOID * get_GSUB_vert_feature(const GdiFont *font)
+{
+    const GSUB_Header *header;
+    const GSUB_Script *script;
+    const GSUB_LangSys *language;
+    const GSUB_Feature *feature;
+
+    if (!font->GSUB_Table)
+        return NULL;
+
+    header = font->GSUB_Table;
+
+    script = GSUB_get_script_table(header, get_opentype_script(font));
+    if (!script)
+    {
+        TRACE("Script not found\n");
+        return NULL;
+    }
+    language = GSUB_get_lang_table(script, "xxxx"); /* Need to get Lang tag */
+    if (!language)
+    {
+        TRACE("Language not found\n");
+        return NULL;
+    }
+    feature  =  GSUB_get_feature(header, language, "vrt2");
+    if (!feature)
+        feature  =  GSUB_get_feature(header, language, "vert");
+    if (!feature)
+    {
+        TRACE("vrt2/vert feature not found\n");
+        return NULL;
+    }
+    return feature;
+}
+
 /*************************************************************
  * freetype_SelectFont
  */
@@ -5034,6 +5429,13 @@ found_face:
             ret->GSUB_Table = HeapAlloc(GetProcessHeap(),0,length);
             get_font_data(ret, GSUB_TAG , 0, ret->GSUB_Table, length);
             TRACE("Loaded GSUB table of %i bytes\n",length);
+            ret->vert_feature = get_GSUB_vert_feature(ret);
+            if (!ret->vert_feature)
+            {
+                TRACE("Vertical feature not found\n");
+                HeapFree(GetProcessHeap(), 0, ret->GSUB_Table);
+                ret->GSUB_Table = NULL;
+            }
         }
     }
     ret->aa_flags = HIWORD( face->flags );
@@ -5493,75 +5895,6 @@ static INT GSUB_is_glyph_covered(LPCVOID table , UINT glyph)
     return -1;
 }
 
-static const GSUB_Script* GSUB_get_script_table( const GSUB_Header* header, const char* tag)
-{
-    const GSUB_ScriptList *script;
-    const GSUB_Script *deflt = NULL;
-    int i;
-    script = (const GSUB_ScriptList*)((const BYTE*)header + GET_BE_WORD(header->ScriptList));
-
-    TRACE("%i scripts in this font\n",GET_BE_WORD(script->ScriptCount));
-    for (i = 0; i < GET_BE_WORD(script->ScriptCount); i++)
-    {
-        const GSUB_Script *scr;
-        int offset;
-
-        offset = GET_BE_WORD(script->ScriptRecord[i].Script);
-        scr = (const GSUB_Script*)((const BYTE*)script + offset);
-
-        if (strncmp(script->ScriptRecord[i].ScriptTag, tag,4)==0)
-            return scr;
-        if (strncmp(script->ScriptRecord[i].ScriptTag, "dflt",4)==0)
-            deflt = scr;
-    }
-    return deflt;
-}
-
-static const GSUB_LangSys* GSUB_get_lang_table( const GSUB_Script* script, const char* tag)
-{
-    int i;
-    int offset;
-    const GSUB_LangSys *Lang;
-
-    TRACE("Deflang %x, LangCount %i\n",GET_BE_WORD(script->DefaultLangSys), GET_BE_WORD(script->LangSysCount));
-
-    for (i = 0; i < GET_BE_WORD(script->LangSysCount) ; i++)
-    {
-        offset = GET_BE_WORD(script->LangSysRecord[i].LangSys);
-        Lang = (const GSUB_LangSys*)((const BYTE*)script + offset);
-
-        if ( strncmp(script->LangSysRecord[i].LangSysTag,tag,4)==0)
-            return Lang;
-    }
-    offset = GET_BE_WORD(script->DefaultLangSys);
-    if (offset)
-    {
-        Lang = (const GSUB_LangSys*)((const BYTE*)script + offset);
-        return Lang;
-    }
-    return NULL;
-}
-
-static const GSUB_Feature * GSUB_get_feature(const GSUB_Header *header, const GSUB_LangSys *lang, const char* tag)
-{
-    int i;
-    const GSUB_FeatureList *feature;
-    feature = (const GSUB_FeatureList*)((const BYTE*)header + GET_BE_WORD(header->FeatureList));
-
-    TRACE("%i features\n",GET_BE_WORD(lang->FeatureCount));
-    for (i = 0; i < GET_BE_WORD(lang->FeatureCount); i++)
-    {
-        int index = GET_BE_WORD(lang->FeatureIndex[i]);
-        if (strncmp(feature->FeatureRecord[index].FeatureTag,tag,4)==0)
-        {
-            const GSUB_Feature *feat;
-            feat = (const GSUB_Feature*)((const BYTE*)feature + GET_BE_WORD(feature->FeatureRecord[index].Feature));
-            return feat;
-        }
-    }
-    return NULL;
-}
-
 static FT_UInt GSUB_apply_feature(const GSUB_Header * header, const GSUB_Feature* feature, UINT glyph)
 {
     int i;
@@ -5622,65 +5955,18 @@ static FT_UInt GSUB_apply_feature(const GSUB_Header * header, const GSUB_Feature
     return glyph;
 }
 
-static const char* get_opentype_script(const GdiFont *font)
-{
-    /*
-     * I am not sure if this is the correct way to generate our script tag
-     */
-
-    switch (font->charset)
-    {
-        case ANSI_CHARSET: return "latn";
-        case BALTIC_CHARSET: return "latn"; /* ?? */
-        case CHINESEBIG5_CHARSET: return "hani";
-        case EASTEUROPE_CHARSET: return "latn"; /* ?? */
-        case GB2312_CHARSET: return "hani";
-        case GREEK_CHARSET: return "grek";
-        case HANGUL_CHARSET: return "hang";
-        case RUSSIAN_CHARSET: return "cyrl";
-        case SHIFTJIS_CHARSET: return "kana";
-        case TURKISH_CHARSET: return "latn"; /* ?? */
-        case VIETNAMESE_CHARSET: return "latn";
-        case JOHAB_CHARSET: return "latn"; /* ?? */
-        case ARABIC_CHARSET: return "arab";
-        case HEBREW_CHARSET: return "hebr";
-        case THAI_CHARSET: return "thai";
-        default: return "latn";
-    }
-}
 
 static FT_UInt get_GSUB_vert_glyph(const GdiFont *font, UINT glyph)
 {
     const GSUB_Header *header;
-    const GSUB_Script *script;
-    const GSUB_LangSys *language;
     const GSUB_Feature *feature;
 
     if (!font->GSUB_Table)
         return glyph;
 
     header = font->GSUB_Table;
+    feature = font->vert_feature;
 
-    script = GSUB_get_script_table(header, get_opentype_script(font));
-    if (!script)
-    {
-        TRACE("Script not found\n");
-        return glyph;
-    }
-    language = GSUB_get_lang_table(script, "xxxx"); /* Need to get Lang tag */
-    if (!language)
-    {
-        TRACE("Language not found\n");
-        return glyph;
-    }
-    feature  =  GSUB_get_feature(header, language, "vrt2");
-    if (!feature)
-        feature  =  GSUB_get_feature(header, language, "vert");
-    if (!feature)
-    {
-        TRACE("vrt2/vert feature not found\n");
-        return glyph;
-    }
     return GSUB_apply_feature(header, feature, glyph);
 }
 
@@ -5724,6 +6010,25 @@ static FT_UInt get_glyph_index(const GdiFont *font, UINT glyph)
     return glyphId;
 }
 
+static FT_UInt get_default_char_index(GdiFont *font)
+{
+    FT_UInt default_char;
+
+    if (FT_IS_SFNT(font->ft_face))
+    {
+        TT_OS2 *pOS2 = pFT_Get_Sfnt_Table(font->ft_face, ft_sfnt_os2);
+        default_char = (pOS2->usDefaultChar ? get_glyph_index(font, pOS2->usDefaultChar) : 0);
+    }
+    else
+    {
+        TEXTMETRICW textm;
+        get_text_metrics(font, &textm);
+        default_char = textm.tmDefaultChar;
+    }
+
+    return default_char;
+}
+
 /*************************************************************
  * freetype_GetGlyphIndices
  */
@@ -5756,21 +6061,13 @@ static DWORD freetype_GetGlyphIndices( PHYSDEV dev, LPCWSTR lpstr, INT count, LP
         {
             if (!got_default)
             {
-                if (FT_IS_SFNT(physdev->font->ft_face))
-                {
-                    TT_OS2 *pOS2 = pFT_Get_Sfnt_Table(physdev->font->ft_face, ft_sfnt_os2);
-                    default_char = (pOS2->usDefaultChar ? get_glyph_index(physdev->font, pOS2->usDefaultChar) : 0);
-                }
-                else
-                {
-                    TEXTMETRICW textm;
-                    get_text_metrics(physdev->font, &textm);
-                    default_char = textm.tmDefaultChar;
-                }
+                default_char = get_default_char_index(physdev->font);
                 got_default = TRUE;
             }
             pgi[i] = default_char;
         }
+        else
+            pgi[i] = get_GSUB_vert_glyph(physdev->font, pgi[i]);
     }
     LeaveCriticalSection( &freetype_cs );
     return count;
@@ -5799,6 +6096,55 @@ static inline BYTE get_max_level( UINT format )
     return 255;
 }
 
+static const struct { WCHAR lower; WCHAR upper;} unrotate_ranges[] =
+    {
+        {0x0000, 0x10FF},
+        /* Hangul Jamo */
+        {0x1200, 0x17FF},
+        /* Mongolian  */
+        {0x18B0, 0x1FFF},
+        /* General Punctuation */
+        {0x2070, 0x209F},
+        /* Currency Symbols */
+        /* Combining Diacritical Marks for Symbols */
+        /* Letterlike Symbols */
+        {0x2150, 0x245F},
+        /* Enclosed Alphanumerics */
+        {0x2500, 0x259F},
+        /* Geometric Shapes */
+        /* Miscellaneous Symbols */
+        /* Dingbats */
+        /* Miscellaneous Mathematical Symbols-A */
+        /* Supplemental Arrows-A */
+        {0x2800, 0x2E7F},
+        /* East Asian scripts and symbols */
+        {0xA000, 0xABFF},
+        /* Hangul Syllables */
+        /* Hangul Jamo Extended-B */
+        {0xD800, 0xF8FF},
+        /* CJK Compatibility Ideographs */
+        {0xFB00, 0xFE0F},
+        /* Vertical Forms */
+        /* Combining Half Marks */
+        /* CJK Compatibility Forms */
+        {0xFE50, 0xFEFF},
+        /* Halfwidth and Fullwidth Forms  */
+        {0xFFEF, 0xFFFF},
+    };
+
+static BOOL check_unicode_tategaki(WCHAR uchar)
+{
+    int i;
+    for (i = 0 ;; i++)
+    {
+        if (uchar < unrotate_ranges[i].lower)
+            return TRUE;
+
+        if (uchar >= unrotate_ranges[i].lower && uchar  <= unrotate_ranges[i].upper)
+            return FALSE;
+    }
+}
+
 static const BYTE masks[8] = {0x80, 0x40, 0x20, 0x10, 0x08, 0x04, 0x02, 0x01};
 
 static DWORD get_glyph_outline(GdiFont *incoming_font, UINT glyph, UINT format,
@@ -5808,20 +6154,25 @@ static DWORD get_glyph_outline(GdiFont *incoming_font, UINT glyph, UINT format,
     static const FT_Matrix identityMat = {(1 << 16), 0, 0, (1 << 16)};
     FT_Face ft_face = incoming_font->ft_face;
     GdiFont *font = incoming_font;
+    FT_Glyph_Metrics metrics;
     FT_UInt glyph_index;
     DWORD width, height, pitch, needed = 0;
     FT_Bitmap ft_bitmap;
     FT_Error err;
     INT left, right, top = 0, bottom = 0, adv;
+    INT origin_x = 0, origin_y = 0;
     FT_Angle angle = 0;
     FT_Int load_flags = FT_LOAD_DEFAULT | FT_LOAD_IGNORE_GLOBAL_ADVANCE_WIDTH;
     double widthRatio = 1.0;
     FT_Matrix transMat = identityMat;
     FT_Matrix transMatUnrotated;
+    FT_Matrix transMatTategaki;
     BOOL needsTransform = FALSE;
-    BOOL tategaki = (font->GSUB_Table != NULL);
+    BOOL tategaki = (font->name[0] == '@');
+    BOOL vertical_metrics;
     UINT original_index;
-    FT_Fixed avgAdvance = 0;
+    LONG avgAdvance = 0;
+    FT_Fixed em_scale;
 
     TRACE("%p, %04x, %08x, %p, %08x, %p, %p\n", font, glyph, format, lpgm,
 	  buflen, buf, lpmat);
@@ -5831,23 +6182,26 @@ static DWORD get_glyph_outline(GdiFont *incoming_font, UINT glyph, UINT format,
           font->font_desc.matrix.eM21, font->font_desc.matrix.eM22);
 
     if(format & GGO_GLYPH_INDEX) {
-        glyph_index = get_GSUB_vert_glyph(incoming_font,glyph);
+        glyph_index = glyph;
         original_index = glyph;
 	format &= ~GGO_GLYPH_INDEX;
+        /* TODO: Window also turns off tategaki for glyphs passed in by index
+            if their unicode code points fall outside of the range that is
+            rotated. */
     } else {
-        get_glyph_index_linked(incoming_font, glyph, &font, &glyph_index);
+        BOOL vert;
+        get_glyph_index_linked(incoming_font, glyph, &font, &glyph_index, &vert);
         ft_face = font->ft_face;
         original_index = glyph_index;
+        /* We know what unicode ranges get rotated */
+        if (!vert && tategaki)
+            tategaki = check_unicode_tategaki(glyph);
     }
 
     if(format & GGO_UNHINTED) {
         load_flags |= FT_LOAD_NO_HINTING;
         format &= ~GGO_UNHINTED;
     }
-
-    /* tategaki never appears to happen to lower glyph index */
-    if (glyph_index < TATEGAKI_LOWER_BOUND )
-        tategaki = FALSE;
 
     if(original_index >= font->gmsize * GM_BLOCK_SIZE) {
 	font->gmsize = (original_index / GM_BLOCK_SIZE + 1);
@@ -5909,17 +6263,43 @@ static DWORD get_glyph_outline(GdiFont *incoming_font, UINT glyph, UINT format,
 
     /* Rotation transform */
     transMatUnrotated = transMat;
-    if(font->orientation && !tategaki) {
+    transMatTategaki = transMat;
+    if(font->orientation || tategaki) {
         FT_Matrix rotationMat;
+        FT_Matrix taterotationMat;
         FT_Vector vecAngle;
-        angle = FT_FixedFromFloat((double)font->orientation / 10.0);
-        pFT_Vector_Unit(&vecAngle, angle);
-        rotationMat.xx = vecAngle.x;
-        rotationMat.xy = -vecAngle.y;
-        rotationMat.yx = -rotationMat.xy;
-        rotationMat.yy = rotationMat.xx;
-        
-        pFT_Matrix_Multiply(&rotationMat, &transMat);
+
+        double orient = font->orientation / 10.0;
+        double tate_orient = 0.f;
+
+        if (tategaki)
+            tate_orient = ((font->orientation+900)%3600)/10.0;
+        else
+            tate_orient = font->orientation/10.0;
+
+        if (orient)
+        {
+            angle = FT_FixedFromFloat(orient);
+            pFT_Vector_Unit(&vecAngle, angle);
+            rotationMat.xx = vecAngle.x;
+            rotationMat.xy = -vecAngle.y;
+            rotationMat.yx = -rotationMat.xy;
+            rotationMat.yy = rotationMat.xx;
+
+            pFT_Matrix_Multiply(&rotationMat, &transMat);
+        }
+
+        if (tate_orient)
+        {
+            angle = FT_FixedFromFloat(tate_orient);
+            pFT_Vector_Unit(&vecAngle, angle);
+            taterotationMat.xx = vecAngle.x;
+            taterotationMat.xy = -vecAngle.y;
+            taterotationMat.yx = -taterotationMat.xy;
+            taterotationMat.yy = taterotationMat.xx;
+            pFT_Matrix_Multiply(&taterotationMat, &transMatTategaki);
+        }
+
         needsTransform = TRUE;
     }
 
@@ -5933,6 +6313,7 @@ static DWORD get_glyph_outline(GdiFont *incoming_font, UINT glyph, UINT format,
         worldMat.yy = FT_FixedFromFloat(font->font_desc.matrix.eM22);
         pFT_Matrix_Multiply(&worldMat, &transMat);
         pFT_Matrix_Multiply(&worldMat, &transMatUnrotated);
+        pFT_Matrix_Multiply(&worldMat, &transMatTategaki);
         needsTransform = TRUE;
     }
 
@@ -5946,10 +6327,18 @@ static DWORD get_glyph_outline(GdiFont *incoming_font, UINT glyph, UINT format,
         extraMat.yy = FT_FixedFromFIXED(lpmat->eM22);
         pFT_Matrix_Multiply(&extraMat, &transMat);
         pFT_Matrix_Multiply(&extraMat, &transMatUnrotated);
+        pFT_Matrix_Multiply(&extraMat, &transMatTategaki);
         needsTransform = TRUE;
     }
 
+    vertical_metrics = (tategaki && FT_HAS_VERTICAL(ft_face));
+    /* there is a freetype bug where vertical metrics are only
+       properly scaled and correct in 2.4.0 or greater */
+    if ((vertical_metrics) && (FT_Version.major < 2 || (FT_Version.major == 2 && FT_Version.minor < 4)))
+        vertical_metrics = FALSE;
+
     if (needsTransform || format != GGO_BITMAP) load_flags |= FT_LOAD_NO_BITMAP;
+    if (vertical_metrics) load_flags |= FT_LOAD_VERTICAL_LAYOUT;
 
     err = pFT_Load_Glyph(ft_face, glyph_index, load_flags);
 
@@ -5958,13 +6347,30 @@ static DWORD get_glyph_outline(GdiFont *incoming_font, UINT glyph, UINT format,
         return GDI_ERROR;
     }
 
+    /* Some poorly-created fonts contain glyphs that exceed the boundaries set
+     * by the text metrics. The proper behavior is to clip the glyph metrics to
+     * fit within the maximums specified in the text metrics. */
+    metrics = ft_face->glyph->metrics;
+    if(incoming_font->potm || get_outline_text_metrics(incoming_font) ||
+        get_bitmap_text_metrics(incoming_font)) {
+        TEXTMETRICW *ptm = &incoming_font->potm->otmTextMetrics;
+        top = min( metrics.horiBearingY, ptm->tmAscent << 6 );
+        bottom = max( metrics.horiBearingY - metrics.height, -(ptm->tmDescent << 6) );
+        metrics.horiBearingY = top;
+        metrics.height = top - bottom;
+
+        /* TODO: Are we supposed to clip the width as well...? */
+        /* metrics.width = min( metrics.width, ptm->tmMaxCharWidth << 6 ); */
+    }
+
     if(FT_IS_SCALABLE(incoming_font->ft_face)) {
         TEXTMETRICW tm;
         if (get_text_metrics(incoming_font, &tm) &&
             !(tm.tmPitchAndFamily & TMPF_FIXED_PITCH)) {
-            avgAdvance = pFT_MulFix(incoming_font->ntmAvgWidth,
-                                    incoming_font->ft_face->size->metrics.x_scale);
-            if (avgAdvance && (ft_face->glyph->metrics.horiAdvance+63) >> 6 == (avgAdvance*2+63) >> 6)
+            em_scale = MulDiv(incoming_font->ppem, 1 << 16, incoming_font->ft_face->units_per_EM);
+            avgAdvance = pFT_MulFix(incoming_font->ntmAvgWidth, em_scale);
+            if (avgAdvance &&
+                (metrics.horiAdvance+63) >> 6 == pFT_MulFix(incoming_font->ntmAvgWidth*2, em_scale))
                 TRACE("Fixed-pitch full-width character detected\n");
             else
                 avgAdvance = 0; /* cancel this feature */
@@ -5972,18 +6378,19 @@ static DWORD get_glyph_outline(GdiFont *incoming_font, UINT glyph, UINT format,
     }
 
     if(!needsTransform) {
-        left = (INT)(ft_face->glyph->metrics.horiBearingX) & -64;
-        right = (INT)((ft_face->glyph->metrics.horiBearingX + ft_face->glyph->metrics.width) + 63) & -64;
+        left = (INT)(metrics.horiBearingX) & -64;
+        right = (INT)((metrics.horiBearingX + metrics.width) + 63) & -64;
         if (!avgAdvance)
-            adv = (INT)(ft_face->glyph->metrics.horiAdvance + 63) >> 6;
+            adv = (INT)(metrics.horiAdvance + 63) >> 6;
         else
-            adv = (INT)((avgAdvance + 32) >> 6) * 2;
+            adv = (INT)avgAdvance * 2;
 
-	top = (ft_face->glyph->metrics.horiBearingY + 63) & -64;
-	bottom = (ft_face->glyph->metrics.horiBearingY -
-		  ft_face->glyph->metrics.height) & -64;
+	top = (metrics.horiBearingY + 63) & -64;
+	bottom = (metrics.horiBearingY - metrics.height) & -64;
 	lpgm->gmCellIncX = adv;
 	lpgm->gmCellIncY = 0;
+        origin_x = left;
+        origin_y = top;
     } else {
         INT xc, yc;
 	FT_Vector vec;
@@ -5992,12 +6399,10 @@ static DWORD get_glyph_outline(GdiFont *incoming_font, UINT glyph, UINT format,
 
 	for(xc = 0; xc < 2; xc++) {
 	    for(yc = 0; yc < 2; yc++) {
-	        vec.x = (ft_face->glyph->metrics.horiBearingX +
-		  xc * ft_face->glyph->metrics.width);
-		vec.y = ft_face->glyph->metrics.horiBearingY -
-		  yc * ft_face->glyph->metrics.height;
+	        vec.x = metrics.horiBearingX + xc * metrics.width;
+		vec.y = metrics.horiBearingY - yc * metrics.height;
 		TRACE("Vec %ld,%ld\n", vec.x, vec.y);
-		pFT_Vector_Transform(&vec, &transMat);
+		pFT_Vector_Transform(&vec, &transMatTategaki);
 		if(xc == 0 && yc == 0) {
 		    left = right = vec.x;
 		    top = bottom = vec.y;
@@ -6014,37 +6419,77 @@ static DWORD get_glyph_outline(GdiFont *incoming_font, UINT glyph, UINT format,
 	bottom = bottom & -64;
 	top = (top + 63) & -64;
 
+        if (tategaki)
+        {
+            for(xc = 0; xc < 2; xc++)
+            {
+                for(yc = 0; yc < 2; yc++)
+                {
+                    if (vertical_metrics)
+                    {
+                        vec.x = metrics.vertBearingY + xc * metrics.height;
+                        vec.y = metrics.horiBearingX - yc * (metrics.vertBearingX * 2);
+                    }
+                    else
+                    {
+                        vec.x = metrics.horiBearingY - xc * metrics.height;
+                        vec.y = metrics.horiBearingX + yc * metrics.width;
+                    }
+
+                    TRACE ("Vec %ld,%ld\n", vec.x>>6, vec.y>>6);
+                    pFT_Vector_Transform(&vec, &transMat);
+                    if(xc == 0 && yc == 0) {
+                        origin_x = vec.x;
+                        origin_y = vec.y;
+                    } else {
+                        if(vec.x < origin_x) origin_x = vec.x;
+                        if(vec.y > origin_y) origin_y = vec.y;
+                    }
+                }
+            }
+            origin_x = origin_x & -64;
+            origin_y = (origin_y + 63) & -64;
+        }
+        else
+        {
+            origin_x = left;
+            origin_y = top;
+        }
+
 	TRACE("transformed box: (%d,%d - %d,%d)\n", left, top, right, bottom);
-	vec.x = ft_face->glyph->metrics.horiAdvance;
+	vec.x = metrics.horiAdvance;
 	vec.y = 0;
 	pFT_Vector_Transform(&vec, &transMat);
 	lpgm->gmCellIncY = -((vec.y+63) >> 6);
 	if (!avgAdvance || vec.y)
 	    lpgm->gmCellIncX = (vec.x+63) >> 6;
 	else {
-	    vec.x = avgAdvance;
+	    vec.x = incoming_font->ntmAvgWidth;
 	    vec.y = 0;
 	    pFT_Vector_Transform(&vec, &transMat);
-	    lpgm->gmCellIncX = ((vec.x+32) >> 6) * 2;
+	    lpgm->gmCellIncX = pFT_MulFix(vec.x, em_scale) * 2;
 	}
 
-        vec.x = ft_face->glyph->metrics.horiAdvance;
+        if (vertical_metrics)
+            vec.x = metrics.vertAdvance;
+        else
+            vec.x = metrics.horiAdvance;
         vec.y = 0;
         pFT_Vector_Transform(&vec, &transMatUnrotated);
         if (!avgAdvance || vec.y)
             adv = (vec.x+63) >> 6;
         else {
-            vec.x = avgAdvance;
+            vec.x = incoming_font->ntmAvgWidth;
             vec.y = 0;
             pFT_Vector_Transform(&vec, &transMatUnrotated);
-            adv = ((vec.x+32) >> 6) * 2;
+            adv = pFT_MulFix(vec.x, em_scale) * 2;
         }
     }
 
     lpgm->gmBlackBoxX = (right - left) >> 6;
     lpgm->gmBlackBoxY = (top - bottom) >> 6;
-    lpgm->gmptGlyphOrigin.x = left >> 6;
-    lpgm->gmptGlyphOrigin.y = top >> 6;
+    lpgm->gmptGlyphOrigin.x = origin_x >> 6;
+    lpgm->gmptGlyphOrigin.y = origin_y >> 6;
     abc->abcA = left >> 6;
     abc->abcB = (right - left) >> 6;
     abc->abcC = adv - abc->abcA - abc->abcB;
@@ -6086,8 +6531,8 @@ static DWORD get_glyph_outline(GdiFont *incoming_font, UINT glyph, UINT format,
 	case ft_glyph_format_bitmap:
 	  {
 	    BYTE *src = ft_face->glyph->bitmap.buffer, *dst = buf;
-	    INT w = (ft_face->glyph->bitmap.width + 7) >> 3;
-	    INT h = ft_face->glyph->bitmap.rows;
+	    INT w = min( pitch, (ft_face->glyph->bitmap.width + 7) >> 3 );
+	    INT h = min( height, ft_face->glyph->bitmap.rows );
 	    while(h--) {
 	        memcpy(dst, src, w);
 		src += ft_face->glyph->bitmap.pitch;
@@ -6104,7 +6549,7 @@ static DWORD get_glyph_outline(GdiFont *incoming_font, UINT glyph, UINT format,
 	    ft_bitmap.buffer = buf;
 
 	    if(needsTransform)
-		pFT_Outline_Transform(&ft_face->glyph->outline, &transMat);
+		pFT_Outline_Transform(&ft_face->glyph->outline, &transMatTategaki);
 
 	    pFT_Outline_Translate(&ft_face->glyph->outline, -left, -bottom );
 
@@ -6140,7 +6585,7 @@ static DWORD get_glyph_outline(GdiFont *incoming_font, UINT glyph, UINT format,
 	case ft_glyph_format_bitmap:
 	  {
             BYTE *src = ft_face->glyph->bitmap.buffer, *dst = buf;
-            INT h = ft_face->glyph->bitmap.rows;
+            INT h = min( height, ft_face->glyph->bitmap.rows );
             INT x;
             memset( buf, 0, needed );
             while(h--) {
@@ -6160,7 +6605,7 @@ static DWORD get_glyph_outline(GdiFont *incoming_font, UINT glyph, UINT format,
             ft_bitmap.buffer = buf;
 
             if(needsTransform)
-                pFT_Outline_Transform(&ft_face->glyph->outline, &transMat);
+                pFT_Outline_Transform(&ft_face->glyph->outline, &transMatTategaki);
 
             pFT_Outline_Translate(&ft_face->glyph->outline, -left, -bottom );
 
@@ -6265,7 +6710,7 @@ static DWORD get_glyph_outline(GdiFont *incoming_font, UINT glyph, UINT format,
             rgb = (format == WINE_GGO_HRGB_BITMAP || format == WINE_GGO_VRGB_BITMAP);
 
             if ( needsTransform )
-                pFT_Outline_Transform (&ft_face->glyph->outline, &transMat);
+                pFT_Outline_Transform (&ft_face->glyph->outline, &transMatTategaki);
 
             if ( pFT_Library_SetLcdFilter )
                 pFT_Library_SetLcdFilter( library, lcdfilter );
@@ -6290,19 +6735,35 @@ static DWORD get_glyph_outline(GdiFont *incoming_font, UINT glyph, UINT format,
             }
 
             x_shift = ft_face->glyph->bitmap_left - lpgm->gmptGlyphOrigin.x;
-            if ( x_shift < 0 ) x_shift = 0;
-            if ( x_shift + (src_width / hmul) > width )
-                x_shift = width - (src_width / hmul);
+            if ( x_shift < 0 )
+            {
+                src += hmul * -x_shift;
+                src_width -= hmul * -x_shift;
+            }
+            else if ( x_shift > 0 )
+            {
+                dst += x_shift;
+                width -= x_shift;
+            }
 
             y_shift = lpgm->gmptGlyphOrigin.y - ft_face->glyph->bitmap_top;
-            if ( y_shift < 0 ) y_shift = 0;
-            if ( y_shift + (src_height / vmul) > height )
-                y_shift = height - (src_height / vmul);
-
-            dst += x_shift + y_shift * ( pitch / 4 );
-            while ( src_height )
+            if ( y_shift < 0 )
             {
-                for ( x = 0; x < src_width / hmul; x++ )
+                src += src_pitch * vmul * -y_shift;
+                src_height -= vmul * -y_shift;
+            }
+            else if ( y_shift > 0 )
+            {
+                dst += y_shift * ( pitch / sizeof(*dst) );
+                height -= y_shift;
+            }
+
+            width = min( width, src_width / hmul );
+            height = min( height, src_height / vmul );
+
+            while ( height-- )
+            {
+                for ( x = 0; x < width; x++ )
                 {
                     if ( rgb )
                     {
@@ -6320,8 +6781,7 @@ static DWORD get_glyph_outline(GdiFont *incoming_font, UINT glyph, UINT format,
                     }
                 }
                 src += src_pitch * vmul;
-                dst += pitch / 4;
-                src_height -= vmul;
+                dst += pitch / sizeof(*dst);
             }
 
             break;
@@ -6349,7 +6809,7 @@ static DWORD get_glyph_outline(GdiFont *incoming_font, UINT glyph, UINT format,
 	if(buflen == 0) buf = NULL;
 
 	if (needsTransform && buf) {
-		pFT_Outline_Transform(outline, &transMat);
+		pFT_Outline_Transform(outline, &transMatTategaki);
 	}
 
         for(contour = 0; contour < outline->n_contours; contour++) {
@@ -6715,7 +7175,7 @@ static BOOL get_outline_text_metrics(GdiFont *font)
     TT_OS2 *pOS2;
     TT_HoriHeader *pHori;
     TT_Postscript *pPost;
-    FT_Fixed x_scale, y_scale;
+    FT_Fixed em_scale;
     WCHAR *family_nameW, *style_nameW, *face_nameW, *full_nameW;
     char *cp;
     INT ascent, descent;
@@ -6732,8 +7192,6 @@ static BOOL get_outline_text_metrics(GdiFont *font)
 
     style_nameW = get_face_name( ft_face, TT_NAME_ID_FONT_SUBFAMILY, GetSystemDefaultLangID() );
     if (!style_nameW)
-        style_nameW = get_face_name( ft_face, TT_NAME_ID_FONT_SUBFAMILY, TT_MS_LANGID_ENGLISH_UNITED_STATES );
-    if (!style_nameW)
     {
         FIXME("failed to read style_nameW for font %s!\n", wine_dbgstr_w(font->name));
         style_nameW = towstr( CP_ACP, ft_face->style_name );
@@ -6741,8 +7199,6 @@ static BOOL get_outline_text_metrics(GdiFont *font)
     lensty = (strlenW(style_nameW) + 1) * sizeof(WCHAR);
 
     face_nameW = get_face_name( ft_face, TT_NAME_ID_FULL_NAME, GetSystemDefaultLangID() );
-    if (!face_nameW)
-        face_nameW = get_face_name( ft_face, TT_NAME_ID_FULL_NAME, TT_MS_LANGID_ENGLISH_UNITED_STATES );
     if (!face_nameW)
     {
         FIXME("failed to read face_nameW for font %s!\n", wine_dbgstr_w(font->name));
@@ -6752,8 +7208,6 @@ static BOOL get_outline_text_metrics(GdiFont *font)
     lenface = (strlenW(face_nameW) + 1) * sizeof(WCHAR);
 
     full_nameW = get_face_name( ft_face, TT_NAME_ID_UNIQUE_ID, GetSystemDefaultLangID() );
-    if (!full_nameW)
-        full_nameW = get_face_name( ft_face, TT_NAME_ID_UNIQUE_ID, TT_MS_LANGID_ENGLISH_UNITED_STATES );
     if (!full_nameW)
     {
         WCHAR fake_nameW[] = {'f','a','k','e',' ','n','a','m','e', 0};
@@ -6777,8 +7231,7 @@ static BOOL get_outline_text_metrics(GdiFont *font)
     needed += lenfull;
 
 
-    x_scale = ft_face->size->metrics.x_scale;
-    y_scale = ft_face->size->metrics.y_scale;
+    em_scale = (FT_Fixed)MulDiv(font->ppem, 1 << 16, ft_face->units_per_EM);
 
     pOS2 = pFT_Get_Sfnt_Table(ft_face, ft_sfnt_os2);
     if(!pOS2) {
@@ -6818,15 +7271,17 @@ static BOOL get_outline_text_metrics(GdiFont *font)
     font->ntmCellHeight = ascent + descent;
     font->ntmAvgWidth = pOS2->xAvgCharWidth;
 
+#define SCALE_X(x) (pFT_MulFix(x, em_scale))
+#define SCALE_Y(y) (pFT_MulFix(y, em_scale))
+
     if(font->yMax) {
 	TM.tmAscent = font->yMax;
 	TM.tmDescent = -font->yMin;
 	TM.tmInternalLeading = (TM.tmAscent + TM.tmDescent) - ft_face->size->metrics.y_ppem;
     } else {
-	TM.tmAscent = (pFT_MulFix(ascent, y_scale) + 32) >> 6;
-	TM.tmDescent = (pFT_MulFix(descent, y_scale) + 32) >> 6;
-	TM.tmInternalLeading = (pFT_MulFix(ascent + descent
-					    - ft_face->units_per_EM, y_scale) + 32) >> 6;
+	TM.tmAscent = SCALE_Y(ascent);
+	TM.tmDescent = SCALE_Y(descent);
+	TM.tmInternalLeading = SCALE_Y(ascent + descent - ft_face->units_per_EM);
     }
 
     TM.tmHeight = TM.tmAscent + TM.tmDescent;
@@ -6834,15 +7289,15 @@ static BOOL get_outline_text_metrics(GdiFont *font)
     /* MSDN says:
      el = MAX(0, LineGap - ((WinAscent + WinDescent) - (Ascender - Descender)))
     */
-    TM.tmExternalLeading = max(0, (pFT_MulFix(pHori->Line_Gap -
-       		 ((ascent + descent) -
-		  (pHori->Ascender - pHori->Descender)), y_scale) + 32) >> 6);
+    TM.tmExternalLeading = max(0, SCALE_Y(pHori->Line_Gap -
+                                          ((ascent + descent) -
+                                           (pHori->Ascender - pHori->Descender))));
 
-    TM.tmAveCharWidth = (pFT_MulFix(pOS2->xAvgCharWidth, x_scale) + 32) >> 6;
+    TM.tmAveCharWidth = SCALE_X(pOS2->xAvgCharWidth);
     if (TM.tmAveCharWidth == 0) {
         TM.tmAveCharWidth = 1; 
     }
-    TM.tmMaxCharWidth = (pFT_MulFix(ft_face->bbox.xMax - ft_face->bbox.xMin, x_scale) + 32) >> 6;
+    TM.tmMaxCharWidth = SCALE_X(ft_face->bbox.xMax - ft_face->bbox.xMin);
     TM.tmWeight = FW_REGULAR;
     if (font->fake_bold)
         TM.tmWeight = FW_BOLD;
@@ -6976,36 +7431,38 @@ static BOOL get_outline_text_metrics(GdiFont *font)
     font->potm->otmsCharSlopeRun = pHori->caret_Slope_Run;
     font->potm->otmItalicAngle = 0; /* POST table */
     font->potm->otmEMSquare = ft_face->units_per_EM;
-    font->potm->otmAscent = (pFT_MulFix(pOS2->sTypoAscender, y_scale) + 32) >> 6;
-    font->potm->otmDescent = (pFT_MulFix(pOS2->sTypoDescender, y_scale) + 32) >> 6;
-    font->potm->otmLineGap = (pFT_MulFix(pOS2->sTypoLineGap, y_scale) + 32) >> 6;
-    font->potm->otmsCapEmHeight = (pFT_MulFix(pOS2->sCapHeight, y_scale) + 32) >> 6;
-    font->potm->otmsXHeight = (pFT_MulFix(pOS2->sxHeight, y_scale) + 32) >> 6;
-    font->potm->otmrcFontBox.left = (pFT_MulFix(ft_face->bbox.xMin, x_scale) + 32) >> 6;
-    font->potm->otmrcFontBox.right = (pFT_MulFix(ft_face->bbox.xMax, x_scale) + 32) >> 6;
-    font->potm->otmrcFontBox.top = (pFT_MulFix(ft_face->bbox.yMax, y_scale) + 32) >> 6;
-    font->potm->otmrcFontBox.bottom = (pFT_MulFix(ft_face->bbox.yMin, y_scale) + 32) >> 6;
+    font->potm->otmAscent = SCALE_Y(pOS2->sTypoAscender);
+    font->potm->otmDescent = SCALE_Y(pOS2->sTypoDescender);
+    font->potm->otmLineGap = SCALE_Y(pOS2->sTypoLineGap);
+    font->potm->otmsCapEmHeight = SCALE_Y(pOS2->sCapHeight);
+    font->potm->otmsXHeight = SCALE_Y(pOS2->sxHeight);
+    font->potm->otmrcFontBox.left = SCALE_X(ft_face->bbox.xMin);
+    font->potm->otmrcFontBox.right = SCALE_X(ft_face->bbox.xMax);
+    font->potm->otmrcFontBox.top = SCALE_Y(ft_face->bbox.yMax);
+    font->potm->otmrcFontBox.bottom = SCALE_Y(ft_face->bbox.yMin);
     font->potm->otmMacAscent = TM.tmAscent;
     font->potm->otmMacDescent = -TM.tmDescent;
     font->potm->otmMacLineGap = font->potm->otmLineGap;
     font->potm->otmusMinimumPPEM = 0; /* TT Header */
-    font->potm->otmptSubscriptSize.x = (pFT_MulFix(pOS2->ySubscriptXSize, x_scale) + 32) >> 6;
-    font->potm->otmptSubscriptSize.y = (pFT_MulFix(pOS2->ySubscriptYSize, y_scale) + 32) >> 6;
-    font->potm->otmptSubscriptOffset.x = (pFT_MulFix(pOS2->ySubscriptXOffset, x_scale) + 32) >> 6;
-    font->potm->otmptSubscriptOffset.y = (pFT_MulFix(pOS2->ySubscriptYOffset, y_scale) + 32) >> 6;
-    font->potm->otmptSuperscriptSize.x = (pFT_MulFix(pOS2->ySuperscriptXSize, x_scale) + 32) >> 6;
-    font->potm->otmptSuperscriptSize.y = (pFT_MulFix(pOS2->ySuperscriptYSize, y_scale) + 32) >> 6;
-    font->potm->otmptSuperscriptOffset.x = (pFT_MulFix(pOS2->ySuperscriptXOffset, x_scale) + 32) >> 6;
-    font->potm->otmptSuperscriptOffset.y = (pFT_MulFix(pOS2->ySuperscriptYOffset, y_scale) + 32) >> 6;
-    font->potm->otmsStrikeoutSize = (pFT_MulFix(pOS2->yStrikeoutSize, y_scale) + 32) >> 6;
-    font->potm->otmsStrikeoutPosition = (pFT_MulFix(pOS2->yStrikeoutPosition, y_scale) + 32) >> 6;
+    font->potm->otmptSubscriptSize.x = SCALE_X(pOS2->ySubscriptXSize);
+    font->potm->otmptSubscriptSize.y = SCALE_Y(pOS2->ySubscriptYSize);
+    font->potm->otmptSubscriptOffset.x = SCALE_X(pOS2->ySubscriptXOffset);
+    font->potm->otmptSubscriptOffset.y = SCALE_Y(pOS2->ySubscriptYOffset);
+    font->potm->otmptSuperscriptSize.x = SCALE_X(pOS2->ySuperscriptXSize);
+    font->potm->otmptSuperscriptSize.y = SCALE_Y(pOS2->ySuperscriptYSize);
+    font->potm->otmptSuperscriptOffset.x = SCALE_X(pOS2->ySuperscriptXOffset);
+    font->potm->otmptSuperscriptOffset.y = SCALE_Y(pOS2->ySuperscriptYOffset);
+    font->potm->otmsStrikeoutSize = SCALE_Y(pOS2->yStrikeoutSize);
+    font->potm->otmsStrikeoutPosition = SCALE_Y(pOS2->yStrikeoutPosition);
     if(!pPost) {
         font->potm->otmsUnderscoreSize = 0;
 	font->potm->otmsUnderscorePosition = 0;
     } else {
-        font->potm->otmsUnderscoreSize = (pFT_MulFix(pPost->underlineThickness, y_scale) + 32) >> 6;
-	font->potm->otmsUnderscorePosition = (pFT_MulFix(pPost->underlinePosition, y_scale) + 32) >> 6;
+        font->potm->otmsUnderscoreSize = SCALE_Y(pPost->underlineThickness);
+	font->potm->otmsUnderscorePosition = SCALE_Y(pPost->underlinePosition);
     }
+#undef SCALE_X
+#undef SCALE_Y
 #undef TM
 
     /* otmp* members should clearly have type ptrdiff_t, but M$ knows best */
@@ -7130,9 +7587,9 @@ static BOOL load_child_font(GdiFont *font, CHILD_FONT *child)
     return TRUE;
 }
 
-static BOOL get_glyph_index_linked(GdiFont *font, UINT c, GdiFont **linked_font, FT_UInt *glyph)
+static BOOL get_glyph_index_linked(GdiFont *font, UINT c, GdiFont **linked_font, FT_UInt *glyph, BOOL* vert)
 {
-    FT_UInt g;
+    FT_UInt g,o;
     CHILD_FONT *child_font;
 
     if(font->base_font)
@@ -7142,9 +7599,13 @@ static BOOL get_glyph_index_linked(GdiFont *font, UINT c, GdiFont **linked_font,
 
     if((*glyph = get_glyph_index(font, c)))
     {
+        o = *glyph;
         *glyph = get_GSUB_vert_glyph(font, *glyph);
+        *vert = (o != *glyph);
         return TRUE;
     }
+
+    if (c < 32) goto done;  /* don't check linked fonts for control characters */
 
     LIST_FOR_EACH_ENTRY(child_font, &font->child_fonts, CHILD_FONT, entry)
     {
@@ -7155,14 +7616,20 @@ static BOOL get_glyph_index_linked(GdiFont *font, UINT c, GdiFont **linked_font,
         if(!child_font->font->ft_face)
             continue;
         g = get_glyph_index(child_font->font, c);
+        o = g;
         g = get_GSUB_vert_glyph(child_font->font, g);
         if(g)
         {
             *glyph = g;
             *linked_font = child_font->font;
+            *vert = (o != g);
             return TRUE;
         }
     }
+
+done:
+    *glyph = get_default_char_index(font);
+    *vert = FALSE;
     return FALSE;
 }
 

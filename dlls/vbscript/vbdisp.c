@@ -150,13 +150,29 @@ static HRESULT invoke_builtin(vbdisp_t *This, const builtin_prop_t *prop, WORD f
         break;
     case DISPATCH_PROPERTYGET|DISPATCH_METHOD:
         if(!prop->proc && prop->flags == BP_GET) {
-            int val = prop->min_args;
-            if(val < 0x4000) {
+            const int vt = prop->min_args, val = prop->max_args;
+            switch(vt) {
+            case VT_I2:
                 V_VT(res) = VT_I2;
                 V_I2(res) = val;
-            }else {
+                break;
+            case VT_I4:
                 V_VT(res) = VT_I4;
                 V_I4(res) = val;
+                break;
+            case VT_BSTR: {
+                const string_constant_t *str = (const string_constant_t*)prop->max_args;
+                BSTR ret;
+
+                ret = SysAllocStringLen(str->buf, str->len);
+                if(!ret)
+                    return E_OUTOFMEMORY;
+
+                V_VT(res) = VT_BSTR;
+                V_BSTR(res) = ret;
+                break;
+            }
+            DEFAULT_UNREACHABLE;
             }
             return S_OK;
         }

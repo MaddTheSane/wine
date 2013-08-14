@@ -499,11 +499,11 @@
 @ stdcall GetCurrentDirectoryA(long ptr)
 @ stdcall GetCurrentDirectoryW(long ptr)
 @ stdcall GetCurrentPackageId(ptr ptr)
-@ stdcall GetCurrentProcess()
-@ stdcall GetCurrentProcessId()
+@ stdcall -norelay GetCurrentProcess()
+@ stdcall -norelay GetCurrentProcessId()
 @ stdcall GetCurrentProcessorNumber() ntdll.NtGetCurrentProcessorNumber
-@ stdcall GetCurrentThread()
-@ stdcall GetCurrentThreadId()
+@ stdcall -norelay GetCurrentThread()
+@ stdcall -norelay GetCurrentThreadId()
 @ stdcall GetDateFormatA(long long ptr str ptr long)
 @ stdcall GetDateFormatW(long long ptr wstr ptr long)
 @ stdcall GetDaylightFlag()
@@ -606,7 +606,7 @@
 @ stdcall GetProcessDEPPolicy(long ptr ptr)
 @ stdcall GetProcessFlags(long)
 @ stdcall GetProcessHandleCount(long ptr)
-@ stdcall GetProcessHeap()
+@ stdcall -norelay GetProcessHeap()
 @ stdcall GetProcessHeaps(long ptr)
 @ stdcall GetProcessId(long)
 @ stdcall GetProcessIoCounters(long ptr)
@@ -728,7 +728,7 @@
 @ stub HeapCreateTagsW
 @ stdcall HeapDestroy(long)
 @ stub HeapExtend
-@ stdcall HeapFree(long long long) ntdll.RtlFreeHeap
+@ stdcall HeapFree(long long ptr) ntdll.RtlFreeHeap
 @ stdcall HeapLock(long)
 @ stdcall HeapQueryInformation(long long ptr long ptr)
 @ stub HeapQueryTagW
@@ -1028,13 +1028,13 @@
 @ stdcall ResetWriteWatch(ptr long)
 @ stdcall RestoreLastError(long) ntdll.RtlRestoreLastWin32Error
 @ stdcall ResumeThread(long)
-@ cdecl -arch=x86_64 RtlAddFunctionTable(ptr long long) ntdll.RtlAddFunctionTable
+@ cdecl -arch=arm,x86_64 RtlAddFunctionTable(ptr long long) ntdll.RtlAddFunctionTable
 @ stdcall -register RtlCaptureContext(ptr) ntdll.RtlCaptureContext
 @ stdcall RtlCaptureStackBackTrace(long long ptr ptr) ntdll.RtlCaptureStackBackTrace
 @ stdcall -arch=x86_64 RtlCompareMemory(ptr ptr long) ntdll.RtlCompareMemory
-@ cdecl -arch=x86_64 RtlDeleteFunctionTable(ptr) ntdll.RtlDeleteFunctionTable
+@ cdecl -arch=arm,x86_64 RtlDeleteFunctionTable(ptr) ntdll.RtlDeleteFunctionTable
 @ stdcall RtlFillMemory(ptr long long) ntdll.RtlFillMemory
-@ stdcall -arch=x86_64 RtlLookupFunctionEntry(long ptr ptr) ntdll.RtlLookupFunctionEntry
+@ stdcall -arch=arm,x86_64 RtlLookupFunctionEntry(long ptr ptr) ntdll.RtlLookupFunctionEntry
 @ stdcall RtlMoveMemory(ptr ptr long) ntdll.RtlMoveMemory
 @ stdcall -arch=x86_64,arm RtlPcToFileHeader(ptr ptr) ntdll.RtlPcToFileHeader
 @ stdcall -arch=arm -register RtlRaiseException(ptr) ntdll.RtlRaiseException

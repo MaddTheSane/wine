@@ -285,9 +285,9 @@ static void sock_wake_up( struct sock *sock )
 
 static inline int sock_error( struct fd *fd )
 {
-    unsigned int optval = 0, optlen;
+    unsigned int optval = 0;
+    socklen_t optlen = sizeof(optval);
 
-    optlen = sizeof(optval);
     getsockopt( get_unix_fd(fd), SOL_SOCKET, SO_ERROR, (void *) &optval, &optlen);
     return optval;
 }
@@ -667,7 +667,7 @@ static int accept_new_fd( struct sock *sock )
      */
     int acceptfd;
     struct sockaddr saddr;
-    unsigned int slen = sizeof(saddr);
+    socklen_t slen = sizeof(saddr);
     acceptfd = accept( get_unix_fd(sock->fd), &saddr, &slen);
     if (acceptfd == -1)
     {
@@ -978,8 +978,7 @@ DECL_HANDLER(set_socket_event)
 
     sock_reselect( sock );
 
-    if (sock->mask)
-        sock->state |= FD_WINE_NONBLOCKING;
+    sock->state |= FD_WINE_NONBLOCKING;
 
     /* if a network event is pending, signal the event object
        it is possible that FD_CONNECT or FD_ACCEPT network events has happened

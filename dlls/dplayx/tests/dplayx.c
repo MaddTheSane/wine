@@ -17,6 +17,7 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA
  */
 
+#define COBJMACROS
 #include "wine/test.h"
 #include <stdio.h>
 #define INITGUID
@@ -63,7 +64,7 @@ DEFINE_GUID(GUID_NULL,0,0,0,0,0,0,0,0,0,0,0);
 
 typedef struct tagCallbackData
 {
-    LPDIRECTPLAY4 pDP;
+    IDirectPlay4 *pDP;
     UINT dwCounter1, dwCounter2;
     DWORD dwFlags;
     char szTrace1[1024], szTrace2[1024];
@@ -581,10 +582,8 @@ static char dpid2char(DPID* dpid, DWORD dpidSize, DPID idPlayer)
     return '?';
 }
 
-static void check_messages( LPDIRECTPLAY4 pDP,
-                            DPID *dpid,
-                            DWORD dpidSize,
-                            lpCallbackData callbackData )
+static void check_messages( IDirectPlay4 *pDP, DPID *dpid, DWORD dpidSize,
+        lpCallbackData callbackData )
 {
     /* Retrieves all messages from the queue of pDP, performing tests
      * to check if we are receiving what we expect.
@@ -647,15 +646,13 @@ static void check_messages( LPDIRECTPLAY4 pDP,
     HeapFree( GetProcessHeap(), 0, lpData );
 }
 
-static void init_TCPIP_provider( LPDIRECTPLAY4 pDP,
-                                 LPCSTR strIPAddressString,
-                                 WORD port )
+static void init_TCPIP_provider( IDirectPlay4 *pDP, LPCSTR strIPAddressString, WORD port )
 {
 
     DPCOMPOUNDADDRESSELEMENT addressElements[3];
     LPVOID pAddress = NULL;
     DWORD dwAddressSize = 0;
-    LPDIRECTPLAYLOBBY3 pDPL;
+    IDirectPlayLobby3 *pDPL;
     HRESULT hr;
 
     hr = CoCreateInstance( &CLSID_DirectPlayLobby, NULL, CLSCTX_ALL,
@@ -706,7 +703,7 @@ static BOOL CALLBACK EnumSessions_cb_join( LPCDPSESSIONDESC2 lpThisSD,
                                            DWORD dwFlags,
                                            LPVOID lpContext )
 {
-    LPDIRECTPLAY4 pDP = (LPDIRECTPLAY4) lpContext;
+    IDirectPlay4 *pDP = lpContext;
     DPSESSIONDESC2 dpsd;
     HRESULT hr;
 
@@ -732,7 +729,7 @@ static BOOL CALLBACK EnumSessions_cb_join( LPCDPSESSIONDESC2 lpThisSD,
 static void test_DirectPlayCreate(void)
 {
 
-    LPDIRECTPLAY pDP;
+    IDirectPlay *pDP;
     HRESULT hr;
 
     /* TODO: Check how it behaves with pUnk!=NULL */
@@ -766,7 +763,7 @@ static BOOL CALLBACK EnumAddress_cb2( REFGUID guidDataType,
                                       LPCVOID lpData,
                                       LPVOID lpContext )
 {
-    lpCallbackData callbackData = (lpCallbackData) lpContext;
+    lpCallbackData callbackData = lpContext;
 
     static REFGUID types[] = { &DPAID_TotalSize,
                                &DPAID_ServiceProvider,
@@ -801,8 +798,8 @@ static BOOL CALLBACK EnumConnections_cb( LPCGUID lpguidSP,
                                          LPVOID lpContext )
 {
 
-    lpCallbackData callbackData = (lpCallbackData) lpContext;
-    LPDIRECTPLAYLOBBY pDPL;
+    lpCallbackData callbackData = lpContext;
+    IDirectPlayLobby *pDPL;
     HRESULT hr;
 
 
@@ -833,7 +830,7 @@ static BOOL CALLBACK EnumConnections_cb( LPCGUID lpguidSP,
 static void test_EnumConnections(void)
 {
 
-    LPDIRECTPLAY4 pDP;
+    IDirectPlay4 *pDP;
     CallbackData callbackData;
     HRESULT hr;
 
@@ -910,7 +907,7 @@ static BOOL CALLBACK EnumConnections_cb2( LPCGUID lpguidSP,
                                           DWORD dwFlags,
                                           LPVOID lpContext )
 {
-    LPDIRECTPLAY4 pDP = (LPDIRECTPLAY4) lpContext;
+    IDirectPlay4 *pDP = lpContext;
     HRESULT hr;
 
     /* Incorrect parameters */
@@ -936,7 +933,7 @@ static BOOL CALLBACK EnumConnections_cb2( LPCGUID lpguidSP,
 static void test_InitializeConnection(void)
 {
 
-    LPDIRECTPLAY4 pDP;
+    IDirectPlay4 *pDP;
     HRESULT hr;
 
     hr = CoCreateInstance( &CLSID_DirectPlay, NULL, CLSCTX_ALL,
@@ -955,7 +952,7 @@ static void test_InitializeConnection(void)
 static void test_GetCaps(void)
 {
 
-    LPDIRECTPLAY4 pDP;
+    IDirectPlay4 *pDP;
     DPCAPS dpcaps;
     DWORD dwFlags;
     HRESULT hr;
@@ -1028,7 +1025,7 @@ static BOOL CALLBACK EnumSessions_cb2( LPCDPSESSIONDESC2 lpThisSD,
                                        DWORD dwFlags,
                                        LPVOID lpContext )
 {
-    LPDIRECTPLAY4 pDP = (LPDIRECTPLAY4) lpContext;
+    IDirectPlay4 *pDP = lpContext;
     DPSESSIONDESC2 dpsd;
     HRESULT hr;
 
@@ -1068,7 +1065,7 @@ static BOOL CALLBACK EnumSessions_cb2( LPCDPSESSIONDESC2 lpThisSD,
 static void test_Open(void)
 {
 
-    LPDIRECTPLAY4 pDP, pDP_server;
+    IDirectPlay4 *pDP, *pDP_server;
     DPSESSIONDESC2 dpsd, dpsd_server;
     HRESULT hr;
 
@@ -1201,7 +1198,7 @@ static BOOL CALLBACK EnumSessions_cb( LPCDPSESSIONDESC2 lpThisSD,
                                       DWORD dwFlags,
                                       LPVOID lpContext )
 {
-    lpCallbackData callbackData = (lpCallbackData) lpContext;
+    lpCallbackData callbackData = lpContext;
     callbackData->dwCounter1++;
 
     if ( dwFlags & DPESC_TIMEDOUT )
@@ -1228,10 +1225,10 @@ static BOOL CALLBACK EnumSessions_cb( LPCDPSESSIONDESC2 lpThisSD,
     return TRUE;
 }
 
-static LPDIRECTPLAY4 create_session(DPSESSIONDESC2 *lpdpsd)
+static IDirectPlay4 *create_session(DPSESSIONDESC2 *lpdpsd)
 {
 
-    LPDIRECTPLAY4 pDP;
+    IDirectPlay4 *pDP;
     DPNAME name;
     DPID dpid;
     HRESULT hr;
@@ -1266,7 +1263,7 @@ static void test_EnumSessions(void)
 
 #define N_SESSIONS 6
 
-    LPDIRECTPLAY4 pDP, pDPserver[N_SESSIONS];
+    IDirectPlay4 *pDP, *pDPserver[N_SESSIONS];
     DPSESSIONDESC2 dpsd, dpsd_server[N_SESSIONS];
     CallbackData callbackData;
     HRESULT hr;
@@ -1636,7 +1633,7 @@ static void test_EnumSessions(void)
 static void test_SessionDesc(void)
 {
 
-    LPDIRECTPLAY4 pDP[2];
+    IDirectPlay4 *pDP[2];
     DPSESSIONDESC2 dpsd;
     LPDPSESSIONDESC2 lpData[2];
     LPVOID lpDataMsg;
@@ -1814,7 +1811,7 @@ static void test_SessionDesc(void)
 static void test_CreatePlayer(void)
 {
 
-    LPDIRECTPLAY4 pDP[2];
+    IDirectPlay4 *pDP[2];
     DPSESSIONDESC2 dpsd;
     DPNAME name;
     DPID dpid;
@@ -1987,7 +1984,7 @@ static void test_CreatePlayer(void)
 static void test_GetPlayerCaps(void)
 {
 
-    LPDIRECTPLAY4 pDP[2];
+    IDirectPlay4 *pDP[2];
     DPSESSIONDESC2 dpsd;
     DPID dpid[2];
     HRESULT hr;
@@ -2149,7 +2146,7 @@ static void test_GetPlayerCaps(void)
 
 static void test_PlayerData(void)
 {
-    LPDIRECTPLAY4 pDP;
+    IDirectPlay4 *pDP;
     DPSESSIONDESC2 dpsd;
     DPID dpid;
     HRESULT hr;
@@ -2415,7 +2412,7 @@ static void test_PlayerData(void)
 static void test_PlayerName(void)
 {
 
-    LPDIRECTPLAY4 pDP[2];
+    IDirectPlay4 *pDP[2];
     DPSESSIONDESC2 dpsd;
     DPID dpid[2];
     HRESULT hr;
@@ -2664,7 +2661,7 @@ static BOOL CALLBACK EnumSessions_cb_join_secure( LPCDPSESSIONDESC2 lpThisSD,
                                                   DWORD dwFlags,
                                                   LPVOID lpContext )
 {
-    LPDIRECTPLAY4 pDP = (LPDIRECTPLAY4) lpContext;
+    IDirectPlay4 *pDP = lpContext;
     DPSESSIONDESC2 dpsd;
     DPCREDENTIALS dpCredentials;
     HRESULT hr;
@@ -2695,7 +2692,7 @@ static BOOL CALLBACK EnumSessions_cb_join_secure( LPCDPSESSIONDESC2 lpThisSD,
 static void test_GetPlayerAccount(void)
 {
 
-    LPDIRECTPLAY4 pDP[2];
+    IDirectPlay4 *pDP[2];
     DPSESSIONDESC2 dpsd;
     DPID dpid[2];
     HRESULT hr;
@@ -2841,7 +2838,7 @@ static BOOL CALLBACK EnumAddress_cb( REFGUID guidDataType,
                                      LPCVOID lpData,
                                      LPVOID lpContext )
 {
-    lpCallbackData callbackData = (lpCallbackData) lpContext;
+    lpCallbackData callbackData = lpContext;
     static REFGUID types[] = { &DPAID_TotalSize,
                                &DPAID_ServiceProvider,
                                &DPAID_INet,
@@ -2879,8 +2876,8 @@ static BOOL CALLBACK EnumAddress_cb( REFGUID guidDataType,
 static void test_GetPlayerAddress(void)
 {
 
-    LPDIRECTPLAY4 pDP[2];
-    LPDIRECTPLAYLOBBY3 pDPL;
+    IDirectPlay4 *pDP[2];
+    IDirectPlayLobby3 *pDPL;
     DPSESSIONDESC2 dpsd;
     DPID dpid[2];
     CallbackData callbackData;
@@ -3017,7 +3014,7 @@ static void test_GetPlayerAddress(void)
 static void test_GetPlayerFlags(void)
 {
 
-    LPDIRECTPLAY4 pDP[2];
+    IDirectPlay4 *pDP[2];
     DPSESSIONDESC2 dpsd;
     DPID dpid[4];
     HRESULT hr;
@@ -3125,7 +3122,7 @@ static void test_GetPlayerFlags(void)
 static void test_CreateGroup(void)
 {
 
-    LPDIRECTPLAY4 pDP;
+    IDirectPlay4 *pDP;
     DPSESSIONDESC2 dpsd;
     DPID idFrom, idTo, dpid, idGroup, idGroupParent;
     DPNAME groupName;
@@ -3434,7 +3431,7 @@ static void test_CreateGroup(void)
 static void test_GroupOwner(void)
 {
 
-    LPDIRECTPLAY4 pDP[2];
+    IDirectPlay4 *pDP[2];
     DPSESSIONDESC2 dpsd;
     DPID dpid[2], idGroup, idOwner;
     HRESULT hr;
@@ -3515,7 +3512,7 @@ static BOOL CALLBACK EnumPlayers_cb( DPID dpId,
                                      DWORD dwFlags,
                                      LPVOID lpContext )
 {
-    lpCallbackData callbackData = (lpCallbackData) lpContext;
+    lpCallbackData callbackData = lpContext;
     char playerIndex = dpid2char( callbackData->dpid,
                                   callbackData->dpidSize,
                                   dpId );
@@ -3551,7 +3548,7 @@ static BOOL CALLBACK EnumSessions_cb_EnumPlayers( LPCDPSESSIONDESC2 lpThisSD,
                                                   DWORD dwFlags,
                                                   LPVOID lpContext )
 {
-    lpCallbackData callbackData = (lpCallbackData) lpContext;
+    lpCallbackData callbackData = lpContext;
     HRESULT hr;
 
     if (dwFlags & DPESC_TIMEDOUT)
@@ -3602,7 +3599,7 @@ static BOOL CALLBACK EnumSessions_cb_EnumPlayers( LPCDPSESSIONDESC2 lpThisSD,
 
 static void test_EnumPlayers(void)
 {
-    LPDIRECTPLAY4 pDP[3];
+    IDirectPlay4 *pDP[3];
     DPSESSIONDESC2 dpsd[3];
     DPID dpid[5+2]; /* 5 players, 2 groups */
     CallbackData callbackData;
@@ -3846,7 +3843,7 @@ static BOOL CALLBACK EnumGroups_cb( DPID dpId,
                                     DWORD dwFlags,
                                     LPVOID lpContext )
 {
-    lpCallbackData callbackData = (lpCallbackData) lpContext;
+    lpCallbackData callbackData = lpContext;
     char playerIndex = dpid2char( callbackData->dpid,
                                   callbackData->dpidSize,
                                   dpId );
@@ -3874,7 +3871,7 @@ static BOOL CALLBACK EnumSessions_cb_EnumGroups( LPCDPSESSIONDESC2 lpThisSD,
                                                  DWORD dwFlags,
                                                  LPVOID lpContext )
 {
-    lpCallbackData callbackData = (lpCallbackData) lpContext;
+    lpCallbackData callbackData = lpContext;
     HRESULT hr;
 
     if (dwFlags & DPESC_TIMEDOUT)
@@ -3925,7 +3922,7 @@ static BOOL CALLBACK EnumSessions_cb_EnumGroups( LPCDPSESSIONDESC2 lpThisSD,
 
 static void test_EnumGroups(void)
 {
-    LPDIRECTPLAY4 pDP[3];
+    IDirectPlay4 *pDP[3];
     DPSESSIONDESC2 dpsd[3];
     DPID dpid[5];
     CallbackData callbackData;
@@ -4152,7 +4149,7 @@ static void test_EnumGroups(void)
 
 static void test_EnumGroupsInGroup(void)
 {
-    LPDIRECTPLAY4 pDP[2];
+    IDirectPlay4 *pDP[2];
     DPSESSIONDESC2 dpsd[2];
     DPID dpid[6];
     CallbackData callbackData;
@@ -4387,7 +4384,7 @@ static void test_EnumGroupsInGroup(void)
 static void test_groups_p2p(void)
 {
 
-    LPDIRECTPLAY4 pDP[2];
+    IDirectPlay4 *pDP[2];
     DPSESSIONDESC2 dpsd;
     DPID idPlayer[6], idGroup[3];
     HRESULT hr;
@@ -4622,7 +4619,7 @@ static void test_groups_p2p(void)
 static void test_groups_cs(void)
 {
 
-    LPDIRECTPLAY4 pDP[2];
+    IDirectPlay4 *pDP[2];
     DPSESSIONDESC2 dpsd;
     DPID idPlayer[6], idGroup[3];
     CallbackData callbackData;
@@ -4859,7 +4856,7 @@ static void test_groups_cs(void)
 static void test_Send(void)
 {
 
-    LPDIRECTPLAY4 pDP[2];
+    IDirectPlay4 *pDP[2];
     DPSESSIONDESC2 dpsd;
     DPID dpid[4], idFrom, idTo;
     CallbackData callbackData;
@@ -5194,7 +5191,7 @@ static void test_Send(void)
 static void test_Receive(void)
 {
 
-    LPDIRECTPLAY4 pDP;
+    IDirectPlay4 *pDP;
     DPSESSIONDESC2 dpsd;
     DPID dpid[4], idFrom, idTo;
     HRESULT hr;
@@ -5479,7 +5476,7 @@ static void test_Receive(void)
 static void test_GetMessageCount(void)
 {
 
-    LPDIRECTPLAY4 pDP[2];
+    IDirectPlay4 *pDP[2];
     DPSESSIONDESC2 dpsd;
     DPID dpid[4];
     HRESULT hr;
@@ -5702,7 +5699,7 @@ static void test_GetMessageCount(void)
 static void test_GetMessageQueue(void)
 {
 
-    LPDIRECTPLAY4 pDP[2];
+    IDirectPlay4 *pDP[2];
     DPSESSIONDESC2 dpsd;
     DPID dpid[4];
     CallbackData callbackData;
@@ -6011,7 +6008,7 @@ static void test_GetMessageQueue(void)
 static void test_remote_data_replication(void)
 {
 
-    LPDIRECTPLAY4 pDP[2];
+    IDirectPlay4 *pDP[2];
     DPSESSIONDESC2 dpsd;
     DPID dpid[2], idFrom, idTo;
     CallbackData callbackData;
@@ -6239,7 +6236,7 @@ static void test_remote_data_replication(void)
 static void test_host_migration(void)
 {
 
-    LPDIRECTPLAY4 pDP[2];
+    IDirectPlay4 *pDP[2];
     DPSESSIONDESC2 dpsd;
     DPID dpid[2], idFrom, idTo;
     HRESULT hr;
@@ -6368,16 +6365,186 @@ static void test_host_migration(void)
 
 }
 
+static void test_COM(void)
+{
+    IDirectPlay *dp;
+    IDirectPlay2A *dp2A;
+    IDirectPlay2 *dp2;
+    IDirectPlay3A *dp3A;
+    IDirectPlay3 *dp3;
+    IDirectPlay4A *dp4A;
+    IDirectPlay4 *dp4 = (IDirectPlay4*)0xdeadbeef;
+    IUnknown *unk;
+    ULONG refcount;
+    HRESULT hr;
+
+    /* COM aggregation */
+    hr = CoCreateInstance(&CLSID_DirectPlay, (IUnknown*)&dp4, CLSCTX_INPROC_SERVER, &IID_IUnknown,
+            (void**)&dp4);
+    ok(hr == CLASS_E_NOAGGREGATION || broken(hr == E_INVALIDARG),
+            "DirectPlay create failed: %08x, expected CLASS_E_NOAGGREGATION\n", hr);
+    ok(!dp4 || dp4 == (IDirectPlay4*)0xdeadbeef, "dp4 = %p\n", dp4);
+
+    /* Invalid RIID */
+    hr = CoCreateInstance(&CLSID_DirectPlay, NULL, CLSCTX_INPROC_SERVER, &IID_IDirectPlayLobby,
+            (void**)&dp4);
+    ok(hr == E_NOINTERFACE, "DirectPlay create failed: %08x, expected E_NOINTERFACE\n", hr);
+
+    /* Different refcount for all DirectPlay Interfaces */
+    hr = CoCreateInstance(&CLSID_DirectPlay, NULL, CLSCTX_INPROC_SERVER, &IID_IDirectPlay4,
+            (void**)&dp4);
+    ok(hr == S_OK, "DirectPlay create failed: %08x, expected S_OK\n", hr);
+    refcount = IDirectPlayX_AddRef(dp4);
+    ok(refcount == 2, "refcount == %u, expected 2\n", refcount);
+
+    hr = IDirectPlayX_QueryInterface(dp4, &IID_IDirectPlay2A, (void**)&dp2A);
+    ok(hr == S_OK, "QueryInterface for IID_IDirectPlay2A failed: %08x\n", hr);
+    refcount = IDirectPlay2_AddRef(dp2A);
+    ok(refcount == 2, "refcount == %u, expected 2\n", refcount);
+    IDirectPlay2_Release(dp2A);
+
+    hr = IDirectPlayX_QueryInterface(dp4, &IID_IDirectPlay2, (void**)&dp2);
+    ok(hr == S_OK, "QueryInterface for IID_IDirectPlay2 failed: %08x\n", hr);
+    refcount = IDirectPlay2_AddRef(dp2);
+    ok(refcount == 2, "refcount == %u, expected 2\n", refcount);
+    IDirectPlay2_Release(dp2);
+
+    hr = IDirectPlayX_QueryInterface(dp4, &IID_IDirectPlay3A, (void**)&dp3A);
+    ok(hr == S_OK, "QueryInterface for IID_IDirectPlay3A failed: %08x\n", hr);
+    refcount = IDirectPlay3_AddRef(dp3A);
+    ok(refcount == 2, "refcount == %u, expected 2\n", refcount);
+    IDirectPlay3_Release(dp3A);
+
+    hr = IDirectPlayX_QueryInterface(dp4, &IID_IDirectPlay3, (void**)&dp3);
+    ok(hr == S_OK, "QueryInterface for IID_IDirectPlay3 failed: %08x\n", hr);
+    refcount = IDirectPlay3_AddRef(dp3);
+    ok(refcount == 2, "refcount == %u, expected 2\n", refcount);
+    IDirectPlay3_Release(dp3);
+
+    hr = IDirectPlayX_QueryInterface(dp4, &IID_IDirectPlay4A, (void**)&dp4A);
+    ok(hr == S_OK, "QueryInterface for IID_IDirectPlay4A failed: %08x\n", hr);
+    refcount = IDirectPlayX_AddRef(dp4A);
+    ok(refcount == 2, "refcount == %u, expected 2\n", refcount);
+    IDirectPlayX_Release(dp4A);
+
+    /* IDirectPlay and IUnknown share a refcount */
+    hr = IDirectPlayX_QueryInterface(dp4, &IID_IDirectPlay, (void**)&dp);
+    ok(hr == S_OK, "QueryInterface for IID_IDirectPlay failed: %08x\n", hr);
+    refcount = IDirectPlayX_AddRef(dp);
+    ok(refcount == 2, "refcount == %u, expected 2\n", refcount);
+    IDirectPlay_Release(dp);
+
+    hr = IDirectPlayX_QueryInterface(dp4, &IID_IUnknown, (void**)&unk);
+    ok(hr == S_OK, "QueryInterface for IID_IUnknown failed: %08x\n", hr);
+    refcount = IUnknown_AddRef(unk);
+    ok(refcount == 3, "refcount == %u, expected 3\n", refcount);
+    refcount = IUnknown_Release(unk);
+    ok(refcount == 2, "refcount == %u, expected 2\n", refcount);
+
+    IUnknown_Release(unk);
+    IDirectPlay_Release(dp);
+    IDirectPlayX_Release(dp4A);
+    IDirectPlay3_Release(dp3);
+    IDirectPlay3_Release(dp3A);
+    IDirectPlay2_Release(dp2);
+    IDirectPlay2_Release(dp2A);
+    IDirectPlayX_Release(dp4);
+    refcount = IDirectPlayX_Release(dp4);
+    ok(refcount == 0, "refcount == %u, expected 0\n", refcount);
+}
+
+static void test_COM_dplobby(void)
+{
+    IDirectPlayLobby *dpl = (IDirectPlayLobby*)0xdeadbeef;
+    IDirectPlayLobbyA *dplA;
+    IDirectPlayLobby2A *dpl2A;
+    IDirectPlayLobby2 *dpl2;
+    IDirectPlayLobby3A *dpl3A;
+    IDirectPlayLobby3 *dpl3;
+    IUnknown *unk;
+    ULONG refcount;
+    HRESULT hr;
+
+    /* COM aggregation */
+    hr = CoCreateInstance(&CLSID_DirectPlayLobby, (IUnknown*)&dpl, CLSCTX_INPROC_SERVER,
+            &IID_IUnknown, (void**)&dpl);
+    ok(hr == CLASS_E_NOAGGREGATION || broken(hr == E_INVALIDARG),
+            "DirectPlayLobby create failed: %08x, expected CLASS_E_NOAGGREGATION\n", hr);
+    ok(!dpl || dpl == (IDirectPlayLobby*)0xdeadbeef, "dp4 = %p\n", dpl);
+
+    /* Invalid RIID */
+    hr = CoCreateInstance(&CLSID_DirectPlayLobby, NULL, CLSCTX_INPROC_SERVER, &IID_IDirectPlay,
+            (void**)&dpl);
+    ok(hr == E_NOINTERFACE, "DirectPlayLobby create failed: %08x, expected E_NOINTERFACE\n", hr);
+
+    /* Different refcount for all DirectPlayLobby Interfaces */
+    hr = CoCreateInstance(&CLSID_DirectPlayLobby, NULL, CLSCTX_INPROC_SERVER, &IID_IDirectPlayLobby,
+            (void**)&dpl);
+    ok(hr == S_OK, "DirectPlayLobby create failed: %08x, expected S_OK\n", hr);
+    refcount = IDirectPlayLobby_AddRef(dpl);
+    ok(refcount == 2, "refcount == %u, expected 2\n", refcount);
+
+    hr = IDirectPlayLobby_QueryInterface(dpl, &IID_IDirectPlayLobbyA, (void**)&dplA);
+    ok(hr == S_OK, "QueryInterface for IID_IDirectPlayLobbyA failed: %08x\n", hr);
+    refcount = IDirectPlayLobby_AddRef(dplA);
+    ok(refcount == 2, "refcount == %u, expected 2\n", refcount);
+    IDirectPlayLobby_Release(dplA);
+
+    hr = IDirectPlayLobby_QueryInterface(dpl, &IID_IDirectPlayLobby2, (void**)&dpl2);
+    ok(hr == S_OK, "QueryInterface for IID_IDirectPlayLobby2 failed: %08x\n", hr);
+    refcount = IDirectPlayLobby_AddRef(dpl2);
+    ok(refcount == 2, "refcount == %u, expected 2\n", refcount);
+    IDirectPlayLobby_Release(dpl2);
+
+    hr = IDirectPlayLobby_QueryInterface(dpl, &IID_IDirectPlayLobby2A, (void**)&dpl2A);
+    ok(hr == S_OK, "QueryInterface for IID_IDirectPlayLobby2A failed: %08x\n", hr);
+    refcount = IDirectPlayLobby_AddRef(dpl2A);
+    ok(refcount == 2, "refcount == %u, expected 2\n", refcount);
+    IDirectPlayLobby_Release(dpl2A);
+
+    hr = IDirectPlayLobby_QueryInterface(dpl, &IID_IDirectPlayLobby3, (void**)&dpl3);
+    ok(hr == S_OK, "QueryInterface for IID_IDirectPlayLobby3 failed: %08x\n", hr);
+    refcount = IDirectPlayLobby_AddRef(dpl3);
+    ok(refcount == 2, "refcount == %u, expected 2\n", refcount);
+    IDirectPlayLobby_Release(dpl3);
+
+    hr = IDirectPlayLobby_QueryInterface(dpl, &IID_IDirectPlayLobby3A, (void**)&dpl3A);
+    ok(hr == S_OK, "QueryInterface for IID_IDirectPlayLobby3A failed: %08x\n", hr);
+    refcount = IDirectPlayLobby_AddRef(dpl3A);
+    ok(refcount == 2, "refcount == %u, expected 2\n", refcount);
+    IDirectPlayLobby_Release(dpl3A);
+
+    /* IDirectPlayLobby and IUnknown share a refcount */
+    hr = IDirectPlayX_QueryInterface(dpl, &IID_IUnknown, (void**)&unk);
+    ok(hr == S_OK, "QueryInterface for IID_IUnknown failed: %08x\n", hr);
+    refcount = IUnknown_AddRef(unk);
+    ok(refcount == 4, "refcount == %u, expected 4\n", refcount);
+    IDirectPlayLobby_Release(unk);
+
+    IUnknown_Release(unk);
+    IDirectPlayLobby_Release(dpl3);
+    IDirectPlayLobby_Release(dpl3A);
+    IDirectPlayLobby_Release(dpl2);
+    IDirectPlayLobby_Release(dpl2A);
+    IDirectPlayLobby_Release(dplA);
+    IDirectPlayLobby_Release(dpl);
+    refcount = IDirectPlayLobby_Release(dpl);
+    ok(refcount == 0, "refcount == %u, expected 0\n", refcount);
+}
+
 
 START_TEST(dplayx)
 {
+    CoInitialize( NULL );
+
+    test_COM();
+    test_COM_dplobby();
+
     if (!winetest_interactive)
     {
         skip("Run in interactive mode to run dplayx tests.\n");
         return;
     }
-
-    CoInitialize( NULL );
 
     trace("Running in interactive mode, tests will take a while\n");
 

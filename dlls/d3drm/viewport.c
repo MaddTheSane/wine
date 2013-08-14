@@ -187,15 +187,11 @@ static HRESULT WINAPI IDirect3DRMViewportImpl_GetClassName(IDirect3DRMViewport* 
 }
 
 /*** IDirect3DRMViewport methods ***/
-static HRESULT WINAPI IDirect3DRMViewportImpl_Init(IDirect3DRMViewport* iface,
-                                                   LPDIRECT3DRMDEVICE dev, LPDIRECT3DRMFRAME camera,
-                                                   DWORD xpos, DWORD ypos,
-                                                   DWORD width, DWORD height)
+static HRESULT WINAPI IDirect3DRMViewportImpl_Init(IDirect3DRMViewport *iface, IDirect3DRMDevice *device,
+        IDirect3DRMFrame *camera, DWORD x, DWORD y, DWORD width, DWORD height)
 {
-    IDirect3DRMViewportImpl *This = impl_from_IDirect3DRMViewport(iface);
-
-    FIXME("(%p/%p)->(%p, %p, %u, %u, %u, %u): stub\n", iface, This, dev, camera,
-          xpos, ypos, width, height);
+    FIXME("iface %p, device %p, camera %p, x %u, y %u, width %u, height %u stub!\n",
+            iface, device, camera, x, y, width, height);
 
     return E_NOTIMPL;
 }
@@ -209,12 +205,9 @@ static HRESULT WINAPI IDirect3DRMViewportImpl_Clear(IDirect3DRMViewport* iface)
     return D3DRM_OK;
 }
 
-static HRESULT WINAPI IDirect3DRMViewportImpl_Render(IDirect3DRMViewport* iface,
-                                                     LPDIRECT3DRMFRAME frame)
+static HRESULT WINAPI IDirect3DRMViewportImpl_Render(IDirect3DRMViewport *iface, IDirect3DRMFrame *frame)
 {
-    IDirect3DRMViewportImpl *This = impl_from_IDirect3DRMViewport(iface);
-
-    FIXME("(%p/%p)->(%p): stub\n", iface, This, frame);
+    FIXME("iface %p, frame %p stub!\n", iface, frame);
 
     return D3DRM_OK;
 }
@@ -255,12 +248,9 @@ static HRESULT WINAPI IDirect3DRMViewportImpl_SetUniformScaling(IDirect3DRMViewp
     return E_NOTIMPL;
 }
 
-static HRESULT WINAPI IDirect3DRMViewportImpl_SetCamera(IDirect3DRMViewport* iface,
-                                                        LPDIRECT3DRMFRAME frame)
+static HRESULT WINAPI IDirect3DRMViewportImpl_SetCamera(IDirect3DRMViewport *iface, IDirect3DRMFrame *camera)
 {
-    IDirect3DRMViewportImpl *This = impl_from_IDirect3DRMViewport(iface);
-
-    FIXME("(%p/%p)->(%p): stub\n", iface, This, frame);
+    FIXME("iface %p, camera %p stub!\n", iface, camera);
 
     return E_NOTIMPL;
 }
@@ -326,22 +316,16 @@ static HRESULT WINAPI IDirect3DRMViewportImpl_SetPlane(IDirect3DRMViewport* ifac
     return E_NOTIMPL;
 }
 
-static HRESULT WINAPI IDirect3DRMViewportImpl_GetCamera(IDirect3DRMViewport* iface,
-                                                        LPDIRECT3DRMFRAME * frame)
+static HRESULT WINAPI IDirect3DRMViewportImpl_GetCamera(IDirect3DRMViewport *iface, IDirect3DRMFrame **camera)
 {
-    IDirect3DRMViewportImpl *This = impl_from_IDirect3DRMViewport(iface);
-
-    FIXME("(%p/%p)->(%p): stub\n", iface, This, frame);
+    FIXME("iface %p, camera %p stub!\n", iface, camera);
 
     return E_NOTIMPL;
 }
 
-static HRESULT WINAPI IDirect3DRMViewportImpl_GetDevice(IDirect3DRMViewport* iface,
-                                                        LPDIRECT3DRMDEVICE * device)
+static HRESULT WINAPI IDirect3DRMViewportImpl_GetDevice(IDirect3DRMViewport *iface, IDirect3DRMDevice **device)
 {
-    IDirect3DRMViewportImpl *This = impl_from_IDirect3DRMViewport(iface);
-
-    FIXME("(%p/%p)->(%p): stub\n", iface, This, device);
+    FIXME("iface %p, device %p stub!\n", iface, device);
 
     return E_NOTIMPL;
 }
@@ -614,15 +598,11 @@ static HRESULT WINAPI IDirect3DRMViewport2Impl_GetClassName(IDirect3DRMViewport2
 }
 
 /*** IDirect3DRMViewport methods ***/
-static HRESULT WINAPI IDirect3DRMViewport2Impl_Init(IDirect3DRMViewport2* iface,
-                                                   LPDIRECT3DRMDEVICE3 dev, LPDIRECT3DRMFRAME3 camera,
-                                                   DWORD xpos, DWORD ypos,
-                                                   DWORD width, DWORD height)
+static HRESULT WINAPI IDirect3DRMViewport2Impl_Init(IDirect3DRMViewport2 *iface, IDirect3DRMDevice3 *device,
+        IDirect3DRMFrame3 *camera, DWORD x, DWORD y, DWORD width, DWORD height)
 {
-    IDirect3DRMViewportImpl *This = impl_from_IDirect3DRMViewport2(iface);
-
-    FIXME("(%p/%p)->(%p, %p, %u, %u, %u, %u): stub\n", iface, This, dev, camera,
-          xpos, ypos, width, height);
+    FIXME("iface %p, device %p, camera %p, x %u, y %u, width %u, height %u stub!\n",
+            iface, device, camera, x, y, width, height);
 
     return E_NOTIMPL;
 }
@@ -636,12 +616,9 @@ static HRESULT WINAPI IDirect3DRMViewport2Impl_Clear(IDirect3DRMViewport2* iface
     return D3DRM_OK;
 }
 
-static HRESULT WINAPI IDirect3DRMViewport2Impl_Render(IDirect3DRMViewport2* iface,
-                                                     LPDIRECT3DRMFRAME3 frame)
+static HRESULT WINAPI IDirect3DRMViewport2Impl_Render(IDirect3DRMViewport2 *iface, IDirect3DRMFrame3 *frame)
 {
-    IDirect3DRMViewportImpl *This = impl_from_IDirect3DRMViewport2(iface);
-
-    FIXME("(%p/%p)->(%p): stub\n", iface, This, frame);
+    FIXME("iface %p, frame %p stub!\n", iface, frame);
 
     return D3DRM_OK;
 }
@@ -688,12 +665,9 @@ static HRESULT WINAPI IDirect3DRMViewport2Impl_SetUniformScaling(IDirect3DRMView
     return E_NOTIMPL;
 }
 
-static HRESULT WINAPI IDirect3DRMViewport2Impl_SetCamera(IDirect3DRMViewport2* iface,
-                                                        LPDIRECT3DRMFRAME3 frame)
+static HRESULT WINAPI IDirect3DRMViewport2Impl_SetCamera(IDirect3DRMViewport2 *iface, IDirect3DRMFrame3 *camera)
 {
-    IDirect3DRMViewportImpl *This = impl_from_IDirect3DRMViewport2(iface);
-
-    FIXME("(%p/%p)->(%p): stub\n", iface, This, frame);
+    FIXME("iface %p, camera %p stub!\n", iface, camera);
 
     return E_NOTIMPL;
 }
@@ -761,22 +735,16 @@ static HRESULT WINAPI IDirect3DRMViewport2Impl_SetPlane(IDirect3DRMViewport2* if
     return E_NOTIMPL;
 }
 
-static HRESULT WINAPI IDirect3DRMViewport2Impl_GetCamera(IDirect3DRMViewport2* iface,
-                                                        LPDIRECT3DRMFRAME3 * frame)
+static HRESULT WINAPI IDirect3DRMViewport2Impl_GetCamera(IDirect3DRMViewport2 *iface, IDirect3DRMFrame3 **camera)
 {
-    IDirect3DRMViewportImpl *This = impl_from_IDirect3DRMViewport2(iface);
-
-    FIXME("(%p/%p)->(%p): stub\n", iface, This, frame);
+    FIXME("iface %p, camera %p stub!\n", iface, camera);
 
     return E_NOTIMPL;
 }
 
-static HRESULT WINAPI IDirect3DRMViewport2Impl_GetDevice(IDirect3DRMViewport2* iface,
-                                                        LPDIRECT3DRMDEVICE3 * device)
+static HRESULT WINAPI IDirect3DRMViewport2Impl_GetDevice(IDirect3DRMViewport2 *iface, IDirect3DRMDevice3 **device)
 {
-    IDirect3DRMViewportImpl *This = impl_from_IDirect3DRMViewport2(iface);
-
-    FIXME("(%p/%p)->(%p): stub\n", iface, This, device);
+    FIXME("iface %p, device %p stub!\n", iface, device);
 
     return E_NOTIMPL;
 }

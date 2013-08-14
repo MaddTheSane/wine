@@ -100,7 +100,6 @@ const char *ME_GetDITypeName(ME_DIType type) DECLSPEC_HIDDEN;
 /* string.c */
 ME_String *ME_MakeStringN(LPCWSTR szText, int nMaxChars) DECLSPEC_HIDDEN;
 ME_String *ME_MakeStringR(WCHAR cRepeat, int nMaxChars) DECLSPEC_HIDDEN;
-ME_String *ME_StrDup(const ME_String *s) DECLSPEC_HIDDEN;
 void ME_DestroyString(ME_String *s) DECLSPEC_HIDDEN;
 BOOL ME_AppendString(ME_String *s, const WCHAR *append, int len) DECLSPEC_HIDDEN;
 ME_String *ME_VSplitString(ME_String *orig, int nVPos) DECLSPEC_HIDDEN;
@@ -141,17 +140,16 @@ ME_DisplayItem *ME_InsertRunAtCursor(ME_TextEditor *editor, ME_Cursor *cursor,
 void ME_CheckCharOffsets(ME_TextEditor *editor) DECLSPEC_HIDDEN;
 void ME_PropagateCharOffset(ME_DisplayItem *p, int shift) DECLSPEC_HIDDEN;
 /* this one accounts for 1/2 char tolerance */
-int ME_CharFromPointContext(ME_Context *c, int cx, ME_Run *run, BOOL closest) DECLSPEC_HIDDEN;
-int ME_CharFromPoint(ME_TextEditor *editor, int cx, ME_Run *run, BOOL closest) DECLSPEC_HIDDEN;
-int ME_PointFromCharContext(ME_Context *c, ME_Run *pRun, int nOffset) DECLSPEC_HIDDEN;
-int ME_PointFromChar(ME_TextEditor *editor, ME_Run *pRun, int nOffset) DECLSPEC_HIDDEN;
+int ME_CharFromPointContext(ME_Context *c, int cx, ME_Run *run, BOOL closest, BOOL visual_order) DECLSPEC_HIDDEN;
+int ME_CharFromPoint(ME_TextEditor *editor, int cx, ME_Run *run, BOOL closest, BOOL visual_order) DECLSPEC_HIDDEN;
+int ME_PointFromCharContext(ME_Context *c, ME_Run *pRun, int nOffset, BOOL visual_order) DECLSPEC_HIDDEN;
+int ME_PointFromChar(ME_TextEditor *editor, ME_Run *pRun, int nOffset, BOOL visual_order) DECLSPEC_HIDDEN;
 int ME_CanJoinRuns(const ME_Run *run1, const ME_Run *run2) DECLSPEC_HIDDEN;
 void ME_JoinRuns(ME_TextEditor *editor, ME_DisplayItem *p) DECLSPEC_HIDDEN;
 ME_DisplayItem *ME_SplitRunSimple(ME_TextEditor *editor, ME_Cursor *cursor) DECLSPEC_HIDDEN;
 void ME_UpdateRunFlags(ME_TextEditor *editor, ME_Run *run) DECLSPEC_HIDDEN;
 SIZE ME_GetRunSizeCommon(ME_Context *c, const ME_Paragraph *para, ME_Run *run, int nLen,
                          int startx, int *pAscent, int *pDescent) DECLSPEC_HIDDEN;
-SIZE ME_GetRunSize(ME_Context *c, const ME_Paragraph *para, ME_Run *run, int nLen, int startx) DECLSPEC_HIDDEN;
 void ME_CursorFromCharOfs(ME_TextEditor *editor, int nCharOfs, ME_Cursor *pCursor) DECLSPEC_HIDDEN;
 void ME_RunOfsFromCharOfs(ME_TextEditor *editor, int nCharOfs, ME_DisplayItem **ppPara, ME_DisplayItem **ppRun, int *pOfs) DECLSPEC_HIDDEN;
 int ME_CharOfsFromRunOfs(ME_TextEditor *editor, const ME_DisplayItem *pPara, const ME_DisplayItem *pRun, int nOfs) DECLSPEC_HIDDEN;

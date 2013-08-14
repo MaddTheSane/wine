@@ -977,7 +977,7 @@ extern HINSTANCE msi_hInstance DECLSPEC_HIDDEN;
 extern UINT ACTION_PerformAction(MSIPACKAGE *package, const WCHAR *action, UINT script) DECLSPEC_HIDDEN;
 extern UINT ACTION_PerformUIAction(MSIPACKAGE *package, const WCHAR *action, UINT script) DECLSPEC_HIDDEN;
 extern void ACTION_FinishCustomActions( const MSIPACKAGE* package) DECLSPEC_HIDDEN;
-extern UINT ACTION_CustomAction(MSIPACKAGE *package,const WCHAR *action, UINT script, BOOL execute) DECLSPEC_HIDDEN;
+extern UINT ACTION_CustomAction(MSIPACKAGE *, const WCHAR *, UINT) DECLSPEC_HIDDEN;
 
 /* actions in other modules */
 extern UINT ACTION_AppSearch(MSIPACKAGE *package) DECLSPEC_HIDDEN;
@@ -1018,7 +1018,6 @@ extern void msi_reset_folders( MSIPACKAGE *package, BOOL source ) DECLSPEC_HIDDE
 extern MSICOMPONENT *msi_get_loaded_component(MSIPACKAGE *package, const WCHAR *Component) DECLSPEC_HIDDEN;
 extern MSIFEATURE *msi_get_loaded_feature(MSIPACKAGE *package, const WCHAR *Feature) DECLSPEC_HIDDEN;
 extern MSIFILE *msi_get_loaded_file(MSIPACKAGE *package, const WCHAR *file) DECLSPEC_HIDDEN;
-extern MSIFILEPATCH *msi_get_loaded_filepatch(MSIPACKAGE* package, const WCHAR *key) DECLSPEC_HIDDEN;
 extern MSIFOLDER *msi_get_loaded_folder(MSIPACKAGE *package, const WCHAR *dir) DECLSPEC_HIDDEN;
 extern int msi_track_tempfile(MSIPACKAGE *package, const WCHAR *path) DECLSPEC_HIDDEN;
 extern void msi_free_action_script(MSIPACKAGE *package, UINT script) DECLSPEC_HIDDEN;

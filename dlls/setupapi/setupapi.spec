@@ -75,7 +75,7 @@
 @ stub CM_Get_DevNode_Status_Ex
 @ stdcall CM_Get_Device_IDA(ptr ptr long long)
 @ stdcall CM_Get_Device_IDW(ptr ptr long long)
-@ stub CM_Get_Device_ID_ExA
+@ stdcall CM_Get_Device_ID_ExA(ptr ptr long long ptr)
 @ stdcall CM_Get_Device_ID_ExW(ptr ptr long long ptr)
 @ stdcall CM_Get_Device_ID_ListA(str ptr long long)
 @ stdcall CM_Get_Device_ID_ListW(wstr ptr long long)
@@ -156,8 +156,8 @@
 @ stub CM_Query_Arbitrator_Free_Size_Ex
 @ stub CM_Query_Remove_SubTree
 @ stub CM_Query_Remove_SubTree_Ex
-@ stub CM_Reenumerate_DevNode
-@ stub CM_Reenumerate_DevNode_Ex
+@ stdcall CM_Reenumerate_DevNode(ptr long)
+@ stdcall CM_Reenumerate_DevNode_Ex(ptr long ptr)
 @ stub CM_Register_Device_Driver
 @ stub CM_Register_Device_Driver_Ex
 @ stub CM_Register_Device_InterfaceA
@@ -385,7 +385,7 @@
 @ stub SetupDiSelectOEMDrv
 @ stdcall SetupDiSetClassInstallParamsA(ptr ptr ptr long)
 @ stub SetupDiSetClassInstallParamsW
-@ stub SetupDiSetDeviceInstallParamsA
+@ stdcall SetupDiSetDeviceInstallParamsA(ptr ptr ptr)
 @ stub SetupDiSetDeviceInstallParamsW
 @ stdcall SetupDiSetDeviceRegistryPropertyA(ptr ptr long ptr ptr)
 @ stdcall SetupDiSetDeviceRegistryPropertyW(ptr ptr long ptr ptr)

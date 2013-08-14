@@ -297,7 +297,6 @@ GpStatus WINGDIPAPI GdipBitmapGetPixel(GpBitmap* bitmap, INT x, INT y,
     BYTE r, g, b, a;
     BYTE index;
     BYTE *row;
-    TRACE("%p %d %d %p\n", bitmap, x, y, color);
 
     if(!bitmap || !color ||
        x < 0 || y < 0 || x >= bitmap->width || y >= bitmap->height)
@@ -503,7 +502,6 @@ GpStatus WINGDIPAPI GdipBitmapSetPixel(GpBitmap* bitmap, INT x, INT y,
 {
     BYTE a, r, g, b;
     BYTE *row;
-    TRACE("bitmap:%p, x:%d, y:%d, color:%08x\n", bitmap, x, y, color);
 
     if(!bitmap || x < 0 || y < 0 || x >= bitmap->width || y >= bitmap->height)
         return InvalidParameter;
@@ -1597,12 +1595,9 @@ GpStatus WINGDIPAPI GdipConvertToEmfPlus(const GpGraphics* ref,
     return NotImplemented;
 }
 
-/* FIXME: this should create a bitmap in the given size with the attributes
- * (resolution etc.) of the graphics object */
 GpStatus WINGDIPAPI GdipCreateBitmapFromGraphics(INT width, INT height,
     GpGraphics* target, GpBitmap** bitmap)
 {
-    static int calls;
     GpStatus ret;
 
     TRACE("(%d, %d, %p, %p)\n", width, height, target, bitmap);
@@ -1610,11 +1605,14 @@ GpStatus WINGDIPAPI GdipCreateBitmapFromGraphics(INT width, INT height,
     if(!target || !bitmap)
         return InvalidParameter;
 
-    if(!(calls++))
-        FIXME("hacked stub\n");
-
-    ret = GdipCreateBitmapFromScan0(width, height, 0, PixelFormat24bppRGB,
+    ret = GdipCreateBitmapFromScan0(width, height, 0, PixelFormat32bppPARGB,
                                     NULL, bitmap);
+
+    if (ret == Ok)
+    {
+        GdipGetDpiX(target, &(*bitmap)->image.xres);
+        GdipGetDpiY(target, &(*bitmap)->image.yres);
+    }
 
     return ret;
 }

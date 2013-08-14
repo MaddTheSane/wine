@@ -2429,7 +2429,7 @@ void MENU_EndMenu( HWND hwnd )
 {
     POPUPMENU *menu;
     menu = top_popup_hmenu ? MENU_GetMenu( top_popup_hmenu ) : NULL;
-    if (menu && hwnd == menu->hwndOwner) EndMenu();
+    if (menu && (hwnd == menu->hWnd || hwnd == menu->hwndOwner)) EndMenu();
 }
 
 /***********************************************************************
@@ -3356,6 +3356,9 @@ void MENU_TrackMouseMenuBar( HWND hWnd, INT ht, POINT pt )
     if (IsMenu(hMenu))
     {
 	MENU_InitTracking( hWnd, hMenu, FALSE, wFlags );
+
+        /* fetch the window menu again, it may have changed */
+        hMenu = (ht == HTSYSMENU) ? get_win_sys_menu( hWnd ) : GetMenu( hWnd );
 	MENU_TrackMenu( hMenu, wFlags, pt.x, pt.y, hWnd, NULL );
 	MENU_ExitTracking(hWnd, FALSE);
     }
@@ -3395,6 +3398,9 @@ void MENU_TrackKbdMenuBar( HWND hwnd, UINT wParam, WCHAR wChar)
     if (!IsMenu( hTrackMenu )) return;
 
     MENU_InitTracking( hwnd, hTrackMenu, FALSE, wFlags );
+
+    /* fetch the window menu again, it may have changed */
+    hTrackMenu = (wParam & HTSYSMENU) ? get_win_sys_menu( hwnd ) : GetMenu( hwnd );
 
     if( wChar && wChar != ' ' )
     {
@@ -4701,7 +4707,7 @@ static inline void set_menu_item_text( MENUITEM *menu, LPCWSTR text, BOOL unicod
  */
 static int MENU_depth( POPUPMENU *pmenu, int depth)
 {
-    int i;
+    UINT i;
     MENUITEM *item;
     int subdepth;
 

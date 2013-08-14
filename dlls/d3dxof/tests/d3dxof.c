@@ -1,7 +1,7 @@
 /*
  * Some unit tests for d3dxof
  *
- * Copyright (C) 2008 Christian Costa
+ * Copyright (C) 2008, 2013 Christian Costa
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -24,6 +24,21 @@
 #include "wine/test.h"
 #include "initguid.h"
 #include "dxfile.h"
+#include "rmxftmpl.h"
+
+#define I2(x) x,0
+#define I4(x) x,0,0,0
+
+#define TOKEN_NAME         I2(1)
+#define TOKEN_STRING       I2(2)
+#define TOKEN_INTEGER      I2(3)
+#define TOKEN_INTEGER_LIST I2(6)
+#define TOKEN_OBRACE       I2(10)
+#define TOKEN_CBRACE       I2(11)
+#define TOKEN_COMMA        I2(19)
+#define TOKEN_SEMICOLON    I2(20)
+
+#define SEMICOLON_5X TOKEN_SEMICOLON, TOKEN_SEMICOLON, TOKEN_SEMICOLON, TOKEN_SEMICOLON, TOKEN_SEMICOLON
 
 static inline void debugstr_guid( char* buf, CONST GUID *id )
 {
@@ -84,6 +99,15 @@ static char empty_bzip_file[] = "xof 0302bzip0064\x11\x00\x00\x00\x01\x00\x05\x0
 static char empty_cmp_file[]  = "xof 0302cmp 0064";
 static char empty_xxxx_file[] = "xof 0302xxxx0064";
 
+static char templates_bad_file_type1[]      = "xOf 0302txt 0064\n";
+static char templates_bad_file_version[]    = "xof 0102txt 0064\n";
+static char templates_bad_file_type2[]      = "xof 0302foo 0064\n";
+static char templates_bad_file_float_size[] = "xof 0302txt 0050\n";
+
+static char templates_parse_error[] =
+"xof 0302txt 0064"
+"foobar;\n";
+
 static char object_noname[] =
 "xof 0302txt 0064\n"
 "Header\n"
@@ -91,7 +115,7 @@ static char object_noname[] =
 "1; 2; 3;\n"
 "}\n";
 
-static char template_syntax_empty_array[] =
+static char template_syntax_array_mixed[] =
 "xof 0302txt 0064\n"
 "template Buffer\n"
 "{\n"
@@ -101,22 +125,187 @@ static char template_syntax_empty_array[] =
 "DWORD dummy;\n"
 "}\n";
 
-static char object_syntax_empty_array_semicolon[] =
+static char object_syntax_empty_array[] =
 "xof 0302txt 0064\n"
 "Buffer\n"
 "{\n"
 "0;\n"
-";\n"
 "1234;\n"
 "}\n";
 
-static char object_syntax_empty_array_nosemicolon[] =
+static char object_syntax_semicolon_txt[] =
 "xof 0302txt 0064\n"
 "Buffer\n"
 "{\n"
-"0;\n"
-"1234;\n"
+"3;\n"
+"0; 1; 2;\n"
+"5;\n"
 "}\n";
+
+static char object_syntax_semicolon_bin[] = {
+'x','o','f',' ','0','3','0','2','b','i','n',' ','0','0','6','4',
+TOKEN_NAME, /* size */ I4(6), /* name */ 'B','u','f','f','e','r', TOKEN_OBRACE,
+TOKEN_INTEGER, I4(3), TOKEN_SEMICOLON,
+TOKEN_INTEGER, I4(0), TOKEN_SEMICOLON, TOKEN_INTEGER, I4(1), TOKEN_SEMICOLON, TOKEN_INTEGER, I4(2), TOKEN_SEMICOLON,
+TOKEN_INTEGER, I4(5), TOKEN_SEMICOLON,
+TOKEN_CBRACE
+};
+
+static char object_syntax_comma_txt[] =
+"xof 0302txt 0064\n"
+"Buffer\n"
+"{\n"
+"3,\n"
+"0, 1, 2,\n"
+"5,\n"
+"}\n";
+
+static char object_syntax_comma_bin[] = {
+'x','o','f',' ','0','3','0','2','b','i','n',' ','0','0','6','4',
+TOKEN_NAME, /* size */ I4(6), /* name */ 'B','u','f','f','e','r', TOKEN_OBRACE,
+TOKEN_INTEGER, I4(3), TOKEN_COMMA,
+TOKEN_INTEGER, I4(0), TOKEN_COMMA, TOKEN_INTEGER, I4(1), TOKEN_COMMA, TOKEN_INTEGER, I4(2), TOKEN_COMMA,
+TOKEN_INTEGER, I4(5), TOKEN_COMMA,
+TOKEN_CBRACE
+};
+
+static char object_syntax_multi_semicolons_txt[] =
+"xof 0302txt 0064\n"
+"Buffer\n"
+"{\n"
+"3;;;;;\n"
+"0;;;;; 1;;;;; 2;;;;;\n"
+"5;;;;;\n"
+"}\n";
+
+static char object_syntax_multi_semicolons_bin[] = {
+'x','o','f',' ','0','3','0','2','b','i','n',' ','0','0','6','4',
+TOKEN_NAME, /* size */ I4(6), /* name */ 'B','u','f','f','e','r', TOKEN_OBRACE,
+TOKEN_INTEGER, I4(3), SEMICOLON_5X,
+TOKEN_INTEGER, I4(0), SEMICOLON_5X, TOKEN_INTEGER, I4(1), SEMICOLON_5X, TOKEN_INTEGER, I4(2), SEMICOLON_5X,
+TOKEN_INTEGER, I4(5), SEMICOLON_5X,
+TOKEN_CBRACE
+};
+
+static char object_syntax_multi_commas_txt[] =
+"xof 0302txt 0064\n"
+"Buffer\n"
+"{\n"
+"3;\n"
+"0, 1,, 2;\n"
+"5;\n"
+"}\n";
+
+static char object_syntax_multi_commas_bin[] = {
+'x','o','f',' ','0','3','0','2','b','i','n',' ','0','0','6','4',
+TOKEN_NAME, /* size */ I4(6), /* name */ 'B','u','f','f','e','r', TOKEN_OBRACE,
+TOKEN_INTEGER, I4(3), TOKEN_SEMICOLON,
+TOKEN_INTEGER, I4(0), TOKEN_COMMA, TOKEN_INTEGER, I4(1), TOKEN_COMMA, TOKEN_COMMA, TOKEN_INTEGER, I4(2), TOKEN_SEMICOLON,
+TOKEN_INTEGER, I4(5), TOKEN_SEMICOLON,
+TOKEN_CBRACE
+};
+
+static char object_syntax_multi_semicolons_and_comma_txt[] =
+"xof 0302txt 0064\n"
+"Buffer\n"
+"{\n"
+"3;;;;;,\n"
+"0;;;;;, 1;;;;;, 2;;;;;,\n"
+"5;;;;;,\n"
+"}\n";
+
+static char object_syntax_multi_semicolons_and_comma_bin[] = {
+'x','o','f',' ','0','3','0','2','b','i','n',' ','0','0','6','4',
+TOKEN_NAME, /* size */ I4(6), /* name */ 'B','u','f','f','e','r', TOKEN_OBRACE,
+TOKEN_INTEGER, I4(3), SEMICOLON_5X, TOKEN_COMMA,
+TOKEN_INTEGER, I4(0), SEMICOLON_5X, TOKEN_COMMA, TOKEN_INTEGER, I4(1), SEMICOLON_5X, TOKEN_COMMA, TOKEN_INTEGER, I4(2), SEMICOLON_5X, TOKEN_COMMA,
+TOKEN_INTEGER, I4(5), SEMICOLON_5X, TOKEN_COMMA,
+TOKEN_CBRACE
+};
+
+static char object_syntax_comma_and_semicolon_txt[] =
+"xof 0302txt 0064\n"
+"Buffer\n"
+"{\n"
+"3;\n"
+"0, 1,; 2;\n"
+"5;\n"
+"}\n";
+
+static char object_syntax_comma_and_semicolon_bin[] = {
+'x','o','f',' ','0','3','0','2','b','i','n',' ','0','0','6','4',
+TOKEN_NAME, /* size */ I4(6), /* name */ 'B','u','f','f','e','r', TOKEN_OBRACE,
+TOKEN_INTEGER, I4(3), TOKEN_SEMICOLON,
+TOKEN_INTEGER, I4(0), TOKEN_COMMA, TOKEN_INTEGER, I4(1), TOKEN_COMMA, TOKEN_SEMICOLON, TOKEN_INTEGER, I4(2), TOKEN_SEMICOLON,
+TOKEN_INTEGER, I4(5), TOKEN_SEMICOLON,
+TOKEN_CBRACE
+};
+
+static char object_syntax_no_ending_separator_txt[] =
+"xof 0302txt 0064\n"
+"Buffer\n"
+"{\n"
+"3;\n"
+"0, 1, 2;\n"
+"5\n"
+"}\n";
+
+static char object_syntax_no_ending_separator_bin[] = {
+'x','o','f',' ','0','3','0','2','b','i','n',' ','0','0','6','4',
+TOKEN_NAME, /* size */ I4(6), /* name */ 'B','u','f','f','e','r', TOKEN_OBRACE,
+TOKEN_INTEGER, I4(3), TOKEN_SEMICOLON,
+TOKEN_INTEGER, I4(0), TOKEN_COMMA, TOKEN_INTEGER, I4(1), TOKEN_COMMA, TOKEN_INTEGER, I4(2), TOKEN_SEMICOLON,
+TOKEN_INTEGER, I4(5),
+TOKEN_CBRACE
+};
+
+static char object_syntax_array_no_separator_txt[] =
+"xof 0302txt 0064\n"
+"Buffer\n"
+"{\n"
+"3;\n"
+"0 1 2;\n"
+"5;\n"
+"}\n";
+
+static char object_syntax_array_no_separator_bin[] = {
+'x','o','f',' ','0','3','0','2','b','i','n',' ','0','0','6','4',
+TOKEN_NAME, /* size */ I4(6), /* name */ 'B','u','f','f','e','r', TOKEN_OBRACE,
+TOKEN_INTEGER, I4(3), TOKEN_SEMICOLON,
+TOKEN_INTEGER, I4(0), TOKEN_INTEGER, I4(1), TOKEN_INTEGER, I4(2), TOKEN_SEMICOLON,
+TOKEN_INTEGER, I4(5), TOKEN_SEMICOLON,
+TOKEN_CBRACE
+};
+
+static char object_syntax_full_integer_list_bin[] = {
+'x','o','f',' ','0','3','0','2','b','i','n',' ','0','0','6','4',
+TOKEN_NAME, /* size */ I4(6), /* name */ 'B','u','f','f','e','r', TOKEN_OBRACE,
+TOKEN_INTEGER, I4(3), TOKEN_SEMICOLON,
+TOKEN_INTEGER_LIST, I4(3), I4(0), I4(1), I4(2),
+TOKEN_INTEGER, I4(5), TOKEN_SEMICOLON,
+TOKEN_CBRACE
+};
+
+static char object_syntax_mixed_integer_list_bin[] = {
+'x','o','f',' ','0','3','0','2','b','i','n',' ','0','0','6','4',
+TOKEN_NAME, /* size */ I4(6), /* name */ 'B','u','f','f','e','r', TOKEN_OBRACE,
+TOKEN_INTEGER_LIST, I4(5), I4(3), I4(0), I4(1), I4(2), I4(5),
+TOKEN_CBRACE
+};
+
+static char object_syntax_integer_list_semicolon_bin[] = {
+'x','o','f',' ','0','3','0','2','b','i','n',' ','0','0','6','4',
+TOKEN_NAME, /* size */ I4(6), /* name */ 'B','u','f','f','e','r', TOKEN_OBRACE,
+TOKEN_INTEGER_LIST, I4(5), I4(3), I4(0), I4(1), I4(2), I4(5), TOKEN_SEMICOLON,
+TOKEN_CBRACE
+};
+
+static char object_syntax_integer_list_comma_bin[] = {
+'x','o','f',' ','0','3','0','2','b','i','n',' ','0','0','6','4',
+TOKEN_NAME, /* size */ I4(6), /* name */ 'B','u','f','f','e','r', TOKEN_OBRACE,
+TOKEN_INTEGER_LIST, I4(5), I4(3), I4(0), I4(1), I4(2), I4(5), TOKEN_COMMA,
+TOKEN_CBRACE
+};
 
 static char template_syntax_string[] =
 "xof 0302txt 0064\n"
@@ -138,6 +327,71 @@ static char object_syntax_string_with_separator[] =
 "Filename\n"
 "{\n"
 "\"foo;bar\";\n"
+"}\n";
+
+static char object_syntax_string_bin[] = {
+'x','o','f',' ','0','3','0','2','b','i','n',' ','0','0','6','4',
+TOKEN_NAME, /* size */ I4(8), /* name */ 'F','i','l','e','n','a','m','e', TOKEN_OBRACE,
+TOKEN_STRING, /* size */ I4(6), /* string */ 'f','o','o','b','a','r', TOKEN_SEMICOLON,
+TOKEN_CBRACE
+};
+
+static char templates_complex_object[] =
+"xof 0302txt 0064\n"
+"template Vector\n"
+"{\n"
+"<3D82AB5E-62DA-11CF-AB39-0020AF71E433>\n"
+"FLOAT x;\n"
+"FLOAT y;\n"
+"FLOAT z;\n"
+"}\n"
+"template MeshFace\n"
+"{\n"
+"<3D82AB5F-62DA-11CF-AB39-0020AF71E433>\n"
+"DWORD nFaceVertexIndices;\n"
+"array DWORD faceVertexIndices[nFaceVertexIndices];\n"
+"}\n"
+"template Mesh\n"
+"{\n"
+"<3D82AB44-62DA-11CF-AB39-0020AF71E433>\n"
+"DWORD nVertices;\n"
+"array Vector vertices[nVertices];\n"
+"DWORD nFaces;\n"
+"array MeshFace faces[nFaces];\n"
+"[...]\n"
+"}\n";
+
+static char object_complex[] =
+"xof 0302txt 0064\n"
+"Mesh Object\n"
+"{\n"
+"4;;;,\n"
+"1.0;;;, 0.0;;;, 0.0;;;,\n"
+"0.0;;;, 1.0;;;, 0.0;;;,\n"
+"0.0;;;, 0.0;;;, 1.0;;;,\n"
+"1.0;;;, 1.0;;;, 1.0;;;,\n"
+"3;;;,\n"
+"3;;;, 0;;;, 1;;;, 2;;;,\n"
+"3;;;, 1;;;, 2;;;, 3;;;,\n"
+"3;;;, 3;;;, 1;;;, 2;;;,\n"
+"}\n";
+
+static char template_using_index_color_lower[] =
+"xof 0302txt 0064\n"
+"template MeshVertexColors\n"
+"{\n"
+"<1630B821-7842-11cf-8F52-0040333594A3>\n"
+"DWORD nVertexColors;\n"
+"array indexColor vertexColors[nVertexColors];\n"
+"}\n";
+
+static char template_using_index_color_upper[] =
+"xof 0302txt 0064\n"
+"template MeshVertexColors\n"
+"{\n"
+"<1630B821-7842-11cf-8F52-0040333594A3>\n"
+"DWORD nVertexColors;\n"
+"array IndexColor vertexColors[nVertexColors];\n"
 "}\n";
 
 static void init_function_pointers(void)
@@ -379,6 +633,43 @@ static void test_file_types(void)
     IDirectXFile_Release(dxfile);
 }
 
+static void test_templates(void)
+{
+    HRESULT ret;
+    IDirectXFile *dxfile = NULL;
+
+    if (!pDirectXFileCreate)
+    {
+        win_skip("DirectXFileCreate is not available\n");
+        return;
+    }
+
+    ret = pDirectXFileCreate(&dxfile);
+    ok(ret == DXFILE_OK, "DirectXFileCreate: %x\n", ret);
+    if (!dxfile)
+    {
+        skip("Couldn't create DirectXFile interface\n");
+        return;
+    }
+
+    ret = IDirectXFile_RegisterTemplates(dxfile, templates_bad_file_type1, sizeof(templates_bad_file_type1) - 1);
+    ok(ret == DXFILEERR_BADFILETYPE, "RegisterTemplates returned %#x, expected %#x\n", ret, DXFILEERR_BADFILETYPE);
+
+    ret = IDirectXFile_RegisterTemplates(dxfile, templates_bad_file_version, sizeof(templates_bad_file_version) - 1);
+    ok(ret == DXFILEERR_BADFILEVERSION, "RegisterTemplates returned %#x, expected %#x\n", ret, DXFILEERR_BADFILEVERSION);
+
+    ret = IDirectXFile_RegisterTemplates(dxfile, templates_bad_file_type2, sizeof(templates_bad_file_type2) - 1);
+    ok(ret == DXFILEERR_BADFILETYPE, "RegisterTemplates returned %#x, expected %#x\n", ret, DXFILEERR_BADFILETYPE);
+
+    ret = IDirectXFile_RegisterTemplates(dxfile, templates_bad_file_float_size, sizeof(templates_bad_file_float_size) - 1);
+    ok(ret == DXFILEERR_BADFILEFLOATSIZE, "RegisterTemplates returned %#x, expected %#x\n", ret, DXFILEERR_BADFILEFLOATSIZE);
+
+    ret = IDirectXFile_RegisterTemplates(dxfile, templates_parse_error, sizeof(templates_parse_error) - 1);
+    ok(ret == DXFILEERR_PARSEERROR, "RegisterTemplates returned %#x, expected %#x\n", ret, DXFILEERR_PARSEERROR);
+
+    IDirectXFile_Release(dxfile);
+}
+
 static void test_compressed_files(void)
 {
     HRESULT hr;
@@ -493,10 +784,18 @@ static void test_getname(void)
     hr = IDirectXFileData_GetName(lpdxfd, NULL, &length);
     ok(hr == DXFILE_OK, "IDirectXFileData_GetName: %x\n", hr);
     ok(length == 0, "Returned length should be 0 instead of %u\n", length);
-    length = sizeof(name);
+    length = 0;
+    name[0] = 0x7f;
     hr = IDirectXFileData_GetName(lpdxfd, name, &length);
     ok(hr == DXFILE_OK, "IDirectXFileData_GetName: %x\n", hr);
     ok(length == 0, "Returned length should be 0 instead of %u\n", length);
+    ok(name[0] == 0x7f, "First character is %#x instead of 0x7f\n", name[0]);
+    length = sizeof(name);
+    name[0] = 0x7f;
+    hr = IDirectXFileData_GetName(lpdxfd, name, &length);
+    ok(hr == DXFILE_OK, "IDirectXFileData_GetName: %x\n", hr);
+    ok(length == 0, "Returned length should be 0 instead of %u\n", length);
+    ok(name[0] == 0, "First character is %#x instead of 0x00\n", name[0]);
 
     ref = IDirectXFileEnumObject_Release(lpdxfeo);
     ok(ref == 0, "Got refcount %d, expected 0\n", ref);
@@ -509,7 +808,6 @@ static void test_getname(void)
 static void test_syntax(void)
 {
     HRESULT hr;
-    ULONG ref;
     LPDIRECTXFILE lpDirectXFile = NULL;
     LPDIRECTXFILEENUMOBJECT lpdxfeo;
     LPDIRECTXFILEDATA lpdxfd;
@@ -531,42 +829,24 @@ static void test_syntax(void)
         return;
     }
 
-    hr = IDirectXFile_RegisterTemplates(lpDirectXFile, template_syntax_empty_array, sizeof(template_syntax_empty_array) - 1);
+    hr = IDirectXFile_RegisterTemplates(lpDirectXFile, template_syntax_array_mixed, sizeof(template_syntax_array_mixed) - 1);
     ok(hr == DXFILE_OK, "IDirectXFileImpl_RegisterTemplates: %x\n", hr);
 
-    dxflm.lpMemory = &object_syntax_empty_array_semicolon;
-    dxflm.dSize = sizeof(object_syntax_empty_array_semicolon) - 1;
+    /* Test empty array */
+    dxflm.lpMemory = &object_syntax_empty_array;
+    dxflm.dSize = sizeof(object_syntax_empty_array) - 1;
     hr = IDirectXFile_CreateEnumObject(lpDirectXFile, &dxflm, DXFILELOAD_FROMMEMORY, &lpdxfeo);
     ok(hr == DXFILE_OK, "IDirectXFile_CreateEnumObject: %x\n", hr);
     hr = IDirectXFileEnumObject_GetNextDataObject(lpdxfeo, &lpdxfd);
     ok(hr == DXFILE_OK, "IDirectXFileEnumObject_GetNextDataObject: %x\n", hr);
-
-    ref = IDirectXFileEnumObject_Release(lpdxfeo);
-    ok(ref == 0, "Got refcount %d, expected 0\n", ref);
     if (hr == DXFILE_OK)
-    {
-        ref = IDirectXFileData_Release(lpdxfd);
-        ok(ref == 0, "Got refcount %d, expected 0\n", ref);
-    }
-
-    dxflm.lpMemory = &object_syntax_empty_array_nosemicolon;
-    dxflm.dSize = sizeof(object_syntax_empty_array_nosemicolon) - 1;
-    hr = IDirectXFile_CreateEnumObject(lpDirectXFile, &dxflm, DXFILELOAD_FROMMEMORY, &lpdxfeo);
-    ok(hr == DXFILE_OK, "IDirectXFile_CreateEnumObject: %x\n", hr);
-    hr = IDirectXFileEnumObject_GetNextDataObject(lpdxfeo, &lpdxfd);
-    ok(hr == DXFILE_OK, "IDirectXFileEnumObject_GetNextDataObject: %x\n", hr);
-
-    ref = IDirectXFileEnumObject_Release(lpdxfeo);
-    ok(ref == 0, "Got refcount %d, expected 0\n", ref);
-    if (hr == DXFILE_OK)
-    {
-        ref = IDirectXFileData_Release(lpdxfd);
-        ok(ref == 0, "Got refcount %d, expected 0\n", ref);
-    }
+        IDirectXFileData_Release(lpdxfd);
+    IDirectXFileEnumObject_Release(lpdxfeo);
 
     hr = IDirectXFile_RegisterTemplates(lpDirectXFile, template_syntax_string, sizeof(template_syntax_string) - 1);
     ok(hr == DXFILE_OK, "IDirectXFileImpl_RegisterTemplates: %x\n", hr);
 
+    /* Test normal string */
     dxflm.lpMemory = &object_syntax_string_normal;
     dxflm.dSize = sizeof(object_syntax_string_normal) - 1;
     hr = IDirectXFile_CreateEnumObject(lpDirectXFile, &dxflm, DXFILELOAD_FROMMEMORY, &lpdxfeo);
@@ -577,15 +857,11 @@ static void test_syntax(void)
     ok(hr == DXFILE_OK, "IDirectXFileData_GetData: %x\n", hr);
     ok(size == sizeof(char*), "Got wrong data size %d\n", size);
     ok(!strcmp(*string, "foobar"), "Got string %s, expected foobar\n", *string);
-
-    ref = IDirectXFileEnumObject_Release(lpdxfeo);
-    ok(ref == 0, "Got refcount %d, expected 0\n", ref);
     if (hr == DXFILE_OK)
-    {
-        ref = IDirectXFileData_Release(lpdxfd);
-        ok(ref == 0, "Got refcount %d, expected 0\n", ref);
-    }
+        IDirectXFileData_Release(lpdxfd);
+    IDirectXFileEnumObject_Release(lpdxfeo);
 
+    /* Test string containing separator character */
     dxflm.lpMemory = &object_syntax_string_with_separator;
     dxflm.dSize = sizeof(object_syntax_string_with_separator) - 1;
     hr = IDirectXFile_CreateEnumObject(lpDirectXFile, &dxflm, DXFILELOAD_FROMMEMORY, &lpdxfeo);
@@ -596,17 +872,242 @@ static void test_syntax(void)
     ok(hr == DXFILE_OK, "IDirectXFileData_GetData: %x\n", hr);
     ok(size == sizeof(char*), "Got wrong data size %d\n", size);
     ok(!strcmp(*string, "foo;bar"), "Got string %s, expected foo;bar\n", *string);
-
-    ref = IDirectXFileEnumObject_Release(lpdxfeo);
-    ok(ref == 0, "Got refcount %d, expected 0\n", ref);
     if (hr == DXFILE_OK)
+        IDirectXFileData_Release(lpdxfd);
+    IDirectXFileEnumObject_Release(lpdxfeo);
+
+    /* Test string in binary mode */
+    dxflm.lpMemory = &object_syntax_string_bin;
+    dxflm.dSize = sizeof(object_syntax_string_bin);
+    hr = IDirectXFile_CreateEnumObject(lpDirectXFile, &dxflm, DXFILELOAD_FROMMEMORY, &lpdxfeo);
+    ok(hr == DXFILE_OK, "IDirectXFile_CreateEnumObject: %x\n", hr);
+    hr = IDirectXFileEnumObject_GetNextDataObject(lpdxfeo, &lpdxfd);
+    ok(hr == DXFILE_OK, "IDirectXFileEnumObject_GetNextDataObject: %x\n", hr);
+    hr = IDirectXFileData_GetData(lpdxfd, NULL, &size, (void**)&string);
+    ok(hr == DXFILE_OK, "IDirectXFileData_GetData: %x\n", hr);
+    ok(size == sizeof(char*), "Got wrong data size %d\n", size);
+    ok(!strcmp(*string, "foobar"), "Got string %s, expected foobar\n", *string);
+    if (hr == DXFILE_OK)
+        IDirectXFileData_Release(lpdxfd);
+    IDirectXFileEnumObject_Release(lpdxfeo);
+
+    IDirectXFile_Release(lpDirectXFile);
+}
+
+static HRESULT test_buffer_object(IDirectXFile *dxfile, char* object_data, DWORD object_size)
+{
+    HRESULT hr, ret;
+    IDirectXFileEnumObject *enum_object;
+    IDirectXFileData *file_data;
+    DXFILELOADMEMORY load_info;
+    DWORD size;
+    const DWORD values[] = { 3, 0, 1, 2, 5 };
+    DWORD* array;
+
+    load_info.lpMemory = object_data;
+    load_info.dSize = object_size;
+    hr = IDirectXFile_CreateEnumObject(dxfile, &load_info, DXFILELOAD_FROMMEMORY, &enum_object);
+    ok(hr == DXFILE_OK, "IDirectXFile_CreateEnumObject: %x\n", hr);
+    ret = IDirectXFileEnumObject_GetNextDataObject(enum_object, &file_data);
+    if (ret == DXFILE_OK)
     {
-        ref = IDirectXFileData_Release(lpdxfd);
-        ok(ref == 0, "Got refcount %d, expected 0\n", ref);
+        hr = IDirectXFileData_GetData(file_data, NULL, &size, (void**)&array);
+        ok(hr == DXFILE_OK, "IDirectXFileData_GetData: %x\n", hr);
+        ok(size == sizeof(values), "Got wrong data size %d\n", size);
+        ok(!memcmp(array, values, sizeof(values)), "Got values [%u, %u, %u, %u, %u], expected [%u, %u, %u, %u, %u]\n",
+           array[0], array[1], array[2], array[3], array[4], values[0], values[1], values[2], values[3], values[4]);
+        IDirectXFileData_Release(file_data);
+    }
+    IDirectXFileEnumObject_Release(enum_object);
+
+    return ret;
+}
+
+static void test_syntax_semicolon_comma(void)
+{
+    HRESULT ret;
+    IDirectXFile *dxfile = NULL;
+
+    if (!pDirectXFileCreate)
+    {
+        win_skip("DirectXFileCreate is not available\n");
+        return;
     }
 
-    ref = IDirectXFile_Release(lpDirectXFile);
-    ok(ref == 0, "Got refcount %d, expected 0\n", ref);
+    ret = pDirectXFileCreate(&dxfile);
+    ok(ret == DXFILE_OK, "DirectXFileCreate failed with %#x\n", ret);
+    if (!dxfile)
+    {
+        skip("Couldn't create DirectXFile interface\n");
+        return;
+    }
+
+    ret = IDirectXFile_RegisterTemplates(dxfile, template_syntax_array_mixed, sizeof(template_syntax_array_mixed) - 1);
+    ok(ret == DXFILE_OK, "IDirectXFileImpl_RegisterTemplates failed with %#x\n", ret);
+
+    /* Test semicolon separators in text mode */
+    ret = test_buffer_object(dxfile, object_syntax_semicolon_txt, sizeof(object_syntax_semicolon_txt) - 1);
+    ok(ret == DXFILE_OK, "test_buffer_object failed with %#x\n", ret);
+    /* Test semicolon separators in binary mode */
+    ret = test_buffer_object(dxfile, object_syntax_semicolon_bin, sizeof(object_syntax_semicolon_bin));
+    ok(ret == DXFILE_OK, "test_buffer_object failed with %#x\n", ret);
+
+    /* Test comma separators in text mode */
+    ret = test_buffer_object(dxfile, object_syntax_comma_txt, sizeof(object_syntax_comma_txt) - 1);
+    ok(ret == DXFILE_OK, "test_buffer_object failed with %#x\n", ret);
+    /* Test comma separators in binary mode */
+    ret = test_buffer_object(dxfile, object_syntax_comma_bin, sizeof(object_syntax_comma_bin));
+    ok(ret == DXFILE_OK, "test_buffer_object failed with %#x\n", ret);
+
+    /* Test multi-semicolons separators in text mode */
+    ret = test_buffer_object(dxfile, object_syntax_multi_semicolons_txt, sizeof(object_syntax_multi_semicolons_txt) - 1);
+    ok(ret == DXFILE_OK, "test_buffer_object failed with %#x\n", ret);
+    /* Test multi-semicolons separators in binary mode */
+    ret = test_buffer_object(dxfile, object_syntax_multi_semicolons_bin, sizeof(object_syntax_multi_semicolons_bin));
+    ok(ret == DXFILE_OK, "test_buffer_object failed with %#x\n", ret);
+
+    /* Test multi-commas separators in text mode */
+    ret = test_buffer_object(dxfile, object_syntax_multi_commas_txt, sizeof(object_syntax_multi_semicolons_txt) - 1);
+    ok(ret == DXFILEERR_PARSEERROR, "test_buffer_object returned %#x, expected %#x\n", ret, DXFILEERR_PARSEERROR);
+    /* Test multi-commas separators in binary mode */
+    ret = test_buffer_object(dxfile, object_syntax_multi_commas_bin, sizeof(object_syntax_multi_semicolons_bin));
+    ok(ret == DXFILEERR_PARSEERROR, "test_buffer_object returned %#x, expected %#x\n", ret, DXFILEERR_PARSEERROR);
+
+    /* Test multi-semicolons + single comma separators in text mode */
+    ret = test_buffer_object(dxfile, object_syntax_multi_semicolons_and_comma_txt, sizeof(object_syntax_multi_semicolons_and_comma_txt) - 1);
+    ok(ret == DXFILE_OK, "test_buffer_object failed with %#x\n", ret);
+    /* Test multi-semicolons + single comma separators in binary mode */
+    ret = test_buffer_object(dxfile, object_syntax_multi_semicolons_and_comma_bin, sizeof(object_syntax_multi_semicolons_and_comma_bin));
+    ok(ret == DXFILE_OK, "test_buffer_object failed with %#x\n", ret);
+
+    /* Test comma + semicolon separators in text mode */
+    ret = test_buffer_object(dxfile, object_syntax_comma_and_semicolon_txt, sizeof(object_syntax_comma_and_semicolon_txt) - 1);
+    ok(ret == DXFILEERR_PARSEERROR, "test_buffer_object returned %#x, expected %#x\n", ret, DXFILEERR_PARSEERROR);
+    /* Test comma + semicolon separators in binary mode */
+    ret = test_buffer_object(dxfile, object_syntax_comma_and_semicolon_bin, sizeof(object_syntax_comma_and_semicolon_bin));
+    ok(ret == DXFILEERR_PARSEERROR, "test_buffer_object returned %#x, expected %#x\n", ret, DXFILEERR_PARSEERROR);
+
+    /* Test no ending separator in text mode */
+    ret = test_buffer_object(dxfile, object_syntax_no_ending_separator_txt, sizeof(object_syntax_no_ending_separator_txt) - 1);
+    ok(ret == DXFILEERR_PARSEERROR, "test_buffer_object returned %#x, expected %#x\n", ret, DXFILEERR_PARSEERROR);
+    /* Test no ending separator in binary mode */
+    ret = test_buffer_object(dxfile, object_syntax_no_ending_separator_bin, sizeof(object_syntax_no_ending_separator_bin));
+    ok(ret == DXFILEERR_PARSEERROR, "test_buffer_object returned %#x, expected %#x\n", ret, DXFILEERR_PARSEERROR);
+
+    /* Test no array separator in text mode */
+    ret = test_buffer_object(dxfile, object_syntax_array_no_separator_txt, sizeof(object_syntax_array_no_separator_txt) - 1);
+    ok(ret == DXFILEERR_PARSEERROR, "test_buffer_object returned %#x, expected %#x\n", ret, DXFILEERR_PARSEERROR);
+    /* Test no array separator in binary mode */
+    ret = test_buffer_object(dxfile, object_syntax_array_no_separator_bin, sizeof(object_syntax_array_no_separator_bin));
+    ok(ret == DXFILEERR_PARSEERROR, "test_buffer_object returned %#x, expected %#x\n", ret, DXFILEERR_PARSEERROR);
+
+    /* Test object with a single integer list in binary mode */
+    ret = test_buffer_object(dxfile, object_syntax_full_integer_list_bin, sizeof(object_syntax_full_integer_list_bin));
+    ok(ret == DXFILE_OK, "test_buffer_object failed with %#x\n", ret);
+
+    /* Test object with mixed integer list and integers + single comma separators in binary mode */
+    ret = test_buffer_object(dxfile, object_syntax_mixed_integer_list_bin, sizeof(object_syntax_mixed_integer_list_bin));
+    ok(ret == DXFILE_OK, "test_buffer_object failed with %#x\n", ret);
+
+    /* Test integer list followed by a semicolon in binary mode */
+    ret = test_buffer_object(dxfile, object_syntax_integer_list_semicolon_bin, sizeof(object_syntax_integer_list_semicolon_bin));
+    ok(ret == DXFILEERR_PARSEERROR, "test_buffer_object returned %#x, expected %#x\n", ret, DXFILEERR_PARSEERROR);
+
+    /* Test integer list followed by a comma in binary mode */
+    ret = test_buffer_object(dxfile, object_syntax_integer_list_comma_bin, sizeof(object_syntax_integer_list_comma_bin));
+    ok(ret == DXFILEERR_PARSEERROR, "test_buffer_object returned %#x, expected %#x\n", ret, DXFILEERR_PARSEERROR);
+
+    IDirectXFile_Release(dxfile);
+}
+
+static void test_complex_object(void)
+{
+    HRESULT ret;
+    IDirectXFile *dxfile = NULL;
+    IDirectXFileEnumObject *enum_object;
+    IDirectXFileData *file_data;
+    DXFILELOADMEMORY load_info;
+
+    if (!pDirectXFileCreate)
+    {
+        win_skip("DirectXFileCreate is not available\n");
+        return;
+    }
+
+    ret = pDirectXFileCreate(&dxfile);
+    ok(ret == DXFILE_OK, "DirectXFileCreate failed with %#x\n", ret);
+    if (!dxfile)
+    {
+        skip("Couldn't create DirectXFile interface\n");
+        return;
+    }
+
+    ret = IDirectXFile_RegisterTemplates(dxfile, templates_complex_object, sizeof(templates_complex_object) - 1);
+    ok(ret == DXFILE_OK, "IDirectXFileImpl_RegisterTemplates failed with %#x\n", ret);
+
+    load_info.lpMemory = object_complex;
+    load_info.dSize = sizeof(object_complex) - 1;
+    ret = IDirectXFile_CreateEnumObject(dxfile, &load_info, DXFILELOAD_FROMMEMORY, &enum_object);
+    ok(ret == DXFILE_OK, "IDirectXFile_CreateEnumObject failed with %#x\n", ret);
+    ret = IDirectXFileEnumObject_GetNextDataObject(enum_object, &file_data);
+    ok(ret == DXFILE_OK, "IDirectXFileEnumObject_GetNextDataObject failed with %#x\n", ret);
+
+    IDirectXFileData_Release(file_data);
+    IDirectXFileEnumObject_Release(enum_object);
+    IDirectXFile_Release(dxfile);
+}
+
+static void test_standard_templates(void)
+{
+    HRESULT ret;
+    IDirectXFile *dxfile = NULL;
+
+    if (!pDirectXFileCreate)
+    {
+        win_skip("DirectXFileCreate is not available\n");
+        return;
+    }
+
+    ret = pDirectXFileCreate(&dxfile);
+    ok(ret == DXFILE_OK, "DirectXFileCreate failed with %#x\n", ret);
+    if (!dxfile)
+    {
+        skip("Couldn't create DirectXFile interface\n");
+        return;
+    }
+
+    ret = IDirectXFile_RegisterTemplates(dxfile, D3DRM_XTEMPLATES, D3DRM_XTEMPLATE_BYTES);
+    ok(ret == DXFILE_OK, "IDirectXFileImpl_RegisterTemplates failed with %#x\n", ret);
+
+    IDirectXFile_Release(dxfile);
+}
+
+static void test_type_index_color(void)
+{
+    HRESULT ret;
+    IDirectXFile *dxfile = NULL;
+
+    if (!pDirectXFileCreate)
+    {
+        win_skip("DirectXFileCreate is not available\n");
+        return;
+    }
+
+    ret = pDirectXFileCreate(&dxfile);
+    ok(ret == DXFILE_OK, "DirectXFileCreate failed with %#x\n", ret);
+    if (!dxfile)
+    {
+        skip("Couldn't create DirectXFile interface\n");
+        return;
+    }
+
+    /* Test that 'indexColor' can be used (same as IndexedColor in standard templates) and is case sensitive */
+    ret = IDirectXFile_RegisterTemplates(dxfile, template_using_index_color_lower, sizeof(template_using_index_color_lower) - 1);
+    ok(ret == DXFILE_OK, "IDirectXFileImpl_RegisterTemplates failed with %#x\n", ret);
+    ret = IDirectXFile_RegisterTemplates(dxfile, template_using_index_color_upper, sizeof(template_using_index_color_upper) - 1);
+    ok(ret == DXFILEERR_PARSEERROR, "IDirectXFileImpl_RegisterTemplates returned %#x instead of %#x\n", ret, DXFILEERR_PARSEERROR);
+
+    IDirectXFile_Release(dxfile);
 }
 
 /* Set it to 1 to expand the string when dumping the object. This is useful when there is
@@ -788,9 +1289,14 @@ START_TEST(d3dxof)
     test_refcount();
     test_CreateEnumObject();
     test_file_types();
+    test_templates();
     test_compressed_files();
     test_getname();
     test_syntax();
+    test_syntax_semicolon_comma();
+    test_complex_object();
+    test_standard_templates();
+    test_type_index_color();
     test_dump();
 
     FreeLibrary(hd3dxof);

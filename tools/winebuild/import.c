@@ -226,6 +226,7 @@ static int read_import_lib( struct import *imp )
     struct stat stat;
     struct import *prev_imp;
     DLLSPEC *spec = imp->spec;
+    int delayed = is_delayed_import( spec->file_name );
 
     f = open_input_file( NULL, imp->full_name );
     fstat( fileno(f), &stat );
@@ -244,7 +245,7 @@ static int read_import_lib( struct import *imp )
         return 0;  /* the same file was already loaded, ignore this one */
     }
 
-    if (is_delayed_import( spec->file_name ))
+    if (delayed)
     {
         imp->delay = 1;
         nb_delayed++;
@@ -648,28 +649,6 @@ static void output_import_thunk( const char *name, const char *table, int pos )
     case CPU_x86_64:
         output( "\tjmpq *%s+%d(%%rip)\n", table, pos );
         break;
-    case CPU_SPARC:
-        if ( !UsePIC )
-        {
-            output( "\tsethi %%hi(%s+%d), %%g1\n", table, pos );
-            output( "\tld [%%g1+%%lo(%s+%d)], %%g1\n", table, pos );
-            output( "\tjmp %%g1\n" );
-            output( "\tnop\n" );
-        }
-        else
-        {
-            /* Hmpf.  Stupid sparc assembler always interprets global variable
-               names as GOT offsets, so we have to do it the long way ... */
-            output( "\tsave %%sp, -96, %%sp\n" );
-            output( "0:\tcall 1f\n" );
-            output( "\tnop\n" );
-            output( "1:\tsethi %%hi(%s+%d-0b), %%g1\n", table, pos );
-            output( "\tor %%g1, %%lo(%s+%d-0b), %%g1\n", table, pos );
-            output( "\tld [%%g1+%%o7], %%g1\n" );
-            output( "\tjmp %%g1\n" );
-            output( "\trestore\n" );
-        }
-        break;
     case CPU_ARM:
         output( "\tldr IP,[PC,#0]\n");
         output( "\tldr PC,[IP,#%d]\n", pos);
@@ -793,7 +772,7 @@ static void output_immediate_imports(void)
             {
                 output( "\t.align %d\n", get_alignment(2) );
                 output( ".L__wine_spec_import_data_%s_%s:\n", dll_name, odp->name );
-                output( "\t%s %d\n", get_asm_short_keyword(), odp->ordinal );
+                output( "\t.short %d\n", odp->ordinal );
                 output( "\t%s \"%s\"\n", get_asm_string_keyword(), odp->name );
             }
         }
@@ -987,13 +966,6 @@ static void output_delayed_import_thunks( const DLLSPEC *spec )
         output_cfi( ".cfi_adjust_cfa_offset -88" );
         output( "\tjmp *%%rax\n" );
         break;
-    case CPU_SPARC:
-        output( "\tsave %%sp, -96, %%sp\n" );
-        output( "\tcall %s\n", asm_name("__wine_spec_delay_load") );
-        output( "\tmov %%g1, %%o0\n" );
-        output( "\tjmp %%o0\n" );
-        output( "\trestore\n" );
-        break;
     case CPU_ARM:
         output( "\tstmfd  SP!, {r4-r10,FP,LR}\n" );
         output( "\tmov LR,PC\n");
@@ -1093,11 +1065,6 @@ static void output_delayed_import_thunks( const DLLSPEC *spec )
             case CPU_x86_64:
                 output( "\tmovq $%d,%%rax\n", (idx << 16) | j );
                 output( "\tjmp %s\n", asm_name("__wine_delay_load_asm") );
-                break;
-            case CPU_SPARC:
-                output( "\tset %d, %%g1\n", (idx << 16) | j );
-                output( "\tb,a %s\n", asm_name("__wine_delay_load_asm") );
-                output( "\tnop\n" );
                 break;
             case CPU_ARM:
                 output( "\tstmfd  SP!, {r0-r3}\n" );
@@ -1355,7 +1322,7 @@ void output_imports( DLLSPEC *spec )
 /* output an import library for a Win32 module and additional object files */
 void output_import_lib( DLLSPEC *spec, char **argv )
 {
-    struct strarray *args = strarray_init();
+    struct strarray *args;
     char *def_file;
 
     if (target_platform != PLATFORM_WINDOWS)
@@ -1369,14 +1336,15 @@ void output_import_lib( DLLSPEC *spec, char **argv )
     fclose( output_file );
     output_file = NULL;
 
-    strarray_add( args, find_tool( "dlltool", NULL ), "-k", "-l", output_file_name, "-d", def_file, NULL );
+    args = find_tool( "dlltool", NULL );
+    strarray_add( args, "-k", "-l", output_file_name, "-d", def_file, NULL );
     spawn( args );
     strarray_free( args );
 
     if (argv[0])
     {
-        args = strarray_init();
-        strarray_add( args, find_tool( "ar", NULL ), "rs", output_file_name, NULL );
+        args = find_tool( "ar", NULL );
+        strarray_add( args, "rs", output_file_name, NULL );
         strarray_addv( args, argv );
         spawn( args );
         strarray_free( args );

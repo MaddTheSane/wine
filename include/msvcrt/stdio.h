@@ -182,6 +182,7 @@ int    __cdecl vprintf_s(const char*,__ms_va_list);
 int    __cdecl vsprintf(char*,const char*,__ms_va_list);
 int    __cdecl vsprintf_s(char*,size_t,const char*,__ms_va_list);
 unsigned int __cdecl _get_output_format(void);
+unsigned int __cdecl _set_output_format(void);
 
 #ifndef _WSTDIO_DEFINED
 #define _WSTDIO_DEFINED
@@ -193,6 +194,7 @@ int      __cdecl _snwprintf(wchar_t*,size_t,const wchar_t*,...);
 int      __cdecl _snwprintf_s(wchar_t*,size_t,size_t,const wchar_t*,...);
 int      __cdecl _scwprintf(const wchar_t*,...);
 int      __cdecl _vscwprintf(const wchar_t*,__ms_va_list);
+int      __cdecl _vscwprintf_p_l(const wchar_t*,_locale_t,__ms_va_list);
 int      __cdecl _vsnwprintf(wchar_t*,size_t,const wchar_t*,__ms_va_list);
 int      __cdecl _vsnwprintf_s(wchar_t*,size_t,size_t,const wchar_t*,__ms_va_list);
 int      __cdecl _vswprintf_p_l(wchar_t*,size_t,const wchar_t*,_locale_t,__ms_va_list);

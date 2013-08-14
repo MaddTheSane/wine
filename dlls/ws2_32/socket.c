@@ -98,7 +98,7 @@
 
 #ifdef HAVE_NETIPX_IPX_H
 # include <netipx/ipx.h>
-# define HAVE_IPX
+# define HAS_IPX
 #elif defined(HAVE_LINUX_IPX_H)
 # ifdef HAVE_ASM_TYPES_H
 #  include <asm/types.h>
@@ -107,7 +107,7 @@
 #  include <linux/types.h>
 # endif
 # include <linux/ipx.h>
-# define HAVE_IPX
+# define HAS_IPX
 #endif
 
 #ifdef HAVE_LINUX_IRDA_H
@@ -115,7 +115,7 @@
 #  include <linux/types.h>
 # endif
 # include <linux/irda.h>
-# define HAVE_IRDA
+# define HAS_IRDA
 #endif
 
 #ifdef HAVE_POLL_H
@@ -153,7 +153,7 @@
 #include "wine/exception.h"
 #include "wine/unicode.h"
 
-#ifdef HAVE_IPX
+#ifdef HAS_IPX
 # include "wsnwlink.h"
 #endif
 
@@ -178,6 +178,8 @@ WINE_DECLARE_DEBUG_CHANNEL(winediag);
 struct interface_filter {
     struct sock_filter iface_memaddr;
     struct sock_filter iface_rule;
+    struct sock_filter ip_memaddr;
+    struct sock_filter ip_rule;
     struct sock_filter return_keep;
     struct sock_filter return_dump;
 };
@@ -187,9 +189,17 @@ struct interface_filter {
 # define FILTER_JUMP_KEEP(here)  (u_char)(offsetof(struct interface_filter, return_keep) \
                                  -offsetof(struct interface_filter, here)-sizeof(struct sock_filter)) \
                                  /sizeof(struct sock_filter)
+# define FILTER_JUMP_NEXT()      (u_char)(0)
+# define SKF_NET_DESTIP          16 /* offset in the network header to the destination IP */
 static struct interface_filter generic_interface_filter = {
+    /* This filter rule allows incoming packets on the specified interface, which works for all
+     * remotely generated packets and for locally generated broadcast packets. */
     BPF_STMT(BPF_LD+BPF_W+BPF_ABS, SKF_AD_OFF+SKF_AD_IFINDEX),
-    BPF_JUMP(BPF_JMP+BPF_JEQ+BPF_K, 0xdeadbeef, FILTER_JUMP_KEEP(iface_rule), FILTER_JUMP_DUMP(iface_rule)),
+    BPF_JUMP(BPF_JMP+BPF_JEQ+BPF_K, 0xdeadbeef, FILTER_JUMP_KEEP(iface_rule), FILTER_JUMP_NEXT()),
+    /* This rule allows locally generated packets targeted at the specific IP address of the chosen
+     * adapter (local packets not destined for the broadcast address do not have IFINDEX set) */
+    BPF_STMT(BPF_LD+BPF_W+BPF_ABS, SKF_NET_OFF+SKF_NET_DESTIP),
+    BPF_JUMP(BPF_JMP+BPF_JEQ+BPF_K, 0xdeadbeef, FILTER_JUMP_KEEP(ip_rule), FILTER_JUMP_DUMP(ip_rule)),
     BPF_STMT(BPF_RET+BPF_K, (u_int)-1), /* keep packet */
     BPF_STMT(BPF_RET+BPF_K, 0)          /* dump packet */
 };
@@ -438,7 +448,7 @@ static const int ws_af_map[][2] =
     MAP_OPTION( AF_UNSPEC ),
     MAP_OPTION( AF_INET ),
     MAP_OPTION( AF_INET6 ),
-#ifdef HAVE_IPX
+#ifdef HAS_IPX
     MAP_OPTION( AF_IPX ),
 #endif
 #ifdef AF_IRDA
@@ -803,19 +813,19 @@ static void _enable_event( HANDLE s, unsigned int event,
     SERVER_END_REQ;
 }
 
-static int _is_blocking(SOCKET s)
+static NTSTATUS _is_blocking(SOCKET s, BOOL *ret)
 {
-    int ret;
+    NTSTATUS status;
     SERVER_START_REQ( get_socket_event )
     {
         req->handle  = wine_server_obj_handle( SOCKET2HANDLE(s) );
         req->service = FALSE;
         req->c_event = 0;
-        wine_server_call( req );
-        ret = (reply->state & FD_WINE_NONBLOCKING) == 0;
+        status = wine_server_call( req );
+        *ret = (reply->state & FD_WINE_NONBLOCKING) == 0;
     }
     SERVER_END_REQ;
-    return ret;
+    return status;
 }
 
 static unsigned int _get_sock_mask(SOCKET s)
@@ -835,9 +845,10 @@ static unsigned int _get_sock_mask(SOCKET s)
 
 static void _sync_sock_state(SOCKET s)
 {
+    BOOL dummy;
     /* do a dummy wineserver request in order to let
        the wineserver run through its select loop once */
-    (void)_is_blocking(s);
+    (void)_is_blocking(s, &dummy);
 }
 
 static int _get_sock_error(SOCKET s, unsigned int bit)
@@ -896,9 +907,9 @@ BOOL WINAPI DllMain(HINSTANCE hInstDLL, DWORD fdwReason, LPVOID fImpLoad)
     case DLL_PROCESS_ATTACH:
         break;
     case DLL_PROCESS_DETACH:
+        if (fImpLoad) break;
         free_per_thread_data();
         DeleteCriticalSection(&csWSgetXXXbyYYY);
-        num_startup = 0;
         break;
     case DLL_THREAD_DETACH:
         free_per_thread_data();
@@ -985,9 +996,8 @@ static char *strdup_lower(const char *str)
 
 static inline int sock_error_p(int s)
 {
-    unsigned int optval, optlen;
-
-    optlen = sizeof(optval);
+    unsigned int optval;
+    socklen_t optlen = sizeof(optval);
     getsockopt(s, SOL_SOCKET, SO_ERROR, (void *) &optval, &optlen);
     if (optval) WARN("\t[%i] error: %d\n", s, optval);
     return optval != 0;
@@ -999,7 +1009,7 @@ static inline int sock_error_p(int s)
 static inline int get_rcvsnd_timeo( int fd, int optname)
 {
   struct timeval tv;
-  unsigned int len = sizeof(tv);
+  socklen_t len = sizeof(tv);
   int ret = getsockopt(fd, SOL_SOCKET, optname, &tv, &len);
   if( ret >= 0)
       ret = tv.tv_sec * 1000 + tv.tv_usec / 1000;
@@ -1218,11 +1228,11 @@ static inline BOOL supported_pf(int pf)
     case WS_AF_INET:
     case WS_AF_INET6:
         return TRUE;
-#ifdef HAVE_IPX
+#ifdef HAS_IPX
     case WS_AF_IPX:
         return TRUE;
 #endif
-#ifdef HAVE_IRDA
+#ifdef HAS_IRDA
     case WS_AF_IRDA:
         return TRUE;
 #endif
@@ -1244,7 +1254,7 @@ static unsigned int ws_sockaddr_ws2u(const struct WS_sockaddr* wsaddr, int wsadd
 
     switch (wsaddr->sa_family)
     {
-#ifdef HAVE_IPX
+#ifdef HAS_IPX
     case WS_AF_IPX:
         {
             const struct WS_sockaddr_ipx* wsipx=(const struct WS_sockaddr_ipx*)wsaddr;
@@ -1302,7 +1312,7 @@ static unsigned int ws_sockaddr_ws2u(const struct WS_sockaddr* wsaddr, int wsadd
         memcpy(&uin->sin_addr,&win->sin_addr,4); /* 4 bytes = 32 address bits */
         break;
     }
-#ifdef HAVE_IRDA
+#ifdef HAS_IRDA
     case WS_AF_IRDA: {
         struct sockaddr_irda *uin = (struct sockaddr_irda *)uaddr;
         const SOCKADDR_IRDA *win = (const SOCKADDR_IRDA *)wsaddr;
@@ -1335,12 +1345,12 @@ static unsigned int ws_sockaddr_ws2u(const struct WS_sockaddr* wsaddr, int wsadd
         case sizeof(struct WS_sockaddr_in):
             uaddrlen = sizeof(struct sockaddr_in);
             break;
-#ifdef HAVE_IPX
+#ifdef HAS_IPX
         case sizeof(struct WS_sockaddr_ipx):
             uaddrlen = sizeof(struct sockaddr_ipx);
             break;
 #endif
-#ifdef HAVE_IRDA
+#ifdef HAS_IRDA
         case sizeof(SOCKADDR_IRDA):
             uaddrlen = sizeof(struct sockaddr_irda);
             break;
@@ -1364,7 +1374,7 @@ static BOOL is_sockaddr_bound(const struct sockaddr *uaddr, int uaddrlen)
 {
     switch (uaddr->sa_family)
     {
-#ifdef HAVE_IPX
+#ifdef HAS_IPX
         case AF_IPX:
             FIXME("don't know how to tell if IPX socket is bound, assuming it is!\n");
             return TRUE;
@@ -1396,7 +1406,7 @@ static int ws_sockaddr_u2ws(const struct sockaddr* uaddr, struct WS_sockaddr* ws
 
     switch(uaddr->sa_family)
     {
-#ifdef HAVE_IPX
+#ifdef HAS_IPX
     case AF_IPX:
         {
             const struct sockaddr_ipx* uipx=(const struct sockaddr_ipx*)uaddr;
@@ -1436,7 +1446,7 @@ static int ws_sockaddr_u2ws(const struct sockaddr* uaddr, struct WS_sockaddr* ws
         }
         break;
 #endif
-#ifdef HAVE_IRDA
+#ifdef HAS_IRDA
     case AF_IRDA: {
         const struct sockaddr_irda *uin = (const struct sockaddr_irda *)uaddr;
         SOCKADDR_IRDA *win = (SOCKADDR_IRDA *)wsaddr;
@@ -1772,12 +1782,12 @@ static int WS2_send( int fd, struct ws2_async *wsa )
             return -1;
         }
 
-#if defined(HAVE_IPX) && defined(SOL_IPX)
+#if defined(HAS_IPX) && defined(SOL_IPX)
         if(wsa->addr->sa_family == WS_AF_IPX)
         {
             struct sockaddr_ipx* uipx = (struct sockaddr_ipx*)hdr.msg_name;
             int val=0;
-            unsigned int len=sizeof(int);
+            socklen_t len = sizeof(int);
 
             /* The packet type is stored at the ipx socket level; At least the linux kernel seems
              *  to do something with it in case hdr.msg_name is NULL. Nonetheless can we use it to store
@@ -1951,7 +1961,12 @@ SOCKET WINAPI WS_accept(SOCKET s, struct WS_sockaddr *addr,
     BOOL is_blocking;
 
     TRACE("socket %04lx\n", s );
-    is_blocking = _is_blocking(s);
+    status = _is_blocking(s, &is_blocking);
+    if (status)
+    {
+        set_error(status);
+        return INVALID_SOCKET;
+    }
 
     do {
         /* try accepting first (if there is a deferred connection) */
@@ -2148,7 +2163,8 @@ static int WINAPI WS2_WSARecvMsg( SOCKET s, LPWSAMSG msg, LPDWORD lpNumberOfByte
 static BOOL interface_bind( SOCKET s, int fd, struct sockaddr *addr )
 {
     struct sockaddr_in *in_sock = (struct sockaddr_in *) addr;
-    unsigned int sock_type = 0, optlen = sizeof(sock_type);
+    unsigned int sock_type = 0;
+    socklen_t optlen = sizeof(sock_type);
     in_addr_t bind_addr = in_sock->sin_addr.s_addr;
     PIP_ADAPTER_INFO adapters = NULL, adapter;
     BOOL ret = FALSE;
@@ -2185,6 +2201,7 @@ static BOOL interface_bind( SOCKET s, int fd, struct sockaddr *addr )
                 goto cleanup; /* Failed to suggest egress interface */
             specific_interface_filter = generic_interface_filter;
             specific_interface_filter.iface_rule.k = adapter->Index;
+            specific_interface_filter.ip_rule.k = htonl(adapter_addr);
             filter_prog.len = sizeof(generic_interface_filter)/sizeof(struct sock_filter);
             filter_prog.filter = (struct sock_filter *) &specific_interface_filter;
             if (setsockopt(fd, SOL_SOCKET, SO_ATTACH_FILTER, &filter_prog, sizeof(filter_prog)) != 0)
@@ -2341,6 +2358,8 @@ int WINAPI WS_connect(SOCKET s, const struct WS_sockaddr* name, int namelen)
 
     if (fd != -1)
     {
+        NTSTATUS status;
+        BOOL is_blocking;
         int ret = do_connect(fd, name, namelen);
         if (ret == 0)
             goto connect_success;
@@ -2351,7 +2370,14 @@ int WINAPI WS_connect(SOCKET s, const struct WS_sockaddr* name, int namelen)
             _enable_event(SOCKET2HANDLE(s), FD_CONNECT|FD_READ|FD_WRITE,
                           FD_CONNECT,
                           FD_WINE_CONNECTED|FD_WINE_LISTENING);
-            if (_is_blocking(s))
+            status = _is_blocking( s, &is_blocking );
+            if (status)
+            {
+                release_sock_fd( s, fd );
+                set_error( status );
+                return SOCKET_ERROR;
+            }
+            if (is_blocking)
             {
                 int result;
                 /* block here */
@@ -2523,7 +2549,7 @@ int WINAPI WS_getpeername(SOCKET s, struct WS_sockaddr *name, int *namelen)
     if (fd != -1)
     {
         union generic_unix_sockaddr uaddr;
-        unsigned int uaddrlen = sizeof(uaddr);
+        socklen_t uaddrlen = sizeof(uaddr);
 
         if (getpeername(fd, &uaddr.addr, &uaddrlen) == 0)
         {
@@ -2565,7 +2591,7 @@ int WINAPI WS_getsockname(SOCKET s, struct WS_sockaddr *name, int *namelen)
     if (fd != -1)
     {
         union generic_unix_sockaddr uaddr;
-        unsigned int uaddrlen = sizeof(uaddr);
+        socklen_t uaddrlen = sizeof(uaddr);
 
         if (getsockname(fd, &uaddr.addr, &uaddrlen) != 0)
         {
@@ -2622,7 +2648,7 @@ INT WINAPI WS_getsockopt(SOCKET s, INT level,
             if ( (fd = get_sock_fd( s, 0, NULL )) == -1)
                 return SOCKET_ERROR;
             convert_sockopt(&level, &optname);
-            if (getsockopt(fd, level, optname, optval, (unsigned int *)optlen) != 0 )
+            if (getsockopt(fd, level, optname, optval, (socklen_t *)optlen) != 0 )
             {
                 SetLastError((errno == EBADF) ? WSAENOTSOCK : wsaErrno());
                 ret = SOCKET_ERROR;
@@ -2633,7 +2659,7 @@ INT WINAPI WS_getsockopt(SOCKET s, INT level,
         case WS_SO_DONTLINGER:
         {
             struct linger lingval;
-            unsigned int len = sizeof(struct linger);
+            socklen_t len = sizeof(struct linger);
 
             if (!optlen || *optlen < sizeof(BOOL)|| !optval)
             {
@@ -2695,7 +2721,7 @@ INT WINAPI WS_getsockopt(SOCKET s, INT level,
         {
             struct linger lingval;
             int so_type;
-            unsigned int len = sizeof(struct linger), slen = sizeof(int);
+            socklen_t len = sizeof(struct linger), slen = sizeof(int);
 
             /* struct linger and LINGER have different sizes */
             if (!optlen || *optlen < sizeof(LINGER) || !optval)
@@ -2759,7 +2785,7 @@ INT WINAPI WS_getsockopt(SOCKET s, INT level,
 #if defined(SO_RCVTIMEO) || defined(SO_SNDTIMEO)
         {
             struct timeval tv;
-            unsigned int len = sizeof(struct timeval);
+            socklen_t len = sizeof(struct timeval);
 
             if (!optlen || *optlen < sizeof(int)|| !optval)
             {
@@ -2791,7 +2817,7 @@ INT WINAPI WS_getsockopt(SOCKET s, INT level,
             return SOCKET_ERROR;
         } /* end switch(optname) */
     }/* end case WS_SOL_SOCKET */
-#ifdef HAVE_IPX
+#ifdef HAS_IPX
     case NSPROTO_IPX:
     {
         struct WS_sockaddr_ipx addr;
@@ -2802,7 +2828,7 @@ INT WINAPI WS_getsockopt(SOCKET s, INT level,
         case IPX_PTYPE:
             if ((fd = get_sock_fd( s, 0, NULL )) == -1) return SOCKET_ERROR;
 #ifdef SOL_IPX
-            if(getsockopt(fd, SOL_IPX, IPX_TYPE, optval, (unsigned int*)optlen) == -1)
+            if(getsockopt(fd, SOL_IPX, IPX_TYPE, optval, (socklen_t *)optlen) == -1)
             {
                 ret = SOCKET_ERROR;
             }
@@ -2857,7 +2883,7 @@ INT WINAPI WS_getsockopt(SOCKET s, INT level,
     } /* end case NSPROTO_IPX */
 #endif
 
-#ifdef HAVE_IRDA
+#ifdef HAS_IRDA
     case WS_SOL_IRLMP:
         switch(optname)
         {
@@ -2881,7 +2907,8 @@ INT WINAPI WS_getsockopt(SOCKET s, INT level,
             {
                 struct irda_device_list *src = (struct irda_device_list *)buf;
                 DEVICELIST *dst = (DEVICELIST *)optval;
-                INT needed = sizeof(DEVICELIST), i;
+                INT needed = sizeof(DEVICELIST);
+                unsigned int i;
 
                 if (src->len > 0)
                     needed += (src->len - 1) * sizeof(IRDA_DEVICE_INFO);
@@ -2931,7 +2958,7 @@ INT WINAPI WS_getsockopt(SOCKET s, INT level,
             if ( (fd = get_sock_fd( s, 0, NULL )) == -1)
                 return SOCKET_ERROR;
             convert_sockopt(&level, &optname);
-            if (getsockopt(fd, level, optname, optval, (unsigned int *)optlen) != 0 )
+            if (getsockopt(fd, level, optname, optval, (socklen_t *)optlen) != 0 )
             {
                 SetLastError((errno == EBADF) ? WSAENOTSOCK : wsaErrno());
                 ret = SOCKET_ERROR;
@@ -2965,7 +2992,7 @@ INT WINAPI WS_getsockopt(SOCKET s, INT level,
             if ( (fd = get_sock_fd( s, 0, NULL )) == -1)
                 return SOCKET_ERROR;
             convert_sockopt(&level, &optname);
-            if (getsockopt(fd, level, optname, optval, (unsigned int *)optlen) != 0 )
+            if (getsockopt(fd, level, optname, optval, (socklen_t *)optlen) != 0 )
             {
                 SetLastError((errno == EBADF) ? WSAENOTSOCK : wsaErrno());
                 ret = SOCKET_ERROR;
@@ -3000,7 +3027,7 @@ INT WINAPI WS_getsockopt(SOCKET s, INT level,
             if ( (fd = get_sock_fd( s, 0, NULL )) == -1)
                 return SOCKET_ERROR;
             convert_sockopt(&level, &optname);
-            if (getsockopt(fd, level, optname, optval, (unsigned int *)optlen) != 0 )
+            if (getsockopt(fd, level, optname, optval, (socklen_t *)optlen) != 0 )
             {
                 SetLastError((errno == EBADF) ? WSAENOTSOCK : wsaErrno());
                 ret = SOCKET_ERROR;
@@ -3245,7 +3272,8 @@ INT WINAPI WSAIoctl(SOCKET s, DWORD code, LPVOID in_buff, DWORD in_size, LPVOID 
 
     case WS_SIOCATMARK:
     {
-        unsigned int oob = 0, oobsize = sizeof(int), atmark = 0;
+        unsigned int oob = 0, atmark = 0;
+        socklen_t oobsize = sizeof(int);
         if (out_size != sizeof(WS_u_long) || IS_INTRESOURCE(out_buff))
         {
             WSASetLastError(WSAEFAULT);
@@ -3963,6 +3991,7 @@ static int WS2_sendto( SOCKET s, LPWSABUF lpBuffers, DWORD dwBufferCount,
     int totalLength = 0;
     ULONG_PTR cvalue = (lpOverlapped && ((ULONG_PTR)lpOverlapped->hEvent & 1) == 0) ? (ULONG_PTR)lpOverlapped : 0;
     DWORD bytes_sent;
+    BOOL is_blocking;
 
     TRACE("socket %04lx, wsabuf %p, nbufs %d, flags %d, to %p, tolen %d, ovl %p, func %p\n",
           s, lpBuffers, dwBufferCount, dwFlags,
@@ -4061,7 +4090,13 @@ static int WS2_sendto( SOCKET s, LPWSABUF lpBuffers, DWORD dwBufferCount,
         return 0;
     }
 
-    if ( _is_blocking(s) )
+    if ((err = _is_blocking( s, &is_blocking )))
+    {
+        err = NtStatusToWSAError( err );
+        goto error;
+    }
+
+    if ( is_blocking )
     {
         /* On a blocking non-overlapped stream socket,
          * sending blocks until the entire buffer is sent. */
@@ -4318,7 +4353,7 @@ int WINAPI WS_setsockopt(SOCKET s, int level, int optname,
         }
         break; /* case WS_SOL_SOCKET */
 
-#ifdef HAVE_IPX
+#ifdef HAS_IPX
     case NSPROTO_IPX:
         switch(optname)
         {
@@ -4604,6 +4639,7 @@ struct WS_hostent* WINAPI WS_gethostbyaddr(const char *addr, int len, int type)
 static struct WS_hostent* WS_get_local_ips( char *hostname )
 {
     int last_metric, numroutes = 0, i, j;
+    DWORD n;
     PIP_ADAPTER_INFO adapters = NULL, k;
     struct WS_hostent *hostlist = NULL;
     PMIB_IPFORWARDTABLE routes = NULL;
@@ -4626,15 +4662,15 @@ static struct WS_hostent* WS_get_local_ips( char *hostname )
     if (GetIpForwardTable(routes, &route_size, FALSE) != NO_ERROR)
         goto cleanup;
     /* Store the interface associated with each route */
-    for (i = 0; i < routes->dwNumEntries; i++)
+    for (n = 0; n < routes->dwNumEntries; n++)
     {
         IF_INDEX ifindex;
         DWORD ifmetric, exists = FALSE;
 
-        if (routes->table[i].u1.ForwardType != MIB_IPROUTE_TYPE_DIRECT)
+        if (routes->table[n].u1.ForwardType != MIB_IPROUTE_TYPE_DIRECT)
             continue;
-        ifindex = routes->table[i].dwForwardIfIndex;
-        ifmetric = routes->table[i].dwForwardMetric1;
+        ifindex = routes->table[n].dwForwardIfIndex;
+        ifmetric = routes->table[n].dwForwardMetric1;
         /* Only store the lowest valued metric for an interface */
         for (j = 0; j < numroutes; j++)
         {
@@ -5855,6 +5891,7 @@ static int WS2_recv_base( SOCKET s, LPWSABUF lpBuffers, DWORD dwBufferCount,
     unsigned int i, options;
     int n, fd, err;
     struct ws2_async *wsa;
+    BOOL is_blocking;
     DWORD timeout_start = GetTickCount();
     ULONG_PTR cvalue = (lpOverlapped && ((ULONG_PTR)lpOverlapped->hEvent & 1) == 0) ? (ULONG_PTR)lpOverlapped : 0;
 
@@ -5958,7 +5995,13 @@ static int WS2_recv_base( SOCKET s, LPWSABUF lpBuffers, DWORD dwBufferCount,
 
         if (n != -1) break;
 
-        if ( _is_blocking(s) )
+        if ((err = _is_blocking( s, &is_blocking )))
+        {
+            err = NtStatusToWSAError( err );
+            goto error;
+        }
+
+        if ( is_blocking )
         {
             struct pollfd pfd;
             int timeout = GET_RCVTIMEO(fd);

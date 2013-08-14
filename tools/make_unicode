@@ -24,12 +24,14 @@ use strict;
 # base URLs for www.unicode.org files
 my $MAPPINGS = "http://www.unicode.org/Public/MAPPINGS";
 my $UNIDATA = "http://www.unicode.org/Public/6.0.0/ucd";
+my $REPORTS = "http://www.unicode.org/reports";
+my $RFCS = "http://www.rfc-editor.org/rfc";
 
 # Sort keys file
-my $SORTKEYS = "http://www.unicode.org/reports/tr10/allkeys.txt";
+my $SORTKEYS = "tr10/allkeys.txt";
 
 # RFC3454 (stringprep data)
-my $STRINGPREP = "http://www.rfc-editor.org/rfc/rfc3454.txt";
+my $STRINGPREP = "rfc3454.txt";
 
 # Defaults mapping
 my $DEFAULTS = "tools/unicode-defaults";
@@ -78,11 +80,19 @@ my @allfiles =
     [ 1258,  "VENDORS/MICSFT/WindowsBestFit/bestfit1258.txt", 0, "ANSI/OEM Viet Nam" ],
     [ 1361,  "OBSOLETE/EASTASIA/KSC/JOHAB.TXT",   0, "Korean Johab" ],
     [ 10000, "VENDORS/MICSFT/MAC/ROMAN.TXT",      0, "Mac Roman" ],
+    [ 10001, "VENDORS/APPLE/JAPANESE.TXT",        0, "Mac Japanese" ],
+    [ 10002, "VENDORS/APPLE/CHINTRAD.TXT",        0, "Mac Traditional Chinese" ],
+    [ 10003, "VENDORS/APPLE/KOREAN.TXT",          0, "Mac Korean" ],
     [ 10006, "VENDORS/MICSFT/MAC/GREEK.TXT",      0, "Mac Greek" ],
     [ 10007, "VENDORS/MICSFT/MAC/CYRILLIC.TXT",   0, "Mac Cyrillic" ],
+    [ 10008, "VENDORS/APPLE/CHINSIMP.TXT",        0, "Mac Simplified Chinese" ],
+    [ 10010, "VENDORS/APPLE/ROMANIAN.TXT",        0, "Mac Romanian" ],
+    [ 10017, "VENDORS/APPLE/CYRILLIC.TXT",        0, "Mac Ukrainian" ],
+    [ 10021, "VENDORS/APPLE/THAI.TXT",            0, "Mac Thai" ],
     [ 10029, "VENDORS/MICSFT/MAC/LATIN2.TXT",     0, "Mac Latin 2" ],
     [ 10079, "VENDORS/MICSFT/MAC/ICELAND.TXT",    0, "Mac Icelandic" ],
     [ 10081, "VENDORS/MICSFT/MAC/TURKISH.TXT",    0, "Mac Turkish" ],
+    [ 10082, "VENDORS/APPLE/CROATIAN.TXT",        0, "Mac Croatian" ],
     [ 20127, undef,                               0, "US-ASCII (7bit)" ],
     [ 20866, "VENDORS/MISC/KOI8-R.TXT",           0, "Russian KOI8" ],
     [ 20932, "OBSOLETE/EASTASIA/JIS/JIS0208.TXT", 0, "EUC-JP" ],
@@ -308,6 +318,8 @@ my @joining_table = (0) x 65536;
 my @direction_table = ();
 my @decomp_table = ();
 my @compose_table = ();
+my $default_char;
+my $default_wchar;
 
 my %joining_forms =
 (
@@ -319,16 +331,16 @@ my %joining_forms =
 
 ################################################################
 # fetch a unicode.org file and open it
-sub open_data_file($)
+sub open_data_file($$)
 {
-    my $url = shift;
-    (my $name = $url) =~ s/^.*\///;
+    my ($base, $name) = @_;
+    (my $dir = "data/$name") =~ s/\/[^\/]+$//;
     local *FILE;
     unless (-f "data/$name")
     {
-        print "Fetching $url...\n";
-        mkdir "data";
-        !system "wget", "-q", "-O", "data/$name", $url or die "cannot fetch $url";
+        print "Fetching $base/$name...\n";
+        system "mkdir", "-p", $dir;
+        !system "wget", "-q", "-O", "data/$name", "$base/$name" or die "cannot fetch $base/$name";
     }
     open FILE, "<data/$name" or die "cannot open data/$name";
     return *FILE;
@@ -370,7 +382,7 @@ sub READ_DEFAULTS($)
 
     # now build mappings from the decomposition field of the Unicode database
 
-    my $UNICODE_DATA = open_data_file "$UNIDATA/UnicodeData.txt";
+    my $UNICODE_DATA = open_data_file( $UNIDATA, "UnicodeData.txt" );
     while (<$UNICODE_DATA>)
     {
 	# Decode the fields ...
@@ -493,11 +505,33 @@ sub READ_DEFAULTS($)
 
 
 ################################################################
-# parse the input file
-sub READ_FILE($)
+# define a new lead byte
+sub add_lead_byte($)
+{
+    my $ch = shift;
+    push @lead_bytes, $ch;
+    $cp2uni[$ch] = 0;
+}
+
+################################################################
+# define a new char mapping
+sub add_mapping($$)
+{
+    my ($cp, $uni) = @_;
+    $cp2uni[$cp] = $uni unless defined($cp2uni[$cp]);
+    $uni2cp[$uni] = $cp unless defined($uni2cp[$uni]);
+    if ($cp > 0xff && !defined($cp2uni[$cp >> 8]))
+    {
+        add_lead_byte( $cp >> 8 );
+    }
+}
+
+################################################################
+# parse a standard codepage file
+sub read_codepage_file($)
 {
     my $name = shift;
-    my $INPUT = open_data_file $name;
+    my $INPUT = open_data_file( $MAPPINGS, $name );
 
     while (<$INPUT>)
     {
@@ -508,22 +542,25 @@ sub READ_FILE($)
 
         if (/^0x([0-9a-fA-F]+)\s+\#DBCS LEAD BYTE/)
         {
-            my $cp = hex $1;
-            push @lead_bytes,$cp;
-            $cp2uni[$cp] = 0;
+            add_lead_byte( hex $1 );
             next;
         }
+        # 0x12 0x3456
         if (/^0x([0-9a-fA-F]+)\s+0x([0-9a-fA-F]+)\s+(\#.*)?/)
         {
-            my $cp = hex $1;
-            my $uni = hex $2;
-            $cp2uni[$cp] = $uni unless defined($cp2uni[$cp]);
-            $uni2cp[$uni] = $cp unless defined($uni2cp[$uni]);
-            if ($cp > 0xff && !defined($cp2uni[$cp >> 8]))
-            {
-                push @lead_bytes,$cp >> 8;
-                $cp2uni[$cp >> 8] = 0;
-            }
+            add_mapping( hex $1, hex $2 );
+            next;
+        }
+        # 0x12 0x3456+0x7890
+        if (/^0x([0-9a-fA-F]+)\s+0x([0-9a-fA-F]+)\+.*\s+(\#.*)?/)
+        {
+            add_mapping( hex $1, hex $2 );
+            next;
+        }
+        # 0x12 <LR>+0x3456
+        if (/^0x([0-9a-fA-F]+)\s+<[LR]+>\+0x([0-9a-fA-F]+)\s+(\#.*)?/)
+        {
+            add_mapping( hex $1, hex $2 );
             next;
         }
         die "$name: Unrecognized line $_\n";
@@ -623,7 +660,7 @@ sub READ_JIS0208_FILE($)
     $cp2uni[0xa1c0] = 0xff3c;
     $uni2cp[0xff3c] = 0xa1c0;
 
-    my $INPUT = open_data_file $name;
+    my $INPUT = open_data_file( $MAPPINGS, $name );
     while (<$INPUT>)
     {
         next if /^\#/;  # skip comments
@@ -650,7 +687,7 @@ sub READ_SORTKEYS_FILE()
     my @sortkeys = ();
     for (my $i = 0; $i < 65536; $i++) { $sortkeys[$i] = [ -1, 0, 0, 0, 0 ] };
 
-    my $INPUT = open_data_file $SORTKEYS;
+    my $INPUT = open_data_file( $REPORTS, $SORTKEYS );
     while (<$INPUT>)
     {
         next if /^\#/;  # skip comments
@@ -757,7 +794,7 @@ sub DUMP_SORTKEYS($@)
     open OUTPUT,">$filename.new" or die "Cannot create $filename";
     printf "Building $filename\n";
     printf OUTPUT "/* Unicode collation element table */\n";
-    printf OUTPUT "/* generated from %s */\n", $SORTKEYS;
+    printf OUTPUT "/* generated from %s */\n", "$REPORTS/$SORTKEYS";
     printf OUTPUT "/* DO NOT EDIT!! */\n\n";
 
     printf OUTPUT "const unsigned int collation_table[%d] =\n{\n", $ranges*256;
@@ -1062,7 +1099,7 @@ sub dump_indic($)
     my $filename = shift;
     my @indic_table = ($indic_types{'Other'}) x 65536;;
 
-    my $INPUT = open_data_file "$UNIDATA/IndicSyllabicCategory.txt";
+    my $INPUT = open_data_file( $UNIDATA, "IndicSyllabicCategory.txt" );
     while (<$INPUT>)
     {
         next if /^\#/;  # skip comments
@@ -1095,7 +1132,7 @@ sub dump_indic($)
     }
     close $INPUT;
 
-    $INPUT = open_data_file "$UNIDATA/IndicMatraCategory.txt";
+    $INPUT = open_data_file( $UNIDATA, "IndicMatraCategory.txt" );
     while (<$INPUT>)
     {
         next if /^\#/;  # skip comments
@@ -1144,7 +1181,7 @@ sub dump_linebreak($)
     my @break_table = ($break_types{'XX'}) x 65536;;
     my $next_group = 0;
 
-    my $INPUT = open_data_file "$UNIDATA/LineBreak.txt";
+    my $INPUT = open_data_file( $UNIDATA, "LineBreak.txt" );
     while (<$INPUT>)
     {
         next if /^\#/;  # skip comments
@@ -1192,7 +1229,7 @@ sub dump_mirroring($)
     my $filename = shift;
     my @mirror_table = ();
 
-    my $INPUT = open_data_file "$UNIDATA/BidiMirroring.txt";
+    my $INPUT = open_data_file( $UNIDATA, "BidiMirroring.txt" );
     while (<$INPUT>)
     {
         next if /^\#/;  # skip comments
@@ -1229,7 +1266,7 @@ sub dump_shaping($)
 
     $groups{"No_Joining_Group"} = $next_group++;
 
-    my $INPUT = open_data_file "$UNIDATA/ArabicShaping.txt";
+    my $INPUT = open_data_file( $UNIDATA, "ArabicShaping.txt" );
     while (<$INPUT>)
     {
         next if /^\#/;  # skip comments
@@ -1572,7 +1609,7 @@ sub dump_nameprep($)
     my @mapping_table = ();
     my @flags_table = (0) x 65536;
 
-    my $INPUT = open_data_file $STRINGPREP;
+    my $INPUT = open_data_file( $RFCS, $STRINGPREP );
     while (<$INPUT>)
     {
         next unless /Start\sTable/;
@@ -1598,7 +1635,7 @@ sub dump_nameprep($)
     open OUTPUT,">$filename.new" or die "Cannot create $filename";
     print "Building $filename\n";
     print OUTPUT "/* Nameprep algorithm related data */\n";
-    print OUTPUT "/* generated from $STRINGPREP */\n";
+    print OUTPUT "/* generated from $RFCS/$STRINGPREP */\n";
     print OUTPUT "/* DO NOT EDIT!! */\n\n";
     print OUTPUT "#include \"wine/unicode.h\"\n\n";
 
@@ -1845,19 +1882,47 @@ sub DUMP_COMPOSE_TABLES($)
     save_file($filename);
 }
 
+################################################################
+# output a codepage definition file from the global tables
+sub output_codepage_file($$$$)
+{
+    my ($codepage, $filename, $comment, $has_glyphs) = @_;
+
+    my $output = sprintf "libs/wine/c_%03d.c", $codepage;
+    open OUTPUT,">$output.new" or die "Cannot create $output";
+
+    printf "Building %s from %s (%s)\n", $output, $filename || "hardcoded data", $comment;
+
+    # dump all tables
+
+    printf OUTPUT "/* code page %03d (%s) */\n", $codepage, $comment;
+    if ($filename)
+    {
+        print OUTPUT "/* generated from $MAPPINGS/$filename */\n";
+        print OUTPUT "/* DO NOT EDIT!! */\n\n";
+    }
+    else
+    {
+        printf OUTPUT "/* Automatically generated; DO NOT EDIT!! */\n\n";
+    }
+    printf OUTPUT "#include \"wine/unicode.h\"\n\n";
+
+    if (!@lead_bytes) { dump_sbcs_table( $codepage, $has_glyphs, $comment, $default_char, $default_wchar ); }
+    else { dump_dbcs_table( $codepage, $comment, $default_char, $default_wchar, get_lb_ranges() ); }
+    close OUTPUT;
+    save_file($output);
+}
 
 ################################################################
-# handle a "bestfit" Windows mapping file
-
-sub handle_bestfit_file($$$)
+# read a "bestfit" Windows mapping file
+sub read_bestfit_file($)
 {
-    my ($filename, $has_glyphs, $comment) = @_;
+    my ($filename) = @_;
     my $state = "";
-    my ($codepage, $width, $def, $defw, $count);
+    my ($codepage, $width, $count);
     my ($lb_cur, $lb_end);
-    my @lb_ranges = ();
 
-    my $INPUT = open_data_file "$MAPPINGS/$filename" or die "Cannot open $filename";
+    my $INPUT = open_data_file( $MAPPINGS, $filename ) or die "Cannot open $filename";
 
     while (<$INPUT>)
     {
@@ -1874,8 +1939,8 @@ sub handle_bestfit_file($$$)
         if (/^CPINFO\s+(\d+)\s+0x([0-9a-fA-f]+)\s+0x([0-9a-fA-F]+)/)
         {
             $width = $1;
-            $def = hex $2;
-            $defw = hex $3;
+            $default_char = hex $2;
+            $default_wchar = hex $3;
             next;
         }
         if (/^(MBTABLE|WCTABLE|DBCSRANGE|DBCSTABLE)\s+(\d+)/)
@@ -1904,12 +1969,7 @@ sub handle_bestfit_file($$$)
             {
                 my $start = hex $1;
                 my $end = hex $2;
-                push @lb_ranges, $start, $end;
-                for (my $i = $start; $i <= $end; $i++)
-                {
-                    push @lead_bytes, $i;
-                    $cp2uni[$i] = 0;
-                }
+                for (my $i = $start; $i <= $end; $i++) { add_lead_byte( $i ); }
                 $lb_cur = $start;
                 $lb_end = $end;
                 next;
@@ -1930,23 +1990,6 @@ sub handle_bestfit_file($$$)
         die "$filename: Unrecognized line $_\n";
     }
     close $INPUT;
-
-    my $output = sprintf "libs/wine/c_%03d.c", $codepage;
-    open OUTPUT,">$output.new" or die "Cannot create $output";
-
-    printf "Building %s from %s (%s)\n", $output, $filename, $comment;
-
-    # dump all tables
-
-    printf OUTPUT "/* code page %03d (%s) */\n", $codepage, $comment;
-    printf OUTPUT "/* generated from $MAPPINGS/$filename */\n";
-    printf OUTPUT "/* DO NOT EDIT!! */\n\n";
-    printf OUTPUT "#include \"wine/unicode.h\"\n\n";
-
-    if ($width == 1) { dump_sbcs_table( $codepage, $has_glyphs, $comment, $def, $defw ); }
-    else { dump_dbcs_table( $codepage, $comment, $def, $defw, @lb_ranges ); }
-    close OUTPUT;
-    save_file($output);
 }
 
 
@@ -1954,47 +1997,42 @@ sub handle_bestfit_file($$$)
 # read an input file and generate the corresponding .c file
 sub HANDLE_FILE(@)
 {
-    my ($codepage,$filename,$has_glyphs,$comment) = @_;
+    my ($codepage,$filename,$has_glyphs,$comment,$def,$defw) = @_;
 
     @cp2uni = ();
     @lead_bytes = ();
     @uni2cp = ();
+    $default_char = $def || $DEF_CHAR;
+    $default_wchar = $defw || $DEF_CHAR;
 
-    # symbol codepage file is special
-    if ($codepage == 20932) { READ_JIS0208_FILE "$MAPPINGS/$filename"; }
-    elsif ($codepage == 20127) { fill_20127_codepage(); }
+    # some codepage files are special
+    if ($codepage == 20932)
+    {
+        READ_JIS0208_FILE( $filename );
+        ADD_DEFAULT_MAPPINGS();
+    }
+    elsif ($codepage == 20127)
+    {
+        fill_20127_codepage();
+        ADD_DEFAULT_MAPPINGS();
+    }
     elsif ($filename =~ /\/bestfit/)
     {
-        handle_bestfit_file( $filename, $has_glyphs, $comment );
-        return;
+        read_bestfit_file( $filename );
     }
-    else { READ_FILE "$MAPPINGS/$filename"; }
-
-    ADD_DEFAULT_MAPPINGS();
-
-    my $output = sprintf "libs/wine/c_%03d.c", $codepage;
-    open OUTPUT,">$output.new" or die "Cannot create $output";
-
-    printf "Building %s from %s (%s)\n", $output, $filename || "hardcoded data", $comment;
-
-    # dump all tables
-
-    printf OUTPUT "/* code page %03d (%s) */\n", $codepage, $comment;
-    if ($filename)
+    elsif ($codepage == 10001)
     {
-        print OUTPUT "/* generated from $MAPPINGS/$filename */\n";
-        print OUTPUT "/* DO NOT EDIT!! */\n\n";
+        read_codepage_file( $filename );
+        # add Shift-JIS mappings
+        read_bestfit_file( "VENDORS/MICSFT/WindowsBestFit/bestfit932.txt" );
     }
     else
     {
-        printf OUTPUT "/* Automatically generated; DO NOT EDIT!! */\n\n";
+        read_codepage_file( $filename );
+        ADD_DEFAULT_MAPPINGS();
     }
-    printf OUTPUT "#include \"wine/unicode.h\"\n\n";
 
-    if (!@lead_bytes) { dump_sbcs_table( $codepage, $has_glyphs, $comment, $DEF_CHAR, $DEF_CHAR ); }
-    else { dump_dbcs_table( $codepage, $comment, $DEF_CHAR, $DEF_CHAR, get_lb_ranges() ); }
-    close OUTPUT;
-    save_file($output);
+    output_codepage_file( $codepage, $filename, $comment, $has_glyphs );
 }
 
 

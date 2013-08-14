@@ -503,24 +503,26 @@ static BOOL CRYPT_GetObjectFromCache(LPCWSTR pszURL, PCRYPT_BLOB_ARRAY pObject,
 
     TRACE("(%s, %p, %p)\n", debugstr_w(pszURL), pObject, pAuxInfo);
 
-    ret = GetUrlCacheEntryInfoW(pszURL, NULL, &size);
-    if (!ret && GetLastError() == ERROR_INSUFFICIENT_BUFFER)
+    RetrieveUrlCacheEntryFileW(pszURL, NULL, &size, 0);
+    if (GetLastError() != ERROR_INSUFFICIENT_BUFFER)
+        return FALSE;
+
+    pCacheInfo = CryptMemAlloc(size);
+    if (!pCacheInfo)
     {
-        pCacheInfo = CryptMemAlloc(size);
-        if (pCacheInfo)
-            ret = TRUE;
-        else
-            SetLastError(ERROR_OUTOFMEMORY);
+        SetLastError(ERROR_OUTOFMEMORY);
+        return FALSE;
     }
-    if (ret && (ret = GetUrlCacheEntryInfoW(pszURL, pCacheInfo, &size)))
+
+    if ((ret = RetrieveUrlCacheEntryFileW(pszURL, pCacheInfo, &size, 0)))
     {
         FILETIME ft;
 
         GetSystemTimeAsFileTime(&ft);
         if (CompareFileTime(&pCacheInfo->ExpireTime, &ft) >= 0)
         {
-            HANDLE hFile = CreateFileW(pCacheInfo->lpszLocalFileName,
-             GENERIC_READ, 0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+            HANDLE hFile = CreateFileW(pCacheInfo->lpszLocalFileName, GENERIC_READ,
+             FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
 
             if (hFile != INVALID_HANDLE_VALUE)
             {
@@ -547,6 +549,7 @@ static BOOL CRYPT_GetObjectFromCache(LPCWSTR pszURL, PCRYPT_BLOB_ARRAY pObject,
             DeleteUrlCacheEntryW(pszURL);
             ret = FALSE;
         }
+        UnlockUrlCacheEntryFileW(pszURL, 0);
     }
     CryptMemFree(pCacheInfo);
     TRACE("returning %d\n", ret);
@@ -938,19 +941,15 @@ static BOOL WINAPI HTTP_RetrieveEncodedObjectW(LPCWSTR pszURL,
                         else
                             ret = TRUE;
                     }
-                    /* We don't set ret to TRUE in this block to avoid masking
-                     * an error from HttpSendRequestExW.
-                     */
                     if (ret &&
-                     !HttpEndRequestW(hHttp, NULL, 0, (DWORD_PTR)context) &&
+                     !(ret = HttpEndRequestW(hHttp, NULL, 0, (DWORD_PTR)context)) &&
                      GetLastError() == ERROR_IO_PENDING)
                     {
                         if (WaitForSingleObject(context->event,
                          context->timeout) == WAIT_TIMEOUT)
-                        {
                             SetLastError(ERROR_TIMEOUT);
-                            ret = FALSE;
-                        }
+                        else
+                            ret = TRUE;
                     }
                     if (ret)
                         ret = CRYPT_DownloadObject(dwRetrievalFlags, hHttp,
@@ -958,18 +957,12 @@ static BOOL WINAPI HTTP_RetrieveEncodedObjectW(LPCWSTR pszURL,
                     if (ret && !(dwRetrievalFlags & CRYPT_DONT_CACHE_RESULT))
                     {
                         SYSTEMTIME st;
+                        FILETIME ft;
                         DWORD len = sizeof(st);
 
-                        if (HttpQueryInfoW(hHttp,
-                         HTTP_QUERY_EXPIRES | HTTP_QUERY_FLAG_SYSTEMTIME, &st,
-                         &len, NULL))
-                        {
-                            FILETIME ft;
-
-                            SystemTimeToFileTime(&st, &ft);
-                            CRYPT_CacheURL(pszURL, pObject, dwRetrievalFlags,
-                             ft);
-                        }
+                        if (HttpQueryInfoW(hHttp, HTTP_QUERY_EXPIRES | HTTP_QUERY_FLAG_SYSTEMTIME,
+                                    &st, &len, NULL) && SystemTimeToFileTime(&st, &ft))
+                            CRYPT_CacheURL(pszURL, pObject, dwRetrievalFlags, ft);
                     }
                     InternetCloseHandle(hHttp);
                 }
@@ -1029,8 +1022,8 @@ static BOOL WINAPI File_RetrieveEncodedObjectW(LPCWSTR pszURL,
             /* Try to create the file directly - Wine handles / in pathnames */
             lstrcpynW(path, components.lpszUrlPath,
              components.dwUrlPathLength + 1);
-            hFile = CreateFileW(path, GENERIC_READ, 0, NULL, OPEN_EXISTING,
-             FILE_ATTRIBUTE_NORMAL, NULL);
+            hFile = CreateFileW(path, GENERIC_READ, FILE_SHARE_READ,
+             NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
             if (hFile == INVALID_HANDLE_VALUE)
             {
                 /* Try again on the current drive */
@@ -1039,8 +1032,8 @@ static BOOL WINAPI File_RetrieveEncodedObjectW(LPCWSTR pszURL,
                 {
                     lstrcpynW(path + 2, components.lpszUrlPath,
                      components.dwUrlPathLength + 1);
-                    hFile = CreateFileW(path, GENERIC_READ, 0, NULL,
-                     OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+                    hFile = CreateFileW(path, GENERIC_READ, FILE_SHARE_READ,
+                     NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
                 }
                 if (hFile == INVALID_HANDLE_VALUE)
                 {
@@ -1050,8 +1043,8 @@ static BOOL WINAPI File_RetrieveEncodedObjectW(LPCWSTR pszURL,
                     {
                         lstrcpynW(path + 2, components.lpszUrlPath,
                          components.dwUrlPathLength + 1);
-                        hFile = CreateFileW(path, GENERIC_READ, 0, NULL,
-                         OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+                        hFile = CreateFileW(path, GENERIC_READ, FILE_SHARE_READ,
+                         NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
                     }
                 }
             }

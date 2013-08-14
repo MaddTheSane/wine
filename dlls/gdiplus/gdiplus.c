@@ -66,6 +66,7 @@ BOOL WINAPI DllMain(HINSTANCE hinst, DWORD reason, LPVOID reserved)
         break;
 
     case DLL_PROCESS_DETACH:
+        if (reserved) break;
         free_installed_fonts();
         break;
     }
@@ -442,9 +443,9 @@ void convert_32bppARGB_to_32bppPARGB(UINT width, UINT height,
         for (x=0; x<width; x++)
         {
             BYTE alpha=src[3];
-            *dst++ = *src++ * alpha / 255;
-            *dst++ = *src++ * alpha / 255;
-            *dst++ = *src++ * alpha / 255;
+            *dst++ = (*src++ * alpha + 127) / 255;
+            *dst++ = (*src++ * alpha + 127) / 255;
+            *dst++ = (*src++ * alpha + 127) / 255;
             *dst++ = *src++;
         }
     }

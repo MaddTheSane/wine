@@ -25,6 +25,7 @@
 #include "macdrv_cocoa.h"
 #import "cocoa_app.h"
 #import "cocoa_event.h"
+#import "cocoa_opengl.h"
 
 
 /* Additional Mac virtual keycode, to complement those in Carbon's <HIToolbox/Events.h>. */
@@ -117,14 +118,26 @@ static inline void fix_generic_modifiers_by_device(NSUInteger* modifiers)
 }
 
 
-@interface WineContentView : NSView
+@interface WineContentView : NSView <NSTextInputClient>
+{
+    NSMutableArray* glContexts;
+    NSMutableArray* pendingGlContexts;
+
+    NSMutableAttributedString* markedText;
+    NSRange markedTextSelection;
+}
+
+    - (void) addGLContext:(WineOpenGLContext*)context;
+    - (void) removeGLContext:(WineOpenGLContext*)context;
+    - (void) updateGLContexts;
+
 @end
 
 
 @interface WineWindow ()
 
-@property (nonatomic) BOOL disabled;
-@property (nonatomic) BOOL noActivate;
+@property (readwrite, nonatomic) BOOL disabled;
+@property (readwrite, nonatomic) BOOL noActivate;
 @property (readwrite, nonatomic) BOOL floating;
 @property (retain, nonatomic) NSWindow* latentParentWindow;
 
@@ -142,14 +155,23 @@ static inline void fix_generic_modifiers_by_device(NSUInteger* modifiers)
 @property (nonatomic) CGFloat colorKeyRed, colorKeyGreen, colorKeyBlue;
 @property (nonatomic) BOOL usePerPixelAlpha;
 
-@property (readwrite, nonatomic) NSInteger levelWhenActive;
+@property (assign, nonatomic) void* imeData;
+@property (nonatomic) BOOL commandDone;
 
-    + (void) flipRect:(NSRect*)rect;
+    - (void) updateColorSpace;
 
 @end
 
 
 @implementation WineContentView
+
+    - (void) dealloc
+    {
+        [markedText release];
+        [glContexts release];
+        [pendingGlContexts release];
+        [super dealloc];
+    }
 
     - (BOOL) isFlipped
     {
@@ -160,73 +182,101 @@ static inline void fix_generic_modifiers_by_device(NSUInteger* modifiers)
     {
         WineWindow* window = (WineWindow*)[self window];
 
+        for (WineOpenGLContext* context in pendingGlContexts)
+            context.needsUpdate = TRUE;
+        [glContexts addObjectsFromArray:pendingGlContexts];
+        [pendingGlContexts removeAllObjects];
+
+        if ([window contentView] != self)
+            return;
+
         if (window.surface && window.surface_mutex &&
             !pthread_mutex_lock(window.surface_mutex))
         {
             const CGRect* rects;
             int count;
 
-            if (!get_surface_region_rects(window.surface, &rects, &count) || count)
+            if (get_surface_blit_rects(window.surface, &rects, &count) && count)
             {
-                CGRect imageRect;
-                CGImageRef image;
+                CGContextRef context;
+                int i;
 
-                imageRect = NSRectToCGRect(rect);
-                image = create_surface_image(window.surface, &imageRect, FALSE);
+                [window.shape addClip];
 
-                if (image)
+                context = (CGContextRef)[[NSGraphicsContext currentContext] graphicsPort];
+                CGContextSetBlendMode(context, kCGBlendModeCopy);
+
+                for (i = 0; i < count; i++)
                 {
-                    CGContextRef context;
+                    CGRect imageRect;
+                    CGImageRef image;
 
-                    if (rects && count)
+                    imageRect = CGRectIntersection(rects[i], NSRectToCGRect(rect));
+                    image = create_surface_image(window.surface, &imageRect, FALSE);
+
+                    if (image)
                     {
-                        NSBezierPath* surfaceClip = [NSBezierPath bezierPath];
-                        int i;
-                        for (i = 0; i < count; i++)
-                            [surfaceClip appendBezierPathWithRect:NSRectFromCGRect(rects[i])];
-                        [surfaceClip addClip];
-                    }
-
-                    [window.shape addClip];
-
-                    if (window.colorKeyed)
-                    {
-                        CGImageRef maskedImage;
-                        CGFloat components[] = { window.colorKeyRed - 0.5, window.colorKeyRed + 0.5,
-                                                 window.colorKeyGreen - 0.5, window.colorKeyGreen + 0.5,
-                                                 window.colorKeyBlue - 0.5, window.colorKeyBlue + 0.5 };
-                        maskedImage = CGImageCreateWithMaskingColors(image, components);
-                        if (maskedImage)
+                        if (window.colorKeyed)
                         {
-                            CGImageRelease(image);
-                            image = maskedImage;
+                            CGImageRef maskedImage;
+                            CGFloat components[] = { window.colorKeyRed - 0.5, window.colorKeyRed + 0.5,
+                                                     window.colorKeyGreen - 0.5, window.colorKeyGreen + 0.5,
+                                                     window.colorKeyBlue - 0.5, window.colorKeyBlue + 0.5 };
+                            maskedImage = CGImageCreateWithMaskingColors(image, components);
+                            if (maskedImage)
+                            {
+                                CGImageRelease(image);
+                                image = maskedImage;
+                            }
                         }
-                    }
 
-                    context = (CGContextRef)[[NSGraphicsContext currentContext] graphicsPort];
-                    CGContextSetBlendMode(context, kCGBlendModeCopy);
-                    CGContextDrawImage(context, imageRect, image);
+                        CGContextDrawImage(context, imageRect, image);
 
-                    CGImageRelease(image);
-
-                    if (window.shapeChangedSinceLastDraw || window.colorKeyed ||
-                        window.usePerPixelAlpha)
-                    {
-                        window.shapeChangedSinceLastDraw = FALSE;
-                        [window invalidateShadow];
+                        CGImageRelease(image);
                     }
                 }
             }
 
             pthread_mutex_unlock(window.surface_mutex);
         }
+
+        // If the window may be transparent, then we have to invalidate the
+        // shadow every time we draw.  Also, if this is the first time we've
+        // drawn since changing from transparent to opaque.
+        if (![window isOpaque] || window.shapeChangedSinceLastDraw)
+        {
+            window.shapeChangedSinceLastDraw = FALSE;
+            [window invalidateShadow];
+        }
     }
 
-    /* By default, NSView will swallow right-clicks in an attempt to support contextual
-       menus.  We need to bypass that and allow the event to make it to the window. */
-    - (void) rightMouseDown:(NSEvent*)theEvent
+    - (void) addGLContext:(WineOpenGLContext*)context
     {
-        [[self window] rightMouseDown:theEvent];
+        if (!glContexts)
+            glContexts = [[NSMutableArray alloc] init];
+        if (!pendingGlContexts)
+            pendingGlContexts = [[NSMutableArray alloc] init];
+        [pendingGlContexts addObject:context];
+        [self setNeedsDisplay:YES];
+        [(WineWindow*)[self window] updateColorSpace];
+    }
+
+    - (void) removeGLContext:(WineOpenGLContext*)context
+    {
+        [glContexts removeObjectIdenticalTo:context];
+        [pendingGlContexts removeObjectIdenticalTo:context];
+        [(WineWindow*)[self window] updateColorSpace];
+    }
+
+    - (void) updateGLContexts
+    {
+        for (WineOpenGLContext* context in glContexts)
+            context.needsUpdate = TRUE;
+    }
+
+    - (BOOL) hasGLContext
+    {
+        return [glContexts count] || [pendingGlContexts count];
     }
 
     - (BOOL) acceptsFirstMouse:(NSEvent*)theEvent
@@ -234,17 +284,187 @@ static inline void fix_generic_modifiers_by_device(NSUInteger* modifiers)
         return YES;
     }
 
+    - (BOOL) preservesContentDuringLiveResize
+    {
+        // Returning YES from this tells Cocoa to keep our view's content during
+        // a Cocoa-driven resize.  In theory, we're also supposed to override
+        // -setFrameSize: to mark exposed sections as needing redisplay, but
+        // user32 will take care of that in a roundabout way.  This way, we don't
+        // redraw until the window surface is flushed.
+        //
+        // This doesn't do anything when we resize the window ourselves.
+        return YES;
+    }
+
+    - (BOOL)acceptsFirstResponder
+    {
+        return [[self window] contentView] == self;
+    }
+
+    - (void) completeText:(NSString*)text
+    {
+        macdrv_event* event;
+        WineWindow* window = (WineWindow*)[self window];
+
+        event = macdrv_create_event(IM_SET_TEXT, window);
+        event->im_set_text.data = [window imeData];
+        event->im_set_text.text = (CFStringRef)[text copy];
+        event->im_set_text.complete = TRUE;
+
+        [[window queue] postEvent:event];
+
+        macdrv_release_event(event);
+
+        [markedText deleteCharactersInRange:NSMakeRange(0, [markedText length])];
+        markedTextSelection = NSMakeRange(0, 0);
+        [[self inputContext] discardMarkedText];
+    }
+
+    /*
+     * ---------- NSTextInputClient methods ----------
+     */
+    - (NSTextInputContext*) inputContext
+    {
+        if (!markedText)
+            markedText = [[NSMutableAttributedString alloc] init];
+        return [super inputContext];
+    }
+
+    - (void) insertText:(id)string replacementRange:(NSRange)replacementRange
+    {
+        if ([string isKindOfClass:[NSAttributedString class]])
+            string = [string string];
+
+        if ([string isKindOfClass:[NSString class]])
+            [self completeText:string];
+    }
+
+    - (void) doCommandBySelector:(SEL)aSelector
+    {
+        [(WineWindow*)[self window] setCommandDone:TRUE];
+    }
+
+    - (void) setMarkedText:(id)string selectedRange:(NSRange)selectedRange replacementRange:(NSRange)replacementRange
+    {
+        if ([string isKindOfClass:[NSAttributedString class]])
+            string = [string string];
+
+        if ([string isKindOfClass:[NSString class]])
+        {
+            macdrv_event* event;
+            WineWindow* window = (WineWindow*)[self window];
+
+            if (replacementRange.location == NSNotFound)
+                replacementRange = NSMakeRange(0, [markedText length]);
+
+            [markedText replaceCharactersInRange:replacementRange withString:string];
+            markedTextSelection = selectedRange;
+            markedTextSelection.location += replacementRange.location;
+
+            event = macdrv_create_event(IM_SET_TEXT, window);
+            event->im_set_text.data = [window imeData];
+            event->im_set_text.text = (CFStringRef)[[markedText string] copy];
+            event->im_set_text.complete = FALSE;
+            event->im_set_text.cursor_pos = markedTextSelection.location;
+
+            [[window queue] postEvent:event];
+
+            macdrv_release_event(event);
+
+            [[self inputContext] invalidateCharacterCoordinates];
+        }
+    }
+
+    - (void) unmarkText
+    {
+        [self completeText:nil];
+    }
+
+    - (NSRange) selectedRange
+    {
+        return markedTextSelection;
+    }
+
+    - (NSRange) markedRange
+    {
+        NSRange range = NSMakeRange(0, [markedText length]);
+        if (!range.length)
+            range.location = NSNotFound;
+        return range;
+    }
+
+    - (BOOL) hasMarkedText
+    {
+        return [markedText length] > 0;
+    }
+
+    - (NSAttributedString*) attributedSubstringForProposedRange:(NSRange)aRange actualRange:(NSRangePointer)actualRange
+    {
+        if (aRange.location >= [markedText length])
+            return nil;
+
+        aRange = NSIntersectionRange(aRange, NSMakeRange(0, [markedText length]));
+        if (actualRange)
+            *actualRange = aRange;
+        return [markedText attributedSubstringFromRange:aRange];
+    }
+
+    - (NSArray*) validAttributesForMarkedText
+    {
+        return [NSArray array];
+    }
+
+    - (NSRect) firstRectForCharacterRange:(NSRange)aRange actualRange:(NSRangePointer)actualRange
+    {
+        macdrv_query* query;
+        WineWindow* window = (WineWindow*)[self window];
+        NSRect ret;
+
+        aRange = NSIntersectionRange(aRange, NSMakeRange(0, [markedText length]));
+
+        query = macdrv_create_query();
+        query->type = QUERY_IME_CHAR_RECT;
+        query->window = (macdrv_window)[window retain];
+        query->ime_char_rect.data = [window imeData];
+        query->ime_char_rect.range = CFRangeMake(aRange.location, aRange.length);
+
+        if ([window.queue query:query timeout:1])
+        {
+            aRange = NSMakeRange(query->ime_char_rect.range.location, query->ime_char_rect.range.length);
+            ret = NSRectFromCGRect(query->ime_char_rect.rect);
+            [[WineApplicationController sharedController] flipRect:&ret];
+        }
+        else
+            ret = NSMakeRect(100, 100, aRange.length ? 1 : 0, 12);
+
+        macdrv_release_query(query);
+
+        if (actualRange)
+            *actualRange = aRange;
+        return ret;
+    }
+
+    - (NSUInteger) characterIndexForPoint:(NSPoint)aPoint
+    {
+        return NSNotFound;
+    }
+
+    - (NSInteger) windowLevel
+    {
+        return [[self window] level];
+    }
+
 @end
 
 
 @implementation WineWindow
 
-    @synthesize disabled, noActivate, floating, latentParentWindow, hwnd, queue;
+    @synthesize disabled, noActivate, floating, fullscreen, latentParentWindow, hwnd, queue;
     @synthesize surface, surface_mutex;
     @synthesize shape, shapeChangedSinceLastDraw;
     @synthesize colorKeyed, colorKeyRed, colorKeyGreen, colorKeyBlue;
     @synthesize usePerPixelAlpha;
-    @synthesize levelWhenActive;
+    @synthesize imeData, commandDone;
 
     + (WineWindow*) createWindowWithFeatures:(const struct macdrv_window_features*)wf
                                  windowFrame:(NSRect)window_frame
@@ -255,7 +475,7 @@ static inline void fix_generic_modifiers_by_device(NSUInteger* modifiers)
         WineContentView* contentView;
         NSTrackingArea* trackingArea;
 
-        [self flipRect:&window_frame];
+        [[WineApplicationController sharedController] flipRect:&window_frame];
 
         window = [[[self alloc] initWithContentRect:window_frame
                                           styleMask:style_mask_for_features(wf)
@@ -263,8 +483,6 @@ static inline void fix_generic_modifiers_by_device(NSUInteger* modifiers)
                                               defer:YES] autorelease];
 
         if (!window) return nil;
-        window->normalStyleMask = [window styleMask];
-        window->forceNextMouseMoveAbsolute = TRUE;
 
         /* Standardize windows to eliminate differences between titled and
            borderless windows and between NSWindow and NSPanel. */
@@ -274,19 +492,25 @@ static inline void fix_generic_modifiers_by_device(NSUInteger* modifiers)
         [window disableCursorRects];
         [window setShowsResizeIndicator:NO];
         [window setHasShadow:wf->shadow];
+        [window setAcceptsMouseMovedEvents:YES];
         [window setColorSpace:[NSColorSpace genericRGBColorSpace]];
         [window setDelegate:window];
         window.hwnd = hwnd;
         window.queue = queue;
+
+        [window registerForDraggedTypes:[NSArray arrayWithObjects:(NSString*)kUTTypeData,
+                                                                  (NSString*)kUTTypeContent,
+                                                                  nil]];
 
         contentView = [[[WineContentView alloc] initWithFrame:NSZeroRect] autorelease];
         if (!contentView)
             return nil;
         [contentView setAutoresizesSubviews:NO];
 
+        /* We use tracking areas in addition to setAcceptsMouseMovedEvents:YES
+           because they give us mouse moves in the background. */
         trackingArea = [[[NSTrackingArea alloc] initWithRect:[contentView bounds]
-                                                     options:(NSTrackingMouseEnteredAndExited |
-                                                              NSTrackingMouseMoved |
+                                                     options:(NSTrackingMouseMoved |
                                                               NSTrackingActiveAlways |
                                                               NSTrackingInVisibleRect)
                                                        owner:window
@@ -296,105 +520,99 @@ static inline void fix_generic_modifiers_by_device(NSUInteger* modifiers)
         [contentView addTrackingArea:trackingArea];
 
         [window setContentView:contentView];
+        [window setInitialFirstResponder:contentView];
+
+        [[NSNotificationCenter defaultCenter] addObserver:window
+                                                 selector:@selector(updateFullscreen)
+                                                     name:NSApplicationDidChangeScreenParametersNotification
+                                                   object:NSApp];
+        [window updateFullscreen];
 
         return window;
     }
 
     - (void) dealloc
     {
+        [[NSNotificationCenter defaultCenter] removeObserver:self];
+        [liveResizeDisplayTimer invalidate];
+        [liveResizeDisplayTimer release];
         [queue release];
         [latentParentWindow release];
         [shape release];
         [super dealloc];
     }
 
-    + (void) flipRect:(NSRect*)rect
-    {
-        rect->origin.y = NSMaxY([[[NSScreen screens] objectAtIndex:0] frame]) - NSMaxY(*rect);
-    }
-
     - (void) adjustFeaturesForState
     {
-        NSUInteger style = normalStyleMask;
-
-        if (self.disabled)
-            style &= ~NSResizableWindowMask;
-        if (style != [self styleMask])
-            [self setStyleMask:style];
+        NSUInteger style = [self styleMask];
 
         if (style & NSClosableWindowMask)
             [[self standardWindowButton:NSWindowCloseButton] setEnabled:!self.disabled];
         if (style & NSMiniaturizableWindowMask)
             [[self standardWindowButton:NSWindowMiniaturizeButton] setEnabled:!self.disabled];
+        if (style & NSResizableWindowMask)
+            [[self standardWindowButton:NSWindowZoomButton] setEnabled:!self.disabled];
     }
 
     - (void) setWindowFeatures:(const struct macdrv_window_features*)wf
     {
-        normalStyleMask = style_mask_for_features(wf);
+        NSUInteger currentStyle = [self styleMask];
+        NSUInteger newStyle = style_mask_for_features(wf);
+
+        if (newStyle != currentStyle)
+        {
+            BOOL showingButtons = (currentStyle & (NSClosableWindowMask | NSMiniaturizableWindowMask | NSResizableWindowMask)) != 0;
+            BOOL shouldShowButtons = (newStyle & (NSClosableWindowMask | NSMiniaturizableWindowMask | NSResizableWindowMask)) != 0;
+            if (shouldShowButtons != showingButtons && !((newStyle ^ currentStyle) & NSClosableWindowMask))
+            {
+                // -setStyleMask: is buggy on 10.7+ with respect to NSResizableWindowMask.
+                // If transitioning from NSTitledWindowMask | NSResizableWindowMask to
+                // just NSTitledWindowMask, the window buttons should disappear rather
+                // than just being disabled.  But they don't.  Similarly in reverse.
+                // The workaround is to also toggle NSClosableWindowMask at the same time.
+                [self setStyleMask:newStyle ^ NSClosableWindowMask];
+            }
+            [self setStyleMask:newStyle];
+        }
+
         [self adjustFeaturesForState];
         [self setHasShadow:wf->shadow];
     }
 
-    - (void) adjustWindowLevel
+    - (BOOL) isOrderedIn
+    {
+        return [self isVisible] || [self isMiniaturized];
+    }
+
+    - (NSInteger) minimumLevelForActive:(BOOL)active
     {
         NSInteger level;
-        BOOL fullscreen, captured;
-        NSScreen* screen;
-        NSUInteger index;
-        WineWindow* other = nil;
 
-        screen = screen_covered_by_rect([self frame], [NSScreen screens]);
-        fullscreen = (screen != nil);
-        captured = (screen || [self screen]) && [NSApp areDisplaysCaptured];
-
-        if (captured || fullscreen)
-        {
-            if (captured)
-                level = CGShieldingWindowLevel() + 1; /* Need +1 or we don't get mouse moves */
-            else
-                level = NSMainMenuWindowLevel + 1;
-
-            if (self.floating)
-                level++;
-        }
-        else if (self.floating)
+        if (self.floating && (active || topmost_float_inactive == TOPMOST_FLOAT_INACTIVE_ALL ||
+                              (topmost_float_inactive == TOPMOST_FLOAT_INACTIVE_NONFULLSCREEN && !fullscreen)))
             level = NSFloatingWindowLevel;
         else
             level = NSNormalWindowLevel;
 
-        index = [[NSApp orderedWineWindows] indexOfObjectIdenticalTo:self];
-        if (index != NSNotFound && index + 1 < [[NSApp orderedWineWindows] count])
+        if (active)
         {
-            other = [[NSApp orderedWineWindows] objectAtIndex:index + 1];
-            if (level < [other level])
-                level = [other level];
-        }
+            BOOL captured;
 
-        if (level != [self level])
-        {
-            [self setLevelWhenActive:level];
+            captured = (fullscreen || [self screen]) && [[WineApplicationController sharedController] areDisplaysCaptured];
 
-            /* Setting the window level above has moved this window to the front
-               of all other windows at the same level.  We need to move it
-               back into its proper place among other windows of that level.
-               Also, any windows which are supposed to be in front of it had
-               better have the same or higher window level.  If not, bump them
-               up. */
-            if (index != NSNotFound)
+            if (captured || fullscreen)
             {
-                for (; index > 0; index--)
-                {
-                    other = [[NSApp orderedWineWindows] objectAtIndex:index - 1];
-                    if ([other level] < level)
-                        [other setLevelWhenActive:level];
-                    else
-                    {
-                        [self orderWindow:NSWindowBelow relativeTo:[other windowNumber]];
-                        break;
-                    }
-                }
+                if (captured)
+                    level = CGShieldingWindowLevel() + 1; /* Need +1 or we don't get mouse moves */
+                else
+                    level = NSMainMenuWindowLevel + 1;
+
+                if (self.floating)
+                    level++;
             }
         }
+
+        return level;
     }
 
     - (void) setMacDrvState:(const struct macdrv_window_state*)state
@@ -404,8 +622,11 @@ static inline void fix_generic_modifiers_by_device(NSUInteger* modifiers)
         self.disabled = state->disabled;
         self.noActivate = state->no_activate;
 
-        self.floating = state->floating;
-        [self adjustWindowLevel];
+        if (self.floating != state->floating)
+        {
+            self.floating = state->floating;
+            [[WineApplicationController sharedController] adjustWindowLevels];
+        }
 
         behavior = NSWindowCollectionBehaviorDefault;
         if (state->excluded_by_expose)
@@ -415,21 +636,27 @@ static inline void fix_generic_modifiers_by_device(NSUInteger* modifiers)
         if (state->excluded_by_cycle)
         {
             behavior |= NSWindowCollectionBehaviorIgnoresCycle;
-            if ([self isVisible])
+            if ([self isOrderedIn])
                 [NSApp removeWindowsItem:self];
         }
         else
         {
             behavior |= NSWindowCollectionBehaviorParticipatesInCycle;
-            if ([self isVisible])
+            if ([self isOrderedIn])
                 [NSApp addWindowsItem:self title:[self title] filename:NO];
         }
         [self setCollectionBehavior:behavior];
 
+        pendingMinimize = FALSE;
         if (state->minimized && ![self isMiniaturized])
         {
-            ignore_windowMiniaturize = TRUE;
-            [self miniaturize:nil];
+            if ([self isVisible])
+            {
+                ignore_windowMiniaturize = TRUE;
+                [self miniaturize:nil];
+            }
+            else
+                pendingMinimize = TRUE;
         }
         else if (!state->minimized && [self isMiniaturized])
         {
@@ -443,54 +670,182 @@ static inline void fix_generic_modifiers_by_device(NSUInteger* modifiers)
                                forWindow:self];
     }
 
+    // Determine if, among Wine windows, this window is directly above or below
+    // a given other Wine window with no other Wine window intervening.
+    // Intervening non-Wine windows are ignored.
+    - (BOOL) isOrdered:(NSWindowOrderingMode)orderingMode relativeTo:(WineWindow*)otherWindow
+    {
+        NSNumber* windowNumber;
+        NSNumber* otherWindowNumber;
+        NSArray* windowNumbers;
+        NSUInteger windowIndex, otherWindowIndex, lowIndex, highIndex, i;
+
+        if (![self isVisible] || ![otherWindow isVisible])
+            return FALSE;
+
+        windowNumber = [NSNumber numberWithInteger:[self windowNumber]];
+        otherWindowNumber = [NSNumber numberWithInteger:[otherWindow windowNumber]];
+        windowNumbers = [[self class] windowNumbersWithOptions:0];
+        windowIndex = [windowNumbers indexOfObject:windowNumber];
+        otherWindowIndex = [windowNumbers indexOfObject:otherWindowNumber];
+
+        if (windowIndex == NSNotFound || otherWindowIndex == NSNotFound)
+            return FALSE;
+
+        if (orderingMode == NSWindowAbove)
+        {
+            lowIndex = windowIndex;
+            highIndex = otherWindowIndex;
+        }
+        else if (orderingMode == NSWindowBelow)
+        {
+            lowIndex = otherWindowIndex;
+            highIndex = windowIndex;
+        }
+        else
+            return FALSE;
+
+        if (highIndex <= lowIndex)
+            return FALSE;
+
+        for (i = lowIndex + 1; i < highIndex; i++)
+        {
+            NSInteger interveningWindowNumber = [[windowNumbers objectAtIndex:i] integerValue];
+            NSWindow* interveningWindow = [NSApp windowWithWindowNumber:interveningWindowNumber];
+            if ([interveningWindow isKindOfClass:[WineWindow class]])
+                return FALSE;
+        }
+
+        return TRUE;
+    }
+
+    - (void) order:(NSWindowOrderingMode)mode childWindow:(WineWindow*)child relativeTo:(WineWindow*)other
+    {
+        NSMutableArray* windowNumbers;
+        NSNumber* childWindowNumber;
+        NSUInteger otherIndex;
+        NSMutableArray* children;
+
+        // Get the z-order from the window server and modify it to reflect the
+        // requested window ordering.
+        windowNumbers = [[[[self class] windowNumbersWithOptions:NSWindowNumberListAllSpaces] mutableCopy] autorelease];
+        childWindowNumber = [NSNumber numberWithInteger:[child windowNumber]];
+        [windowNumbers removeObject:childWindowNumber];
+        otherIndex = [windowNumbers indexOfObject:[NSNumber numberWithInteger:[other windowNumber]]];
+        [windowNumbers insertObject:childWindowNumber atIndex:otherIndex + (mode == NSWindowAbove ? 0 : 1)];
+
+        // Get our child windows and sort them in the reverse of the desired
+        // z-order (back-to-front).
+        children = [[[self childWindows] mutableCopy] autorelease];
+        [children sortWithOptions:NSSortStable
+                  usingComparator:^NSComparisonResult(id obj1, id obj2){
+            NSNumber* window1Number = [NSNumber numberWithInteger:[obj1 windowNumber]];
+            NSNumber* window2Number = [NSNumber numberWithInteger:[obj2 windowNumber]];
+            NSUInteger index1 = [windowNumbers indexOfObject:window1Number];
+            NSUInteger index2 = [windowNumbers indexOfObject:window2Number];
+            if (index1 == NSNotFound)
+            {
+                if (index2 == NSNotFound)
+                    return NSOrderedSame;
+                else
+                    return NSOrderedAscending;
+            }
+            else if (index2 == NSNotFound)
+                return NSOrderedDescending;
+            else if (index1 < index2)
+                return NSOrderedDescending;
+            else if (index2 < index1)
+                return NSOrderedAscending;
+
+            return NSOrderedSame;
+        }];
+
+        // Remove all of the child windows and re-add them back-to-front so they
+        // are in the desired order.
+        for (other in children)
+            [self removeChildWindow:other];
+        for (other in children)
+            [self addChildWindow:other ordered:NSWindowAbove];
+    }
+
     /* Returns whether or not the window was ordered in, which depends on if
        its frame intersects any screen. */
-    - (BOOL) orderBelow:(WineWindow*)prev orAbove:(WineWindow*)next
+    - (BOOL) orderBelow:(WineWindow*)prev orAbove:(WineWindow*)next activate:(BOOL)activate
     {
+        WineApplicationController* controller = [WineApplicationController sharedController];
         BOOL on_screen = frame_intersects_screens([self frame], [NSScreen screens]);
-        if (on_screen)
+        if (on_screen && ![self isMiniaturized])
         {
-            [NSApp transformProcessToForeground];
+            BOOL needAdjustWindowLevels = FALSE;
+            BOOL wasVisible = [self isVisible];
 
-            if (prev)
-            {
-                /* Make sure that windows that should be above this one really are.
-                   This is necessary since a full-screen window gets a boost to its
-                   window level to be in front of the menu bar and Dock and that moves
-                   it out of the z-order that Win32 would otherwise establish. */
-                if ([prev level] < [self level])
-                {
-                    NSUInteger index = [[NSApp orderedWineWindows] indexOfObjectIdenticalTo:prev];
-                    if (index != NSNotFound)
-                    {
-                        [prev setLevelWhenActive:[self level]];
-                        for (; index > 0; index--)
-                        {
-                            WineWindow* other = [[NSApp orderedWineWindows] objectAtIndex:index - 1];
-                            if ([other level] < [self level])
-                                [other setLevelWhenActive:[self level]];
-                        }
-                    }
-                }
-                [self orderWindow:NSWindowBelow relativeTo:[prev windowNumber]];
-                [NSApp wineWindow:self ordered:NSWindowBelow relativeTo:prev];
-            }
-            else
-            {
-                /* Similarly, make sure this window is really above what it should be. */
-                if (next && [next level] > [self level])
-                    [self setLevelWhenActive:[next level]];
-                [self orderWindow:NSWindowAbove relativeTo:[next windowNumber]];
-                [NSApp wineWindow:self ordered:NSWindowAbove relativeTo:next];
-            }
+            [controller transformProcessToForeground];
+
+            if (activate)
+                [NSApp activateIgnoringOtherApps:YES];
+
+            NSDisableScreenUpdates();
+
             if (latentParentWindow)
             {
                 if ([latentParentWindow level] > [self level])
-                    [self setLevelWhenActive:[latentParentWindow level]];
+                    [self setLevel:[latentParentWindow level]];
                 [latentParentWindow addChildWindow:self ordered:NSWindowAbove];
-                [NSApp wineWindow:self ordered:NSWindowAbove relativeTo:latentParentWindow];
                 self.latentParentWindow = nil;
+                needAdjustWindowLevels = TRUE;
             }
+            if (prev || next)
+            {
+                WineWindow* other = [prev isVisible] ? prev : next;
+                NSWindowOrderingMode orderingMode = [prev isVisible] ? NSWindowBelow : NSWindowAbove;
+
+                if (![self isOrdered:orderingMode relativeTo:other])
+                {
+                    WineWindow* parent = (WineWindow*)[self parentWindow];
+                    WineWindow* otherParent = (WineWindow*)[other parentWindow];
+
+                    // This window level may not be right for this window based
+                    // on floating-ness, fullscreen-ness, etc.  But we set it
+                    // temporarily to allow us to order the windows properly.
+                    // Then the levels get fixed by -adjustWindowLevels.
+                    if ([self level] != [other level])
+                        [self setLevel:[other level]];
+                    [self orderWindow:orderingMode relativeTo:[other windowNumber]];
+
+                    // The above call to -[NSWindow orderWindow:relativeTo:] won't
+                    // reorder windows which are both children of the same parent
+                    // relative to each other, so do that separately.
+                    if (parent && parent == otherParent)
+                        [parent order:orderingMode childWindow:self relativeTo:other];
+
+                    needAdjustWindowLevels = TRUE;
+                }
+            }
+            else
+            {
+                // Again, temporarily set level to make sure we can order to
+                // the right place.
+                next = [controller frontWineWindow];
+                if (next && [self level] < [next level])
+                    [self setLevel:[next level]];
+                [self orderFront:nil];
+                needAdjustWindowLevels = TRUE;
+            }
+            if (needAdjustWindowLevels)
+            {
+                if (!wasVisible && fullscreen && [self isOnActiveSpace])
+                    [controller updateFullscreenWindows];
+                [controller adjustWindowLevels];
+            }
+
+            if (pendingMinimize)
+            {
+                ignore_windowMiniaturize = TRUE;
+                [self miniaturize:nil];
+                pendingMinimize = FALSE;
+            }
+
+            NSEnableScreenUpdates();
 
             /* Cocoa may adjust the frame when the window is ordered onto the screen.
                Generate a frame-changed event just in case.  The back end will ignore
@@ -506,25 +861,48 @@ static inline void fix_generic_modifiers_by_device(NSUInteger* modifiers)
 
     - (void) doOrderOut
     {
+        WineApplicationController* controller = [WineApplicationController sharedController];
+        BOOL wasVisible = [self isVisible];
+        BOOL wasOnActiveSpace = [self isOnActiveSpace];
+
+        if ([self isMiniaturized])
+            pendingMinimize = TRUE;
         self.latentParentWindow = [self parentWindow];
         [latentParentWindow removeChildWindow:self];
-        forceNextMouseMoveAbsolute = TRUE;
         [self orderOut:nil];
-        [NSApp wineWindow:self ordered:NSWindowOut relativeTo:nil];
+        if (wasVisible && wasOnActiveSpace && fullscreen)
+            [controller updateFullscreenWindows];
+        [controller adjustWindowLevels];
         [NSApp removeWindowsItem:self];
+    }
+
+    - (void) updateFullscreen
+    {
+        NSRect contentRect = [self contentRectForFrameRect:[self frame]];
+        BOOL nowFullscreen = (screen_covered_by_rect(contentRect, [NSScreen screens]) != nil);
+
+        if (nowFullscreen != fullscreen)
+        {
+            WineApplicationController* controller = [WineApplicationController sharedController];
+
+            fullscreen = nowFullscreen;
+            if ([self isVisible] && [self isOnActiveSpace])
+                [controller updateFullscreenWindows];
+
+            [controller adjustWindowLevels];
+        }
     }
 
     - (BOOL) setFrameIfOnScreen:(NSRect)contentRect
     {
         NSArray* screens = [NSScreen screens];
-        BOOL on_screen = [self isVisible];
-        NSRect frame, oldFrame;
+        BOOL on_screen = [self isOrderedIn];
 
         if (![screens count]) return on_screen;
 
         /* Origin is (left, top) in a top-down space.  Need to convert it to
            (left, bottom) in a bottom-up space. */
-        [[self class] flipRect:&contentRect];
+        [[WineApplicationController sharedController] flipRect:&contentRect];
 
         if (on_screen)
         {
@@ -533,8 +911,16 @@ static inline void fix_generic_modifiers_by_device(NSUInteger* modifiers)
                 [self doOrderOut];
         }
 
+        /* The back end is establishing a new window size and position.  It's
+           not interested in any stale events regarding those that may be sitting
+           in the queue. */
+        [queue discardEventsMatchingMask:event_mask_for_type(WINDOW_FRAME_CHANGED)
+                               forWindow:self];
+
         if (!NSIsEmptyRect(contentRect))
         {
+            NSRect frame, oldFrame;
+
             oldFrame = [self frame];
             frame = [self frameRectForContentRect:contentRect];
             if (!NSEqualRects(frame, oldFrame))
@@ -542,25 +928,20 @@ static inline void fix_generic_modifiers_by_device(NSUInteger* modifiers)
                 if (NSEqualSizes(frame.size, oldFrame.size))
                     [self setFrameOrigin:frame.origin];
                 else
+                {
                     [self setFrame:frame display:YES];
+                    [self updateColorSpace];
+                }
+
+                [self updateFullscreen];
+
+                if (on_screen)
+                {
+                    /* In case Cocoa adjusted the frame we tried to set, generate a frame-changed
+                       event.  The back end will ignore it if nothing actually changed. */
+                    [self windowDidResize:nil];
+                }
             }
-        }
-
-        if (on_screen)
-        {
-            [self adjustWindowLevel];
-
-            /* In case Cocoa adjusted the frame we tried to set, generate a frame-changed
-               event.  The back end will ignore it if nothing actually changed. */
-            [self windowDidResize:nil];
-        }
-        else
-        {
-            /* The back end is establishing a new window size and position.  It's
-               not interested in any stale events regarding those that may be sitting
-               in the queue. */
-            [queue discardEventsMatchingMask:event_mask_for_type(WINDOW_FRAME_CHANGED)
-                                   forWindow:self];
         }
 
         return on_screen;
@@ -575,9 +956,9 @@ static inline void fix_generic_modifiers_by_device(NSUInteger* modifiers)
             if ([self isVisible] && parent)
             {
                 if ([parent level] > [self level])
-                    [self setLevelWhenActive:[parent level]];
+                    [self setLevel:[parent level]];
                 [parent addChildWindow:self ordered:NSWindowAbove];
-                [NSApp wineWindow:self ordered:NSWindowAbove relativeTo:parent];
+                [[WineApplicationController sharedController] adjustWindowLevels];
             }
             else
                 self.latentParentWindow = parent;
@@ -590,6 +971,18 @@ static inline void fix_generic_modifiers_by_device(NSUInteger* modifiers)
         {
             disabled = newValue;
             [self adjustFeaturesForState];
+
+            if (disabled)
+            {
+                NSSize size = [self frame].size;
+                [self setMinSize:size];
+                [self setMaxSize:size];
+            }
+            else
+            {
+                [self setMaxSize:NSMakeSize(FLT_MAX, FLT_MAX)];
+                [self setMinSize:NSZeroSize];
+            }
         }
     }
 
@@ -631,32 +1024,19 @@ static inline void fix_generic_modifiers_by_device(NSUInteger* modifiers)
         [self checkTransparency];
     }
 
-    - (void) postMouseButtonEvent:(NSEvent *)theEvent pressed:(int)pressed
+    - (void) makeFocused:(BOOL)activate
     {
-        CGPoint pt = CGEventGetLocation([theEvent CGEvent]);
-        macdrv_event event;
-
-        event.type = MOUSE_BUTTON;
-        event.window = (macdrv_window)[self retain];
-        event.mouse_button.button = [theEvent buttonNumber];
-        event.mouse_button.pressed = pressed;
-        event.mouse_button.x = pt.x;
-        event.mouse_button.y = pt.y;
-        event.mouse_button.time_ms = [NSApp ticksForEventTime:[theEvent timestamp]];
-
-        [queue postEvent:&event];
-    }
-
-    - (void) makeFocused
-    {
+        WineApplicationController* controller = [WineApplicationController sharedController];
         NSArray* screens;
+        WineWindow* front;
+        BOOL wasVisible = [self isVisible];
 
-        [NSApp transformProcessToForeground];
+        [controller transformProcessToForeground];
 
         /* If a borderless window is offscreen, orderFront: won't move
            it onscreen like it would for a titled window.  Do that ourselves. */
         screens = [NSScreen screens];
-        if (!([self styleMask] & NSTitledWindowMask) && ![self isVisible] &&
+        if (!([self styleMask] & NSTitledWindowMask) && ![self isOrderedIn] &&
             !frame_intersects_screens([self frame], screens))
         {
             NSScreen* primaryScreen = [screens objectAtIndex:0];
@@ -664,34 +1044,42 @@ static inline void fix_generic_modifiers_by_device(NSUInteger* modifiers)
             [self setFrameTopLeftPoint:NSMakePoint(NSMinX(frame), NSMaxY(frame))];
             frame = [self constrainFrameRect:[self frame] toScreen:primaryScreen];
             [self setFrame:frame display:YES];
+            [self updateColorSpace];
         }
 
-        if ([[NSApp orderedWineWindows] count])
-        {
-            WineWindow* front;
-            if (self.floating)
-                front = [[NSApp orderedWineWindows] objectAtIndex:0];
-            else
-            {
-                for (front in [NSApp orderedWineWindows])
-                    if (!front.floating) break;
-            }
-            if (front && [front levelWhenActive] > [self levelWhenActive])
-                [self setLevelWhenActive:[front levelWhenActive]];
-        }
-        [self orderFront:nil];
-        [NSApp wineWindow:self ordered:NSWindowAbove relativeTo:nil];
-        causing_becomeKeyWindow = TRUE;
-        [self makeKeyWindow];
-        causing_becomeKeyWindow = FALSE;
+        if (activate)
+            [NSApp activateIgnoringOtherApps:YES];
+
+        NSDisableScreenUpdates();
+
         if (latentParentWindow)
         {
             if ([latentParentWindow level] > [self level])
-                [self setLevelWhenActive:[latentParentWindow level]];
+                [self setLevel:[latentParentWindow level]];
             [latentParentWindow addChildWindow:self ordered:NSWindowAbove];
-            [NSApp wineWindow:self ordered:NSWindowAbove relativeTo:latentParentWindow];
             self.latentParentWindow = nil;
         }
+        front = [controller frontWineWindow];
+        if (front && [self level] < [front level])
+            [self setLevel:[front level]];
+        [self orderFront:nil];
+        if (!wasVisible && fullscreen && [self isOnActiveSpace])
+            [controller updateFullscreenWindows];
+        [controller adjustWindowLevels];
+
+        if (pendingMinimize)
+        {
+            ignore_windowMiniaturize = TRUE;
+            [self miniaturize:nil];
+            pendingMinimize = FALSE;
+        }
+
+        NSEnableScreenUpdates();
+
+        causing_becomeKeyWindow = TRUE;
+        [self makeKeyWindow];
+        causing_becomeKeyWindow = FALSE;
+
         if (![self isExcludedFromWindowsMenu])
             [NSApp addWindowsItem:self title:[self title] filename:NO];
 
@@ -706,28 +1094,31 @@ static inline void fix_generic_modifiers_by_device(NSUInteger* modifiers)
            modifiers:(NSUInteger)modifiers
                event:(NSEvent*)theEvent
     {
-        macdrv_event event;
+        macdrv_event* event;
         CGEventRef cgevent;
-        WineApplication* app = (WineApplication*)NSApp;
+        WineApplicationController* controller = [WineApplicationController sharedController];
 
-        event.type          = pressed ? KEY_PRESS : KEY_RELEASE;
-        event.window        = (macdrv_window)[self retain];
-        event.key.keycode   = keyCode;
-        event.key.modifiers = modifiers;
-        event.key.time_ms   = [app ticksForEventTime:[theEvent timestamp]];
+        event = macdrv_create_event(pressed ? KEY_PRESS : KEY_RELEASE, self);
+        event->key.keycode   = keyCode;
+        event->key.modifiers = modifiers;
+        event->key.time_ms   = [controller ticksForEventTime:[theEvent timestamp]];
 
         if ((cgevent = [theEvent CGEvent]))
         {
             CGEventSourceKeyboardType keyboardType = CGEventGetIntegerValueField(cgevent,
                                                         kCGKeyboardEventKeyboardType);
-            if (keyboardType != app.keyboardType)
+            if (keyboardType != controller.keyboardType)
             {
-                app.keyboardType = keyboardType;
-                [app keyboardSelectionDidChange];
+                controller.keyboardType = keyboardType;
+                [controller keyboardSelectionDidChange];
             }
         }
 
-        [queue postEvent:&event];
+        [queue postEvent:event];
+
+        macdrv_release_event(event);
+
+        [controller noteKey:keyCode pressed:pressed];
     }
 
     - (void) postKeyEvent:(NSEvent *)theEvent
@@ -737,56 +1128,6 @@ static inline void fix_generic_modifiers_by_device(NSUInteger* modifiers)
               pressed:[theEvent type] == NSKeyDown
             modifiers:[theEvent modifierFlags]
                 event:theEvent];
-    }
-
-    - (void) postMouseMovedEvent:(NSEvent *)theEvent
-    {
-        macdrv_event event;
-
-        if (forceNextMouseMoveAbsolute)
-        {
-            CGPoint point = CGEventGetLocation([theEvent CGEvent]);
-
-            event.type = MOUSE_MOVED_ABSOLUTE;
-            event.mouse_moved.x = point.x;
-            event.mouse_moved.y = point.y;
-
-            mouseMoveDeltaX = 0;
-            mouseMoveDeltaY = 0;
-
-            forceNextMouseMoveAbsolute = FALSE;
-        }
-        else
-        {
-            /* Add event delta to accumulated delta error */
-            /* deltaY is already flipped */
-            mouseMoveDeltaX += [theEvent deltaX];
-            mouseMoveDeltaY += [theEvent deltaY];
-
-            event.type = MOUSE_MOVED;
-            event.mouse_moved.x = mouseMoveDeltaX;
-            event.mouse_moved.y = mouseMoveDeltaY;
-
-            /* Keep the remainder after integer truncation. */
-            mouseMoveDeltaX -= event.mouse_moved.x;
-            mouseMoveDeltaY -= event.mouse_moved.y;
-        }
-
-        if (event.type == MOUSE_MOVED_ABSOLUTE || event.mouse_moved.x || event.mouse_moved.y)
-        {
-            event.window = (macdrv_window)[self retain];
-            event.mouse_moved.time_ms = [NSApp ticksForEventTime:[theEvent timestamp]];
-
-            [queue postEvent:&event];
-        }
-    }
-
-    - (void) setLevelWhenActive:(NSInteger)level
-    {
-        levelWhenActive = level;
-        if (([NSApp isActive] || level <= NSFloatingWindowLevel) &&
-            level != [self level])
-            [self setLevel:level];
     }
 
 
@@ -823,16 +1164,37 @@ static inline void fix_generic_modifiers_by_device(NSUInteger* modifiers)
 
     - (BOOL) validateMenuItem:(NSMenuItem *)menuItem
     {
+        BOOL ret = [super validateMenuItem:menuItem];
+
         if ([menuItem action] == @selector(makeKeyAndOrderFront:))
-            return [self isKeyWindow] || (!self.disabled && !self.noActivate);
-        return [super validateMenuItem:menuItem];
+            ret = [self isKeyWindow] || (!self.disabled && !self.noActivate);
+
+        return ret;
     }
 
     /* We don't call this.  It's the action method of the items in the Window menu. */
     - (void) makeKeyAndOrderFront:(id)sender
     {
+        WineApplicationController* controller = [WineApplicationController sharedController];
+        WineWindow* front = [controller frontWineWindow];
+        BOOL wasVisible = [self isVisible];
+
         if (![self isKeyWindow] && !self.disabled && !self.noActivate)
-            [NSApp windowGotFocus:self];
+            [controller windowGotFocus:self];
+
+        if (front && [self level] < [front level])
+            [self setLevel:[front level]];
+        [self orderFront:nil];
+        if (!wasVisible && fullscreen && [self isOnActiveSpace])
+            [controller updateFullscreenWindows];
+        [controller adjustWindowLevels];
+
+        if (pendingMinimize)
+        {
+            ignore_windowMiniaturize = TRUE;
+            [self miniaturize:nil];
+            pendingMinimize = FALSE;
+        }
     }
 
     - (void) sendEvent:(NSEvent*)event
@@ -844,60 +1206,45 @@ static inline void fix_generic_modifiers_by_device(NSUInteger* modifiers)
         if ([event type] == NSKeyDown)
             [[self firstResponder] keyDown:event];
         else
-        {
-            if ([event type] == NSLeftMouseDown)
-            {
-                NSWindowButton windowButton;
-                BOOL broughtWindowForward = TRUE;
-
-                /* Since our windows generally claim they can't be made key, clicks
-                   in their title bars are swallowed by the theme frame stuff.  So,
-                   we hook directly into the event stream and assume that any click
-                   in the window will activate it, if Wine and the Win32 program
-                   accept. */
-                if (![self isKeyWindow] && !self.disabled && !self.noActivate)
-                    [NSApp windowGotFocus:self];
-
-                /* Any left-click on our window anyplace other than the close or
-                   minimize buttons will bring it forward. */
-                for (windowButton = NSWindowCloseButton;
-                     windowButton <= NSWindowMiniaturizeButton;
-                     windowButton++)
-                {
-                    NSButton* button = [[event window] standardWindowButton:windowButton];
-                    if (button)
-                    {
-                        NSPoint point = [button convertPoint:[event locationInWindow] fromView:nil];
-                        if ([button mouse:point inRect:[button bounds]])
-                        {
-                            broughtWindowForward = FALSE;
-                            break;
-                        }
-                    }
-                }
-
-                if (broughtWindowForward)
-                    [NSApp wineWindow:self ordered:NSWindowAbove relativeTo:nil];
-            }
-
             [super sendEvent:event];
+    }
+
+    // We normally use the generic/calibrated RGB color space for the window,
+    // rather than the device color space, to avoid expensive color conversion
+    // which slows down drawing.  However, for windows displaying OpenGL, having
+    // a different color space than the screen greatly reduces frame rates, often
+    // limiting it to the display refresh rate.
+    //
+    // To avoid this, we switch back to the screen color space whenever the
+    // window is covered by a view with an attached OpenGL context.
+    - (void) updateColorSpace
+    {
+        NSRect contentRect = [[self contentView] frame];
+        BOOL coveredByGLView = FALSE;
+        for (WineContentView* view in [[self contentView] subviews])
+        {
+            if ([view hasGLContext])
+            {
+                NSRect frame = [view convertRect:[view bounds] toView:nil];
+                if (NSContainsRect(frame, contentRect))
+                {
+                    coveredByGLView = TRUE;
+                    break;
+                }
+            }
         }
+
+        if (coveredByGLView)
+            [self setColorSpace:nil];
+        else
+            [self setColorSpace:[NSColorSpace genericRGBColorSpace]];
     }
 
 
     /*
      * ---------- NSResponder method overrides ----------
      */
-    - (void) mouseDown:(NSEvent *)theEvent { [self postMouseButtonEvent:theEvent pressed:1]; }
-    - (void) rightMouseDown:(NSEvent *)theEvent { [self mouseDown:theEvent]; }
-    - (void) otherMouseDown:(NSEvent *)theEvent { [self mouseDown:theEvent]; }
-
-    - (void) mouseUp:(NSEvent *)theEvent { [self postMouseButtonEvent:theEvent pressed:0]; }
-    - (void) rightMouseUp:(NSEvent *)theEvent { [self mouseUp:theEvent]; }
-    - (void) otherMouseUp:(NSEvent *)theEvent { [self mouseUp:theEvent]; }
-
     - (void) keyDown:(NSEvent *)theEvent { [self postKeyEvent:theEvent]; }
-    - (void) keyUp:(NSEvent *)theEvent   { [self postKeyEvent:theEvent]; }
 
     - (void) flagsChanged:(NSEvent *)theEvent
     {
@@ -961,126 +1308,68 @@ static inline void fix_generic_modifiers_by_device(NSUInteger* modifiers)
         }
     }
 
-    - (void) mouseEntered:(NSEvent *)theEvent { forceNextMouseMoveAbsolute = TRUE; }
-    - (void) mouseExited:(NSEvent *)theEvent  { forceNextMouseMoveAbsolute = TRUE; }
-
-    - (void) mouseMoved:(NSEvent *)theEvent         { [self postMouseMovedEvent:theEvent]; }
-    - (void) mouseDragged:(NSEvent *)theEvent       { [self postMouseMovedEvent:theEvent]; }
-    - (void) rightMouseDragged:(NSEvent *)theEvent  { [self postMouseMovedEvent:theEvent]; }
-    - (void) otherMouseDragged:(NSEvent *)theEvent  { [self postMouseMovedEvent:theEvent]; }
-
-    - (void) scrollWheel:(NSEvent *)theEvent
-    {
-        CGPoint pt;
-        macdrv_event event;
-        CGEventRef cgevent;
-        CGFloat x, y;
-        BOOL continuous = FALSE;
-
-        cgevent = [theEvent CGEvent];
-        pt = CGEventGetLocation(cgevent);
-
-        event.type = MOUSE_SCROLL;
-        event.window = (macdrv_window)[self retain];
-        event.mouse_scroll.x = pt.x;
-        event.mouse_scroll.y = pt.y;
-        event.mouse_scroll.time_ms = [NSApp ticksForEventTime:[theEvent timestamp]];
-
-        if (CGEventGetIntegerValueField(cgevent, kCGScrollWheelEventIsContinuous))
-        {
-            continuous = TRUE;
-
-            /* Continuous scroll wheel events come from high-precision scrolling
-               hardware like Apple's Magic Mouse, Mighty Mouse, and trackpads.
-               For these, we can get more precise data from the CGEvent API. */
-            /* Axis 1 is vertical, axis 2 is horizontal. */
-            x = CGEventGetDoubleValueField(cgevent, kCGScrollWheelEventPointDeltaAxis2);
-            y = CGEventGetDoubleValueField(cgevent, kCGScrollWheelEventPointDeltaAxis1);
-        }
-        else
-        {
-            double pixelsPerLine = 10;
-            CGEventSourceRef source;
-
-            /* The non-continuous values are in units of "lines", not pixels. */
-            if ((source = CGEventCreateSourceFromEvent(cgevent)))
-            {
-                pixelsPerLine = CGEventSourceGetPixelsPerLine(source);
-                CFRelease(source);
-            }
-
-            x = pixelsPerLine * [theEvent deltaX];
-            y = pixelsPerLine * [theEvent deltaY];
-        }
-
-        /* Mac: negative is right or down, positive is left or up.
-           Win32: negative is left or down, positive is right or up.
-           So, negate the X scroll value to translate. */
-        x = -x;
-
-        /* The x,y values so far are in pixels.  Win32 expects to receive some
-           fraction of WHEEL_DELTA == 120.  By my estimation, that's roughly
-           6 times the pixel value. */
-        event.mouse_scroll.x_scroll = 6 * x;
-        event.mouse_scroll.y_scroll = 6 * y;
-
-        if (!continuous)
-        {
-            /* For non-continuous "clicky" wheels, if there was any motion, make
-               sure there was at least WHEEL_DELTA motion.  This is so, at slow
-               speeds where the system's acceleration curve is actually reducing the
-               scroll distance, the user is sure to get some action out of each click.
-               For example, this is important for rotating though weapons in a
-               first-person shooter. */
-            if (0 < event.mouse_scroll.x_scroll && event.mouse_scroll.x_scroll < 120)
-                event.mouse_scroll.x_scroll = 120;
-            else if (-120 < event.mouse_scroll.x_scroll && event.mouse_scroll.x_scroll < 0)
-                event.mouse_scroll.x_scroll = -120;
-
-            if (0 < event.mouse_scroll.y_scroll && event.mouse_scroll.y_scroll < 120)
-                event.mouse_scroll.y_scroll = 120;
-            else if (-120 < event.mouse_scroll.y_scroll && event.mouse_scroll.y_scroll < 0)
-                event.mouse_scroll.y_scroll = -120;
-        }
-
-        if (event.mouse_scroll.x_scroll || event.mouse_scroll.y_scroll)
-            [queue postEvent:&event];
-    }
-
 
     /*
      * ---------- NSWindowDelegate methods ----------
      */
     - (void)windowDidBecomeKey:(NSNotification *)notification
     {
-        NSEvent* event = [NSApp lastFlagsChanged];
+        WineApplicationController* controller = [WineApplicationController sharedController];
+        NSEvent* event = [controller lastFlagsChanged];
         if (event)
             [self flagsChanged:event];
 
         if (causing_becomeKeyWindow) return;
 
-        [NSApp windowGotFocus:self];
+        [controller windowGotFocus:self];
     }
 
     - (void)windowDidDeminiaturize:(NSNotification *)notification
     {
+        WineApplicationController* controller = [WineApplicationController sharedController];
+
         if (!ignore_windowDeminiaturize)
         {
-            macdrv_event event;
+            macdrv_event* event;
 
             /* Coalesce events by discarding any previous ones still in the queue. */
             [queue discardEventsMatchingMask:event_mask_for_type(WINDOW_DID_MINIMIZE) |
                                              event_mask_for_type(WINDOW_DID_UNMINIMIZE)
                                    forWindow:self];
 
-            event.type = WINDOW_DID_UNMINIMIZE;
-            event.window = (macdrv_window)[self retain];
-            [queue postEvent:&event];
+            event = macdrv_create_event(WINDOW_DID_UNMINIMIZE, self);
+            [queue postEvent:event];
+            macdrv_release_event(event);
         }
 
         ignore_windowDeminiaturize = FALSE;
 
-        [NSApp wineWindow:self ordered:NSWindowAbove relativeTo:nil];
+        if (fullscreen && [self isOnActiveSpace])
+            [controller updateFullscreenWindows];
+        [controller adjustWindowLevels];
+
+        if (!self.disabled && !self.noActivate)
+        {
+            causing_becomeKeyWindow = TRUE;
+            [self makeKeyWindow];
+            causing_becomeKeyWindow = FALSE;
+            [controller windowGotFocus:self];
+        }
+
+        [self windowDidResize:notification];
+    }
+
+    - (void) windowDidEndLiveResize:(NSNotification *)notification
+    {
+        [liveResizeDisplayTimer invalidate];
+        [liveResizeDisplayTimer release];
+        liveResizeDisplayTimer = nil;
+    }
+
+    - (void)windowDidMiniaturize:(NSNotification *)notification
+    {
+        if (fullscreen && [self isOnActiveSpace])
+            [[WineApplicationController sharedController] updateFullscreenWindows];
     }
 
     - (void)windowDidMove:(NSNotification *)notification
@@ -1090,38 +1379,48 @@ static inline void fix_generic_modifiers_by_device(NSUInteger* modifiers)
 
     - (void)windowDidResignKey:(NSNotification *)notification
     {
-        macdrv_event event;
+        macdrv_event* event;
 
         if (causing_becomeKeyWindow) return;
 
-        event.type = WINDOW_LOST_FOCUS;
-        event.window = (macdrv_window)[self retain];
-        [queue postEvent:&event];
+        event = macdrv_create_event(WINDOW_LOST_FOCUS, self);
+        [queue postEvent:event];
+        macdrv_release_event(event);
     }
 
     - (void)windowDidResize:(NSNotification *)notification
     {
-        macdrv_event event;
-        NSRect frame = [self contentRectForFrameRect:[self frame]];
+        macdrv_event* event;
+        NSRect frame = [self frame];
 
-        [[self class] flipRect:&frame];
+        if (self.disabled)
+        {
+            NSSize size = frame.size;
+            [self setMinSize:size];
+            [self setMaxSize:size];
+        }
+
+        frame = [self contentRectForFrameRect:frame];
+        [[WineApplicationController sharedController] flipRect:&frame];
 
         /* Coalesce events by discarding any previous ones still in the queue. */
         [queue discardEventsMatchingMask:event_mask_for_type(WINDOW_FRAME_CHANGED)
                                forWindow:self];
 
-        event.type = WINDOW_FRAME_CHANGED;
-        event.window = (macdrv_window)[self retain];
-        event.window_frame_changed.frame = NSRectToCGRect(frame);
-        [queue postEvent:&event];
+        event = macdrv_create_event(WINDOW_FRAME_CHANGED, self);
+        event->window_frame_changed.frame = NSRectToCGRect(frame);
+        [queue postEvent:event];
+        macdrv_release_event(event);
+
+        [[[self contentView] inputContext] invalidateCharacterCoordinates];
+        [self updateFullscreen];
     }
 
     - (BOOL)windowShouldClose:(id)sender
     {
-        macdrv_event event;
-        event.type = WINDOW_CLOSE_REQUESTED;
-        event.window = (macdrv_window)[self retain];
-        [queue postEvent:&event];
+        macdrv_event* event = macdrv_create_event(WINDOW_CLOSE_REQUESTED, self);
+        [queue postEvent:event];
+        macdrv_release_event(event);
         return NO;
     }
 
@@ -1129,19 +1428,132 @@ static inline void fix_generic_modifiers_by_device(NSUInteger* modifiers)
     {
         if (!ignore_windowMiniaturize)
         {
-            macdrv_event event;
+            macdrv_event* event;
 
             /* Coalesce events by discarding any previous ones still in the queue. */
             [queue discardEventsMatchingMask:event_mask_for_type(WINDOW_DID_MINIMIZE) |
                                              event_mask_for_type(WINDOW_DID_UNMINIMIZE)
                                    forWindow:self];
 
-            event.type = WINDOW_DID_MINIMIZE;
-            event.window = (macdrv_window)[self retain];
-            [queue postEvent:&event];
+            event = macdrv_create_event(WINDOW_DID_MINIMIZE, self);
+            [queue postEvent:event];
+            macdrv_release_event(event);
         }
 
         ignore_windowMiniaturize = FALSE;
+    }
+
+    - (void) windowWillStartLiveResize:(NSNotification *)notification
+    {
+        // There's a strange restriction in window redrawing during Cocoa-
+        // managed window resizing.  Only calls to -[NSView setNeedsDisplay...]
+        // that happen synchronously when Cocoa tells us that our window size
+        // has changed or asynchronously in a short interval thereafter provoke
+        // the window to redraw.  Calls to those methods that happen asynchronously
+        // a half second or more after the last change of the window size aren't
+        // heeded until the next resize-related user event (e.g. mouse movement).
+        //
+        // Wine often has a significant delay between when it's been told that
+        // the window has changed size and when it can flush completed drawing.
+        // So, our windows would get stuck with incomplete drawing for as long
+        // as the user holds the mouse button down and doesn't move it.
+        //
+        // We address this by "manually" asking our windows to check if they need
+        // redrawing every so often (during live resize only).
+        [self windowDidEndLiveResize:nil];
+        liveResizeDisplayTimer = [NSTimer scheduledTimerWithTimeInterval:1.0/30.0
+                                                                  target:self
+                                                                selector:@selector(displayIfNeeded)
+                                                                userInfo:nil
+                                                                 repeats:YES];
+        [liveResizeDisplayTimer retain];
+        [[NSRunLoop currentRunLoop] addTimer:liveResizeDisplayTimer
+                                     forMode:NSRunLoopCommonModes];
+    }
+
+
+    /*
+     * ---------- NSPasteboardOwner methods ----------
+     */
+    - (void) pasteboard:(NSPasteboard *)sender provideDataForType:(NSString *)type
+    {
+        macdrv_query* query = macdrv_create_query();
+        query->type = QUERY_PASTEBOARD_DATA;
+        query->window = (macdrv_window)[self retain];
+        query->pasteboard_data.type = (CFStringRef)[type copy];
+
+        [self.queue query:query timeout:3];
+        macdrv_release_query(query);
+    }
+
+
+    /*
+     * ---------- NSDraggingDestination methods ----------
+     */
+    - (NSDragOperation) draggingEntered:(id <NSDraggingInfo>)sender
+    {
+        return [self draggingUpdated:sender];
+    }
+
+    - (void) draggingExited:(id <NSDraggingInfo>)sender
+    {
+        // This isn't really a query.  We don't need any response.  However, it
+        // has to be processed in a similar manner as the other drag-and-drop
+        // queries in order to maintain the proper order of operations.
+        macdrv_query* query = macdrv_create_query();
+        query->type = QUERY_DRAG_EXITED;
+        query->window = (macdrv_window)[self retain];
+
+        [self.queue query:query timeout:0.1];
+        macdrv_release_query(query);
+    }
+
+    - (NSDragOperation) draggingUpdated:(id <NSDraggingInfo>)sender
+    {
+        NSDragOperation ret;
+        NSPoint pt = [[self contentView] convertPoint:[sender draggingLocation] fromView:nil];
+        NSPasteboard* pb = [sender draggingPasteboard];
+
+        macdrv_query* query = macdrv_create_query();
+        query->type = QUERY_DRAG_OPERATION;
+        query->window = (macdrv_window)[self retain];
+        query->drag_operation.x = pt.x;
+        query->drag_operation.y = pt.y;
+        query->drag_operation.offered_ops = [sender draggingSourceOperationMask];
+        query->drag_operation.accepted_op = NSDragOperationNone;
+        query->drag_operation.pasteboard = (CFTypeRef)[pb retain];
+
+        [self.queue query:query timeout:3];
+        ret = query->status ? query->drag_operation.accepted_op : NSDragOperationNone;
+        macdrv_release_query(query);
+
+        return ret;
+    }
+
+    - (BOOL) performDragOperation:(id <NSDraggingInfo>)sender
+    {
+        BOOL ret;
+        NSPoint pt = [[self contentView] convertPoint:[sender draggingLocation] fromView:nil];
+        NSPasteboard* pb = [sender draggingPasteboard];
+
+        macdrv_query* query = macdrv_create_query();
+        query->type = QUERY_DRAG_DROP;
+        query->window = (macdrv_window)[self retain];
+        query->drag_drop.x = pt.x;
+        query->drag_drop.y = pt.y;
+        query->drag_drop.op = [sender draggingSourceOperationMask];
+        query->drag_drop.pasteboard = (CFTypeRef)[pb retain];
+
+        [self.queue query:query timeout:3 * 60 processEvents:YES];
+        ret = query->status;
+        macdrv_release_query(query);
+
+        return ret;
+    }
+
+    - (BOOL) wantsPeriodicDraggingUpdates
+    {
+        return NO;
     }
 
 @end
@@ -1244,7 +1656,7 @@ void macdrv_set_cocoa_window_title(macdrv_window w, const unsigned short* title,
         titleString = @"";
     OnMainThreadAsync(^{
         [window setTitle:titleString];
-        if ([window isVisible] && ![window isExcludedFromWindowsMenu])
+        if ([window isOrderedIn] && ![window isExcludedFromWindowsMenu])
             [NSApp changeWindowsItem:window title:titleString filename:NO];
     });
 
@@ -1263,14 +1675,15 @@ void macdrv_set_cocoa_window_title(macdrv_window w, const unsigned short* title,
  * (i.e. if its frame intersects with a screen).  Otherwise, false.
  */
 int macdrv_order_cocoa_window(macdrv_window w, macdrv_window prev,
-        macdrv_window next)
+        macdrv_window next, int activate)
 {
     WineWindow* window = (WineWindow*)w;
     __block BOOL on_screen;
 
     OnMainThread(^{
         on_screen = [window orderBelow:(WineWindow*)prev
-                               orAbove:(WineWindow*)next];
+                               orAbove:(WineWindow*)next
+                              activate:activate];
     });
 
     return on_screen;
@@ -1324,7 +1737,7 @@ void macdrv_get_cocoa_window_frame(macdrv_window w, CGRect* out_frame)
         NSRect frame;
 
         frame = [window contentRectForFrameRect:[window frame]];
-        [[window class] flipRect:&frame];
+        [[WineApplicationController sharedController] flipRect:&frame];
         *out_frame = NSRectToCGRect(frame);
     });
 }
@@ -1479,11 +1892,248 @@ void macdrv_window_use_per_pixel_alpha(macdrv_window w, int use_per_pixel_alpha)
  * orders it front and, if its frame was not within the desktop bounds,
  * Cocoa will typically move it on-screen.
  */
-void macdrv_give_cocoa_window_focus(macdrv_window w)
+void macdrv_give_cocoa_window_focus(macdrv_window w, int activate)
 {
     WineWindow* window = (WineWindow*)w;
 
     OnMainThread(^{
-        [window makeFocused];
+        [window makeFocused:activate];
     });
+}
+
+/***********************************************************************
+ *              macdrv_create_view
+ *
+ * Creates and returns a view in the specified rect of the window.  The
+ * caller is responsible for calling macdrv_dispose_view() on the view
+ * when it is done with it.
+ */
+macdrv_view macdrv_create_view(macdrv_window w, CGRect rect)
+{
+    NSAutoreleasePool* pool = [[NSAutoreleasePool alloc] init];
+    WineWindow* window = (WineWindow*)w;
+    __block WineContentView* view;
+
+    if (CGRectIsNull(rect)) rect = CGRectZero;
+
+    OnMainThread(^{
+        NSNotificationCenter* nc = [NSNotificationCenter defaultCenter];
+
+        view = [[WineContentView alloc] initWithFrame:NSRectFromCGRect(rect)];
+        [view setAutoresizesSubviews:NO];
+        [nc addObserver:view
+               selector:@selector(updateGLContexts)
+                   name:NSViewGlobalFrameDidChangeNotification
+                 object:view];
+        [nc addObserver:view
+               selector:@selector(updateGLContexts)
+                   name:NSApplicationDidChangeScreenParametersNotification
+                 object:NSApp];
+        [[window contentView] addSubview:view];
+        [window updateColorSpace];
+    });
+
+    [pool release];
+    return (macdrv_view)view;
+}
+
+/***********************************************************************
+ *              macdrv_dispose_view
+ *
+ * Destroys a view previously returned by macdrv_create_view.
+ */
+void macdrv_dispose_view(macdrv_view v)
+{
+    NSAutoreleasePool* pool = [[NSAutoreleasePool alloc] init];
+    WineContentView* view = (WineContentView*)v;
+
+    OnMainThread(^{
+        NSNotificationCenter* nc = [NSNotificationCenter defaultCenter];
+        WineWindow* window = (WineWindow*)[view window];
+
+        [nc removeObserver:view
+                      name:NSViewGlobalFrameDidChangeNotification
+                    object:view];
+        [nc removeObserver:view
+                      name:NSApplicationDidChangeScreenParametersNotification
+                    object:NSApp];
+        [view removeFromSuperview];
+        [view release];
+        [window updateColorSpace];
+    });
+
+    [pool release];
+}
+
+/***********************************************************************
+ *              macdrv_set_view_window_and_frame
+ *
+ * Move a view to a new window and/or position within its window.  If w
+ * is NULL, leave the view in its current window and just change its
+ * frame.
+ */
+void macdrv_set_view_window_and_frame(macdrv_view v, macdrv_window w, CGRect rect)
+{
+    NSAutoreleasePool* pool = [[NSAutoreleasePool alloc] init];
+    WineContentView* view = (WineContentView*)v;
+    WineWindow* window = (WineWindow*)w;
+
+    if (CGRectIsNull(rect)) rect = CGRectZero;
+
+    OnMainThread(^{
+        BOOL changedWindow = (window && window != [view window]);
+        NSRect newFrame = NSRectFromCGRect(rect);
+        NSRect oldFrame = [view frame];
+        BOOL needUpdateWindowColorSpace = FALSE;
+
+        if (changedWindow)
+        {
+            WineWindow* oldWindow = (WineWindow*)[view window];
+            [view removeFromSuperview];
+            [oldWindow updateColorSpace];
+            [[window contentView] addSubview:view];
+            needUpdateWindowColorSpace = TRUE;
+        }
+
+        if (!NSEqualRects(oldFrame, newFrame))
+        {
+            if (!changedWindow)
+                [[view superview] setNeedsDisplayInRect:oldFrame];
+            if (NSEqualPoints(oldFrame.origin, newFrame.origin))
+                [view setFrameSize:newFrame.size];
+            else if (NSEqualSizes(oldFrame.size, newFrame.size))
+                [view setFrameOrigin:newFrame.origin];
+            else
+                [view setFrame:newFrame];
+            [view setNeedsDisplay:YES];
+            needUpdateWindowColorSpace = TRUE;
+        }
+
+        if (needUpdateWindowColorSpace)
+            [(WineWindow*)[view window] updateColorSpace];
+    });
+
+    [pool release];
+}
+
+/***********************************************************************
+ *              macdrv_add_view_opengl_context
+ *
+ * Add an OpenGL context to the list being tracked for each view.
+ */
+void macdrv_add_view_opengl_context(macdrv_view v, macdrv_opengl_context c)
+{
+    NSAutoreleasePool* pool = [[NSAutoreleasePool alloc] init];
+    WineContentView* view = (WineContentView*)v;
+    WineOpenGLContext *context = (WineOpenGLContext*)c;
+
+    OnMainThreadAsync(^{
+        [view addGLContext:context];
+    });
+
+    [pool release];
+}
+
+/***********************************************************************
+ *              macdrv_remove_view_opengl_context
+ *
+ * Add an OpenGL context to the list being tracked for each view.
+ */
+void macdrv_remove_view_opengl_context(macdrv_view v, macdrv_opengl_context c)
+{
+    NSAutoreleasePool* pool = [[NSAutoreleasePool alloc] init];
+    WineContentView* view = (WineContentView*)v;
+    WineOpenGLContext *context = (WineOpenGLContext*)c;
+
+    OnMainThreadAsync(^{
+        [view removeGLContext:context];
+    });
+
+    [pool release];
+}
+
+/***********************************************************************
+ *              macdrv_window_background_color
+ *
+ * Returns the standard Mac window background color as a 32-bit value of
+ * the form 0x00rrggbb.
+ */
+uint32_t macdrv_window_background_color(void)
+{
+    static uint32_t result;
+    static dispatch_once_t once;
+
+    // Annoyingly, [NSColor windowBackgroundColor] refuses to convert to other
+    // color spaces (RGB or grayscale).  So, the only way to get RGB values out
+    // of it is to draw with it.
+    dispatch_once(&once, ^{
+        OnMainThread(^{
+            unsigned char rgbx[4];
+            unsigned char *planes = rgbx;
+            NSBitmapImageRep *bitmap = [[NSBitmapImageRep alloc] initWithBitmapDataPlanes:&planes
+                                                                               pixelsWide:1
+                                                                               pixelsHigh:1
+                                                                            bitsPerSample:8
+                                                                          samplesPerPixel:3
+                                                                                 hasAlpha:NO
+                                                                                 isPlanar:NO
+                                                                           colorSpaceName:NSCalibratedRGBColorSpace
+                                                                             bitmapFormat:0
+                                                                              bytesPerRow:4
+                                                                             bitsPerPixel:32];
+            [NSGraphicsContext saveGraphicsState];
+            [NSGraphicsContext setCurrentContext:[NSGraphicsContext graphicsContextWithBitmapImageRep:bitmap]];
+            [[NSColor windowBackgroundColor] set];
+            NSRectFill(NSMakeRect(0, 0, 1, 1));
+            [NSGraphicsContext restoreGraphicsState];
+            [bitmap release];
+            result = rgbx[0] << 16 | rgbx[1] << 8 | rgbx[2];
+        });
+    });
+
+    return result;
+}
+
+/***********************************************************************
+ *              macdrv_send_text_input_event
+ */
+int macdrv_send_text_input_event(int pressed, unsigned int flags, int repeat, int keyc, void* data)
+{
+    __block BOOL ret;
+
+    OnMainThread(^{
+        WineWindow* window = (WineWindow*)[NSApp keyWindow];
+        if (![window isKindOfClass:[WineWindow class]])
+        {
+            window = (WineWindow*)[NSApp mainWindow];
+            if (![window isKindOfClass:[WineWindow class]])
+                window = [[WineApplicationController sharedController] frontWineWindow];
+        }
+
+        if (window)
+        {
+            NSUInteger localFlags = flags;
+            CGEventRef c;
+            NSEvent* event;
+
+            window.imeData = data;
+            fix_device_modifiers_by_generic(&localFlags);
+
+            // An NSEvent created with +keyEventWithType:... is internally marked
+            // as synthetic and doesn't get sent through input methods.  But one
+            // created from a CGEvent doesn't have that problem.
+            c = CGEventCreateKeyboardEvent(NULL, keyc, pressed);
+            CGEventSetFlags(c, localFlags);
+            CGEventSetIntegerValueField(c, kCGKeyboardEventAutorepeat, repeat);
+            event = [NSEvent eventWithCGEvent:c];
+            CFRelease(c);
+
+            window.commandDone = FALSE;
+            ret = [[[window contentView] inputContext] handleEvent:event] && !window.commandDone;
+        }
+        else
+            ret = FALSE;
+    });
+
+    return ret;
 }

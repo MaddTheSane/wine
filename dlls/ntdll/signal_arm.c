@@ -47,6 +47,8 @@
 # include <sys/signal.h>
 #endif
 
+#define NONAMELESSUNION
+#define NONAMELESSSTRUCT
 #include "ntstatus.h"
 #define WIN32_NO_STATUS
 #include "windef.h"
@@ -100,6 +102,15 @@ typedef int (*wine_signal_handler)(unsigned int sig);
 
 static wine_signal_handler handlers[256];
 
+
+struct UNWIND_INFO
+{
+    WORD function_length;
+    WORD unknown1 : 7;
+    WORD count : 5;
+    WORD unknown2 : 4;
+};
+
 /***********************************************************************
  *           dispatch_signal
  */
@@ -124,7 +135,7 @@ static inline BOOL is_valid_frame( void *frame )
  *
  * Set the register values from a sigcontext.
  */
-static void save_context( CONTEXT *context, const ucontext_t *sigcontext )
+static void save_context( CONTEXT *context, const SIGCONTEXT *sigcontext )
 {
 #define C(x) context->R##x = REGn_sig(x,sigcontext)
     /* Save normal registers */
@@ -146,7 +157,7 @@ static void save_context( CONTEXT *context, const ucontext_t *sigcontext )
  *
  * Build a sigcontext from the register values.
  */
-static void restore_context( const CONTEXT *context, ucontext_t *sigcontext )
+static void restore_context( const CONTEXT *context, SIGCONTEXT *sigcontext )
 {
 #define C(x)  REGn_sig(x,sigcontext) = context->R##x
     /* Restore normal registers */
@@ -167,7 +178,7 @@ static void restore_context( const CONTEXT *context, ucontext_t *sigcontext )
  *
  * Set the FPU context from a sigcontext.
  */
-static inline void save_fpu( CONTEXT *context, const ucontext_t *sigcontext )
+static inline void save_fpu( CONTEXT *context, const SIGCONTEXT *sigcontext )
 {
     FIXME("not implemented\n");
 }
@@ -178,7 +189,7 @@ static inline void save_fpu( CONTEXT *context, const ucontext_t *sigcontext )
  *
  * Restore the FPU context to a sigcontext.
  */
-static inline void restore_fpu( CONTEXT *context, const ucontext_t *sigcontext )
+static inline void restore_fpu( CONTEXT *context, const SIGCONTEXT *sigcontext )
 {
     FIXME("not implemented\n");
 }
@@ -210,7 +221,7 @@ __ASM_STDCALL_FUNC( RtlCaptureContext, 4,
                     "str IP, [r0, #0x34]\n\t"  /* context->Ip */
                     "str SP, [r0, #0x38]\n\t"  /* context->Sp */
                     "str LR, [r0, #0x3c]\n\t"  /* context->Lr */
-                    "str LR, [r0, #0x40]\n\t"  /* context->Pc */
+                    "str PC, [r0, #0x40]\n\t"  /* context->Pc */
                     "mrs r1, CPSR\n\t"
                     "str r1, [r0, #0x44]\n\t"  /* context->Cpsr */
                     "mov PC, LR\n"
@@ -911,6 +922,83 @@ void signal_init_process(void)
 void __wine_enter_vm86( CONTEXT *context )
 {
     MESSAGE("vm86 mode not supported on this platform\n");
+}
+
+
+/**********************************************************************
+ *              RtlAddFunctionTable   (NTDLL.@)
+ */
+BOOLEAN CDECL RtlAddFunctionTable( RUNTIME_FUNCTION *table, DWORD count, DWORD addr )
+{
+    FIXME( "%p %u %x: stub\n", table, count, addr );
+    return TRUE;
+}
+
+
+/**********************************************************************
+ *              RtlDeleteFunctionTable   (NTDLL.@)
+ */
+BOOLEAN CDECL RtlDeleteFunctionTable( RUNTIME_FUNCTION *table )
+{
+    FIXME( "%p: stub\n", table );
+    return TRUE;
+}
+
+/**********************************************************************
+ *              find_function_info
+ */
+static RUNTIME_FUNCTION *find_function_info( ULONG_PTR pc, HMODULE module,
+                                             RUNTIME_FUNCTION *func, ULONG size )
+{
+    int min = 0;
+    int max = size/sizeof(*func) - 1;
+
+    while (min <= max)
+    {
+        int pos = (min + max) / 2;
+        DWORD begin = (func[pos].BeginAddress & ~1), end;
+        if (func[pos].u.s.Flag)
+            end = begin + func[pos].u.s.FunctionLength * 2;
+        else
+        {
+            struct UNWIND_INFO *info;
+            info = (struct UNWIND_INFO *)((char *)module + func[pos].u.UnwindData);
+            end = begin + info->function_length * 2;
+        }
+
+        if ((char *)pc < (char *)module + begin) max = pos - 1;
+        else if ((char *)pc >= (char *)module + end) min = pos + 1;
+        else return func + pos;
+    }
+    return NULL;
+}
+
+/**********************************************************************
+ *              RtlLookupFunctionEntry   (NTDLL.@)
+ */
+PRUNTIME_FUNCTION WINAPI RtlLookupFunctionEntry( ULONG_PTR pc, DWORD *base,
+                                                 UNWIND_HISTORY_TABLE *table )
+{
+    LDR_MODULE *module;
+    RUNTIME_FUNCTION *func;
+    ULONG size;
+
+    /* FIXME: should use the history table to make things faster */
+
+    if (LdrFindEntryForAddress( (void *)pc, &module ))
+    {
+        WARN( "module not found for %lx\n", pc );
+        return NULL;
+    }
+    if (!(func = RtlImageDirectoryEntryToData( module->BaseAddress, TRUE,
+                                               IMAGE_DIRECTORY_ENTRY_EXCEPTION, &size )))
+    {
+        WARN( "no exception table found in module %p pc %lx\n", module->BaseAddress, pc );
+        return NULL;
+    }
+    func = find_function_info( pc, module->BaseAddress, func, size );
+    if (func) *base = (DWORD)module->BaseAddress;
+    return func;
 }
 
 /***********************************************************************

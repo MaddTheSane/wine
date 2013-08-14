@@ -102,13 +102,6 @@ D3DXMATRIX * WINAPI D3DXMatrixAffineTransformation(D3DXMATRIX *out, FLOAT scalin
 
     D3DXMatrixIdentity(out);
 
-    if (rotationcenter)
-    {
-        out->u.m[3][0] = -rotationcenter->x;
-        out->u.m[3][1] = -rotationcenter->y;
-        out->u.m[3][2] = -rotationcenter->z;
-    }
-
     if (rotation)
     {
         FLOAT temp00, temp01, temp02, temp10, temp11, temp12, temp20, temp21, temp22;
@@ -135,15 +128,12 @@ D3DXMATRIX * WINAPI D3DXMatrixAffineTransformation(D3DXMATRIX *out, FLOAT scalin
 
         if (rotationcenter)
         {
-            FLOAT x, y, z;
-
-            x = out->u.m[3][0];
-            y = out->u.m[3][1];
-            z = out->u.m[3][2];
-
-            out->u.m[3][0] = x * temp00 + y * temp10 + z * temp20;
-            out->u.m[3][1] = x * temp01 + y * temp11 + z * temp21;
-            out->u.m[3][2] = x * temp02 + y * temp12 + z * temp22;
+            out->u.m[3][0] = rotationcenter->x * (1.0f - temp00) - rotationcenter->y * temp10
+                    - rotationcenter->z * temp20;
+            out->u.m[3][1] = rotationcenter->y * (1.0f - temp11) - rotationcenter->x * temp01
+                    - rotationcenter->z * temp21;
+            out->u.m[3][2] = rotationcenter->z * (1.0f - temp22) - rotationcenter->x * temp02
+                    - rotationcenter->y * temp12;
         }
     }
     else
@@ -151,13 +141,6 @@ D3DXMATRIX * WINAPI D3DXMatrixAffineTransformation(D3DXMATRIX *out, FLOAT scalin
         out->u.m[0][0] = scaling;
         out->u.m[1][1] = scaling;
         out->u.m[2][2] = scaling;
-    }
-
-    if (rotationcenter)
-    {
-        out->u.m[3][0] += rotationcenter->x;
-        out->u.m[3][1] += rotationcenter->y;
-        out->u.m[3][2] += rotationcenter->z;
     }
 
     if (translation)
@@ -255,116 +238,163 @@ HRESULT WINAPI D3DXMatrixDecompose(D3DXVECTOR3 *poutscale, D3DXQUATERNION *poutr
 
 FLOAT WINAPI D3DXMatrixDeterminant(const D3DXMATRIX *pm)
 {
-    D3DXVECTOR4 minor, v1, v2, v3;
-    FLOAT det;
+    FLOAT t[3], v[4];
 
     TRACE("pm %p\n", pm);
 
-    v1.x = pm->u.m[0][0]; v1.y = pm->u.m[1][0]; v1.z = pm->u.m[2][0]; v1.w = pm->u.m[3][0];
-    v2.x = pm->u.m[0][1]; v2.y = pm->u.m[1][1]; v2.z = pm->u.m[2][1]; v2.w = pm->u.m[3][1];
-    v3.x = pm->u.m[0][2]; v3.y = pm->u.m[1][2]; v3.z = pm->u.m[2][2]; v3.w = pm->u.m[3][2];
-    D3DXVec4Cross(&minor, &v1, &v2, &v3);
-    det =  - (pm->u.m[0][3] * minor.x + pm->u.m[1][3] * minor.y + pm->u.m[2][3] * minor.z + pm->u.m[3][3] * minor.w);
-    return det;
+    t[0] = pm->u.m[2][2] * pm->u.m[3][3] - pm->u.m[2][3] * pm->u.m[3][2];
+    t[1] = pm->u.m[1][2] * pm->u.m[3][3] - pm->u.m[1][3] * pm->u.m[3][2];
+    t[2] = pm->u.m[1][2] * pm->u.m[2][3] - pm->u.m[1][3] * pm->u.m[2][2];
+    v[0] = pm->u.m[1][1] * t[0] - pm->u.m[2][1] * t[1] + pm->u.m[3][1] * t[2];
+    v[1] = -pm->u.m[1][0] * t[0] + pm->u.m[2][0] * t[1] - pm->u.m[3][0] * t[2];
+
+    t[0] = pm->u.m[1][0] * pm->u.m[2][1] - pm->u.m[2][0] * pm->u.m[1][1];
+    t[1] = pm->u.m[1][0] * pm->u.m[3][1] - pm->u.m[3][0] * pm->u.m[1][1];
+    t[2] = pm->u.m[2][0] * pm->u.m[3][1] - pm->u.m[3][0] * pm->u.m[2][1];
+    v[2] = pm->u.m[3][3] * t[0] - pm->u.m[2][3] * t[1] + pm->u.m[1][3] * t[2];
+    v[3] = -pm->u.m[3][2] * t[0] + pm->u.m[2][2] * t[1] - pm->u.m[1][2] * t[2];
+
+    return pm->u.m[0][0] * v[0] + pm->u.m[0][1] * v[1] +
+        pm->u.m[0][2] * v[2] + pm->u.m[0][3] * v[3];
 }
 
 D3DXMATRIX* WINAPI D3DXMatrixInverse(D3DXMATRIX *pout, FLOAT *pdeterminant, const D3DXMATRIX *pm)
 {
-    int a, i, j;
-    D3DXMATRIX out;
-    D3DXVECTOR4 v, vec[3];
-    FLOAT det;
+    FLOAT det, t[3], v[16];
+    UINT i, j;
 
     TRACE("pout %p, pdeterminant %p, pm %p\n", pout, pdeterminant, pm);
 
-    det = D3DXMatrixDeterminant(pm);
-    if ( !det ) return NULL;
-    if ( pdeterminant ) *pdeterminant = det;
-    for (i=0; i<4; i++)
-    {
-        for (j=0; j<4; j++)
-        {
-            if (j != i )
-            {
-                a = j;
-                if ( j > i ) a = a-1;
-                vec[a].x = pm->u.m[j][0];
-                vec[a].y = pm->u.m[j][1];
-                vec[a].z = pm->u.m[j][2];
-                vec[a].w = pm->u.m[j][3];
-            }
-        }
-    D3DXVec4Cross(&v, &vec[0], &vec[1], &vec[2]);
-    out.u.m[0][i] = pow(-1.0f, i) * v.x / det;
-    out.u.m[1][i] = pow(-1.0f, i) * v.y / det;
-    out.u.m[2][i] = pow(-1.0f, i) * v.z / det;
-    out.u.m[3][i] = pow(-1.0f, i) * v.w / det;
-   }
+    t[0] = pm->u.m[2][2] * pm->u.m[3][3] - pm->u.m[2][3] * pm->u.m[3][2];
+    t[1] = pm->u.m[1][2] * pm->u.m[3][3] - pm->u.m[1][3] * pm->u.m[3][2];
+    t[2] = pm->u.m[1][2] * pm->u.m[2][3] - pm->u.m[1][3] * pm->u.m[2][2];
+    v[0] = pm->u.m[1][1] * t[0] - pm->u.m[2][1] * t[1] + pm->u.m[3][1] * t[2];
+    v[4] = -pm->u.m[1][0] * t[0] + pm->u.m[2][0] * t[1] - pm->u.m[3][0] * t[2];
 
-   *pout = out;
-   return pout;
-}
+    t[0] = pm->u.m[1][0] * pm->u.m[2][1] - pm->u.m[2][0] * pm->u.m[1][1];
+    t[1] = pm->u.m[1][0] * pm->u.m[3][1] - pm->u.m[3][0] * pm->u.m[1][1];
+    t[2] = pm->u.m[2][0] * pm->u.m[3][1] - pm->u.m[3][0] * pm->u.m[2][1];
+    v[8] = pm->u.m[3][3] * t[0] - pm->u.m[2][3] * t[1] + pm->u.m[1][3] * t[2];
+    v[12] = -pm->u.m[3][2] * t[0] + pm->u.m[2][2] * t[1] - pm->u.m[1][2] * t[2];
 
-D3DXMATRIX* WINAPI D3DXMatrixLookAtLH(D3DXMATRIX *pout, const D3DXVECTOR3 *peye, const D3DXVECTOR3 *pat, const D3DXVECTOR3 *pup)
-{
-    D3DXVECTOR3 right, rightn, up, upn, vec, vec2;
+    det = pm->u.m[0][0] * v[0] + pm->u.m[0][1] * v[4] +
+        pm->u.m[0][2] * v[8] + pm->u.m[0][3] * v[12];
+    if (det == 0.0f)
+        return NULL;
+    if (pdeterminant)
+        *pdeterminant = det;
 
-    TRACE("pout %p, peye %p, pat %p, pup %p\n", pout, peye, pat, pup);
+    t[0] = pm->u.m[2][2] * pm->u.m[3][3] - pm->u.m[2][3] * pm->u.m[3][2];
+    t[1] = pm->u.m[0][2] * pm->u.m[3][3] - pm->u.m[0][3] * pm->u.m[3][2];
+    t[2] = pm->u.m[0][2] * pm->u.m[2][3] - pm->u.m[0][3] * pm->u.m[2][2];
+    v[1] = -pm->u.m[0][1] * t[0] + pm->u.m[2][1] * t[1] - pm->u.m[3][1] * t[2];
+    v[5] = pm->u.m[0][0] * t[0] - pm->u.m[2][0] * t[1] + pm->u.m[3][0] * t[2];
 
-    D3DXVec3Subtract(&vec2, pat, peye);
-    D3DXVec3Normalize(&vec, &vec2);
-    D3DXVec3Cross(&right, pup, &vec);
-    D3DXVec3Cross(&up, &vec, &right);
-    D3DXVec3Normalize(&rightn, &right);
-    D3DXVec3Normalize(&upn, &up);
-    pout->u.m[0][0] = rightn.x;
-    pout->u.m[1][0] = rightn.y;
-    pout->u.m[2][0] = rightn.z;
-    pout->u.m[3][0] = -D3DXVec3Dot(&rightn,peye);
-    pout->u.m[0][1] = upn.x;
-    pout->u.m[1][1] = upn.y;
-    pout->u.m[2][1] = upn.z;
-    pout->u.m[3][1] = -D3DXVec3Dot(&upn, peye);
-    pout->u.m[0][2] = vec.x;
-    pout->u.m[1][2] = vec.y;
-    pout->u.m[2][2] = vec.z;
-    pout->u.m[3][2] = -D3DXVec3Dot(&vec, peye);
-    pout->u.m[0][3] = 0.0f;
-    pout->u.m[1][3] = 0.0f;
-    pout->u.m[2][3] = 0.0f;
-    pout->u.m[3][3] = 1.0f;
+    t[0] = pm->u.m[0][0] * pm->u.m[2][1] - pm->u.m[2][0] * pm->u.m[0][1];
+    t[1] = pm->u.m[3][0] * pm->u.m[0][1] - pm->u.m[0][0] * pm->u.m[3][1];
+    t[2] = pm->u.m[2][0] * pm->u.m[3][1] - pm->u.m[3][0] * pm->u.m[2][1];
+    v[9] = -pm->u.m[3][3] * t[0] - pm->u.m[2][3] * t[1]- pm->u.m[0][3] * t[2];
+    v[13] = pm->u.m[3][2] * t[0] + pm->u.m[2][2] * t[1] + pm->u.m[0][2] * t[2];
+
+    t[0] = pm->u.m[1][2] * pm->u.m[3][3] - pm->u.m[1][3] * pm->u.m[3][2];
+    t[1] = pm->u.m[0][2] * pm->u.m[3][3] - pm->u.m[0][3] * pm->u.m[3][2];
+    t[2] = pm->u.m[0][2] * pm->u.m[1][3] - pm->u.m[0][3] * pm->u.m[1][2];
+    v[2] = pm->u.m[0][1] * t[0] - pm->u.m[1][1] * t[1] + pm->u.m[3][1] * t[2];
+    v[6] = -pm->u.m[0][0] * t[0] + pm->u.m[1][0] * t[1] - pm->u.m[3][0] * t[2];
+
+    t[0] = pm->u.m[0][0] * pm->u.m[1][1] - pm->u.m[1][0] * pm->u.m[0][1];
+    t[1] = pm->u.m[3][0] * pm->u.m[0][1] - pm->u.m[0][0] * pm->u.m[3][1];
+    t[2] = pm->u.m[1][0] * pm->u.m[3][1] - pm->u.m[3][0] * pm->u.m[1][1];
+    v[10] = pm->u.m[3][3] * t[0] + pm->u.m[1][3] * t[1] + pm->u.m[0][3] * t[2];
+    v[14] = -pm->u.m[3][2] * t[0] - pm->u.m[1][2] * t[1] - pm->u.m[0][2] * t[2];
+
+    t[0] = pm->u.m[1][2] * pm->u.m[2][3] - pm->u.m[1][3] * pm->u.m[2][2];
+    t[1] = pm->u.m[0][2] * pm->u.m[2][3] - pm->u.m[0][3] * pm->u.m[2][2];
+    t[2] = pm->u.m[0][2] * pm->u.m[1][3] - pm->u.m[0][3] * pm->u.m[1][2];
+    v[3] = -pm->u.m[0][1] * t[0] + pm->u.m[1][1] * t[1] - pm->u.m[2][1] * t[2];
+    v[7] = pm->u.m[0][0] * t[0] - pm->u.m[1][0] * t[1] + pm->u.m[2][0] * t[2];
+
+    v[11] = -pm->u.m[0][0] * (pm->u.m[1][1] * pm->u.m[2][3] - pm->u.m[1][3] * pm->u.m[2][1]) +
+        pm->u.m[1][0] * (pm->u.m[0][1] * pm->u.m[2][3] - pm->u.m[0][3] * pm->u.m[2][1]) -
+        pm->u.m[2][0] * (pm->u.m[0][1] * pm->u.m[1][3] - pm->u.m[0][3] * pm->u.m[1][1]);
+
+    v[15] = pm->u.m[0][0] * (pm->u.m[1][1] * pm->u.m[2][2] - pm->u.m[1][2] * pm->u.m[2][1]) -
+        pm->u.m[1][0] * (pm->u.m[0][1] * pm->u.m[2][2] - pm->u.m[0][2] * pm->u.m[2][1]) +
+        pm->u.m[2][0] * (pm->u.m[0][1] * pm->u.m[1][2] - pm->u.m[0][2] * pm->u.m[1][1]);
+
+    det = 1.0f / det;
+
+    for (i = 0; i < 4; i++)
+        for (j = 0; j < 4; j++)
+            pout->u.m[i][j] = v[4 * i + j] * det;
+
     return pout;
 }
 
-D3DXMATRIX* WINAPI D3DXMatrixLookAtRH(D3DXMATRIX *pout, const D3DXVECTOR3 *peye, const D3DXVECTOR3 *pat, const D3DXVECTOR3 *pup)
+D3DXMATRIX * WINAPI D3DXMatrixLookAtLH(D3DXMATRIX *out, const D3DXVECTOR3 *eye, const D3DXVECTOR3 *at,
+        const D3DXVECTOR3 *up)
 {
-    D3DXVECTOR3 right, rightn, up, upn, vec, vec2;
+    D3DXVECTOR3 right, upn, vec;
 
-    TRACE("pout %p, peye %p, pat %p, pup %p\n", pout, peye, pat, pup);
+    TRACE("out %p, eye %p, at %p, up %p\n", out, eye, at, up);
 
-    D3DXVec3Subtract(&vec2, pat, peye);
-    D3DXVec3Normalize(&vec, &vec2);
-    D3DXVec3Cross(&right, pup, &vec);
-    D3DXVec3Cross(&up, &vec, &right);
-    D3DXVec3Normalize(&rightn, &right);
-    D3DXVec3Normalize(&upn, &up);
-    pout->u.m[0][0] = -rightn.x;
-    pout->u.m[1][0] = -rightn.y;
-    pout->u.m[2][0] = -rightn.z;
-    pout->u.m[3][0] = D3DXVec3Dot(&rightn,peye);
-    pout->u.m[0][1] = upn.x;
-    pout->u.m[1][1] = upn.y;
-    pout->u.m[2][1] = upn.z;
-    pout->u.m[3][1] = -D3DXVec3Dot(&upn, peye);
-    pout->u.m[0][2] = -vec.x;
-    pout->u.m[1][2] = -vec.y;
-    pout->u.m[2][2] = -vec.z;
-    pout->u.m[3][2] = D3DXVec3Dot(&vec, peye);
-    pout->u.m[0][3] = 0.0f;
-    pout->u.m[1][3] = 0.0f;
-    pout->u.m[2][3] = 0.0f;
-    pout->u.m[3][3] = 1.0f;
-    return pout;
+    D3DXVec3Subtract(&vec, at, eye);
+    D3DXVec3Normalize(&vec, &vec);
+    D3DXVec3Cross(&right, up, &vec);
+    D3DXVec3Cross(&upn, &vec, &right);
+    D3DXVec3Normalize(&right, &right);
+    D3DXVec3Normalize(&upn, &upn);
+    out->u.m[0][0] = right.x;
+    out->u.m[1][0] = right.y;
+    out->u.m[2][0] = right.z;
+    out->u.m[3][0] = -D3DXVec3Dot(&right, eye);
+    out->u.m[0][1] = upn.x;
+    out->u.m[1][1] = upn.y;
+    out->u.m[2][1] = upn.z;
+    out->u.m[3][1] = -D3DXVec3Dot(&upn, eye);
+    out->u.m[0][2] = vec.x;
+    out->u.m[1][2] = vec.y;
+    out->u.m[2][2] = vec.z;
+    out->u.m[3][2] = -D3DXVec3Dot(&vec, eye);
+    out->u.m[0][3] = 0.0f;
+    out->u.m[1][3] = 0.0f;
+    out->u.m[2][3] = 0.0f;
+    out->u.m[3][3] = 1.0f;
+
+    return out;
+}
+
+D3DXMATRIX * WINAPI D3DXMatrixLookAtRH(D3DXMATRIX *out, const D3DXVECTOR3 *eye, const D3DXVECTOR3 *at,
+        const D3DXVECTOR3 *up)
+{
+    D3DXVECTOR3 right, upn, vec;
+
+    TRACE("out %p, eye %p, at %p, up %p\n", out, eye, at, up);
+
+    D3DXVec3Subtract(&vec, at, eye);
+    D3DXVec3Normalize(&vec, &vec);
+    D3DXVec3Cross(&right, up, &vec);
+    D3DXVec3Cross(&upn, &vec, &right);
+    D3DXVec3Normalize(&right, &right);
+    D3DXVec3Normalize(&upn, &upn);
+    out->u.m[0][0] = -right.x;
+    out->u.m[1][0] = -right.y;
+    out->u.m[2][0] = -right.z;
+    out->u.m[3][0] = D3DXVec3Dot(&right, eye);
+    out->u.m[0][1] = upn.x;
+    out->u.m[1][1] = upn.y;
+    out->u.m[2][1] = upn.z;
+    out->u.m[3][1] = -D3DXVec3Dot(&upn, eye);
+    out->u.m[0][2] = -vec.x;
+    out->u.m[1][2] = -vec.y;
+    out->u.m[2][2] = -vec.z;
+    out->u.m[3][2] = D3DXVec3Dot(&vec, eye);
+    out->u.m[0][3] = 0.0f;
+    out->u.m[1][3] = 0.0f;
+    out->u.m[2][3] = 0.0f;
+    out->u.m[3][3] = 1.0f;
+
+    return out;
 }
 
 D3DXMATRIX* WINAPI D3DXMatrixMultiply(D3DXMATRIX *pout, const D3DXMATRIX *pm1, const D3DXMATRIX *pm2)
@@ -876,7 +906,7 @@ D3DXMATRIX* WINAPI D3DXMatrixTransformation2D(D3DXMATRIX *pout, const D3DXVECTOR
 
 D3DXMATRIX* WINAPI D3DXMatrixTranslation(D3DXMATRIX *pout, FLOAT x, FLOAT y, FLOAT z)
 {
-    TRACE("pout %p, x %f, y %f, z%f\n", pout, x, y, z);
+    TRACE("pout %p, x %f, y %f, z %f\n", pout, x, y, z);
 
     D3DXMatrixIdentity(pout);
     pout->u.m[3][0] = x;
@@ -1571,7 +1601,7 @@ void WINAPI D3DXQuaternionSquadSetup(D3DXQUATERNION *paout, D3DXQUATERNION *pbou
 {
     D3DXQUATERNION q, temp1, temp2, temp3, zero;
 
-    TRACE("paout %p, pbout %p, pcout %p, pq0 %p, 1 %p, pq2 %p, pq3 %p\n", paout, pbout, pcout, pq0, pq1, pq2, pq3);
+    TRACE("paout %p, pbout %p, pcout %p, pq0 %p, pq1 %p, pq2 %p, pq3 %p\n", paout, pbout, pcout, pq0, pq1, pq2, pq3);
 
     zero.x = 0.0f;
     zero.y = 0.0f;
@@ -1750,7 +1780,7 @@ D3DXVECTOR2* WINAPI D3DXVec2TransformNormal(D3DXVECTOR2 *pout, const D3DXVECTOR2
 {
     const D3DXVECTOR2 v = *pv;
 
-    TRACE("pout %p, pv %p, pm %p", pout, pv, pm);
+    TRACE("pout %p, pv %p, pm %p\n", pout, pv, pm);
 
     pout->x = pm->u.m[0][0] * v.x + pm->u.m[1][0] * v.y;
     pout->y = pm->u.m[0][1] * v.x + pm->u.m[1][1] * v.y;
@@ -2260,62 +2290,145 @@ FLOAT WINAPI D3DXSHDot(UINT order, const FLOAT *a, const FLOAT *b)
     return s;
 }
 
+static void weightedcapintegrale(FLOAT *out, FLOAT order, FLOAT angle)
+{
+    FLOAT coeff[3];
+
+    coeff[0] = cosf(angle);
+
+    out[0] = 2.0f * D3DX_PI * (1.0f - coeff[0]);
+    out[1] = D3DX_PI * sinf(angle) * sinf(angle);
+    if (order <= 2)
+        return;
+
+    out[2] = coeff[0] * out[1];
+    if (order == 3)
+        return;
+
+    coeff[1] = coeff[0] * coeff[0];
+    coeff[2] = coeff[1] * coeff[1];
+
+    out[3] = D3DX_PI * (-1.25f * coeff[2] + 1.5f * coeff[1] - 0.25f);
+    if (order == 4)
+        return;
+
+    out[4] = -0.25f * D3DX_PI * coeff[0] * (7.0f * coeff[2] - 10.0f * coeff[1] + 3.0f);
+    if (order == 5)
+        return;
+
+    out[5] = D3DX_PI * (-2.625f * coeff[2] * coeff[1] + 4.375f * coeff[2] - 1.875f * coeff[1] + 0.125f);
+}
+
+HRESULT WINAPI D3DXSHEvalConeLight(UINT order, const D3DXVECTOR3 *dir, FLOAT radius,
+    FLOAT Rintensity, FLOAT Gintensity, FLOAT Bintensity, FLOAT *rout, FLOAT *gout, FLOAT *bout)
+{
+    FLOAT cap[6], clamped_angle, norm, scale, temp;
+    UINT i, index, j;
+
+    TRACE("order %u, dir %p, radius %f, red %f, green %f, blue %f, rout %p, gout %p, bout %p\n",
+        order, dir, radius, Rintensity, Gintensity, Bintensity, rout, gout, bout);
+
+    if (radius <= 0.0f)
+        return D3DXSHEvalDirectionalLight(order, dir, Rintensity, Gintensity, Bintensity, rout, gout, bout);
+
+    clamped_angle = (radius > D3DX_PI / 2.0f) ? (D3DX_PI / 2.0f) : radius;
+    norm = sinf(clamped_angle) * sinf(clamped_angle);
+
+    if (order > D3DXSH_MAXORDER)
+    {
+        WARN("Order clamped at D3DXSH_MAXORDER\n");
+        order = D3DXSH_MAXORDER;
+    }
+
+    weightedcapintegrale(cap, order, radius);
+    D3DXSHEvalDirection(rout, order, dir);
+
+    for (i = 0; i < order; i++)
+    {
+        scale = cap[i] / norm;
+
+        for (j = 0; j < 2 * i + 1; j++)
+        {
+            index = i * i + j;
+            temp = rout[index] * scale;
+
+            rout[index] = temp * Rintensity;
+            if (gout)
+                gout[index] = temp * Gintensity;
+            if (bout)
+                bout[index] = temp * Bintensity;
+        }
+    }
+
+    return D3D_OK;
+}
+
 FLOAT* WINAPI D3DXSHEvalDirection(FLOAT *out, UINT order, const D3DXVECTOR3 *dir)
 {
+    const FLOAT dirxx = dir->x * dir->x;
+    const FLOAT dirxy = dir->x * dir->y;
+    const FLOAT dirxz = dir->x * dir->z;
+    const FLOAT diryy = dir->y * dir->y;
+    const FLOAT diryz = dir->y * dir->z;
+    const FLOAT dirzz = dir->z * dir->z;
+    const FLOAT dirxxxx = dirxx * dirxx;
+    const FLOAT diryyyy = diryy * diryy;
+    const FLOAT dirzzzz = dirzz * dirzz;
+    const FLOAT dirxyxy = dirxy * dirxy;
 
     TRACE("out %p, order %u, dir %p\n", out, order, dir);
 
-    if ( (order < D3DXSH_MINORDER) || (order > D3DXSH_MAXORDER) )
+    if ((order < D3DXSH_MINORDER) || (order > D3DXSH_MAXORDER))
         return out;
 
-    out[0] = 0.5f / sqrt(D3DX_PI);
-    out[1] = -0.5f / sqrt(D3DX_PI / 3.0f) * dir->y;
-    out[2] = 0.5f / sqrt(D3DX_PI / 3.0f) * dir->z;
-    out[3] = -0.5f / sqrt(D3DX_PI / 3.0f) * dir->x;
-    if ( order == 2 )
+    out[0] = 0.5f / sqrtf(D3DX_PI);
+    out[1] = -0.5f / sqrtf(D3DX_PI / 3.0f) * dir->y;
+    out[2] = 0.5f / sqrtf(D3DX_PI / 3.0f) * dir->z;
+    out[3] = -0.5f / sqrtf(D3DX_PI / 3.0f) * dir->x;
+    if (order == 2)
         return out;
 
-    out[4] = 0.5f / sqrt(D3DX_PI / 15.0f) * dir->x * dir->y;
-    out[5] = -0.5f / sqrt(D3DX_PI / 15.0f) * dir->y * dir->z;
-    out[6] = 0.25f / sqrt(D3DX_PI / 5.0f) * ( 3.0f * dir->z * dir->z - 1.0f );
-    out[7] = -0.5f / sqrt(D3DX_PI / 15.0f) * dir->x * dir->z;
-    out[8] = 0.25f / sqrt(D3DX_PI / 15.0f) * ( dir->x * dir->x - dir->y * dir->y );
-    if ( order == 3 )
+    out[4] = 0.5f / sqrtf(D3DX_PI / 15.0f) * dirxy;
+    out[5] = -0.5f / sqrtf(D3DX_PI / 15.0f) * diryz;
+    out[6] = 0.25f / sqrtf(D3DX_PI / 5.0f) * (3.0f * dirzz - 1.0f);
+    out[7] = -0.5f / sqrtf(D3DX_PI / 15.0f) * dirxz;
+    out[8] = 0.25f / sqrtf(D3DX_PI / 15.0f) * (dirxx - diryy);
+    if (order == 3)
         return out;
 
-    out[9] = -sqrt(70.0f / D3DX_PI) / 8.0f * dir->y * (3.0f * dir->x * dir->x - dir->y * dir->y );
-    out[10] = sqrt(105.0f / D3DX_PI) / 2.0f * dir->x * dir->y * dir->z;
-    out[11] = -sqrt(42.0 / D3DX_PI) / 8.0f * dir->y * ( -1.0f + 5.0f * dir->z * dir->z );
-    out[12] = sqrt(7.0f / D3DX_PI) / 4.0f * dir->z * ( 5.0f * dir->z * dir->z - 3.0f );
-    out[13] = sqrt(42.0 / D3DX_PI) / 8.0f * dir->x * ( 1.0f - 5.0f * dir->z * dir->z );
-    out[14] = sqrt(105.0f / D3DX_PI) / 4.0f * dir->z * ( dir->x * dir->x - dir->y * dir->y );
-    out[15] = -sqrt(70.0f / D3DX_PI) / 8.0f * dir->x * ( dir->x * dir->x - 3.0f * dir->y * dir->y );
-    if ( order == 4 )
+    out[9] = -sqrtf(70.0f / D3DX_PI) / 8.0f * dir->y * (3.0f * dirxx - diryy);
+    out[10] = sqrtf(105.0f / D3DX_PI) / 2.0f * dirxy * dir->z;
+    out[11] = -sqrtf(42.0 / D3DX_PI) / 8.0f * dir->y * (-1.0f + 5.0f * dirzz);
+    out[12] = sqrtf(7.0f / D3DX_PI) / 4.0f * dir->z * (5.0f * dirzz - 3.0f);
+    out[13] = sqrtf(42.0 / D3DX_PI) / 8.0f * dir->x * (1.0f - 5.0f * dirzz);
+    out[14] = sqrtf(105.0f / D3DX_PI) / 4.0f * dir->z * (dirxx - diryy);
+    out[15] = -sqrtf(70.0f / D3DX_PI) / 8.0f * dir->x * (dirxx - 3.0f * diryy);
+    if (order == 4)
         return out;
 
-    out[16] = 0.75f * sqrt(35.0f / D3DX_PI) * dir->x * dir->y * (dir->x * dir->x - dir->y * dir->y );
+    out[16] = 0.75f * sqrtf(35.0f / D3DX_PI) * dirxy * (dirxx - diryy);
     out[17] = 3.0f * dir->z * out[9];
-    out[18] = 0.75f * sqrt(5.0f / D3DX_PI) * dir->x * dir->y * ( 7.0f * dir->z * dir->z - 1.0f );
-    out[19] = 0.375f * sqrt(10.0f / D3DX_PI) * dir->y * dir->z * ( 3.0f - 7.0f * dir->z * dir->z );
-    out[20] = 3.0f / ( 16.0f * sqrt(D3DX_PI) ) * ( 35.0f * dir->z * dir->z * dir->z * dir->z - 30.f * dir->z * dir->z + 3.0f );
-    out[21] = 0.375f * sqrt(10.0f / D3DX_PI) * dir->x * dir->z * ( 3.0f - 7.0f * dir->z * dir->z );
-    out[22] = 0.375f * sqrt(5.0f / D3DX_PI) * ( dir->x * dir->x - dir->y * dir->y ) * ( 7.0f * dir->z * dir->z - 1.0f);
+    out[18] = 0.75f * sqrtf(5.0f / D3DX_PI) * dirxy * (7.0f * dirzz - 1.0f);
+    out[19] = 0.375f * sqrtf(10.0f / D3DX_PI) * diryz * (3.0f - 7.0f * dirzz);
+    out[20] = 3.0f / (16.0f * sqrtf(D3DX_PI)) * (35.0f * dirzzzz - 30.f * dirzz + 3.0f);
+    out[21] = 0.375f * sqrtf(10.0f / D3DX_PI) * dirxz * (3.0f - 7.0f * dirzz);
+    out[22] = 0.375f * sqrtf(5.0f / D3DX_PI) * (dirxx - diryy) * (7.0f * dirzz - 1.0f);
     out[23] = 3.0 * dir->z * out[15];
-    out[24] = 3.0f / 16.0f * sqrt(35.0f / D3DX_PI) * ( dir->x * dir->x * dir->x * dir->x- 6.0f * dir->x * dir->x * dir->y * dir->y + dir->y * dir->y * dir->y * dir->y );
-    if ( order == 5 )
+    out[24] = 3.0f / 16.0f * sqrtf(35.0f / D3DX_PI) * (dirxxxx - 6.0f * dirxyxy + diryyyy);
+    if (order == 5)
         return out;
 
-    out[25] = -3.0f/ 32.0f * sqrt(154.0f / D3DX_PI) * dir->y * ( 5.0f * dir->x * dir->x * dir->x * dir->x - 10.0f * dir->x * dir->x * dir->y * dir->y + dir->y * dir->y * dir->y * dir->y );
-    out[26] = 0.75f * sqrt(385.0f / D3DX_PI) * dir->x * dir->y * dir->z * ( dir->x * dir->x - dir->y * dir->y );
-    out[27] = sqrt(770.0f / D3DX_PI) / 32.0f * dir->y * ( 3.0f * dir->x * dir->x - dir->y * dir->y ) * ( 1.0f - 9.0f * dir->z * dir->z );
-    out[28] = sqrt(1155.0f / D3DX_PI) / 4.0f * dir->x * dir->y * dir->z * ( 3.0f * dir->z * dir->z - 1.0f);
-    out[29] = sqrt(165.0f / D3DX_PI) / 16.0f * dir->y * ( 14.0f * dir->z * dir->z - 21.0f * dir->z * dir->z * dir->z * dir->z - 1.0f );
-    out[30] = sqrt(11.0f / D3DX_PI) / 16.0f * dir->z * ( 63.0f * dir->z * dir->z * dir->z * dir->z - 70.0f * dir->z * dir->z + 15.0f );
-    out[31] = sqrt(165.0f / D3DX_PI) / 16.0f * dir->x * ( 14.0f * dir->z * dir->z - 21.0f * dir->z * dir->z * dir->z * dir->z - 1.0f );
-    out[32] = sqrt(1155.0f / D3DX_PI) / 8.0f * dir->z * ( dir->x * dir->x - dir->y * dir->y ) * ( 3.0f * dir->z * dir->z - 1.0f );
-    out[33] = sqrt(770.0f / D3DX_PI) / 32.0f * dir->x * ( dir->x * dir->x - 3.0f * dir->y * dir->y ) * ( 1.0f - 9.0f * dir->z * dir->z );
-    out[34] = 3.0f / 16.0f * sqrt(385.0f / D3DX_PI) * dir->z * ( dir->x * dir->x * dir->x * dir->x - 6.0 * dir->x * dir->x * dir->y * dir->y + dir->y * dir->y * dir->y * dir->y );
-    out[35] = -3.0f/ 32.0f * sqrt(154.0f / D3DX_PI) * dir->x * ( dir->x * dir->x * dir->x * dir->x - 10.0f * dir->x * dir->x * dir->y * dir->y + 5.0f * dir->y * dir->y * dir->y * dir->y );
+    out[25] = -3.0f/ 32.0f * sqrtf(154.0f / D3DX_PI) * dir->y * (5.0f * dirxxxx - 10.0f * dirxyxy + diryyyy);
+    out[26] = 0.75f * sqrtf(385.0f / D3DX_PI) * dirxy * dir->z * (dirxx - diryy);
+    out[27] = sqrtf(770.0f / D3DX_PI) / 32.0f * dir->y * (3.0f * dirxx - diryy) * (1.0f - 9.0f * dirzz);
+    out[28] = sqrtf(1155.0f / D3DX_PI) / 4.0f * dirxy * dir->z * (3.0f * dirzz - 1.0f);
+    out[29] = sqrtf(165.0f / D3DX_PI) / 16.0f * dir->y * (14.0f * dirzz - 21.0f * dirzzzz - 1.0f);
+    out[30] = sqrtf(11.0f / D3DX_PI) / 16.0f * dir->z * (63.0f * dirzzzz - 70.0f * dirzz + 15.0f);
+    out[31] = sqrtf(165.0f / D3DX_PI) / 16.0f * dir->x * (14.0f * dirzz - 21.0f * dirzzzz - 1.0f);
+    out[32] = sqrtf(1155.0f / D3DX_PI) / 8.0f * dir->z * (dirxx - diryy) * (3.0f * dirzz - 1.0f);
+    out[33] = sqrtf(770.0f / D3DX_PI) / 32.0f * dir->x * (dirxx - 3.0f * diryy) * (1.0f - 9.0f * dirzz);
+    out[34] = 3.0f / 16.0f * sqrtf(385.0f / D3DX_PI) * dir->z * (dirxxxx - 6.0 * dirxyxy + diryyyy);
+    out[35] = -3.0f/ 32.0f * sqrtf(154.0f / D3DX_PI) * dir->x * (dirxxxx - 10.0f * dirxyxy + 5.0f * diryyyy);
 
     return out;
 }
@@ -2345,6 +2458,94 @@ HRESULT WINAPI D3DXSHEvalDirectionalLight(UINT order, const D3DXVECTOR3 *dir, FL
         if ( Bout )
             Bout[j] = Bintensity * temp;
     }
+
+    return D3D_OK;
+}
+
+HRESULT WINAPI D3DXSHEvalHemisphereLight(UINT order, const D3DXVECTOR3 *dir, D3DXCOLOR top, D3DXCOLOR bottom,
+    FLOAT *rout, FLOAT *gout, FLOAT *bout)
+{
+    FLOAT a[2], temp[4];
+    UINT i, j;
+
+    TRACE("order %u, dir %p, rout %p, gout %p, bout %p\n", order, dir, rout, gout, bout);
+
+    D3DXSHEvalDirection(temp, 2, dir);
+
+    a[0] = (top.r + bottom.r) * 3.0f * D3DX_PI;
+    a[1] = (top.r - bottom.r) * D3DX_PI;
+    for (i = 0; i < order; i++)
+        for (j = 0; j < 2 * i + 1; j++)
+            if (i < 2)
+                rout[i * i + j] = temp[i * i + j] * a[i];
+            else
+                rout[i * i + j] = 0.0f;
+
+    if (gout)
+    {
+        a[0] = (top.g + bottom.g) * 3.0f * D3DX_PI;
+        a[1] = (top.g - bottom.g) * D3DX_PI;
+        for (i = 0; i < order; i++)
+            for (j = 0; j < 2 * i + 1; j++)
+                if (i < 2)
+                    gout[i * i + j] = temp[i * i + j] * a[i];
+                else
+                    gout[i * i + j] = 0.0f;
+    }
+
+    if (bout)
+    {
+        a[0] = (top.b + bottom.b) * 3.0f * D3DX_PI;
+        a[1] = (top.b - bottom.b) * D3DX_PI;
+        for (i = 0; i < order; i++)
+            for (j = 0; j < 2 * i + 1; j++)
+                if (i < 2)
+                    bout[i * i + j] = temp[i * i + j] * a[i];
+                else
+                    bout[i * i + j] = 0.0f;
+    }
+
+    return D3D_OK;
+}
+
+HRESULT WINAPI D3DXSHEvalSphericalLight(UINT order, const D3DXVECTOR3 *dir, FLOAT radius,
+    FLOAT Rintensity, FLOAT Gintensity, FLOAT Bintensity, FLOAT *rout, FLOAT *gout, FLOAT *bout)
+{
+    D3DXVECTOR3 normal;
+    FLOAT cap[6], clamped_angle, dist, temp;
+    UINT i, index, j;
+
+    TRACE("order %u, dir %p, radius %f, red %f, green %f, blue %f, rout %p, gout %p, bout %p\n",
+        order, dir, radius, Rintensity, Gintensity, Bintensity, rout, gout, bout);
+
+    if (order > D3DXSH_MAXORDER)
+    {
+        WARN("Order clamped at D3DXSH_MAXORDER\n");
+        order = D3DXSH_MAXORDER;
+    }
+
+    if (radius < 0.0f)
+        radius = -radius;
+
+    dist = D3DXVec3Length(dir);
+    clamped_angle = (dist <= radius) ? D3DX_PI / 2.0f : asinf(radius / dist);
+
+    weightedcapintegrale(cap, order, clamped_angle);
+    D3DXVec3Normalize(&normal, dir);
+    D3DXSHEvalDirection(rout, order, &normal);
+
+    for (i = 0; i < order; i++)
+        for (j = 0; j < 2 * i + 1; j++)
+        {
+            index = i * i + j;
+            temp = rout[index] * cap[i];
+
+            rout[index] = temp * Rintensity;
+            if (gout)
+                gout[index] = temp * Gintensity;
+            if (bout)
+                bout[index] = temp * Bintensity;
+        }
 
     return D3D_OK;
 }

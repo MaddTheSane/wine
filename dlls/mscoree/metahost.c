@@ -138,6 +138,8 @@ static HRESULT load_mono(CLRRuntimeInfo *This, loaded_mono **result)
     char mono_lib_path_a[MAX_PATH], mono_etc_path_a[MAX_PATH];
     int trace_size;
     char trace_setting[256];
+    int verbose_size;
+    char verbose_setting[256];
 
     if (This->mono_abi_version <= 0 || This->mono_abi_version > NUM_ABI_VERSIONS)
     {
@@ -204,6 +206,7 @@ static HRESULT load_mono(CLRRuntimeInfo *This, loaded_mono **result)
         LOAD_MONO_FUNCTION(mono_runtime_object_init);
         LOAD_MONO_FUNCTION(mono_runtime_quit);
         LOAD_MONO_FUNCTION(mono_set_dirs);
+        LOAD_MONO_FUNCTION(mono_set_verbose_level);
         LOAD_MONO_FUNCTION(mono_stringify_assembly_name);
         LOAD_MONO_FUNCTION(mono_string_new);
         LOAD_MONO_FUNCTION(mono_thread_attach);
@@ -254,6 +257,13 @@ static HRESULT load_mono(CLRRuntimeInfo *This, loaded_mono **result)
         {
             (*result)->mono_jit_set_trace_options(trace_setting);
         }
+
+        verbose_size = GetEnvironmentVariableA("WINE_MONO_VERBOSE", verbose_setting, sizeof(verbose_setting));
+
+        if (verbose_size)
+        {
+            (*result)->mono_set_verbose_level(verbose_setting[0] - '0');
+        }
     }
 
     return S_OK;
@@ -303,6 +313,12 @@ static HRESULT CLRRuntimeInfo_GetRuntimeHost(CLRRuntimeInfo *This, RuntimeHost *
 void unload_all_runtimes(void)
 {
     int i;
+    HMODULE handle;
+
+    /* If the only references to mscoree are through dll's that were loaded by
+     * Mono, shutting down the Mono runtime will free mscoree, so take a
+     * reference to prevent that from happening. */
+    GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS, (const WCHAR *)unload_all_runtimes, &handle);
 
     for (i=0; i<NUM_ABI_VERSIONS; i++)
     {
@@ -1194,30 +1210,14 @@ HRESULT CLRMetaHost_CreateInstance(REFIID riid, void **ppobj)
     return ICLRMetaHost_QueryInterface(&GlobalCLRMetaHost.ICLRMetaHost_iface, riid, ppobj);
 }
 
-static MonoAssembly* mono_assembly_search_hook_fn(MonoAssemblyName *aname, char **assemblies_path, void *user_data)
+HRESULT get_file_from_strongname(WCHAR* stringnameW, WCHAR* assemblies_path, int path_length)
 {
-    loaded_mono *mono = user_data;
     HRESULT hr=S_OK;
-    MonoAssembly *result=NULL;
-    char *stringname=NULL;
-    LPWSTR stringnameW;
-    int stringnameW_size;
     IAssemblyCache *asmcache;
     ASSEMBLY_INFO info;
-    WCHAR path[MAX_PATH];
-    char *pathA;
-    MonoImageOpenStatus stat;
     static WCHAR fusiondll[] = {'f','u','s','i','o','n',0};
     HMODULE hfusion=NULL;
     static HRESULT (WINAPI *pCreateAssemblyCache)(IAssemblyCache**,DWORD);
-
-    stringname = mono->mono_stringify_assembly_name(aname);
-
-    TRACE("%s\n", debugstr_a(stringname));
-
-    if (!stringname) return NULL;
-
-    /* FIXME: We should search the given paths before the GAC. */
 
     if (!pCreateAssemblyCache)
     {
@@ -1236,28 +1236,52 @@ static MonoAssembly* mono_assembly_search_hook_fn(MonoAssemblyName *aname, char 
 
     if (SUCCEEDED(hr))
     {
-        stringnameW_size = MultiByteToWideChar(CP_UTF8, 0, stringname, -1, NULL, 0);
+        info.cbAssemblyInfo = sizeof(info);
+        info.pszCurrentAssemblyPathBuf = assemblies_path;
+        info.cchBuf = path_length;
+        assemblies_path[0] = 0;
 
-        stringnameW = HeapAlloc(GetProcessHeap(), 0, stringnameW_size * sizeof(WCHAR));
-        if (stringnameW)
-            MultiByteToWideChar(CP_UTF8, 0, stringname, -1, stringnameW, stringnameW_size);
-        else
-            hr = E_OUTOFMEMORY;
-
-        if (SUCCEEDED(hr))
-        {
-            info.cbAssemblyInfo = sizeof(info);
-            info.pszCurrentAssemblyPathBuf = path;
-            info.cchBuf = MAX_PATH;
-            path[0] = 0;
-
-            hr = IAssemblyCache_QueryAssemblyInfo(asmcache, 0, stringnameW, &info);
-        }
-
-        HeapFree(GetProcessHeap(), 0, stringnameW);
+        hr = IAssemblyCache_QueryAssemblyInfo(asmcache, 0, stringnameW, &info);
 
         IAssemblyCache_Release(asmcache);
     }
+
+    return hr;
+}
+
+static MonoAssembly* mono_assembly_search_hook_fn(MonoAssemblyName *aname, char **assemblies_path, void *user_data)
+{
+    loaded_mono *mono = user_data;
+    HRESULT hr;
+    MonoAssembly *result=NULL;
+    char *stringname=NULL;
+    LPWSTR stringnameW;
+    int stringnameW_size;
+    WCHAR path[MAX_PATH];
+    char *pathA;
+    MonoImageOpenStatus stat;
+
+    stringname = mono->mono_stringify_assembly_name(aname);
+
+    TRACE("%s\n", debugstr_a(stringname));
+
+    if (!stringname) return NULL;
+
+    /* FIXME: We should search the given paths before the GAC. */
+
+    stringnameW_size = MultiByteToWideChar(CP_UTF8, 0, stringname, -1, NULL, 0);
+
+    stringnameW = HeapAlloc(GetProcessHeap(), 0, stringnameW_size * sizeof(WCHAR));
+    if (stringnameW)
+    {
+        MultiByteToWideChar(CP_UTF8, 0, stringname, -1, stringnameW, stringnameW_size);
+
+        hr = get_file_from_strongname(stringnameW, path, MAX_PATH);
+
+        HeapFree(GetProcessHeap(), 0, stringnameW);
+    }
+    else
+        hr = E_OUTOFMEMORY;
 
     if (SUCCEEDED(hr))
     {

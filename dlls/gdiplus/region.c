@@ -282,7 +282,7 @@ GpStatus WINGDIPAPI GdipCombineRegionRect(GpRegion *region,
     region_element *left, *right = NULL;
     GpStatus stat;
 
-    TRACE("%p %p %d\n", region, rect, mode);
+    TRACE("%p %s %d\n", region, debugstr_rectf(rect), mode);
 
     if (!(region && rect))
         return InvalidParameter;
@@ -716,7 +716,7 @@ GpStatus WINGDIPAPI GdipGetRegionBoundsI(GpRegion *region, GpGraphics *graphics,
     status = GdipGetRegionBounds(region, graphics, &rectf);
     if(status == Ok){
         rect->X = gdip_round(rectf.X);
-        rect->Y = gdip_round(rectf.X);
+        rect->Y = gdip_round(rectf.Y);
         rect->Width  = gdip_round(rectf.Width);
         rect->Height = gdip_round(rectf.Height);
     }

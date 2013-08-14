@@ -2521,6 +2521,10 @@ typedef struct tagMINIMIZEDMETRICS {
 #define PM_QS_PAINT       (QS_PAINT << 16)
 #define PM_QS_SENDMESSAGE (QS_SENDMESSAGE << 16)
 
+/* SetTimer() limits */
+#define USER_TIMER_MINIMUM 0x0000000A
+#define USER_TIMER_MAXIMUM 0x7FFFFFFF
+
 /* AnimateWindow() flags */
 #define AW_SLIDE        0x00040000
 #define AW_ACTIVATE     0x00020000
@@ -3988,6 +3992,7 @@ WINUSERAPI BOOL        WINAPI UnregisterClassW(LPCWSTR,HINSTANCE);
 WINUSERAPI BOOL        WINAPI UnregisterDeviceNotification(HDEVNOTIFY);
 WINUSERAPI BOOL        WINAPI UnregisterHotKey(HWND,INT);
 WINUSERAPI BOOL        WINAPI UpdateWindow(HWND);
+WINUSERAPI BOOL        WINAPI UserHandleGrantAccess(HANDLE,HANDLE,BOOL);
 WINUSERAPI UINT        WINAPI UserRealizePalette(HDC);
 WINUSERAPI BOOL        WINAPI ValidateRect(HWND,const RECT*);
 WINUSERAPI BOOL        WINAPI ValidateRgn(HWND,HRGN);

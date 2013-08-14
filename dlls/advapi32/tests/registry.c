@@ -2156,16 +2156,16 @@ static void test_classesroot(void)
     ok(res == ERROR_SUCCESS, "RegSetValueExA failed: %d, GLE=%x\n", res, GetLastError());
 
     /* try to find the value in user's classes */
-    res = RegQueryValueExA(hkcr, "val0", NULL, &type, (LPBYTE)buffer, &size);
+    res = RegQueryValueExA(hkey, "val0", NULL, &type, (LPBYTE)buffer, &size);
     ok(res == ERROR_SUCCESS, "RegQueryValueExA failed: %d\n", res);
     ok(!strcmp( buffer, "hkcr" ), "value set to '%s'\n", buffer );
 
     /* modify the value in user's classes */
-    res = RegSetValueExA(hkcr, "val0", 0, REG_SZ, (const BYTE *)"user", sizeof("user"));
+    res = RegSetValueExA(hkey, "val0", 0, REG_SZ, (const BYTE *)"user", sizeof("user"));
     ok(res == ERROR_SUCCESS, "RegSetValueExA failed: %d, GLE=%x\n", res, GetLastError());
 
     /* check if the value is also modified in hkcr */
-    res = RegQueryValueExA(hkey, "val0", NULL, &type, (LPBYTE)buffer, &size);
+    res = RegQueryValueExA(hkcr, "val0", NULL, &type, (LPBYTE)buffer, &size);
     ok(res == ERROR_SUCCESS, "RegQueryValueExA failed: %d, GLE=%x\n", res, GetLastError());
     ok(!strcmp( buffer, "user" ), "value set to '%s'\n", buffer );
 
@@ -2340,6 +2340,29 @@ static void test_classesroot(void)
     res = RegQueryValueExA(hklmsub2, "subval1", NULL, &type, (LPBYTE)buffer, &size);
     ok(res == ERROR_SUCCESS, "RegQueryValueExA failed: %d\n", res);
     ok(!strcmp( buffer, "hkcr" ), "value set to '%s'\n", buffer );
+
+    /* cleanup */
+    RegCloseKey( hkeysub1 );
+    RegCloseKey( hklmsub1 );
+
+    /* delete subkey1 from hkcr (should point at user's classes) */
+    res = RegDeleteKey(hkcr, "subkey1");
+    ok(res == ERROR_SUCCESS, "RegDeleteKey failed: %d\n", res);
+
+    /* confirm key was removed in hkey but not hklm */
+    res = RegOpenKeyExA(hkey, "subkey1", 0, KEY_READ, &hkeysub1);
+    ok(res == ERROR_FILE_NOT_FOUND, "test key found in user's classes: %d\n", res);
+    res = RegOpenKeyExA(hklm, "subkey1", 0, KEY_READ, &hklmsub1);
+    ok(res == ERROR_SUCCESS, "test key not found in hklm: %d\n", res);
+
+    /* delete subkey1 from hkcr again (which should now point at hklm) */
+    res = RegDeleteKey(hkcr, "subkey1");
+    ok(res == ERROR_SUCCESS, "RegDeleteKey failed: %d\n", res);
+
+    /* confirm hkey was removed in hklm */
+    RegCloseKey( hklmsub1 );
+    res = RegOpenKeyExA(hklm, "subkey1", 0, KEY_READ, &hklmsub1);
+    ok(res == ERROR_FILE_NOT_FOUND, "test key found in hklm: %d\n", res);
 
     /* final cleanup */
     delete_key( hkey );

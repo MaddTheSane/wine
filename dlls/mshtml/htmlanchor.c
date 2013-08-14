@@ -266,15 +266,31 @@ static HRESULT WINAPI HTMLAnchorElement_get_target(IHTMLAnchorElement *iface, BS
 static HRESULT WINAPI HTMLAnchorElement_put_rel(IHTMLAnchorElement *iface, BSTR v)
 {
     HTMLAnchorElement *This = impl_from_IHTMLAnchorElement(iface);
-    FIXME("(%p)->(%s)\n", This, debugstr_w(v));
-    return E_NOTIMPL;
+    nsAString nsstr;
+    nsresult nsres;
+
+    TRACE("(%p)->(%s)\n", This, debugstr_w(v));
+
+    nsAString_InitDepend(&nsstr, v);
+    nsres = nsIDOMHTMLAnchorElement_SetRel(This->nsanchor, &nsstr);
+    nsAString_Finish(&nsstr);
+    if(NS_FAILED(nsres))
+        return E_FAIL;
+
+    return S_OK;
 }
 
 static HRESULT WINAPI HTMLAnchorElement_get_rel(IHTMLAnchorElement *iface, BSTR *p)
 {
     HTMLAnchorElement *This = impl_from_IHTMLAnchorElement(iface);
-    FIXME("(%p)->(%p)\n", This, p);
-    return E_NOTIMPL;
+    nsAString nsstr;
+    nsresult nsres;
+
+    TRACE("(%p)->(%p)\n", This, p);
+
+    nsAString_Init(&nsstr, NULL);
+    nsres = nsIDOMHTMLAnchorElement_GetRel(This->nsanchor, &nsstr);
+    return return_nsstr(nsres, &nsstr, p);
 }
 
 static HRESULT WINAPI HTMLAnchorElement_put_rev(IHTMLAnchorElement *iface, BSTR v)
@@ -374,8 +390,14 @@ static HRESULT WINAPI HTMLAnchorElement_put_hostname(IHTMLAnchorElement *iface, 
 static HRESULT WINAPI HTMLAnchorElement_get_hostname(IHTMLAnchorElement *iface, BSTR *p)
 {
     HTMLAnchorElement *This = impl_from_IHTMLAnchorElement(iface);
-    FIXME("(%p)->(%p)\n", This, p);
-    return E_NOTIMPL;
+    nsAString hostname_str;
+    nsresult nsres;
+
+    TRACE("(%p)->(%p)\n", This, p);
+
+    nsAString_Init(&hostname_str, NULL);
+    nsres = nsIDOMHTMLAnchorElement_GetHostname(This->nsanchor, &hostname_str);
+    return return_nsstr(nsres, &hostname_str, p);
 }
 
 static HRESULT WINAPI HTMLAnchorElement_put_pathname(IHTMLAnchorElement *iface, BSTR v)
@@ -678,6 +700,7 @@ static HRESULT HTMLAnchorElement_handle_event(HTMLDOMNode *iface, eventid_t eid,
 static const NodeImplVtbl HTMLAnchorElementImplVtbl = {
     HTMLAnchorElement_QI,
     HTMLElement_destructor,
+    HTMLElement_cpc,
     HTMLElement_clone,
     HTMLAnchorElement_handle_event,
     HTMLElement_get_attr_col
@@ -686,7 +709,6 @@ static const NodeImplVtbl HTMLAnchorElementImplVtbl = {
 static const tid_t HTMLAnchorElement_iface_tids[] = {
     IHTMLAnchorElement_tid,
     HTMLELEMENT_TIDS,
-    IHTMLTextContainer_tid,
     IHTMLUniqueName_tid,
     0
 };

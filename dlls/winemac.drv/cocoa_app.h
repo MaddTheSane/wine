@@ -26,12 +26,21 @@
 #define ERR(...) do { if (macdrv_err_on) LogError(__func__, __VA_ARGS__); } while (false)
 
 
+enum {
+    WineApplicationEventWakeQuery,
+};
+
+
 @class WineEventQueue;
 @class WineWindow;
 
 
-@interface WineApplication : NSApplication <NSApplicationDelegate>
+@interface WineApplicationController : NSObject <NSApplicationDelegate>
 {
+    CFRunLoopSourceRef requestSource;
+    NSMutableArray* requests;
+    dispatch_queue_t requestsManipQueue;
+
     NSMutableArray* eventQueues;
     NSLock*         eventQueuesLock;
 
@@ -43,19 +52,46 @@
 
     CGEventSourceKeyboardType keyboardType;
     NSEvent* lastFlagsChanged;
+    BOOL inputSourceIsInputMethod;
+    BOOL inputSourceIsInputMethodValid;
+    uint32_t pressedKeyCodes[128 / 32];
 
     CGFloat primaryScreenHeight;
     BOOL primaryScreenHeightValid;
+    NSMutableData* screenFrameCGRects;
 
-    NSMutableArray* orderedWineWindows;
+    WineWindow* lastTargetWindow;
+    WineWindow* mouseCaptureWindow;
+    BOOL forceNextMouseMoveAbsolute;
+    double mouseMoveDeltaX, mouseMoveDeltaY;
+    NSUInteger unmatchedMouseDowns;
 
     NSMutableDictionary* originalDisplayModes;
+    BOOL displaysCapturedForFullscreen;
+
+    NSArray*    cursorFrames;
+    int         cursorFrame;
+    NSTimer*    cursorTimer;
+    BOOL        cursorHidden;
+
+    BOOL clippingCursor;
+    CGRect cursorClipRect;
+    CFMachPortRef cursorClippingEventTap;
+    NSMutableArray* warpRecords;
+    CGPoint synthesizedLocation;
+    NSTimeInterval lastSetCursorPositionTime;
+    NSTimeInterval lastEventTapEventTime;
+
+    NSImage* applicationIcon;
+
+    BOOL beenActive;
 }
 
 @property (nonatomic) CGEventSourceKeyboardType keyboardType;
 @property (readonly, copy, nonatomic) NSEvent* lastFlagsChanged;
-@property (readonly, nonatomic) NSArray* orderedWineWindows;
 @property (readonly, nonatomic) BOOL areDisplaysCaptured;
+
+    + (WineApplicationController*) sharedController;
 
     - (void) transformProcessToForeground;
 
@@ -67,15 +103,33 @@
 
     - (void) windowGotFocus:(WineWindow*)window;
 
-    - (void) keyboardSelectionDidChange;
+    - (BOOL) waitUntilQueryDone:(int*)done timeout:(NSDate*)timeout processEvents:(BOOL)processEvents;
 
-    - (void) wineWindow:(WineWindow*)window
-                ordered:(NSWindowOrderingMode)order
-             relativeTo:(WineWindow*)otherWindow;
+    - (void) keyboardSelectionDidChange;
+    - (void) noteKey:(uint16_t)keyCode pressed:(BOOL)pressed;
+
+    - (void) flipRect:(NSRect*)rect;
+
+    - (WineWindow*) frontWineWindow;
+    - (void) adjustWindowLevels;
+    - (void) updateFullscreenWindows;
+
+    - (BOOL) handleEvent:(NSEvent*)anEvent;
+    - (void) didSendEvent:(NSEvent*)anEvent;
 
 @end
 
-void OnMainThread(dispatch_block_t block);
+
+@interface WineApplication : NSApplication
+{
+    WineApplicationController* wineController;
+}
+
+@property (readwrite, assign, nonatomic) WineApplicationController* wineController;
+
+@end
+
+
 void OnMainThreadAsync(dispatch_block_t block);
 
 void LogError(const char* func, NSString* format, ...);

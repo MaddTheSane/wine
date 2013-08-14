@@ -118,9 +118,6 @@ static HANDLE hThread;
  *                  Low level MIDI implementation			*
  *======================================================================*/
 
-static int midiOpenSeq(int);
-static int midiCloseSeq(void);
-
 #if 0 /* Debug Purpose */
 static void error_handler(const char* file, int line, const char* function, int err, const char* fmt, ...)
 {
@@ -246,21 +243,21 @@ static int midiOpenSeq(int create_client)
             if (port_out < 0)
                TRACE("Unable to create output port\n");
             else
-	       TRACE("Outport port created successfully (%d)\n", port_out);
+	       TRACE("Outport port %d created successfully\n", port_out);
 #else
             port_out = snd_seq_create_simple_port(midiSeq, "WINE ALSA Output", SND_SEQ_PORT_CAP_READ,
 	                 	                                                 SND_SEQ_PORT_TYPE_APPLICATION);
 	    if (port_out < 0)
 		TRACE("Unable to create output port\n");
 	    else
-		TRACE("Outport port created successfully (%d)\n", port_out);
+		TRACE("Outport port %d created successfully\n", port_out);
 
 	    port_in = snd_seq_create_simple_port(midiSeq, "WINE ALSA Input", SND_SEQ_PORT_CAP_WRITE,
 	             	                                               SND_SEQ_PORT_TYPE_APPLICATION);
             if (port_in < 0)
                 TRACE("Unable to create input port\n");
             else
-	        TRACE("Input port created successfully (%d)\n", port_in);
+	        TRACE("Input port %d created successfully\n", port_in);
 #endif
        }
     }
@@ -392,9 +389,9 @@ static DWORD WINAPI midRecThread(LPVOID arg)
 				 * to handle the case where ALSA split the sysex into several events */
 				if ((lpMidiHdr->dwBytesRecorded == lpMidiHdr->dwBufferLength) ||
 				    (*(BYTE*)(lpMidiHdr->lpData + lpMidiHdr->dwBytesRecorded - 1) == 0xF7)) {
+				    MidiInDev[wDevID].lpQueueHdr = lpMidiHdr->lpNext;
 				    lpMidiHdr->dwFlags &= ~MHDR_INQUEUE;
 				    lpMidiHdr->dwFlags |= MHDR_DONE;
-                                    MidiInDev[wDevID].lpQueueHdr = lpMidiHdr->lpNext;
 				    MIDI_NotifyClient(wDevID, MIM_LONGDATA, (DWORD_PTR)lpMidiHdr, dwTime);
 				}
 			    } else {
@@ -413,7 +410,7 @@ static DWORD WINAPI midRecThread(LPVOID arg)
 		    break;
 		}
 		if (toSend != 0) {
-                    TRACE("Sending event %08x (from %d %d)\n", toSend, ev->source.client, ev->source.port);
+		    TRACE("Received event %08x from %d:%d\n", toSend, ev->source.client, ev->source.port);
 		    MIDI_NotifyClient(wDevID, MIM_DATA, toSend, dwTime);
 		}
 	    }
@@ -481,11 +478,21 @@ static DWORD midOpen(WORD wDevID, LPMIDIOPENDESC lpDesc, DWORD dwFlags)
 	return MMSYSERR_ERROR;
     }
 
+    MidiInDev[wDevID].wFlags = HIWORD(dwFlags & CALLBACK_TYPEMASK);
+
+    MidiInDev[wDevID].lpQueueHdr = NULL;
+    MidiInDev[wDevID].dwTotalPlayed = 0;
+    MidiInDev[wDevID].bufsize = 0x3FFF;
+    MidiInDev[wDevID].midiDesc = *lpDesc;
+    MidiInDev[wDevID].state = 0;
+    MidiInDev[wDevID].incLen = 0;
+    MidiInDev[wDevID].startTime = 0;
+
     /* Connect our app port to the device port */
     if (snd_seq_connect_from(midiSeq, port_in, MidiInDev[wDevID].addr.client, MidiInDev[wDevID].addr.port) < 0)
 	return MMSYSERR_NOTENABLED;
 
-    TRACE("input port connected %d %d %d\n",port_in,MidiInDev[wDevID].addr.client,MidiInDev[wDevID].addr.port);
+    TRACE("Input port :%d connected %d:%d\n",port_in,MidiInDev[wDevID].addr.client,MidiInDev[wDevID].addr.port);
 
     if (numStartedMidiIn++ == 0) {
 	end_thread = 0;
@@ -499,16 +506,6 @@ static DWORD midOpen(WORD wDevID, LPMIDIOPENDESC lpDesc, DWORD dwFlags)
         SetThreadPriority(hThread, THREAD_PRIORITY_TIME_CRITICAL);
 	TRACE("Created thread for midi-in\n");
     }
-
-    MidiInDev[wDevID].wFlags = HIWORD(dwFlags & CALLBACK_TYPEMASK);
-
-    MidiInDev[wDevID].lpQueueHdr = NULL;
-    MidiInDev[wDevID].dwTotalPlayed = 0;
-    MidiInDev[wDevID].bufsize = 0x3FFF;
-    MidiInDev[wDevID].midiDesc = *lpDesc;
-    MidiInDev[wDevID].state = 0;
-    MidiInDev[wDevID].incLen = 0;
-    MidiInDev[wDevID].startTime = 0;
 
     MIDI_NotifyClient(wDevID, MIM_OPEN, 0L, 0L);
     return MMSYSERR_NOERROR;
@@ -647,12 +644,11 @@ static DWORD midReset(WORD wDevID)
 
     EnterCriticalSection(&crit_sect);
     while (MidiInDev[wDevID].lpQueueHdr) {
-	MidiInDev[wDevID].lpQueueHdr->dwFlags &= ~MHDR_INQUEUE;
-	MidiInDev[wDevID].lpQueueHdr->dwFlags |= MHDR_DONE;
-	/* FIXME: when called from 16 bit, lpQueueHdr needs to be a segmented ptr */
-	MIDI_NotifyClient(wDevID, MIM_LONGDATA,
-			  (DWORD_PTR)MidiInDev[wDevID].lpQueueHdr, dwTime);
-        MidiInDev[wDevID].lpQueueHdr = MidiInDev[wDevID].lpQueueHdr->lpNext;
+	LPMIDIHDR lpMidiHdr = MidiInDev[wDevID].lpQueueHdr;
+	MidiInDev[wDevID].lpQueueHdr = lpMidiHdr->lpNext;
+	lpMidiHdr->dwFlags &= ~MHDR_INQUEUE;
+	lpMidiHdr->dwFlags |= MHDR_DONE;
+	MIDI_NotifyClient(wDevID, MIM_LONGDATA, (DWORD_PTR)lpMidiHdr, dwTime);
     }
     LeaveCriticalSection(&crit_sect);
 
@@ -729,10 +725,6 @@ static DWORD modOpen(WORD wDevID, LPMIDIOPENDESC lpDesc, DWORD dwFlags)
 	WARN("bad dwFlags\n");
 	return MMSYSERR_INVALFLAG;
     }
-    if (!MidiOutDev[wDevID].bEnabled) {
-	TRACE("disabled wDevID\n");
-	return MMSYSERR_NOTENABLED;
-    }
 
     MidiOutDev[wDevID].lpExtra = 0;
 
@@ -761,8 +753,9 @@ static DWORD modOpen(WORD wDevID, LPMIDIOPENDESC lpDesc, DWORD dwFlags)
     if (snd_seq_connect_to(midiSeq, port_out, MidiOutDev[wDevID].addr.client, MidiOutDev[wDevID].addr.port) < 0)
 	return MMSYSERR_NOTENABLED;
     
+    TRACE("Output port :%d connected %d:%d\n",port_out,MidiOutDev[wDevID].addr.client,MidiOutDev[wDevID].addr.port);
+
     MIDI_NotifyClient(wDevID, MOM_OPEN, 0L, 0L);
-    TRACE("Successful !\n");
     return MMSYSERR_NOERROR;
 }
 
@@ -999,7 +992,7 @@ static DWORD modLongData(WORD wDevID, LPMIDIHDR lpMidiHdr, DWORD dwSize)
 	snd_seq_ev_set_direct(&event);
 	snd_seq_ev_set_source(&event, port_out);
 	snd_seq_ev_set_dest(&event, MidiOutDev[wDevID].addr.client, MidiOutDev[wDevID].addr.port);
-	TRACE("client = %d port = %d\n", MidiOutDev[wDevID].addr.client, MidiOutDev[wDevID].addr.port);
+	TRACE("destination %d:%d\n", MidiOutDev[wDevID].addr.client, MidiOutDev[wDevID].addr.port);
 	snd_seq_ev_set_sysex(&event, lpMidiHdr->dwBufferLength + len_add, lpNewData ? lpNewData : lpData);
 	snd_seq_event_output_direct(midiSeq, &event);
         HeapFree(GetProcessHeap(), 0, lpNewData);

@@ -25,6 +25,11 @@
 
 #include "windef.h"
 #include "winbase.h"
+#ifndef __MINGW32__
+#define USE_WS_PREFIX
+#endif
+#include "winsock2.h"
+#include "ws2ipdef.h"
 #include "winhttp.h"
 #include "wincrypt.h"
 #include "winreg.h"
@@ -547,6 +552,9 @@ static void request_destroy( object_header_t *hdr )
 
     release_object( &request->connect->hdr );
 
+    destroy_authinfo( request->authinfo );
+    destroy_authinfo( request->proxy_authinfo );
+
     heap_free( request->verb );
     heap_free( request->path );
     heap_free( request->version );
@@ -585,6 +593,71 @@ static WCHAR *blob_to_str( DWORD encoding, CERT_NAME_BLOB *blob )
         CertNameToStrW( encoding, blob, format, ret, size );
 
     return ret;
+}
+
+static BOOL convert_sockaddr( const struct sockaddr *addr, SOCKADDR_STORAGE *addr_storage )
+{
+#ifndef __MINGW32__
+    switch (addr->sa_family)
+    {
+    case AF_INET:
+    {
+        const struct sockaddr_in *addr_unix = (const struct sockaddr_in *)addr;
+        struct WS_sockaddr_in *addr_win = (struct WS_sockaddr_in *)addr_storage;
+        char *p;
+
+        addr_win->sin_family = WS_AF_INET;
+        addr_win->sin_port   = addr_unix->sin_port;
+        memcpy( &addr_win->sin_addr, &addr_unix->sin_addr, 4 );
+        p = (char *)&addr_win->sin_addr + 4;
+        memset( p, 0, sizeof(*addr_storage) - (p - (char *)addr_win) );
+        return TRUE;
+    }
+    case AF_INET6:
+    {
+        const struct sockaddr_in6 *addr_unix = (const struct sockaddr_in6 *)addr;
+        struct WS_sockaddr_in6 *addr_win = (struct WS_sockaddr_in6 *)addr_storage;
+
+        addr_win->sin6_family   = WS_AF_INET6;
+        addr_win->sin6_port     = addr_unix->sin6_port;
+        addr_win->sin6_flowinfo = addr_unix->sin6_flowinfo;
+        memcpy( &addr_win->sin6_addr, &addr_unix->sin6_addr, 16 );
+#ifdef HAVE_STRUCT_SOCKADDR_IN6_SIN6_SCOPE_ID
+        addr_win->sin6_scope_id = addr_unix->sin6_scope_id;
+#else
+        addr_win->sin6_scope_id = 0;
+#endif
+        memset( addr_win + 1, 0, sizeof(*addr_storage) - sizeof(*addr_win) );
+        return TRUE;
+    }
+    default:
+        ERR("unhandled family %u\n", addr->sa_family);
+        return FALSE;
+    }
+#else
+    switch (addr->sa_family)
+    {
+    case AF_INET:
+    {
+        struct sockaddr_in *addr_in = (struct sockaddr_in *)addr_storage;
+
+        memcpy( addr_in, addr, sizeof(*addr_in) );
+        memset( addr_in + 1, 0, sizeof(*addr_storage) - sizeof(*addr_in) );
+        return TRUE;
+    }
+    case AF_INET6:
+    {
+        struct sockaddr_in6 *addr_in6 = (struct sockaddr_in6 *)addr_storage;
+
+        memcpy( addr_in6, addr, sizeof(*addr_in6) );
+        memset( addr_in6 + 1, 0, sizeof(*addr_storage) - sizeof(*addr_in6) );
+        return TRUE;
+    }
+    default:
+        ERR("unhandled family %u\n", addr->sa_family);
+        return FALSE;
+    }
+#endif
 }
 
 static BOOL request_query_option( object_header_t *hdr, DWORD option, LPVOID buffer, LPDWORD buflen )
@@ -681,6 +754,30 @@ static BOOL request_query_option( object_header_t *hdr, DWORD option, LPVOID buf
 
         *(DWORD *)buffer = netconn_get_cipher_strength( &request->netconn );
         *buflen = sizeof(DWORD);
+        return TRUE;
+    }
+    case WINHTTP_OPTION_CONNECTION_INFO:
+    {
+        WINHTTP_CONNECTION_INFO *info = buffer;
+        struct sockaddr local;
+        socklen_t len = sizeof(local);
+        const struct sockaddr *remote = (const struct sockaddr *)&request->connect->sockaddr;
+
+        if (!buffer || *buflen < sizeof(*info))
+        {
+            *buflen = sizeof(*info);
+            set_last_error( ERROR_INSUFFICIENT_BUFFER );
+            return FALSE;
+        }
+        if (!netconn_connected( &request->netconn ))
+        {
+            set_last_error( ERROR_WINHTTP_INCORRECT_HANDLE_STATE );
+            return FALSE;
+        }
+        if (getsockname( request->netconn.socket, &local, &len )) return FALSE;
+        if (!convert_sockaddr( &local, &info->LocalAddress )) return FALSE;
+        if (!convert_sockaddr( remote, &info->RemoteAddress )) return FALSE;
+        info->cbSize = sizeof(*info);
         return TRUE;
     }
     case WINHTTP_OPTION_RESOLVE_TIMEOUT:
@@ -878,7 +975,7 @@ static const object_vtbl_t request_vtbl =
 static BOOL store_accept_types( request_t *request, const WCHAR **accept_types )
 {
     const WCHAR **types = accept_types;
-    int i;
+    DWORD i;
 
     if (!types) return TRUE;
     while (*types)
@@ -897,7 +994,7 @@ static BOOL store_accept_types( request_t *request, const WCHAR **accept_types )
     {
         if (!(request->accept_types[i] = strdupW( *types )))
         {
-            for (; i >= 0; i--) heap_free( request->accept_types[i] );
+            for ( ; i > 0; --i) heap_free( request->accept_types[i - 1] );
             heap_free( request->accept_types );
             request->accept_types = NULL;
             request->num_accept_types = 0;
@@ -959,7 +1056,7 @@ HINTERNET WINAPI WinHttpOpenRequest( HINTERNET hconnect, LPCWSTR verb, LPCWSTR o
     request->connect = connect;
     list_add_head( &connect->hdr.children, &request->hdr.entry );
 
-    if (!netconn_init( &request->netconn, request->hdr.flags & WINHTTP_FLAG_SECURE )) goto end;
+    if (!netconn_init( &request->netconn )) goto end;
     request->resolve_timeout = connect->session->resolve_timeout;
     request->connect_timeout = connect->session->connect_timeout;
     request->send_timeout = connect->session->send_timeout;

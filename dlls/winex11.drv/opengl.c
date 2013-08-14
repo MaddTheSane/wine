@@ -251,6 +251,7 @@ struct gl_drawable
     const struct wgl_pixel_format *format;       /* pixel format for the drawable */
     XVisualInfo                   *visual;       /* information about the GL visual */
     RECT                           rect;         /* drawable rect, relative to whole window drawable */
+    int                            swap_interval;
 };
 
 /* X context to associate a struct gl_drawable to an hwnd */
@@ -271,7 +272,6 @@ static struct wgl_pixel_format *pixel_formats;
 static int nb_pixel_formats, nb_onscreen_formats;
 static int use_render_texture_emulation = 1;
 static BOOL has_swap_control;
-static int swap_interval = 1;
 
 static CRITICAL_SECTION context_section;
 static CRITICAL_SECTION_DEBUG critsect_debug =
@@ -281,6 +281,8 @@ static CRITICAL_SECTION_DEBUG critsect_debug =
       0, 0, { (DWORD_PTR)(__FILE__ ": context_section") }
 };
 static CRITICAL_SECTION context_section = { &critsect_debug, -1, 0, 0, 0, 0 };
+
+static const BOOL is_win64 = sizeof(void *) > sizeof(int);
 
 static struct opengl_funcs opengl_funcs;
 
@@ -464,7 +466,8 @@ static BOOL X11DRV_WineGL_InitOpenglInfo(void)
 
     if(pglXMakeCurrent(gdi_display, win, ctx) == 0)
     {
-        ERR_(winediag)( "Unable to activate OpenGL context, most likely your OpenGL drivers haven't been installed correctly\n" );
+        ERR_(winediag)( "Unable to activate OpenGL context, most likely your %s OpenGL drivers haven't been "
+                        "installed correctly\n", is_win64 ? "64-bit" : "32-bit" );
         goto done;
     }
     gl_renderer = (const char *)opengl_funcs.gl.p_glGetString(GL_RENDERER);
@@ -506,9 +509,10 @@ static BOOL X11DRV_WineGL_InitOpenglInfo(void)
          * Detect a local X11 server by checking whether the X11 socket is a Unix socket.
          */
         if(!getsockname(fd, (struct sockaddr *)&uaddr, &uaddrlen) && uaddr.sun_family == AF_UNIX)
-            ERR_(winediag)("Direct rendering is disabled, most likely your OpenGL drivers "
+            ERR_(winediag)("Direct rendering is disabled, most likely your %s OpenGL drivers "
                            "haven't been installed correctly (using GL renderer %s, version %s).\n",
-                           debugstr_a(gl_renderer), debugstr_a(WineGLInfo.glVersion));
+                           is_win64 ? "64-bit" : "32-bit", debugstr_a(gl_renderer),
+                           debugstr_a(WineGLInfo.glVersion));
     }
     else
     {
@@ -522,9 +526,10 @@ static BOOL X11DRV_WineGL_InitOpenglInfo(void)
          * it shows 'Mesa X11'.
          */
         if(!strcmp(gl_renderer, "Software Rasterizer") || !strcmp(gl_renderer, "Mesa X11"))
-            ERR_(winediag)("The Mesa OpenGL driver is using software rendering, most likely your OpenGL "
+            ERR_(winediag)("The Mesa OpenGL driver is using software rendering, most likely your %s OpenGL "
                            "drivers haven't been installed correctly (using GL renderer %s, version %s).\n",
-                           debugstr_a(gl_renderer), debugstr_a(WineGLInfo.glVersion));
+                           is_win64 ? "64-bit" : "32-bit", debugstr_a(gl_renderer),
+                           debugstr_a(WineGLInfo.glVersion));
     }
     ret = TRUE;
 
@@ -917,6 +922,7 @@ static int ConvertAttribWGLtoGLX(const int* iWGLAttr, int* oGLXAttr, struct wgl_
       break ;
     default:
       FIXME("unsupported %x WGL Attribute\n", iWGLAttr[cur]);
+      cur++;
       break;
     }
     ++cur;
@@ -1223,6 +1229,10 @@ static void free_gl_drawable( struct gl_drawable *gl )
 static BOOL create_gl_drawable( HWND hwnd, HWND parent, struct gl_drawable *gl )
 {
     gl->drawable = 0;
+    /* Default GLX and WGL swap interval is 1, but in case of glXSwapIntervalSGI
+     * there is no way to query it, so we have to store it here.
+     */
+    gl->swap_interval = 1;
 
     if (GetAncestor( hwnd, GA_PARENT ) == GetDesktopWindow())  /* top-level window */
     {
@@ -1349,8 +1359,7 @@ void sync_gl_drawable( HWND hwnd, const RECT *visible_rect, const RECT *client_r
     if (changes.width  != gl->rect.right - gl->rect.left) mask |= CWWidth;
     if (changes.height != gl->rect.bottom - gl->rect.top) mask |= CWHeight;
 
-    TRACE( "setting drawable %lx pos %d,%d,%dx%d\n",
-           gl->drawable, changes.x, changes.y, changes.width, changes.height );
+    TRACE( "setting drawable %lx size %dx%d\n", gl->drawable, changes.width, changes.height );
 
     switch (gl->type)
     {
@@ -1380,7 +1389,7 @@ void sync_gl_drawable( HWND hwnd, const RECT *visible_rect, const RECT *client_r
     default:
         break;
     }
-    SetRect( &gl->rect, changes.x, changes.y, changes.x + changes.width, changes.y + changes.height );
+    SetRect( &gl->rect, 0, 0, changes.width, changes.height );
 done:
     release_gl_drawable( gl );
 }
@@ -1926,6 +1935,7 @@ static struct wgl_context *X11DRV_wglCreateContextAttribsARB( HDC hdc, struct wg
 {
     struct wgl_context *ret = NULL;
     struct gl_drawable *gl;
+    int err = 0;
 
     TRACE("(%p %p %p)\n", hdc, hShareContext, attribList);
 
@@ -1941,7 +1951,6 @@ static struct wgl_context *X11DRV_wglCreateContextAttribsARB( HDC hdc, struct wg
         ret->fmt = gl->format;
         ret->vis = NULL; /* glXCreateContextAttribsARB requires a fbconfig instead of a visual */
         ret->gl3_context = TRUE;
-        ret->numAttribs = 0;
         if (attribList)
         {
             int *pContextAttribList = &ret->attribList[0];
@@ -1954,37 +1963,43 @@ static struct wgl_context *X11DRV_wglCreateContextAttribsARB( HDC hdc, struct wg
                 case WGL_CONTEXT_MAJOR_VERSION_ARB:
                     pContextAttribList[0] = GLX_CONTEXT_MAJOR_VERSION_ARB;
                     pContextAttribList[1] = attribList[1];
+                    pContextAttribList += 2;
+                    ret->numAttribs++;
                     break;
                 case WGL_CONTEXT_MINOR_VERSION_ARB:
                     pContextAttribList[0] = GLX_CONTEXT_MINOR_VERSION_ARB;
                     pContextAttribList[1] = attribList[1];
+                    pContextAttribList += 2;
+                    ret->numAttribs++;
                     break;
                 case WGL_CONTEXT_LAYER_PLANE_ARB:
                     break;
                 case WGL_CONTEXT_FLAGS_ARB:
                     pContextAttribList[0] = GLX_CONTEXT_FLAGS_ARB;
                     pContextAttribList[1] = attribList[1];
+                    pContextAttribList += 2;
+                    ret->numAttribs++;
                     break;
                 case WGL_CONTEXT_PROFILE_MASK_ARB:
                     pContextAttribList[0] = GLX_CONTEXT_PROFILE_MASK_ARB;
                     pContextAttribList[1] = attribList[1];
+                    pContextAttribList += 2;
+                    ret->numAttribs++;
                     break;
                 default:
                     ERR("Unhandled attribList pair: %#x %#x\n", attribList[0], attribList[1]);
                 }
-                ret->numAttribs++;
                 attribList += 2;
-                pContextAttribList += 2;
             }
         }
 
         X11DRV_expect_error(gdi_display, GLXErrorHandler, NULL);
-        ret->ctx = create_glxcontext(gdi_display, ret, NULL);
+        ret->ctx = create_glxcontext(gdi_display, ret, hShareContext ? hShareContext->ctx : NULL);
         XSync(gdi_display, False);
-        if (X11DRV_check_error() || !ret->ctx)
+        if ((err = X11DRV_check_error()) || !ret->ctx)
         {
             /* In the future we should convert the GLX error to a win32 one here if needed */
-            ERR("Context creation failed\n");
+            ERR("Context creation failed (error %x)\n", err);
             HeapFree( GetProcessHeap(), 0, ret );
             ret = NULL;
         }
@@ -2863,9 +2878,24 @@ static const GLubyte *X11DRV_wglGetExtensionsStringEXT(void)
  */
 static int X11DRV_wglGetSwapIntervalEXT(void)
 {
-    /* GLX_SGI_swap_control doesn't have any provisions for getting the swap
-     * interval, so the swap interval has to be tracked. */
+    struct wgl_context *ctx = NtCurrentTeb()->glContext;
+    struct gl_drawable *gl;
+    int swap_interval;
+
     TRACE("()\n");
+
+    if (!(gl = get_gl_drawable( WindowFromDC( ctx->hdc ), ctx->hdc )))
+    {
+        /* This can't happen because a current WGL context is required to get
+         * here. Likely the application is buggy.
+         */
+        WARN("No GL drawable found, returning swap interval 0\n");
+        return 0;
+    }
+
+    swap_interval = gl->swap_interval;
+    release_gl_drawable(gl);
+
     return swap_interval;
 }
 
@@ -2876,6 +2906,8 @@ static int X11DRV_wglGetSwapIntervalEXT(void)
  */
 static BOOL X11DRV_wglSwapIntervalEXT(int interval)
 {
+    struct wgl_context *ctx = NtCurrentTeb()->glContext;
+    struct gl_drawable *gl;
     BOOL ret = TRUE;
 
     TRACE("(%d)\n", interval);
@@ -2885,13 +2917,20 @@ static BOOL X11DRV_wglSwapIntervalEXT(int interval)
         SetLastError(ERROR_INVALID_DATA);
         return FALSE;
     }
-    else if (!has_swap_control && interval == 0)
+
+    if (!(gl = get_gl_drawable( WindowFromDC( ctx->hdc ), ctx->hdc )))
+    {
+        SetLastError(ERROR_DC_NOT_FOUND);
+        return FALSE;
+    }
+
+    if (!has_swap_control && interval == 0)
     {
         /* wglSwapIntervalEXT considers an interval value of zero to mean that
          * vsync should be disabled, but glXSwapIntervalSGI considers such a
          * value to be an error. Just silently ignore the request for now. */
         WARN("Request to disable vertical sync is not handled\n");
-        swap_interval = 0;
+        gl->swap_interval = 0;
     }
     else
     {
@@ -2901,10 +2940,12 @@ static BOOL X11DRV_wglSwapIntervalEXT(int interval)
             WARN("GLX_SGI_swap_control extension is not available\n");
 
         if (ret)
-            swap_interval = interval;
+            gl->swap_interval = interval;
         else
             SetLastError(ERROR_DC_NOT_FOUND);
     }
+
+    release_gl_drawable(gl);
 
     return ret;
 }
@@ -3006,10 +3047,7 @@ static void X11DRV_WineGL_LoadExtensions(void)
 
     if (has_extension( WineGLInfo.glxExtensions, "GLX_ARB_multisample")) register_extension( "WGL_ARB_multisample" );
 
-    /* In general pbuffer functionality requires support in the X-server. The functionality is
-     * available either when the GLX_SGIX_pbuffer is present or when the GLX server version is 1.3.
-     */
-    if ( glxRequireVersion(3) && has_extension( WineGLInfo.glxExtensions, "GLX_SGIX_pbuffer") )
+    if (glxRequireVersion(3))
     {
         register_extension( "WGL_ARB_pbuffer" );
         opengl_funcs.ext.p_wglCreatePbufferARB    = X11DRV_wglCreatePbufferARB;
@@ -3027,7 +3065,7 @@ static void X11DRV_WineGL_LoadExtensions(void)
 
     /* Support WGL_ARB_render_texture when there's support or pbuffer based emulation */
     if (has_extension( WineGLInfo.glxExtensions, "GLX_ARB_render_texture") ||
-        (glxRequireVersion(3) && has_extension( WineGLInfo.glxExtensions, "GLX_SGIX_pbuffer") && use_render_texture_emulation))
+        (glxRequireVersion(3) && use_render_texture_emulation))
     {
         register_extension( "WGL_ARB_render_texture" );
         opengl_funcs.ext.p_wglBindTexImageARB    = X11DRV_wglBindTexImageARB;

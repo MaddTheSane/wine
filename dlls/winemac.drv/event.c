@@ -33,7 +33,9 @@ static const char *dbgstr_event(int type)
 {
     static const char * const event_names[] = {
         "APP_DEACTIVATED",
+        "APP_QUIT_REQUESTED",
         "DISPLAYS_CHANGED",
+        "IM_SET_TEXT",
         "KEY_PRESS",
         "KEY_RELEASE",
         "KEYBOARD_CHANGED",
@@ -41,6 +43,9 @@ static const char *dbgstr_event(int type)
         "MOUSE_MOVED",
         "MOUSE_MOVED_ABSOLUTE",
         "MOUSE_SCROLL",
+        "QUERY_EVENT",
+        "RELEASE_CAPTURE",
+        "STATUS_ITEM_CLICKED",
         "WINDOW_CLOSE_REQUESTED",
         "WINDOW_DID_MINIMIZE",
         "WINDOW_DID_UNMINIMIZE",
@@ -85,7 +90,10 @@ static macdrv_event_mask get_event_mask(DWORD mask)
     if (mask & QS_POSTMESSAGE)
     {
         event_mask |= event_mask_for_type(APP_DEACTIVATED);
+        event_mask |= event_mask_for_type(APP_QUIT_REQUESTED);
         event_mask |= event_mask_for_type(DISPLAYS_CHANGED);
+        event_mask |= event_mask_for_type(IM_SET_TEXT);
+        event_mask |= event_mask_for_type(STATUS_ITEM_CLICKED);
         event_mask |= event_mask_for_type(WINDOW_CLOSE_REQUESTED);
         event_mask |= event_mask_for_type(WINDOW_DID_MINIMIZE);
         event_mask |= event_mask_for_type(WINDOW_DID_UNMINIMIZE);
@@ -94,14 +102,63 @@ static macdrv_event_mask get_event_mask(DWORD mask)
         event_mask |= event_mask_for_type(WINDOW_LOST_FOCUS);
     }
 
+    if (mask & QS_SENDMESSAGE)
+    {
+        event_mask |= event_mask_for_type(QUERY_EVENT);
+        event_mask |= event_mask_for_type(RELEASE_CAPTURE);
+    }
+
     return event_mask;
+}
+
+
+/***********************************************************************
+ *              macdrv_query_event
+ *
+ * Handler for QUERY_EVENT queries.
+ */
+static void macdrv_query_event(HWND hwnd, const macdrv_event *event)
+{
+    BOOL success = FALSE;
+    macdrv_query *query = event->query_event.query;
+
+    switch (query->type)
+    {
+        case QUERY_DRAG_DROP:
+            TRACE("QUERY_DRAG_DROP\n");
+            success = query_drag_drop(query);
+            break;
+        case QUERY_DRAG_EXITED:
+            TRACE("QUERY_DRAG_EXITED\n");
+            success = query_drag_exited(query);
+            break;
+        case QUERY_DRAG_OPERATION:
+            TRACE("QUERY_DRAG_OPERATION\n");
+            success = query_drag_operation(query);
+            break;
+        case QUERY_IME_CHAR_RECT:
+            TRACE("QUERY_IME_CHAR_RECT\n");
+            success = query_ime_char_rect(query);
+            break;
+        case QUERY_PASTEBOARD_DATA:
+            TRACE("QUERY_PASTEBOARD_DATA\n");
+            success = query_pasteboard_data(hwnd, query->pasteboard_data.type);
+            break;
+        default:
+            FIXME("unrecognized query type %d\n", query->type);
+            break;
+    }
+
+    TRACE("success %d\n", success);
+    query->status = success;
+    macdrv_set_query_done(query);
 }
 
 
 /***********************************************************************
  *              macdrv_handle_event
  */
-void macdrv_handle_event(macdrv_event *event)
+void macdrv_handle_event(const macdrv_event *event)
 {
     HWND hwnd = macdrv_get_window_hwnd(event->window);
     const macdrv_event *prev;
@@ -118,8 +175,14 @@ void macdrv_handle_event(macdrv_event *event)
     case APP_DEACTIVATED:
         macdrv_app_deactivated();
         break;
+    case APP_QUIT_REQUESTED:
+        macdrv_app_quit_requested(event);
+        break;
     case DISPLAYS_CHANGED:
         macdrv_displays_changed(event);
+        break;
+    case IM_SET_TEXT:
+        macdrv_im_set_text(event);
         break;
     case KEY_PRESS:
     case KEY_RELEASE:
@@ -137,6 +200,15 @@ void macdrv_handle_event(macdrv_event *event)
         break;
     case MOUSE_SCROLL:
         macdrv_mouse_scroll(hwnd, event);
+        break;
+    case QUERY_EVENT:
+        macdrv_query_event(hwnd, event);
+        break;
+    case RELEASE_CAPTURE:
+        macdrv_release_capture(hwnd, event);
+        break;
+    case STATUS_ITEM_CLICKED:
+        macdrv_status_item_clicked(event);
         break;
     case WINDOW_CLOSE_REQUESTED:
         macdrv_window_close_requested(hwnd);
@@ -170,14 +242,14 @@ void macdrv_handle_event(macdrv_event *event)
  */
 static int process_events(macdrv_event_queue queue, macdrv_event_mask mask)
 {
-    macdrv_event event;
+    macdrv_event *event;
     int count = 0;
 
-    while (macdrv_get_event_from_queue(queue, mask, &event))
+    while (macdrv_copy_event_from_queue(queue, mask, &event))
     {
         count++;
-        macdrv_handle_event(&event);
-        macdrv_cleanup_event(&event);
+        macdrv_handle_event(event);
+        macdrv_release_event(event);
     }
     if (count) TRACE("processed %d events\n", count);
     return count;
@@ -204,7 +276,9 @@ DWORD CDECL macdrv_MsgWaitForMultipleObjectsEx(DWORD count, const HANDLE *handle
                                         timeout, flags & MWMO_ALERTABLE);
     }
 
-    if (data->current_event) event_mask = 0;  /* don't process nested events */
+    if (data->current_event && data->current_event->type != QUERY_EVENT &&
+        data->current_event->type != APP_QUIT_REQUESTED)
+        event_mask = 0;  /* don't process nested events */
 
     if (process_events(data->queue, event_mask)) ret = count - 1;
     else if (count || timeout)

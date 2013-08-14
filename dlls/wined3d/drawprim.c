@@ -30,6 +30,7 @@
 #include "wined3d_private.h"
 
 WINE_DEFAULT_DEBUG_CHANNEL(d3d_draw);
+WINE_DECLARE_DEBUG_CHANNEL(d3d_perf);
 
 #include <stdio.h>
 #include <math.h>
@@ -97,12 +98,13 @@ static void drawStridedSlow(const struct wined3d_device *device, const struct wi
     const BYTE *texCoords[WINED3DDP_MAXTEXCOORD];
     const BYTE *diffuse = NULL, *specular = NULL, *normal = NULL, *position = NULL;
     const struct wined3d_gl_info *gl_info = context->gl_info;
-    UINT texture_stages = gl_info->limits.texture_stages;
+    const struct wined3d_d3d_info *d3d_info = context->d3d_info;
+    UINT texture_stages = d3d_info->limits.ffp_blend_stages;
     const struct wined3d_stream_info_element *element;
     UINT num_untracked_materials;
     DWORD tex_mask = 0;
 
-    TRACE("Using slow vertex array code\n");
+    TRACE_(d3d_perf)("Using slow vertex array code\n");
 
     /* Variable Initialization */
     if (idxSize)
@@ -577,7 +579,7 @@ static void remove_vbos(const struct wined3d_gl_info *gl_info,
 
 /* Routine common to the draw primitive and draw indexed primitive routines */
 void draw_primitive(struct wined3d_device *device, UINT start_idx, UINT index_count,
-        UINT start_instance, UINT instance_count, BOOL indexed, const void *idx_data)
+        UINT start_instance, UINT instance_count, BOOL indexed)
 {
     const struct wined3d_state *state = &device->stateBlock->state;
     const struct wined3d_stream_info *stream_info;
@@ -586,6 +588,7 @@ void draw_primitive(struct wined3d_device *device, UINT start_idx, UINT index_co
     const struct wined3d_gl_info *gl_info;
     struct wined3d_context *context;
     BOOL emulation = FALSE;
+    const void *idx_data = NULL;
     UINT idx_size = 0;
     unsigned int i;
 
@@ -670,7 +673,7 @@ void draw_primitive(struct wined3d_device *device, UINT start_idx, UINT index_co
         FIXME("Point sprite coordinate origin switching not supported.\n");
     }
 
-    stream_info = &device->strided_streams;
+    stream_info = &device->stream_info;
     if (device->instance_count)
         instance_count = device->instance_count;
 
@@ -701,7 +704,7 @@ void draw_primitive(struct wined3d_device *device, UINT start_idx, UINT index_co
             if (!warned++)
                 FIXME("Using software emulation because not all material properties could be tracked.\n");
             else
-                WARN("Using software emulation because not all material properties could be tracked.\n");
+                WARN_(d3d_perf)("Using software emulation because not all material properties could be tracked.\n");
             emulation = TRUE;
         }
         else if (context->fog_coord && state->render_states[WINED3D_RS_FOGENABLE])
@@ -714,13 +717,13 @@ void draw_primitive(struct wined3d_device *device, UINT start_idx, UINT index_co
             if (!warned++)
                 FIXME("Using software emulation because manual fog coordinates are provided.\n");
             else
-                WARN("Using software emulation because manual fog coordinates are provided.\n");
+                WARN_(d3d_perf)("Using software emulation because manual fog coordinates are provided.\n");
             emulation = TRUE;
         }
 
         if (emulation)
         {
-            si_emulated = device->strided_streams;
+            si_emulated = device->stream_info;
             remove_vbos(gl_info, state, &si_emulated);
             stream_info = &si_emulated;
         }
@@ -736,7 +739,7 @@ void draw_primitive(struct wined3d_device *device, UINT start_idx, UINT index_co
             if (!warned++)
                 FIXME("Using immediate mode with vertex shaders for half float emulation.\n");
             else
-                WARN("Using immediate mode with vertex shaders for half float emulation.\n");
+                WARN_(d3d_perf)("Using immediate mode with vertex shaders for half float emulation.\n");
 
             drawStridedSlowVs(gl_info, state, stream_info, index_count,
                     state->gl_primitive_type, idx_data, idx_size, start_idx);

@@ -323,6 +323,7 @@ struct thread *create_process( int fd, struct thread *parent_thread, int inherit
     process->suspend         = 0;
     process->is_system       = 0;
     process->debug_children  = 0;
+    process->is_terminating  = 0;
     process->console         = NULL;
     process->startup_state   = STARTUP_IN_PROGRESS;
     process->startup_info    = NULL;
@@ -570,6 +571,8 @@ static void terminate_process( struct process *process, struct thread *skip, int
     struct thread *thread;
 
     grab_object( process );  /* make sure it doesn't get freed when threads die */
+    process->is_terminating = 1;
+
 restart:
     LIST_FOR_EACH_ENTRY( thread, &process->thread_list, struct thread, proc_entry )
     {
@@ -625,9 +628,9 @@ static void process_killed( struct process *process )
     assert( list_empty( &process->thread_list ));
     process->end_time = current_time;
     if (!process->is_system) close_process_desktop( process );
-    close_process_handles( process );
     process->winstation = 0;
     process->desktop = 0;
+    close_process_handles( process );
     if (process->idle_event)
     {
         release_object( process->idle_event );
@@ -947,7 +950,7 @@ DECL_HANDLER(new_process)
 
     if (!(thread = create_process( socket_fd, current, req->inherit_all ))) goto done;
     process = thread->process;
-    process->debug_children = !(req->create_flags & DEBUG_ONLY_THIS_PROCESS);
+    process->debug_children = !!(req->create_flags & DEBUG_PROCESS);
     process->startup_info = (struct startup_info *)grab_object( info );
 
     /* connect to the window station */
@@ -1082,12 +1085,16 @@ DECL_HANDLER(terminate_process)
 {
     struct process *process;
 
-    if ((process = get_process_from_handle( req->handle, PROCESS_TERMINATE )))
+    if (req->handle)
     {
-        reply->self = (current->process == process);
-        terminate_process( process, current, req->exit_code );
-        release_object( process );
+        process = get_process_from_handle( req->handle, PROCESS_TERMINATE );
+        if (!process) return;
     }
+    else process = (struct process *)grab_object( current->process );
+
+    reply->self = (current->process == process);
+    terminate_process( process, current, req->exit_code );
+    release_object( process );
 }
 
 /* fetch information about a process */
@@ -1114,6 +1121,12 @@ DECL_HANDLER(get_process_info)
 static void set_process_affinity( struct process *process, affinity_t affinity )
 {
     struct thread *thread;
+
+    if (!process->running_threads)
+    {
+        set_error( STATUS_PROCESS_IS_TERMINATING );
+        return;
+    }
 
     process->affinity = affinity;
 

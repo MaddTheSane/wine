@@ -46,6 +46,9 @@ static HRESULT IDirectXFileDataReferenceImpl_Create(IDirectXFileDataReferenceImp
 static HRESULT IDirectXFileEnumObjectImpl_Create(IDirectXFileEnumObjectImpl** ppObj);
 static HRESULT IDirectXFileSaveObjectImpl_Create(IDirectXFileSaveObjectImpl** ppObj);
 
+#define TOKEN_DWORD       41
+#define TOKEN_FLOAT       42
+
 HRESULT IDirectXFileImpl_Create(IUnknown* pUnkOuter, LPVOID* ppObj)
 {
     IDirectXFileImpl* object;
@@ -61,6 +64,17 @@ HRESULT IDirectXFileImpl_Create(IUnknown* pUnkOuter, LPVOID* ppObj)
 
     object->IDirectXFile_iface.lpVtbl = &IDirectXFile_Vtbl;
     object->ref = 1;
+
+    /* Reserve first template to handle the case sensitive legacy type indexColor */
+    object->nb_xtemplates = 1;
+    strcpy(object->xtemplates[0].name, "indexColor");
+    object->xtemplates[0].nb_members = 2;
+    object->xtemplates[0].members[0].type = TOKEN_DWORD;
+    object->xtemplates[0].members[0].nb_dims = 0;
+    object->xtemplates[0].members[1].type = TOKEN_FLOAT;
+    object->xtemplates[0].members[1].nb_dims = 1;
+    object->xtemplates[0].members[1].dim_fixed[0] = TRUE;
+    object->xtemplates[0].members[1].dim_value[0] = 4;
 
     *ppObj = &object->IDirectXFile_iface;
 
@@ -241,8 +255,10 @@ static HRESULT WINAPI IDirectXFileImpl_CreateEnumObject(IDirectXFile* iface, LPV
   if (FAILED(hr))
     goto error;
 
-  if (!parse_templates(&object->buf)) {
-    hr = DXFILEERR_BADVALUE;
+  /* Check if there are templates defined before the object */
+  if (!parse_templates(&object->buf, TRUE))
+  {
+    hr = DXFILEERR_PARSEERROR;
     goto error;
   }
 
@@ -250,7 +266,7 @@ static HRESULT WINAPI IDirectXFileImpl_CreateEnumObject(IDirectXFile* iface, LPV
   {
     ULONG i;
     TRACE("Registered templates (%d):\n", This->nb_xtemplates);
-    for (i = 0; i < This->nb_xtemplates; i++)
+    for (i = 1; i < This->nb_xtemplates; i++)
       DPRINTF("%s - %s\n", This->xtemplates[i].name, debugstr_guid(&This->xtemplates[i].class_id));
   }
 
@@ -289,10 +305,9 @@ static HRESULT WINAPI IDirectXFileImpl_RegisterTemplates(IDirectXFile* iface, LP
   HRESULT hr;
   LPBYTE decomp_buffer = NULL;
 
+  ZeroMemory(&buf, sizeof(buf));
   buf.buffer = pvData;
   buf.rem_bytes = cbSize;
-  buf.txt = FALSE;
-  buf.token_present = FALSE;
   buf.pdxf = This;
 
   TRACE("(%p/%p)->(%p,%d)\n", This, iface, pvData, cbSize);
@@ -319,8 +334,9 @@ static HRESULT WINAPI IDirectXFileImpl_RegisterTemplates(IDirectXFile* iface, LP
   if (FAILED(hr))
     goto cleanup;
 
-  if (!parse_templates(&buf)) {
-    hr = DXFILEERR_BADVALUE;
+  if (!parse_templates(&buf, FALSE))
+  {
+    hr = DXFILEERR_PARSEERROR;
     goto cleanup;
   }
 
@@ -328,7 +344,7 @@ static HRESULT WINAPI IDirectXFileImpl_RegisterTemplates(IDirectXFile* iface, LP
   {
     ULONG i;
     TRACE("Registered templates (%d):\n", This->nb_xtemplates);
-    for (i = 0; i < This->nb_xtemplates; i++)
+    for (i = 1; i < This->nb_xtemplates; i++)
       DPRINTF("%s - %s\n", This->xtemplates[i].name, debugstr_guid(&This->xtemplates[i].class_id));
   }
 
@@ -584,6 +600,9 @@ static HRESULT WINAPI IDirectXFileDataImpl_GetName(IDirectXFileData* iface, LPST
     if (*pdwBufLen < len)
       return DXFILEERR_BADVALUE;
     CopyMemory(pstrNameBuf, This->pobj->name, len);
+    /* Even if we return a size of 0, an empty string with a null byte must be returned */
+    if (*pdwBufLen && !len)
+      pstrNameBuf[0] = 0;
   }
   *pdwBufLen = len;
 
@@ -848,6 +867,9 @@ static HRESULT WINAPI IDirectXFileDataReferenceImpl_GetName(IDirectXFileDataRefe
     if (*pdwBufLen < len)
       return DXFILEERR_BADVALUE;
     CopyMemory(pstrNameBuf, This->ptarget->name, len);
+    /* Even if we return a size of 0, an empty string with a null byte must be returned */
+    if (*pdwBufLen && !len)
+      pstrNameBuf[0] = 0;
   }
   *pdwBufLen = len;
 
@@ -1001,8 +1023,8 @@ static HRESULT WINAPI IDirectXFileEnumObjectImpl_GetNextDataObject(IDirectXFileE
   }
 
   /* Check if there are templates defined before the object */
-  if (!parse_templates(&This->buf))
-    return DXFILEERR_BADVALUE;
+  if (!parse_templates(&This->buf, TRUE))
+    return DXFILEERR_PARSEERROR;
 
   if (!This->buf.rem_bytes)
     return DXFILEERR_NOMOREOBJECTS;

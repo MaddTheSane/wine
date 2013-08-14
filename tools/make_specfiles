@@ -29,6 +29,7 @@ my @dll_groups =
  [
   "msvcrt",
   "msvcr100",
+  "msvcr110",
   "msvcirt",
   "msvcr90",
   "msvcr80",
@@ -43,6 +44,7 @@ my @dll_groups =
   "msvcrt",
   "msvcp90",
   "msvcp100",
+  "msvcp110",
   "msvcp71",
   "msvcp80",
   "msvcp70",
@@ -118,6 +120,7 @@ my @dll_groups =
  ],
  [
   "advapi32",
+  "api-ms-win-core-localregistry-l1-1-0",
   "api-ms-win-downlevel-advapi32-l1-1-0",
   "api-ms-win-downlevel-advapi32-l2-1-0",
   "api-ms-win-security-base-l1-1-0",
@@ -125,6 +128,7 @@ my @dll_groups =
  [
   "kernel32",
   "api-ms-win-downlevel-normaliz-l1-1-0",
+  "api-ms-win-core-processthreads-l1-1-0",
  ],
  [
   "ole32",
@@ -146,6 +150,11 @@ my @dll_groups =
  [
   "version",
   "api-ms-win-downlevel-version-l1-1-0",
+ ],
+ [
+  "msvcrt",
+  "ntdll",
+  "ntoskrnl.exe"
  ],
 );
 
@@ -255,6 +264,10 @@ sub update_spec_file($)
         {
             $flags = $parent{flags};
             $flags =~ s/-ordinal\s*// if $descr{ordinal} eq "@";
+            if ($descr{flags} =~ /-private/)  # preserve -private flag
+            {
+                $flags = "-private " . $flags unless $flags =~ /-private/;
+            }
         }
 
         if ($parent{callconv} ne "stub" || $parent{args})

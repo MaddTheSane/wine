@@ -93,6 +93,7 @@ static __msvcrt_ulong* (__cdecl *p_doserrno)(void);
 static void (__cdecl *p_srand)(unsigned int);
 static char* (__cdecl *p_strtok)(char*, const char*);
 static wchar_t* (__cdecl *p_wcstok)(wchar_t*, const wchar_t*);
+static unsigned char* (__cdecl *p__mbstok)(unsigned char*, const unsigned char*);
 static char* (__cdecl *p_strerror)(int);
 static wchar_t* (__cdecl *p_wcserror)(int);
 static char* (__cdecl *p_tmpnam)(char*);
@@ -117,6 +118,7 @@ static int (__cdecl *p_feof)(FILE*);
 static int (__cdecl *p_ferror)(FILE*);
 static int (__cdecl *p_flsbuf)(int, FILE*);
 static unsigned long (__cdecl *p_byteswap_ulong)(unsigned long);
+static void** (__cdecl *p__pxcptinfoptrs)(void);
 
 /* make sure we use the correct errno */
 #undef errno
@@ -278,6 +280,7 @@ static BOOL init(void)
     SET(p_srand, "srand");
     SET(p_strtok, "strtok");
     SET(p_wcstok, "wcstok");
+    SET(p__mbstok, "_mbstok");
     SET(p_strerror, "strerror");
     SET(p_wcserror, "_wcserror");
     SET(p_tmpnam, "tmpnam");
@@ -302,6 +305,7 @@ static BOOL init(void)
     SET(p_ferror, "ferror");
     SET(p_flsbuf, "_flsbuf");
     SET(p_byteswap_ulong, "_byteswap_ulong");
+    SET(p__pxcptinfoptrs, "__pxcptinfoptrs");
     if (sizeof(void *) == 8)
     {
         SET(p_type_info_name_internal_method, "?_name_internal_method@type_info@@QEBAPEBDPEAU__type_info_node@@@Z");
@@ -1015,7 +1019,8 @@ struct __thread_data {
     struct tm                       *time_buffer;
     char                            *efcvt_buffer;
     int                             unk3[2];
-    void                            *unk4[4];
+    void                            *unk4[3];
+    EXCEPTION_POINTERS              *xcptinfo;
     int                             fpecode;
     pthreadmbcinfo                  mbcinfo;
     pthreadlocinfo                  locinfo;
@@ -1035,6 +1040,7 @@ static void test_getptd(void)
     DWORD tid = GetCurrentThreadId();
     wchar_t testW[] = {'t','e','s','t',0}, tW[] = {'t',0}, *wp;
     char test[] = "test", *p;
+    unsigned char mbstok_test[] = "test", *up;
     struct tm time;
     __time64_t secs = 0;
     int dec, sign;
@@ -1050,6 +1056,8 @@ static void test_getptd(void)
     ok(ptd->strtok_next == p+3, "ptd->strtok_next is incorrect\n");
     wp = p_wcstok(testW, tW);
     ok(ptd->wcstok_next == wp+3, "ptd->wcstok_next is incorrect\n");
+    up = p__mbstok(mbstok_test, (unsigned char*)"t");
+    ok(ptd->mbstok_next == up+3, "ptd->mbstok_next is incorrect\n");
     ok(p_strerror(0) == ptd->strerror_buffer, "ptd->strerror_buffer is incorrect\n");
     ok(p_wcserror(0) == ptd->wcserror_buffer, "ptd->wcserror_buffer is incorrect\n");
     ok(p_tmpnam(NULL) == ptd->tmpnam_buffer, "ptd->tmpnam_buffer is incorrect\n");
@@ -1060,6 +1068,7 @@ static void test_getptd(void)
     ok(p_wasctime(&time) == ptd->wasctime_buffer, "ptd->wasctime_buffer is incorrect\n");
     ok(p_localtime64(&secs) == ptd->time_buffer, "ptd->time_buffer is incorrect\n");
     ok(p_ecvt(3.12, 1, &dec, &sign) == ptd->efcvt_buffer, "ptd->efcvt_buffer is incorrect\n");
+    ok(p__pxcptinfoptrs() == (void**)&ptd->xcptinfo, "ptd->xcptinfo is incorrect\n");
     ok(p_fpecode() == &ptd->fpecode, "ptd->fpecode is incorrect\n");
     mbcinfo = ptd->mbcinfo;
     locinfo = ptd->locinfo;

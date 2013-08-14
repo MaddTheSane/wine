@@ -125,6 +125,9 @@ typedef struct {
   WORD current_token;
   BOOL token_present;
   BOOL txt;
+  DWORD list_nb_elements;
+  BOOL list_type_float;
+  BOOL list_separator;
   ULONG cur_pos_data;
   LPBYTE cur_pstrings;
   BYTE value[100];
@@ -161,7 +164,7 @@ HRESULT IDirectXFileImpl_Create(IUnknown *pUnkOuter, LPVOID *ppObj) DECLSPEC_HID
 
 HRESULT parse_header(parse_buffer *buf, BYTE **decomp_buffer_ptr) DECLSPEC_HIDDEN;
 BOOL parse_object(parse_buffer * buf) DECLSPEC_HIDDEN;
-BOOL parse_templates(parse_buffer * buf) DECLSPEC_HIDDEN;
+BOOL parse_templates(parse_buffer * buf, BOOL templates_only) DECLSPEC_HIDDEN;
 
 int mszip_decompress(int inlen, int outlen, char* inbuffer, char* outbuffer) DECLSPEC_HIDDEN;
 

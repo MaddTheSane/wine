@@ -25,6 +25,7 @@
 #include "stdlib.h"
 #include "errno.h"
 #include "malloc.h"
+#include "mbstring.h"
 #include "limits.h"
 #include "sys/stat.h"
 #include "windef.h"
@@ -78,8 +79,8 @@ typedef void  (__cdecl *free_func_t)(void*);
 extern char* __cdecl __unDName(char *,const char*,int,malloc_func_t,free_func_t,unsigned short int);
 
 /*********************************************************************
- *  *  stat64_to_stat32 [internal]
- *   */
+ *  stat64_to_stat32 [internal]
+ */
 static void stat64_to_stat32(const struct _stat64 *buf64, struct _stat32 *buf)
 {
     buf->st_dev   = buf64->st_dev;
@@ -210,20 +211,6 @@ void* CDECL _recalloc(void* mem, size_t num, size_t size)
 }
 
 /*********************************************************************
- *  _fstat32 (MSVCR100.@)
- */
-int CDECL _fstat32(int fd, struct _stat32* buf)
-{
-    int ret;
-    struct _stat64 buf64;
-
-    ret = _fstat64(fd, &buf64);
-    if (!ret)
-        stat64_to_stat32(&buf64, buf);
-    return ret;
-}
-
-/*********************************************************************
  *  _stat32 (MSVCR100.@)
  */
 int CDECL _stat32(const char *path, struct _stat32* buf)
@@ -307,20 +294,6 @@ static void stat64_to_stat64i32(const struct _stat64 *buf64, struct _stat64i32 *
     buf->st_atime = buf64->st_atime;
     buf->st_mtime = buf64->st_mtime;
     buf->st_ctime = buf64->st_ctime;
-}
-
-/*********************************************************************
- * _fstat64i32 (MSVCR100.@)
- */
-int CDECL _fstat64i32(int fd, struct _stat64i32* buf)
-{
-    int ret;
-    struct _stat64 buf64;
-
-    ret = _fstat64(fd, &buf64);
-    if (!ret)
-        stat64_to_stat64i32(&buf64, buf);
-    return ret;
 }
 
 /*********************************************************************
@@ -423,6 +396,14 @@ int CDECL _vswprintf_p(wchar_t *buffer, size_t length, const wchar_t *format, __
 }
 
 /*********************************************************************
+ * _vscwprintf_p (MSVCR100.@)
+ */
+int CDECL _vscwprintf_p(const wchar_t *format, __ms_va_list args)
+{
+    return _vscwprintf_p_l(format, NULL, args);
+}
+
+/*********************************************************************
  * _byteswap_ushort (MSVCR100.@)
  */
 unsigned short CDECL _byteswap_ushort(unsigned short s)
@@ -445,59 +426,6 @@ unsigned __int64 CDECL _byteswap_uint64(unsigned __int64 i)
 {
     return (i<<56) + ((i&0xFF00)<<40) + ((i&0xFF0000)<<24) + ((i&0xFF000000)<<8) +
         ((i>>8)&0xFF000000) + ((i>>24)&0xFF0000) + ((i>>40)&0xFF00) + (i>>56);
-}
-
-/*********************************************************************
- * fread_s (MSVCR100.@)
- */
-size_t CDECL fread_s(void *buf, size_t buf_size, size_t elem_size, size_t count, FILE *stream)
-{
-    size_t bytes_left, buf_pos;
-
-    TRACE("(%p %lu %lu %lu %p\n", buf, (unsigned long)buf_size,
-            (unsigned long)elem_size, (unsigned long)count, stream);
-
-
-    if(!CHECK_PMT(stream != NULL)) {
-        if(buf && buf_size)
-            memset(buf, 0, buf_size);
-        return 0;
-    }
-    if(!elem_size || !count) return 0;
-    if(!CHECK_PMT(buf != NULL)) return 0;
-    if(!CHECK_PMT(SIZE_MAX/count >= elem_size)) return 0;
-
-    bytes_left = elem_size*count;
-    buf_pos = 0;
-    while(bytes_left) {
-        if(stream->_cnt > 0) {
-            size_t size = bytes_left<stream->_cnt ? bytes_left : stream->_cnt;
-
-            if(!CHECK_PMT_ERR(size <= buf_size-buf_pos, ERANGE)) {
-                memset(buf, 0, buf_size);
-                return 0;
-            }
-
-            fread((char*)buf+buf_pos, 1, size, stream);
-            buf_pos += size;
-            bytes_left -= size;
-        }else {
-            int c = _filbuf(stream);
-
-            if(c == EOF)
-                break;
-
-            if(!CHECK_PMT_ERR(buf_size-buf_pos > 0, ERANGE)) {
-                memset(buf, 0, buf_size);
-                return 0;
-            }
-
-            ((char*)buf)[buf_pos++] = c;
-            bytes_left--;
-        }
-    }
-
-    return buf_pos/elem_size;
 }
 
 /*********************************************************************
@@ -526,6 +454,17 @@ int CDECL _get_timezone(LONG *timezone)
     return 0;
 }
 
+/*********************************************************************
+ * _get_daylight (MSVCR100.@)
+ */
+int CDECL _get_daylight(int *hours)
+{
+    if(!CHECK_PMT(hours != NULL)) return EINVAL;
+
+    *hours = *(int*)GetProcAddress(GetModuleHandleA("msvcrt.dll"), "_daylight");
+    return 0;
+}
+
 /* copied from dlls/msvcrt/heap.c */
 #define SAVED_PTR(x) ((void *)((DWORD_PTR)((char *)x - sizeof(void *)) & \
                                ~(sizeof(void *) - 1)))
@@ -544,6 +483,16 @@ size_t CDECL _aligned_msize(void *p, size_t alignment, size_t offset)
 
     alloc_ptr = SAVED_PTR(p);
     return _msize(*alloc_ptr)-alignment-sizeof(void*);
+}
+
+int CDECL MSVCR100_atoi(const char *str)
+{
+    return _atoi_l(str, NULL);
+}
+
+unsigned char* CDECL MSVCR100__mbstok(unsigned char *str, const unsigned char *delim)
+{
+    return _mbstok_l(str, delim, NULL);
 }
 
 /*********************************************************************

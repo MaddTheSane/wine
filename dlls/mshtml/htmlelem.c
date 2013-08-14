@@ -38,6 +38,7 @@ WINE_DEFAULT_DEBUG_CHANNEL(mshtml);
 
 static const WCHAR aW[]        = {'A',0};
 static const WCHAR bodyW[]     = {'B','O','D','Y',0};
+static const WCHAR buttonW[]   = {'B','U','T','T','O','N',0};
 static const WCHAR embedW[]    = {'E','M','B','E','D',0};
 static const WCHAR formW[]     = {'F','O','R','M',0};
 static const WCHAR frameW[]    = {'F','R','A','M','E',0};
@@ -45,6 +46,7 @@ static const WCHAR headW[]     = {'H','E','A','D',0};
 static const WCHAR iframeW[]   = {'I','F','R','A','M','E',0};
 static const WCHAR imgW[]      = {'I','M','G',0};
 static const WCHAR inputW[]    = {'I','N','P','U','T',0};
+static const WCHAR labelW[]    = {'L','A','B','E','L',0};
 static const WCHAR linkW[]     = {'L','I','N','K',0};
 static const WCHAR metaW[]     = {'M','E','T','A',0};
 static const WCHAR objectW[]   = {'O','B','J','E','C','T',0};
@@ -66,6 +68,7 @@ typedef struct {
 static const tag_desc_t tag_descs[] = {
     {aW,         HTMLAnchorElement_Create},
     {bodyW,      HTMLBodyElement_Create},
+    {buttonW,    HTMLButtonElement_Create},
     {embedW,     HTMLEmbedElement_Create},
     {formW,      HTMLFormElement_Create},
     {frameW,     HTMLFrameElement_Create},
@@ -73,6 +76,7 @@ static const tag_desc_t tag_descs[] = {
     {iframeW,    HTMLIFrame_Create},
     {imgW,       HTMLImgElement_Create},
     {inputW,     HTMLInputElement_Create},
+    {labelW,     HTMLLabelElement_Create},
     {linkW,      HTMLLinkElement_Create},
     {metaW,      HTMLMetaElement_Create},
     {objectW,    HTMLObjectElement_Create},
@@ -1085,68 +1089,76 @@ static HRESULT WINAPI HTMLElement_get_outerText(IHTMLElement *iface, BSTR *p)
     return E_NOTIMPL;
 }
 
-static HRESULT HTMLElement_InsertAdjacentNode(HTMLElement *This, BSTR where, nsIDOMNode *nsnode)
+HRESULT insert_adjacent_node(HTMLElement *This, const WCHAR *where, nsIDOMNode *nsnode, HTMLDOMNode **ret_node)
 {
-    static const WCHAR wszBeforeBegin[] = {'b','e','f','o','r','e','B','e','g','i','n',0};
-    static const WCHAR wszAfterBegin[] = {'a','f','t','e','r','B','e','g','i','n',0};
-    static const WCHAR wszBeforeEnd[] = {'b','e','f','o','r','e','E','n','d',0};
-    static const WCHAR wszAfterEnd[] = {'a','f','t','e','r','E','n','d',0};
+    nsIDOMNode *ret_nsnode;
     nsresult nsres;
+    HRESULT hres = S_OK;
 
-    if (!strcmpiW(where, wszBeforeBegin))
-    {
-        nsIDOMNode *unused;
+    static const WCHAR beforebeginW[] = {'b','e','f','o','r','e','b','e','g','i','n',0};
+    static const WCHAR afterbeginW[] = {'a','f','t','e','r','b','e','g','i','n',0};
+    static const WCHAR beforeendW[] = {'b','e','f','o','r','e','e','n','d',0};
+    static const WCHAR afterendW[] = {'a','f','t','e','r','e','n','d',0};
+
+    if (!strcmpiW(where, beforebeginW)) {
         nsIDOMNode *parent;
+
         nsres = nsIDOMNode_GetParentNode(This->node.nsnode, &parent);
-        if (!parent) return E_INVALIDARG;
-        nsres = nsIDOMNode_InsertBefore(parent, nsnode, This->node.nsnode, &unused);
-        if (unused) nsIDOMNode_Release(unused);
-        nsIDOMNode_Release(parent);
-    }
-    else if (!strcmpiW(where, wszAfterBegin))
-    {
-        nsIDOMNode *unused;
-        nsIDOMNode *first_child;
-        nsIDOMNode_GetFirstChild(This->node.nsnode, &first_child);
-        nsres = nsIDOMNode_InsertBefore(This->node.nsnode, nsnode, first_child, &unused);
-        if (unused) nsIDOMNode_Release(unused);
-        if (first_child) nsIDOMNode_Release(first_child);
-    }
-    else if (!strcmpiW(where, wszBeforeEnd))
-    {
-        nsIDOMNode *unused;
-        nsres = nsIDOMNode_AppendChild(This->node.nsnode, nsnode, &unused);
-        if (unused) nsIDOMNode_Release(unused);
-    }
-    else if (!strcmpiW(where, wszAfterEnd))
-    {
-        nsIDOMNode *unused;
-        nsIDOMNode *next_sibling;
-        nsIDOMNode *parent;
-        nsIDOMNode_GetParentNode(This->node.nsnode, &parent);
-        if (!parent) return E_INVALIDARG;
+        if(NS_FAILED(nsres))
+            return E_FAIL;
 
-        nsIDOMNode_GetNextSibling(This->node.nsnode, &next_sibling);
-        if (next_sibling)
-        {
-            nsres = nsIDOMNode_InsertBefore(parent, nsnode, next_sibling, &unused);
-            nsIDOMNode_Release(next_sibling);
-        }
-        else
-            nsres = nsIDOMNode_AppendChild(parent, nsnode, &unused);
+        if(!parent)
+            return E_INVALIDARG;
+
+        nsres = nsIDOMNode_InsertBefore(parent, nsnode, This->node.nsnode, &ret_nsnode);
         nsIDOMNode_Release(parent);
-        if (unused) nsIDOMNode_Release(unused);
-    }
-    else
-    {
+    }else if(!strcmpiW(where, afterbeginW)) {
+        nsIDOMNode *first_child;
+
+        nsres = nsIDOMNode_GetFirstChild(This->node.nsnode, &first_child);
+        if(NS_FAILED(nsres))
+            return E_FAIL;
+
+        nsres = nsIDOMNode_InsertBefore(This->node.nsnode, nsnode, first_child, &ret_nsnode);
+        if(NS_FAILED(nsres))
+            return E_FAIL;
+
+        if (first_child)
+            nsIDOMNode_Release(first_child);
+    }else if (!strcmpiW(where, beforeendW)) {
+        nsres = nsIDOMNode_AppendChild(This->node.nsnode, nsnode, &ret_nsnode);
+    }else if (!strcmpiW(where, afterendW)) {
+        nsIDOMNode *next_sibling, *parent;
+
+        nsres = nsIDOMNode_GetParentNode(This->node.nsnode, &parent);
+        if(NS_FAILED(nsres))
+            return E_FAIL;
+        if(!parent)
+            return E_INVALIDARG;
+
+        nsres = nsIDOMNode_GetNextSibling(This->node.nsnode, &next_sibling);
+        if(NS_SUCCEEDED(nsres)) {
+            if(next_sibling) {
+                nsres = nsIDOMNode_InsertBefore(parent, nsnode, next_sibling, &ret_nsnode);
+                nsIDOMNode_Release(next_sibling);
+            }else {
+                nsres = nsIDOMNode_AppendChild(parent, nsnode, &ret_nsnode);
+            }
+        }
+
+        nsIDOMNode_Release(parent);
+    }else {
         ERR("invalid where: %s\n", debugstr_w(where));
         return E_INVALIDARG;
     }
 
     if (NS_FAILED(nsres))
         return E_FAIL;
-    else
-        return S_OK;
+
+    if(ret_node)
+        hres = get_node(This->node.doc, ret_nsnode, TRUE, ret_node);
+    nsIDOMNode_Release(ret_nsnode);
+    return hres;
 }
 
 static HRESULT WINAPI HTMLElement_insertAdjacentHTML(IHTMLElement *iface, BSTR where,
@@ -1186,9 +1198,8 @@ static HRESULT WINAPI HTMLElement_insertAdjacentHTML(IHTMLElement *iface, BSTR w
         return E_FAIL;
     }
 
-    hr = HTMLElement_InsertAdjacentNode(This, where, nsnode);
+    hr = insert_adjacent_node(This, where, nsnode, NULL);
     nsIDOMNode_Release(nsnode);
-
     return hr;
 }
 
@@ -1219,7 +1230,7 @@ static HRESULT WINAPI HTMLElement_insertAdjacentText(IHTMLElement *iface, BSTR w
         return E_FAIL;
     }
 
-    hr = HTMLElement_InsertAdjacentNode(This, where, nsnode);
+    hr = insert_adjacent_node(This, where, nsnode, NULL);
     nsIDOMNode_Release(nsnode);
 
     return hr;
@@ -1668,9 +1679,17 @@ HRESULT HTMLElement_handle_event(HTMLDOMNode *iface, DWORD eid, nsIDOMEvent *eve
     return S_OK;
 }
 
+cp_static_data_t HTMLElementEvents2_data = { HTMLElementEvents2_tid, NULL /* FIXME */, TRUE };
+
+const cpc_entry_t HTMLElement_cpc[] = {
+    HTMLELEMENT_CPC,
+    {NULL}
+};
+
 static const NodeImplVtbl HTMLElementImplVtbl = {
     HTMLElement_QI,
     HTMLElement_destructor,
+    HTMLElement_cpc,
     HTMLElement_clone,
     HTMLElement_handle_event,
     HTMLElement_get_attr_col
@@ -1827,7 +1846,8 @@ void HTMLElement_Init(HTMLElement *This, HTMLDocumentNode *doc, nsIDOMHTMLElemen
         This->nselem = nselem;
     }
 
-    ConnectionPointContainer_Init(&This->cp_container, (IUnknown*)&This->IHTMLElement_iface);
+    This->node.cp_container = &This->cp_container;
+    ConnectionPointContainer_Init(&This->cp_container, (IUnknown*)&This->IHTMLElement_iface, This->node.vtbl->cpc_entries);
 }
 
 HRESULT HTMLElement_Create(HTMLDocumentNode *doc, nsIDOMNode *nsnode, BOOL use_generic, HTMLElement **ret)
@@ -1857,8 +1877,8 @@ HRESULT HTMLElement_Create(HTMLDocumentNode *doc, nsIDOMNode *nsnode, BOOL use_g
     }else {
         elem = heap_alloc_zero(sizeof(HTMLElement));
         if(elem) {
-            HTMLElement_Init(elem, doc, nselem, &HTMLElement_dispex);
             elem->node.vtbl = &HTMLElementImplVtbl;
+            HTMLElement_Init(elem, doc, nselem, &HTMLElement_dispex);
             hres = S_OK;
         }else {
             hres = E_OUTOFMEMORY;

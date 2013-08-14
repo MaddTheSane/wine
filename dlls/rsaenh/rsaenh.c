@@ -358,7 +358,7 @@ static struct handle_table handle_table;
  *
  * Initializes and destroys the handle table for the CSP's handles.
  */
-int WINAPI DllMain(HINSTANCE hInstance, DWORD fdwReason, PVOID pvReserved)
+BOOL WINAPI DllMain(HINSTANCE hInstance, DWORD fdwReason, PVOID reserved)
 {
     switch (fdwReason)
     {
@@ -369,10 +369,11 @@ int WINAPI DllMain(HINSTANCE hInstance, DWORD fdwReason, PVOID pvReserved)
             break;
 
         case DLL_PROCESS_DETACH:
+            if (reserved) break;
             destroy_handle_table(&handle_table);
             break;
     }
-    return 1;
+    return TRUE;
 }
 
 /******************************************************************************
@@ -2379,11 +2380,13 @@ BOOL WINAPI RSAENH_CPDecrypt(HCRYPTPROV hProv, HCRYPTKEY hKey, HCRYPTHASH hHash,
                     *pdwDataLen -= pbData[*pdwDataLen-1];
                 else {
                     SetLastError(NTE_BAD_DATA);
+                    setup_key(pCryptKey);
                     return FALSE;
                 }
             }
             else {
                 SetLastError(NTE_BAD_DATA);
+                setup_key(pCryptKey);
                 return FALSE;
             }
         }

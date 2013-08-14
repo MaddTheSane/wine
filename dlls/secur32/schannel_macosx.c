@@ -630,20 +630,37 @@ static OSStatus schan_push_adapter(SSLConnectionRef transport, const void *buff,
     return ret;
 }
 
+static const struct {
+    DWORD enable_flag;
+    SSLProtocol mac_version;
+} protocol_priority_flags[] = {
+    {SP_PROT_TLS1_2_CLIENT, kTLSProtocol12},
+    {SP_PROT_TLS1_1_CLIENT, kTLSProtocol11},
+    {SP_PROT_TLS1_0_CLIENT, kTLSProtocol1},
+    {SP_PROT_SSL3_CLIENT,   kSSLProtocol3},
+    {SP_PROT_SSL2_CLIENT,   kSSLProtocol2}
+};
 
-BOOL schan_imp_create_session(schan_imp_session *session, BOOL is_server,
-                              schan_imp_certificate_credentials cred)
+static DWORD supported_protocols;
+
+DWORD schan_imp_enabled_protocols(void)
+{
+    return supported_protocols;
+}
+
+BOOL schan_imp_create_session(schan_imp_session *session, schan_credentials *cred)
 {
     struct mac_session *s;
+    unsigned i;
     OSStatus status;
 
-    TRACE("(%p, %d)\n", session, is_server);
+    TRACE("(%p)\n", session);
 
     s = HeapAlloc(GetProcessHeap(), 0, sizeof(*s));
     if (!s)
         return FALSE;
 
-    status = SSLNewContext(is_server, &s->context);
+    status = SSLNewContext(cred->credential_use == SECPKG_CRED_INBOUND, &s->context);
     if (status != noErr)
     {
         ERR("Failed to create session context: %ld\n", (long)status);
@@ -664,11 +681,17 @@ BOOL schan_imp_create_session(schan_imp_session *session, BOOL is_server,
         goto fail;
     }
 
-    status = SSLSetProtocolVersionEnabled(s->context, kSSLProtocol2, FALSE);
-    if (status != noErr)
-    {
-        ERR("Failed to disable SSL version 2: %ld\n", (long)status);
-        goto fail;
+    for(i=0; i < sizeof(protocol_priority_flags)/sizeof(*protocol_priority_flags); i++) {
+        if(!(protocol_priority_flags[i].enable_flag & supported_protocols))
+           continue;
+
+        status = SSLSetProtocolVersionEnabled(s->context, protocol_priority_flags[i].mac_version,
+                (cred->enabled_protocols & protocol_priority_flags[i].enable_flag) != 0);
+        if (status != noErr)
+        {
+            ERR("Failed to set SSL version %d: %ld\n", protocol_priority_flags[i].mac_version, (long)status);
+            goto fail;
+        }
     }
 
     status = SSLSetIOFuncs(s->context, schan_pull_adapter, schan_push_adapter);
@@ -709,6 +732,15 @@ void schan_imp_set_session_transport(schan_imp_session session,
     TRACE("(%p/%p, %p)\n", s, s->context, t);
 
     s->transport = t;
+}
+
+void schan_imp_set_session_target(schan_imp_session session, const char *target)
+{
+    struct mac_session *s = (struct mac_session*)session;
+
+    TRACE("(%p/%p, %s)\n", s, s->context, debugstr_a(target));
+
+    SSLSetPeerDomainName( s->context, target, strlen(target) );
 }
 
 SECURITY_STATUS schan_imp_handshake(schan_imp_session session)
@@ -966,20 +998,45 @@ SECURITY_STATUS schan_imp_recv(schan_imp_session session, void *buffer,
     return SEC_E_OK;
 }
 
-BOOL schan_imp_allocate_certificate_credentials(schan_imp_certificate_credentials *c)
+BOOL schan_imp_allocate_certificate_credentials(schan_credentials *c)
 {
     /* The certificate is never really used for anything. */
-    *c = NULL;
+    c->credentials = NULL;
     return TRUE;
 }
 
-void schan_imp_free_certificate_credentials(schan_imp_certificate_credentials c)
+void schan_imp_free_certificate_credentials(schan_credentials *c)
 {
 }
 
 BOOL schan_imp_init(void)
 {
     TRACE("()\n");
+
+    supported_protocols = SP_PROT_SSL2_CLIENT | SP_PROT_SSL3_CLIENT | SP_PROT_TLS1_0_CLIENT;
+
+#if MAC_OS_X_VERSION_MAX_ALLOWED >= 1080
+    if(SSLGetProtocolVersionMax != NULL) {
+        SSLProtocol max_protocol;
+        SSLContextRef ctx;
+        OSStatus status;
+
+        status = SSLNewContext(FALSE, &ctx);
+        if(status == noErr) {
+            status = SSLGetProtocolVersionMax(ctx, &max_protocol);
+            if(status == noErr) {
+                if(max_protocol >= kTLSProtocol11)
+                    supported_protocols |= SP_PROT_TLS1_1_CLIENT;
+                if(max_protocol >= kTLSProtocol12)
+                    supported_protocols |= SP_PROT_TLS1_2_CLIENT;
+            }
+            SSLDisposeContext(ctx);
+        }else {
+            WARN("SSLNewContext failed\n");
+        }
+    }
+#endif
+
     return TRUE;
 }
 

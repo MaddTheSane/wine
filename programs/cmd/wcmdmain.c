@@ -496,20 +496,23 @@ BOOL WCMD_keyword_ws_found(const WCHAR *keyword, int len, const WCHAR *ptr) {
 /*************************************************************************
  * WCMD_strip_quotes
  *
- *	Remove first and last quote WCHARacters, preserving all other text
+ *  Remove first and last quote WCHARacters, preserving all other text
+ *  Returns the location of the final quote
  */
-void WCMD_strip_quotes(WCHAR *cmd) {
-  WCHAR *src = cmd + 1, *dest = cmd, *lastq = NULL;
+WCHAR *WCMD_strip_quotes(WCHAR *cmd) {
+  WCHAR *src = cmd + 1, *dest = cmd, *lastq = NULL, *lastquote;
   while((*dest=*src) != '\0') {
       if (*src=='\"')
           lastq=dest;
       dest++, src++;
   }
+  lastquote = lastq;
   if (lastq) {
       dest=lastq++;
       while ((*dest++=*lastq++) != 0)
           ;
   }
+  return lastquote;
 }
 
 
@@ -1045,7 +1048,6 @@ void WCMD_run_program (WCHAR *command, BOOL called)
   BOOL  extensionsupplied = FALSE;
   BOOL  launched = FALSE;
   BOOL  status;
-  BOOL  assumeInternal = FALSE;
   DWORD len;
   static const WCHAR envPath[] = {'P','A','T','H','\0'};
   static const WCHAR delims[] = {'/','\\',':','\0'};
@@ -1165,20 +1167,8 @@ void WCMD_run_program (WCHAR *command, BOOL called)
       }
     }
 
-   /* Internal programs won't be picked up by this search, so even
-      though not found, try one last createprocess and wait for it
-      to complete.
-      Note: Ideally we could tell between a console app (wait) and a
-      windows app, but the API's for it fail in this case           */
-    if (!found && pathposn == NULL) {
-        WINE_TRACE("ASSUMING INTERNAL\n");
-        assumeInternal = TRUE;
-    } else {
-        WINE_TRACE("Found as %s\n", wine_dbgstr_w(thisDir));
-    }
-
     /* Once found, launch it */
-    if (found || assumeInternal) {
+    if (found) {
       STARTUPINFOW st;
       PROCESS_INFORMATION pe;
       SHFILEINFOW psfi;
@@ -1187,6 +1177,8 @@ void WCMD_run_program (WCHAR *command, BOOL called)
       WCHAR *ext = strrchrW( thisDir, '.' );
       static const WCHAR batExt[] = {'.','b','a','t','\0'};
       static const WCHAR cmdExt[] = {'.','c','m','d','\0'};
+
+      WINE_TRACE("Found as %s\n", wine_dbgstr_w(thisDir));
 
       /* Special case BAT and CMD */
       if (ext && (!strcmpiW(ext, batExt) || !strcmpiW(ext, cmdExt))) {
@@ -1211,8 +1203,9 @@ void WCMD_run_program (WCHAR *command, BOOL called)
 
         /* Launch the process and if a CUI wait on it to complete
            Note: Launching internal wine processes cannot specify a full path to exe */
-        status = CreateProcessW(assumeInternal?NULL : thisDir,
+        status = CreateProcessW(thisDir,
                                 command, NULL, NULL, TRUE, 0, NULL, NULL, &st, &pe);
+        heap_free(st.lpReserved2);
         if ((opt_c || opt_k) && !opt_s && !status
             && GetLastError()==ERROR_FILE_NOT_FOUND && command[0]=='\"') {
           /* strip first and last quote WCHARacters and try again */
@@ -1227,7 +1220,7 @@ void WCMD_run_program (WCHAR *command, BOOL called)
 
         /* Always wait when non-interactive (cmd /c or in batch program),
            or for console applications                                    */
-        if (assumeInternal || !interactive || (console && !HIWORD(console)))
+        if (!interactive || (console && !HIWORD(console)))
             WaitForSingleObject (pe.hProcess, INFINITE);
         GetExitCodeProcess (pe.hProcess, &errorlevel);
         if (errorlevel == STILL_ACTIVE) errorlevel = 0;
@@ -1812,7 +1805,7 @@ WCHAR *WCMD_ReadAndParseLine(const WCHAR *optionalcmd, CMD_LIST **output, HANDLE
     static const WCHAR forCmd[] = {'f','o','r'};
     static const WCHAR ifCmd[]  = {'i','f'};
     static const WCHAR ifElse[] = {'e','l','s','e'};
-    BOOL      inRem = FALSE;
+    BOOL      inOneLine = FALSE;
     BOOL      inFor = FALSE;
     BOOL      inIn  = FALSE;
     BOOL      inIf  = FALSE;
@@ -1909,9 +1902,10 @@ WCHAR *WCMD_ReadAndParseLine(const WCHAR *optionalcmd, CMD_LIST **output, HANDLE
       if (curStringLen == 0 && curCopyTo == curString) {
         static const WCHAR forDO[] = {'d','o'};
 
-        /* If command starts with 'rem ', ignore any &&, ( etc. */
-        if (WCMD_keyword_ws_found(remCmd, sizeof(remCmd)/sizeof(remCmd[0]), curPos)) {
-          inRem = TRUE;
+        /* If command starts with 'rem ' or identifies a label, ignore any &&, ( etc. */
+        if (WCMD_keyword_ws_found(remCmd, sizeof(remCmd)/sizeof(remCmd[0]), curPos) ||
+            *curPos == ':') {
+          inOneLine = TRUE;
 
         } else if (WCMD_keyword_ws_found(forCmd, sizeof(forCmd)/sizeof(forCmd[0]), curPos)) {
           inFor = TRUE;
@@ -1970,11 +1964,12 @@ WCHAR *WCMD_ReadAndParseLine(const WCHAR *optionalcmd, CMD_LIST **output, HANDLE
         }
       }
 
-      /* Nothing 'ends' a REM statement and &&, quotes etc are ineffective,
-         so just use the default processing ie skip character specific
-         matching below                                                    */
-      if (!inRem) thisChar = *curPos;
-      else        thisChar = 'X';  /* Character with no special processing */
+      /* Nothing 'ends' a one line statement (e.g. REM or :labels mean
+         the &&, quotes and redirection etc are ineffective, so just force
+         the use of the default processing by skipping character specific
+         matching below)                                                   */
+      if (!inOneLine) thisChar = *curPos;
+      else            thisChar = 'X';  /* Character with no special processing */
 
       lastWasWhiteSpace = FALSE; /* Will be reset below */
       lastWasCaret = FALSE;
@@ -2224,7 +2219,7 @@ WCHAR *WCMD_ReadAndParseLine(const WCHAR *optionalcmd, CMD_LIST **output, HANDLE
         WCHAR *extraData;
 
         WINE_TRACE("Need to read more data as outstanding brackets or carets\n");
-        inRem = FALSE;
+        inOneLine = FALSE;
         prevDelim = CMD_NONE;
         inQuotes = 0;
         memset(extraSpace, 0x00, (MAXSTRING+1) * sizeof(WCHAR));

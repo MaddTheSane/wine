@@ -236,8 +236,11 @@
 /* Define to 1 if you have the `getuid' function. */
 #undef HAVE_GETUID
 
-/* Define if we have libgphoto2 development environment */
+/* Define if we have the libgphoto2 development environment */
 #undef HAVE_GPHOTO2
+
+/* Define if we have the libgphoto2_port development environment */
+#undef HAVE_GPHOTO2_PORT
 
 /* Define to 1 if you have the <grp.h> header file. */
 #undef HAVE_GRP_H
@@ -578,12 +581,6 @@
 /* Define to 1 if you have the <OpenCL/opencl.h> header file. */
 #undef HAVE_OPENCL_OPENCL_H
 
-/* Define to 1 if you have the <openssl/err.h> header file. */
-#undef HAVE_OPENSSL_ERR_H
-
-/* Define to 1 if you have the <openssl/ssl.h> header file. */
-#undef HAVE_OPENSSL_SSL_H
-
 /* Define to 1 if `numaudioengines' is a member of `oss_sysinfo'. */
 #undef HAVE_OSS_SYSINFO_NUMAUDIOENGINES
 
@@ -739,9 +736,6 @@
 
 /* Define to 1 if you have the `socketpair' function. */
 #undef HAVE_SOCKETPAIR
-
-/* Define to 1 if you have the `spawnvp' function. */
-#undef HAVE_SPAWNVP
 
 /* Define to 1 if the system has the type `ssize_t'. */
 #undef HAVE_SSIZE_T
@@ -1241,9 +1235,6 @@
 /* Define to the soname of the libcapi20 library. */
 #undef SONAME_LIBCAPI20
 
-/* Define to the soname of the libcrypto library. */
-#undef SONAME_LIBCRYPTO
-
 /* Define to the soname of the libcups library. */
 #undef SONAME_LIBCUPS
 
@@ -1291,9 +1282,6 @@
 
 /* Define to the soname of the libsane library. */
 #undef SONAME_LIBSANE
-
-/* Define to the soname of the libssl library. */
-#undef SONAME_LIBSSL
 
 /* Define to the soname of the libtiff library. */
 #undef SONAME_LIBTIFF

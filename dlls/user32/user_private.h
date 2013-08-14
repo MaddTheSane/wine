@@ -100,7 +100,7 @@ typedef struct tagUSER_DRIVER {
     void   (CDECL *pGetDC)(HDC,HWND,HWND,const RECT *,const RECT *,DWORD);
     DWORD  (CDECL *pMsgWaitForMultipleObjectsEx)(DWORD,const HANDLE*,DWORD,DWORD,DWORD);
     void   (CDECL *pReleaseDC)(HWND,HDC);
-    BOOL   (CDECL *pScrollDC)(HDC, INT, INT, const RECT *, const RECT *, HRGN, LPRECT);
+    BOOL   (CDECL *pScrollDC)(HDC,INT,INT,HRGN);
     void   (CDECL *pSetCapture)(HWND,UINT);
     void   (CDECL *pSetFocus)(HWND);
     void   (CDECL *pSetLayeredWindowAttributes)(HWND,COLORREF,BYTE,DWORD);
@@ -227,6 +227,7 @@ extern void move_window_bits( HWND hwnd, struct window_surface *old_surface,
 extern void *get_hook_proc( void *proc, const WCHAR *module ) DECLSPEC_HIDDEN;
 extern RECT get_virtual_screen_rect(void) DECLSPEC_HIDDEN;
 extern LRESULT call_current_hook( HHOOK hhook, INT code, WPARAM wparam, LPARAM lparam ) DECLSPEC_HIDDEN;
+extern DWORD get_input_codepage( void ) DECLSPEC_HIDDEN;
 extern BOOL map_wparam_AtoW( UINT message, WPARAM *wparam, enum wm_char_mapping mapping ) DECLSPEC_HIDDEN;
 extern NTSTATUS send_hardware_message( HWND hwnd, const INPUT *input, UINT flags ) DECLSPEC_HIDDEN;
 extern LRESULT MSG_SendInternalMessageTimeout( DWORD dest_pid, DWORD dest_tid,

@@ -42,11 +42,17 @@
 #include "winbase.h"
 
 #define MSVCRT_LONG_MAX    0x7fffffffL
+#define MSVCRT_LONG_MIN    (-MSVCRT_LONG_MAX-1)
 #define MSVCRT_ULONG_MAX   0xffffffffUL
 #define MSVCRT_I64_MAX    (((__int64)0x7fffffff << 32) | 0xffffffff)
 #define MSVCRT_I64_MIN    (-MSVCRT_I64_MAX-1)
 #define MSVCRT_UI64_MAX   (((unsigned __int64)0xffffffff << 32) | 0xffffffff)
 #define MSVCRT_MB_LEN_MAX 2
+#ifdef _WIN64
+#define MSVCRT_SIZE_MAX MSVCRT_UI64_MAX
+#else
+#define MSVCRT_SIZE_MAX MSVCRT_ULONG_MAX
+#endif
 
 #define MSVCRT__MAX_DRIVE  3
 #define MSVCRT__MAX_DIR    256
@@ -200,7 +206,8 @@ struct __thread_data {
     struct MSVCRT_tm               *time_buffer;        /* buffer for localtime/gmtime */
     char                           *efcvt_buffer;       /* buffer for ecvt/fcvt */
     int                             unk3[2];
-    void                           *unk4[4];
+    void                           *unk4[3];
+    EXCEPTION_POINTERS             *xcptinfo;
     int                             fpecode;
     MSVCRT_pthreadmbcinfo           mbcinfo;
     MSVCRT_pthreadlocinfo           locinfo;
@@ -250,9 +257,6 @@ void __cdecl MSVCRT_operator_delete(void*);
 
 typedef void* (__cdecl *malloc_func_t)(MSVCRT_size_t);
 typedef void  (__cdecl *free_func_t)(void*);
-
-extern char* __cdecl __unDName(char *,const char*,int,malloc_func_t,free_func_t,unsigned short int);
-extern char* __cdecl __unDNameEx(char *,const char*,int,malloc_func_t,free_func_t,void *,unsigned short int);
 
 /* Setup and teardown multi threaded locks */
 extern void msvcrt_init_mt_locks(void) DECLSPEC_HIDDEN;
@@ -430,6 +434,23 @@ struct MSVCRT___JUMP_BUFFER
     struct MSVCRT__SETJMP_FLOAT128 Xmm13;
     struct MSVCRT__SETJMP_FLOAT128 Xmm14;
     struct MSVCRT__SETJMP_FLOAT128 Xmm15;
+};
+#elif defined(__arm__)
+struct MSVCRT___JUMP_BUFFER
+{
+    unsigned long Frame;
+    unsigned long R4;
+    unsigned long R5;
+    unsigned long R6;
+    unsigned long R7;
+    unsigned long R8;
+    unsigned long R9;
+    unsigned long R10;
+    unsigned long R11;
+    unsigned long Sp;
+    unsigned long Pc;
+    unsigned long Fpscr;
+    unsigned long long D[8];
 };
 #endif /* __i386__ */
 
@@ -930,6 +951,7 @@ int            __cdecl _getch(void);
 int            __cdecl _ismbblead(unsigned int);
 int            __cdecl _ismbclegal(unsigned int c);
 int            __cdecl _ismbstrail(const unsigned char* start, const unsigned char* str);
+int            __cdecl MSVCRT_mbtowc(MSVCRT_wchar_t*,const char*,MSVCRT_size_t);
 MSVCRT_size_t  __cdecl MSVCRT_mbstowcs(MSVCRT_wchar_t*,const char*,MSVCRT_size_t);
 MSVCRT_intptr_t __cdecl MSVCRT__spawnve(int,const char*,const char* const *,const char* const *);
 MSVCRT_intptr_t __cdecl MSVRT__spawnvpe(int,const char*,const char* const *,const char* const *);
@@ -965,7 +987,9 @@ void __cdecl MSVCRT__invalid_parameter(const MSVCRT_wchar_t *expr, const MSVCRT_
 int __cdecl      MSVCRT__toupper_l(int,MSVCRT__locale_t);
 int __cdecl      MSVCRT__tolower_l(int,MSVCRT__locale_t);
 int __cdecl      MSVCRT__strnicoll_l(const char*, const char*, MSVCRT_size_t, MSVCRT__locale_t);
-int __cdecl      MSVCRT_strncoll_l(const char*, const char*, MSVCRT_size_t, MSVCRT__locale_t);
+int __cdecl      MSVCRT__strncoll_l(const char*, const char*, MSVCRT_size_t, MSVCRT__locale_t);
+unsigned int __cdecl _get_output_format(void);
+char* __cdecl MSVCRT_strtok_s(char*, const char*, char**);
 
 /* Maybe one day we'll enable the invalid parameter handlers with the full set of information (msvcrXXd)
  *      #define MSVCRT_INVALID_PMT(x) MSVCRT_call_invalid_parameter_handler(x, __FUNCTION__, __FILE__, __LINE__, 0)
@@ -1011,5 +1035,27 @@ typedef struct
 {
     double x;
 } MSVCRT__CRT_DOUBLE;
+
+extern char* __cdecl __unDName(char *,const char*,int,malloc_func_t,free_func_t,unsigned short int);
+
+/* __unDName/__unDNameEx flags */
+#define UNDNAME_COMPLETE                 (0x0000)
+#define UNDNAME_NO_LEADING_UNDERSCORES   (0x0001) /* Don't show __ in calling convention */
+#define UNDNAME_NO_MS_KEYWORDS           (0x0002) /* Don't show calling convention at all */
+#define UNDNAME_NO_FUNCTION_RETURNS      (0x0004) /* Don't show function/method return value */
+#define UNDNAME_NO_ALLOCATION_MODEL      (0x0008)
+#define UNDNAME_NO_ALLOCATION_LANGUAGE   (0x0010)
+#define UNDNAME_NO_MS_THISTYPE           (0x0020)
+#define UNDNAME_NO_CV_THISTYPE           (0x0040)
+#define UNDNAME_NO_THISTYPE              (0x0060)
+#define UNDNAME_NO_ACCESS_SPECIFIERS     (0x0080) /* Don't show access specifier (public/protected/private) */
+#define UNDNAME_NO_THROW_SIGNATURES      (0x0100)
+#define UNDNAME_NO_MEMBER_TYPE           (0x0200) /* Don't show static/virtual specifier */
+#define UNDNAME_NO_RETURN_UDT_MODEL      (0x0400)
+#define UNDNAME_32_BIT_DECODE            (0x0800)
+#define UNDNAME_NAME_ONLY                (0x1000) /* Only report the variable/method name */
+#define UNDNAME_NO_ARGUMENTS             (0x2000) /* Don't show method arguments */
+#define UNDNAME_NO_SPECIAL_SYMS          (0x4000)
+#define UNDNAME_NO_COMPLEX_TYPE          (0x8000)
 
 #endif /* __WINE_MSVCRT_H */

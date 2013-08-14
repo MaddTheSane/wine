@@ -79,9 +79,7 @@ WINE_DECLARE_DEBUG_CHANNEL(relay);
 #define EF_AFTER_WRAP		0x0080	/* the caret is displayed after the last character of a
 					   wrapped line, instead of in front of the next character */
 #define EF_USE_SOFTBRK		0x0100	/* Enable soft breaks in text. */
-#define EF_APP_HAS_HANDLE       0x0200  /* Set when an app sends EM_[G|S]ETHANDLE.  We are in sole control of
-                                           the text buffer if this is clear. */
-#define EF_DIALOGMODE           0x0400  /* Indicates that we are inside a dialog window */
+#define EF_DIALOGMODE           0x0200  /* Indicates that we are inside a dialog window */
 
 typedef enum
 {
@@ -151,6 +149,7 @@ typedef struct
 	HLOCAL hloc32W;			/* our unicode local memory block */
 	HLOCAL hloc32A;			/* alias for ANSI control receiving EM_GETHANDLE
 				   	   or EM_SETHANDLE */
+        HLOCAL hlocapp;                 /* The text buffer handle belongs to the app */
 	/*
 	 * IME Data
 	 */
@@ -1264,6 +1263,8 @@ static inline void text_buffer_changed(EDITSTATE *es)
  */
 static void EDIT_LockBuffer(EDITSTATE *es)
 {
+        if (es->hlocapp) return;
+
 	if (!es->text) {
 
 	    if(!es->hloc32W) return;
@@ -1293,7 +1294,6 @@ static void EDIT_LockBuffer(EDITSTATE *es)
 	    }
 	    else es->text = LocalLock(es->hloc32W);
 	}
-        if(es->flags & EF_APP_HAS_HANDLE) text_buffer_changed(es);
 	es->lock_count++;
 }
 
@@ -1305,6 +1305,7 @@ static void EDIT_LockBuffer(EDITSTATE *es)
  */
 static void EDIT_UnlockBuffer(EDITSTATE *es, BOOL force)
 {
+        if (es->hlocapp) return;
 
 	/* Edit window might be already destroyed */
 	if(!IsWindow(es->hwndSelf))
@@ -2485,7 +2486,11 @@ static HLOCAL EDIT_EM_GetHandle(EDITSTATE *es)
 	    hLocal = es->hloc32A;
 	}
 
-        es->flags |= EF_APP_HAS_HANDLE;
+        EDIT_UnlockBuffer(es, TRUE);
+
+        /* The text buffer handle belongs to the app */
+        es->hlocapp = hLocal;
+
 	TRACE("Returning %p, LocalSize() = %ld\n", hLocal, LocalSize(hLocal));
 	return hLocal;
 }
@@ -2826,8 +2831,11 @@ static void EDIT_EM_SetHandle(EDITSTATE *es, HLOCAL hloc)
 
 	es->buffer_size = LocalSize(es->hloc32W)/sizeof(WCHAR) - 1;
 
-        es->flags |= EF_APP_HAS_HANDLE;
+        /* The text buffer handle belongs to the control */
+        es->hlocapp = NULL;
+
 	EDIT_LockBuffer(es);
+        text_buffer_changed(es);
 
 	es->x_offset = es->y_offset = 0;
 	es->selection_start = es->selection_end = 0;
@@ -4413,10 +4421,16 @@ static void EDIT_ImeComposition(HWND hwnd, LPARAM CompFlag, EDITSTATE *es)
         return;
 
     if (CompFlag & GCS_RESULTSTR)
+    {
         EDIT_GetResultStr(hIMC, es);
-    if (CompFlag & GCS_COMPSTR)
-        EDIT_GetCompositionStr(hIMC, CompFlag, es);
-    cursor = ImmGetCompositionStringW(hIMC, GCS_CURSORPOS, 0, 0);
+        cursor = 0;
+    }
+    else
+    {
+        if (CompFlag & GCS_COMPSTR)
+            EDIT_GetCompositionStr(hIMC, CompFlag, es);
+        cursor = ImmGetCompositionStringW(hIMC, GCS_CURSORPOS, 0, 0);
+    }
     ImmReleaseContext(hwnd, hIMC);
     EDIT_SetCaretPos(es, es->selection_start + cursor, es->flags & EF_AFTER_WRAP);
 }
@@ -4597,10 +4611,11 @@ static LRESULT EDIT_WM_NCDestroy(EDITSTATE *es)
 {
 	LINEDEF *pc, *pp;
 
-	if (es->hloc32W) {
+        /* The app can own the text buffer handle */
+        if (es->hloc32W && (es->hloc32W != es->hlocapp)) {
 		LocalFree(es->hloc32W);
 	}
-	if (es->hloc32A) {
+        if (es->hloc32A && (es->hloc32A != es->hlocapp)) {
 		LocalFree(es->hloc32A);
 	}
 	EDIT_InvalidateUniscribeData(es);
@@ -5167,6 +5182,27 @@ LRESULT EditWndProc_common( HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam, B
 		break;
 
 	case WM_IME_CONTROL:
+		break;
+
+	case WM_IME_REQUEST:
+		switch (wParam)
+		{
+                    case IMR_QUERYCHARPOSITION:
+                    {
+                        LRESULT pos;
+                        IMECHARPOSITION *chpos = (IMECHARPOSITION *)lParam;
+
+                        pos = EDIT_EM_PosFromChar(es, es->selection_start + chpos->dwCharPos, FALSE);
+                        chpos->pt.x = LOWORD(pos);
+                        chpos->pt.y = HIWORD(pos);
+                        chpos->cLineHeight = es->line_height;
+                        chpos->rcDocument = es->format_rect;
+                        MapWindowPoints(hwnd, 0, &chpos->pt, 1);
+                        MapWindowPoints(hwnd, 0, (POINT*)&chpos->rcDocument, 2);
+                        result = 1;
+                        break;
+                    }
+		}
 		break;
 
 	default:

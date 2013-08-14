@@ -113,7 +113,8 @@ static void delete_gl_buffer(struct wined3d_buffer *This, const struct wined3d_g
 /* Context activation is done by the caller. */
 static void buffer_create_buffer_object(struct wined3d_buffer *This, const struct wined3d_gl_info *gl_info)
 {
-    GLenum error, gl_usage;
+    GLenum gl_usage = GL_STATIC_DRAW_ARB;
+    GLenum error;
 
     TRACE("Creating an OpenGL vertex buffer object for wined3d_buffer %p with usage %s.\n",
             This, debug_d3dusage(This->resource.usage));
@@ -149,12 +150,9 @@ static void buffer_create_buffer_object(struct wined3d_buffer *This, const struc
         goto fail;
     }
 
-    /* Don't use static, because dx apps tend to update the buffer
-     * quite often even if they specify 0 usage.
-     */
-    if(This->resource.usage & WINED3DUSAGE_DYNAMIC)
+    if (This->resource.usage & WINED3DUSAGE_DYNAMIC)
     {
-        TRACE("Gl usage = GL_STREAM_DRAW_ARB\n");
+        TRACE("Buffer has WINED3DUSAGE_DYNAMIC set.\n");
         gl_usage = GL_STREAM_DRAW_ARB;
 
         if(gl_info->supported[APPLE_FLUSH_BUFFER_RANGE])
@@ -168,11 +166,6 @@ static void buffer_create_buffer_object(struct wined3d_buffer *This, const struc
             This->flags |= WINED3D_BUFFER_APPLESYNC;
         }
         /* No setup is needed here for GL_ARB_map_buffer_range */
-    }
-    else
-    {
-        TRACE("Gl usage = GL_DYNAMIC_DRAW_ARB\n");
-        gl_usage = GL_DYNAMIC_DRAW_ARB;
     }
 
     /* Reserve memory for the buffer. The amount of data won't change
@@ -273,7 +266,7 @@ static BOOL buffer_process_converted_attribute(struct wined3d_buffer *This,
 }
 
 static BOOL buffer_check_attribute(struct wined3d_buffer *This, const struct wined3d_stream_info *si,
-        UINT attrib_idx, const BOOL check_d3dcolor, const BOOL is_ffp_position, const BOOL is_ffp_color,
+        UINT attrib_idx, const BOOL check_d3dcolor, const BOOL check_position, const BOOL is_ffp_color,
         DWORD *stride_this_run)
 {
     const struct wined3d_stream_info_element *attrib = &si->elements[attrib_idx];
@@ -295,7 +288,7 @@ static BOOL buffer_check_attribute(struct wined3d_buffer *This, const struct win
 
         if (!is_ffp_color) FIXME("Test for non-color fixed function WINED3DFMT_B8G8R8A8_UNORM format\n");
     }
-    else if (is_ffp_position && si->position_transformed)
+    else if (check_position && si->position_transformed)
     {
         if (format != WINED3DFMT_R32G32B32A32_FLOAT)
         {
@@ -316,12 +309,13 @@ static BOOL buffer_check_attribute(struct wined3d_buffer *This, const struct win
 static BOOL buffer_find_decl(struct wined3d_buffer *This)
 {
     struct wined3d_device *device = This->resource.device;
-    const struct wined3d_gl_info *gl_info = &device->adapter->gl_info;
-    const struct wined3d_stream_info *si = &device->strided_streams;
+    const struct wined3d_adapter *adapter = device->adapter;
+    const struct wined3d_stream_info *si = &device->stream_info;
     const struct wined3d_state *state = &device->stateBlock->state;
+    BOOL support_d3dcolor = adapter->gl_info.supported[ARB_VERTEX_ARRAY_BGRA];
+    BOOL support_xyzrhw = adapter->d3d_info.xyzrhw;
     UINT stride_this_run = 0;
     BOOL ret = FALSE;
-    BOOL support_d3dcolor = gl_info->supported[ARB_VERTEX_ARRAY_BGRA];
 
     /* In d3d7 the vertex buffer declaration NEVER changes because it is stored in the d3d7 vertex buffer.
      * Once we have our declaration there is no need to look it up again. Index buffers also never need
@@ -393,7 +387,7 @@ static BOOL buffer_find_decl(struct wined3d_buffer *This)
      */
 
     ret = buffer_check_attribute(This, si, WINED3D_FFP_POSITION,
-            TRUE, TRUE,  FALSE, &stride_this_run) || ret;
+            TRUE, !support_xyzrhw,  FALSE, &stride_this_run) || ret;
     ret = buffer_check_attribute(This, si, WINED3D_FFP_NORMAL,
             TRUE, FALSE, FALSE, &stride_this_run) || ret;
     ret = buffer_check_attribute(This, si, WINED3D_FFP_DIFFUSE,
@@ -993,22 +987,19 @@ HRESULT CDECL wined3d_buffer_map(struct wined3d_buffer *buffer, UINT offset, UIN
     TRACE("buffer %p, offset %u, size %u, data %p, flags %#x\n", buffer, offset, size, data, flags);
 
     flags = buffer_sanitize_flags(buffer, flags);
-    if (!(flags & WINED3D_MAP_READONLY))
+    if (flags & WINED3D_MAP_DISCARD)
     {
-        if (flags & WINED3D_MAP_DISCARD)
-        {
-            /* DISCARD invalidates the entire buffer, regardless of the
-             * specified offset and size. Some applications also depend on the
-             * entire buffer being uploaded in that case. Two such
-             * applications are Port Royale and Darkstar One. */
-            if (!buffer_add_dirty_area(buffer, 0, 0))
-                return E_OUTOFMEMORY;
-        }
-        else
-        {
-            if (!buffer_add_dirty_area(buffer, offset, size))
-                return E_OUTOFMEMORY;
-        }
+        /* DISCARD invalidates the entire buffer, regardless of the specified
+         * offset and size. Some applications also depend on the entire buffer
+         * being uploaded in that case. Two such applications are Port Royale
+         * and Darkstar One. */
+        if (!buffer_add_dirty_area(buffer, 0, 0))
+            return E_OUTOFMEMORY;
+    }
+    else if (!(flags & WINED3D_MAP_READONLY))
+    {
+        if (!buffer_add_dirty_area(buffer, offset, size))
+            return E_OUTOFMEMORY;
     }
 
     count = ++buffer->resource.map_count;

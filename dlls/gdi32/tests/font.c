@@ -976,7 +976,7 @@ static void test_bitmap_font_metrics(void)
 
                     /* Don't run the max char width test on System/ANSI_CHARSET.  We have extra characters in our font
                        that make the max width bigger */
-                    if(strcmp(lf.lfFaceName, "System") || lf.lfCharSet != ANSI_CHARSET)
+                    if ((strcmp(lf.lfFaceName, "System") || lf.lfCharSet != ANSI_CHARSET) && tm.tmDigitizedAspectX == 96)
                         ok(tm.tmMaxCharWidth == fd[i].max_char_width, "%s(%d): tm.tmMaxCharWidth %d != %d\n", fd[i].face_name, height, tm.tmMaxCharWidth, fd[i].max_char_width);
                 }
                 else
@@ -2083,6 +2083,90 @@ static void test_font_charset(void)
         skip("Symbol or Wingdings is not installed\n");
 }
 
+static void test_GdiGetCodePage(void)
+{
+    static const struct _matching_data
+    {
+        UINT   current_codepage;
+        LPCSTR lfFaceName;
+        UCHAR  lfCharSet;
+        UINT   expected_codepage;
+    } matching_data[] = {
+        {1251, "Arial", ANSI_CHARSET, 1252},
+        {1251, "Tahoma", ANSI_CHARSET, 1252},
+
+        {1252, "Arial", ANSI_CHARSET, 1252},
+        {1252, "Tahoma", ANSI_CHARSET, 1252},
+
+        {1253, "Arial", ANSI_CHARSET, 1252},
+        {1253, "Tahoma", ANSI_CHARSET, 1252},
+
+        { 932, "Arial", ANSI_CHARSET, 1252}, /* Japanese Windows returns 1252, not 932 */
+        { 932, "Tahoma", ANSI_CHARSET, 1252},
+        { 932, "MS UI Gothic", ANSI_CHARSET, 1252},
+
+        { 936, "Arial", ANSI_CHARSET, 936},
+        { 936, "Tahoma", ANSI_CHARSET, 936},
+        { 936, "Simsun", ANSI_CHARSET, 936},
+
+        { 949, "Arial", ANSI_CHARSET, 949},
+        { 949, "Tahoma", ANSI_CHARSET, 949},
+        { 949, "Gulim",  ANSI_CHARSET, 949},
+
+        { 950, "Arial", ANSI_CHARSET, 950},
+        { 950, "Tahoma", ANSI_CHARSET, 950},
+        { 950, "PMingLiU", ANSI_CHARSET, 950},
+    };
+    HDC         hdc;
+    LOGFONT     lf;
+    HFONT       hfont;
+    UINT        charset, acp;
+    DWORD       codepage;
+    int         i;
+
+    if (!pGdiGetCodePage)
+    {
+        skip("GdiGetCodePage not available on this platform\n");
+        return;
+    }
+
+    acp = GetACP();
+
+    for (i = 0; i < sizeof(matching_data) / sizeof(struct _matching_data); i++)
+    {
+        /* only test data matched current locale codepage */
+        if (matching_data[i].current_codepage != acp)
+            continue;
+
+        if (!is_font_installed(matching_data[i].lfFaceName))
+        {
+            skip("%s is not installed\n", matching_data[i].lfFaceName);
+            continue;
+        }
+
+        hdc = GetDC(0);
+
+        memset(&lf, 0, sizeof(lf));
+        lf.lfHeight = -16;
+        lf.lfCharSet = matching_data[i].lfCharSet;
+        lstrcpyA(lf.lfFaceName, matching_data[i].lfFaceName);
+        hfont = CreateFontIndirectA(&lf);
+        ok(hfont != 0, "CreateFontIndirectA error %u\n", GetLastError());
+
+        hfont = SelectObject(hdc, hfont);
+        charset = GetTextCharset(hdc);
+        codepage = pGdiGetCodePage(hdc);
+        trace("acp=%d, lfFaceName=%s, lfCharSet=%d, GetTextCharset=%d, GdiGetCodePage=%d, expected codepage=%d\n",
+              acp, lf.lfFaceName, lf.lfCharSet, charset, codepage, matching_data[i].expected_codepage);
+        ok(codepage == matching_data[i].expected_codepage,
+           "GdiGetCodePage should have returned %d, got %d\n", matching_data[i].expected_codepage, codepage);
+
+        hfont = SelectObject(hdc, hfont);
+        DeleteObject(hfont);
+        ReleaseDC(NULL, hdc);
+    }
+}
+
 static void test_GetFontUnicodeRanges(void)
 {
     LOGFONTA lf;
@@ -2993,19 +3077,13 @@ static void test_text_metrics(const LOGFONT *lf, const NEWTEXTMETRIC *ntm)
     ret = GetFontData(hdc, MS_OS2_TAG, 0, &tt_os2, size);
     ok(ret == size, "GetFontData should return %u not %u\n", size, ret);
 
-    ascent = GET_BE_WORD(tt_os2.usWinAscent);
-    descent = GET_BE_WORD(tt_os2.usWinDescent);
-    cell_height = ascent + descent;
-    ok(ntm->ntmCellHeight == cell_height, "%s: ntmCellHeight %u != %u, os2.usWinAscent/os2.usWinDescent %u/%u\n",
-       font_name, ntm->ntmCellHeight, cell_height, ascent, descent);
-
     SetLastError(0xdeadbeef);
     ret = GetTextMetricsA(hdc, &tmA);
     ok(ret, "GetTextMetricsA error %u\n", GetLastError());
 
     if(!get_first_last_from_cmap(hdc, &cmap_first, &cmap_last, &cmap_type))
     {
-        skip("Unable to retrieve first and last glyphs from cmap\n");
+        skip("%s is not a Windows font, OS/2 metrics may be invalid.\n",font_name);
     }
     else
     {
@@ -3014,6 +3092,12 @@ static void test_text_metrics(const LOGFONT *lf, const NEWTEXTMETRIC *ntm)
         UINT os2_first_char, os2_last_char, default_char, break_char;
         USHORT version;
         TEXTMETRICW tmW;
+
+        ascent = GET_BE_WORD(tt_os2.usWinAscent);
+        descent = GET_BE_WORD(tt_os2.usWinDescent);
+        cell_height = ascent + descent;
+        ok(ntm->ntmCellHeight == cell_height, "%s: ntmCellHeight %u != %u, os2.usWinAscent/os2.usWinDescent %u/%u\n",
+           font_name, ntm->ntmCellHeight, cell_height, ascent, descent);
 
         version = GET_BE_WORD(tt_os2.version);
 
@@ -3673,6 +3757,7 @@ static void test_GetGlyphOutline(void)
     for (i = 0; i < sizeof c / sizeof c[0]; ++i)
     {
         static const MAT2 rotate_mat = {{0, 0}, {0, -1}, {0, 1}, {0, 0}};
+        TEXTMETRIC tm;
 
         lf.lfFaceName[0] = '\0';
         lf.lfCharSet = c[i].cs;
@@ -3719,15 +3804,15 @@ static void test_GetGlyphOutline(void)
         ret = GetObject(hfont, sizeof lf, &lf);
         ok(ret > 0, "GetObject error %u\n", GetLastError());
 
-        ret = GetGlyphOutlineA(hdc, 'A', GGO_METRICS, &gm, 0, NULL, &mat);
-        ok(ret != GDI_ERROR, "GetGlyphOutlineA error %u\n", GetLastError());
+        ret = GetTextMetrics(hdc, &tm);
+        ok(ret, "GetTextMetrics error %u\n", GetLastError());
         ret = GetGlyphOutlineA(hdc, c[i].a, GGO_METRICS, &gm2, 0, NULL, &mat);
         ok(ret != GDI_ERROR, "GetGlyphOutlineA error %u\n", GetLastError());
-        trace("Tests with height=%d,half=%d,full=%d,face=%s,charset=%d\n",
-              -lf.lfHeight, gm.gmCellIncX, gm2.gmCellIncX, lf.lfFaceName, lf.lfCharSet);
-        ok(gm2.gmCellIncX == gm.gmCellIncX * 2 || broken(gm2.gmCellIncX == -lf.lfHeight),
+        trace("Tests with height=%d,avg=%d,full=%d,face=%s,charset=%d\n",
+              -lf.lfHeight, tm.tmAveCharWidth, gm2.gmCellIncX, lf.lfFaceName, lf.lfCharSet);
+        ok(gm2.gmCellIncX == tm.tmAveCharWidth * 2 || broken(gm2.gmCellIncX == -lf.lfHeight),
            "expected %d, got %d (%s:%d)\n",
-           gm.gmCellIncX * 2, gm2.gmCellIncX, lf.lfFaceName, lf.lfCharSet);
+           tm.tmAveCharWidth * 2, gm2.gmCellIncX, lf.lfFaceName, lf.lfCharSet);
 
         ret = GetGlyphOutlineA(hdc, c[i].a, GGO_METRICS, &gm2, 0, NULL, &rotate_mat);
         ok(ret != GDI_ERROR, "GetGlyphOutlineA error %u\n", GetLastError());
@@ -3739,13 +3824,13 @@ static void test_GetGlyphOutline(void)
         hfont = CreateFontIndirect(&lf);
         ok(hfont != NULL, "CreateFontIndirect error %u\n", GetLastError());
         DeleteObject(SelectObject(hdc, hfont));
-        ret = GetGlyphOutlineA(hdc, 'A', GGO_METRICS, &gm, 0, NULL, &mat);
-        ok(ret != GDI_ERROR, "GetGlyphOutlineA error %u\n", GetLastError());
+        ret = GetTextMetrics(hdc, &tm);
+        ok(ret, "GetTextMetrics error %u\n", GetLastError());
         ret = GetGlyphOutlineA(hdc, c[i].a, GGO_METRICS, &gm2, 0, NULL, &mat);
         ok(ret != GDI_ERROR, "GetGlyphOutlineA error %u\n", GetLastError());
-        ok(gm2.gmCellIncX == gm.gmCellIncX * 2 || broken(gm2.gmCellIncX == -lf.lfHeight),
+        ok(gm2.gmCellIncX == tm.tmAveCharWidth * 2 || broken(gm2.gmCellIncX == -lf.lfHeight),
            "expected %d, got %d (%s:%d)\n",
-           gm.gmCellIncX * 2, gm2.gmCellIncX, lf.lfFaceName, lf.lfCharSet);
+           tm.tmAveCharWidth * 2, gm2.gmCellIncX, lf.lfFaceName, lf.lfCharSet);
 
         lf.lfItalic = FALSE;
         lf.lfEscapement = lf.lfOrientation = 2700;
@@ -4476,6 +4561,46 @@ static void test_GetGlyphOutline_empty_contour(void)
     ReleaseDC(NULL, hdc);
 }
 
+static void test_GetGlyphOutline_metric_clipping(void)
+{
+    HDC hdc;
+    LOGFONTA lf;
+    HFONT hfont, hfont_prev;
+    GLYPHMETRICS gm;
+    TEXTMETRICA tm;
+    DWORD ret;
+
+    memset(&lf, 0, sizeof(lf));
+    lf.lfHeight = 72;
+    lstrcpyA(lf.lfFaceName, "wine_test");
+
+    SetLastError(0xdeadbeef);
+    hfont = CreateFontIndirectA(&lf);
+    ok(hfont != 0, "CreateFontIndirectA error %u\n", GetLastError());
+
+    hdc = GetDC(NULL);
+
+    hfont_prev = SelectObject(hdc, hfont);
+    ok(hfont_prev != NULL, "SelectObject failed\n");
+
+    SetLastError(0xdeadbeef);
+    ret = GetTextMetrics(hdc, &tm);
+    ok(ret, "GetTextMetrics error %u\n", GetLastError());
+
+    GetGlyphOutlineA(hdc, 'A', GGO_METRICS, &gm, 0, NULL, &mat);
+    ok(gm.gmptGlyphOrigin.y <= tm.tmAscent,
+        "Glyph top(%d) exceeds ascent(%d)\n",
+        gm.gmptGlyphOrigin.y, tm.tmAscent);
+    GetGlyphOutlineA(hdc, 'D', GGO_METRICS, &gm, 0, NULL, &mat);
+    ok(gm.gmptGlyphOrigin.y - gm.gmBlackBoxY >= -tm.tmDescent,
+        "Glyph bottom(%d) exceeds descent(%d)\n",
+        gm.gmptGlyphOrigin.y - gm.gmBlackBoxY, -tm.tmDescent);
+
+    SelectObject(hdc, hfont_prev);
+    DeleteObject(hfont);
+    ReleaseDC(NULL, hdc);
+}
+
 static void test_CreateScalableFontResource(void)
 {
     char ttf_name[MAX_PATH];
@@ -4483,6 +4608,7 @@ static void test_CreateScalableFontResource(void)
     char fot_name[MAX_PATH];
     char *file_part;
     DWORD ret;
+    int i;
 
     if (!pAddFontResourceExA || !pRemoveFontResourceExA)
     {
@@ -4557,6 +4683,7 @@ static void test_CreateScalableFontResource(void)
     ok(ret, "font wine_test should be enumerated\n");
 
     test_GetGlyphOutline_empty_contour();
+    test_GetGlyphOutline_metric_clipping();
 
     ret = pRemoveFontResourceExA(fot_name, FR_PRIVATE, 0);
     ok(!ret, "RemoveFontResourceEx() with not matching flags should fail\n");
@@ -4568,6 +4695,22 @@ static void test_CreateScalableFontResource(void)
     ret = is_truetype_font_installed("wine_test");
     ok(!ret, "font wine_test should not be enumerated\n");
 
+    ret = pRemoveFontResourceExA(fot_name, 0, 0);
+    ok(!ret, "RemoveFontResourceEx() should fail\n");
+
+    /* test refcounting */
+    for (i = 0; i < 5; i++)
+    {
+        SetLastError(0xdeadbeef);
+        ret = pAddFontResourceExA(fot_name, 0, 0);
+        ok(ret, "AddFontResourceEx() error %d\n", GetLastError());
+    }
+    for (i = 0; i < 5; i++)
+    {
+        SetLastError(0xdeadbeef);
+        ret = pRemoveFontResourceExA(fot_name, 0, 0);
+        ok(ret, "RemoveFontResourceEx() error %d\n", GetLastError());
+    }
     ret = pRemoveFontResourceExA(fot_name, 0, 0);
     ok(!ret, "RemoveFontResourceEx() should fail\n");
 
@@ -4678,21 +4821,21 @@ static void test_vertical_font(void)
     num = pAddFontResourceExA(ttf_name, FR_PRIVATE, 0);
     ok(num == 2, "AddFontResourceExA should add 2 fonts from vertical.ttf\n");
 
-    check_vertical_font("@WineTestVertical", &installed, &selected, &gm, &hgi);
-    ok(installed, "@WineTestVertical is not installed\n");
-    ok(selected, "@WineTestVertical is not selected\n");
+    check_vertical_font("WineTestVertical", &installed, &selected, &gm, &hgi);
+    ok(installed, "WineTestVertical is not installed\n");
+    ok(selected, "WineTestVertical is not selected\n");
     ok(gm.gmBlackBoxX > gm.gmBlackBoxY,
        "gmBlackBoxX(%u) should be greater than gmBlackBoxY(%u) if horizontal\n",
        gm.gmBlackBoxX, gm.gmBlackBoxY);
 
-    check_vertical_font("@@WineTestVertical", &installed, &selected, &gm, &vgi);
-    ok(installed, "@@WineTestVertical is not installed\n");
-    ok(selected, "@@WineTestVertical is not selected\n");
-    ok(gm.gmBlackBoxX < gm.gmBlackBoxY,
+    check_vertical_font("@WineTestVertical", &installed, &selected, &gm, &vgi);
+    ok(installed, "@WineTestVertical is not installed\n");
+    ok(selected, "@WineTestVertical is not selected\n");
+    ok(gm.gmBlackBoxX > gm.gmBlackBoxY,
        "gmBlackBoxX(%u) should be less than gmBlackBoxY(%u) if vertical\n",
        gm.gmBlackBoxX, gm.gmBlackBoxY);
 
-    ok(hgi == vgi, "different glyph h:%u v:%u\n", hgi, vgi);
+    ok(hgi != vgi, "same glyph h:%u v:%u\n", hgi, vgi);
 
     ret = pRemoveFontResourceExA(ttf_name, FR_PRIVATE, 0);
     ok(ret, "RemoveFontResourceEx() error %d\n", GetLastError());
@@ -4757,7 +4900,7 @@ static void test_east_asian_font_selection(void)
     ReleaseDC(NULL, hdc);
 }
 
-static int get_font_dpi(const LOGFONT *lf)
+static int get_font_dpi(const LOGFONT *lf, int *height)
 {
     HDC hdc = CreateCompatibleDC(0);
     HFONT hfont;
@@ -4771,6 +4914,7 @@ static int get_font_dpi(const LOGFONT *lf)
     ret = GetTextMetrics(hdc, &tm);
     ok(ret, "GetTextMetrics failed\n");
     ret = tm.tmDigitizedAspectX;
+    if (height) *height = tm.tmHeight;
 
     DeleteDC(hdc);
     DeleteObject(hfont);
@@ -4787,49 +4931,49 @@ static void test_stock_fonts(void)
     };
     static const struct test_data
     {
-        int charset, weight, height, dpi;
+        int charset, weight, height, height_pixels, dpi;
         const char face_name[LF_FACESIZE];
     } td[][11] =
     {
         { /* ANSI_FIXED_FONT */
-            { DEFAULT_CHARSET, FW_NORMAL, 12, 96, "Courier" },
-            { DEFAULT_CHARSET, FW_NORMAL, 12, 120, "Courier" },
+            { DEFAULT_CHARSET, FW_NORMAL, 12, 13, 96, "Courier" },
+            { DEFAULT_CHARSET, FW_NORMAL, 12, 13, 120, "Courier" },
             { 0 }
         },
         { /* ANSI_VAR_FONT */
-            { DEFAULT_CHARSET, FW_NORMAL, 12, 96, "MS Sans Serif" },
-            { DEFAULT_CHARSET, FW_NORMAL, 12, 120, "MS Sans Serif" },
+            { DEFAULT_CHARSET, FW_NORMAL, 12, 13, 96, "MS Sans Serif" },
+            { DEFAULT_CHARSET, FW_NORMAL, 12, 13, 120, "MS Sans Serif" },
             { 0 }
         },
         { /* SYSTEM_FONT */
-            { SHIFTJIS_CHARSET, FW_NORMAL, 18, 96, "System" },
-            { SHIFTJIS_CHARSET, FW_NORMAL, 22, 120, "System" },
-            { HANGEUL_CHARSET, FW_NORMAL, 16, 96, "System" },
-            { HANGEUL_CHARSET, FW_NORMAL, 20, 120, "System" },
-            { DEFAULT_CHARSET, FW_BOLD, 16, 96, "System" },
-            { DEFAULT_CHARSET, FW_BOLD, 20, 120, "System" },
+            { SHIFTJIS_CHARSET, FW_NORMAL, 18, 18, 96, "System" },
+            { SHIFTJIS_CHARSET, FW_NORMAL, 22, 22, 120, "System" },
+            { HANGEUL_CHARSET, FW_NORMAL, 16, 16, 96, "System" },
+            { HANGEUL_CHARSET, FW_NORMAL, 20, 20, 120, "System" },
+            { DEFAULT_CHARSET, FW_BOLD, 16, 16, 96, "System" },
+            { DEFAULT_CHARSET, FW_BOLD, 20, 20, 120, "System" },
             { 0 }
         },
         { /* DEVICE_DEFAULT_FONT */
-            { SHIFTJIS_CHARSET, FW_NORMAL, 18, 96, "System" },
-            { SHIFTJIS_CHARSET, FW_NORMAL, 22, 120, "System" },
-            { HANGEUL_CHARSET, FW_NORMAL, 16, 96, "System" },
-            { HANGEUL_CHARSET, FW_NORMAL, 20, 120, "System" },
-            { DEFAULT_CHARSET, FW_BOLD, 16, 96, "System" },
-            { DEFAULT_CHARSET, FW_BOLD, 20, 120, "System" },
+            { SHIFTJIS_CHARSET, FW_NORMAL, 18, 18, 96, "System" },
+            { SHIFTJIS_CHARSET, FW_NORMAL, 22, 22, 120, "System" },
+            { HANGEUL_CHARSET, FW_NORMAL, 16, 16, 96, "System" },
+            { HANGEUL_CHARSET, FW_NORMAL, 20, 20, 120, "System" },
+            { DEFAULT_CHARSET, FW_BOLD, 16, 16, 96, "System" },
+            { DEFAULT_CHARSET, FW_BOLD, 20, 20, 120, "System" },
             { 0 }
         },
         { /* DEFAULT_GUI_FONT */
-            { SHIFTJIS_CHARSET, FW_NORMAL, -12, 96, "?MS UI Gothic" },
-            { SHIFTJIS_CHARSET, FW_NORMAL, -15, 120, "?MS UI Gothic" },
-            { HANGEUL_CHARSET, FW_NORMAL, -12, 96, "?Gulim" },
-            { HANGEUL_CHARSET, FW_NORMAL, -15, 120, "?Gulim" },
-            { GB2312_CHARSET, FW_NORMAL, -12, 96, "?SimHei" },
-            { GB2312_CHARSET, FW_NORMAL, -15, 120, "?SimHei" },
-            { CHINESEBIG5_CHARSET, FW_NORMAL, -12, 96, "?MingLiU" },
-            { CHINESEBIG5_CHARSET, FW_NORMAL, -15, 120, "?MingLiU" },
-            { DEFAULT_CHARSET, FW_NORMAL, -11, 96, "MS Shell Dlg" },
-            { DEFAULT_CHARSET, FW_NORMAL, -13, 120, "MS Shell Dlg" },
+            { SHIFTJIS_CHARSET, FW_NORMAL, -12, 15, 96, "?MS UI Gothic" },
+            { SHIFTJIS_CHARSET, FW_NORMAL, -15, 18, 120, "?MS UI Gothic" },
+            { HANGEUL_CHARSET, FW_NORMAL, -12, 15, 96, "?Gulim" },
+            { HANGEUL_CHARSET, FW_NORMAL, -15, 18, 120, "?Gulim" },
+            { GB2312_CHARSET, FW_NORMAL, -12, 15, 96, "?SimHei" },
+            { GB2312_CHARSET, FW_NORMAL, -15, 18, 120, "?SimHei" },
+            { CHINESEBIG5_CHARSET, FW_NORMAL, -12, 15, 96, "?MingLiU" },
+            { CHINESEBIG5_CHARSET, FW_NORMAL, -15, 18, 120, "?MingLiU" },
+            { DEFAULT_CHARSET, FW_NORMAL, -11, 13, 96, "MS Shell Dlg" },
+            { DEFAULT_CHARSET, FW_NORMAL, -13, 16, 120, "MS Shell Dlg" },
             { 0 }
         }
     };
@@ -4839,7 +4983,7 @@ static void test_stock_fonts(void)
     {
         HFONT hfont;
         LOGFONT lf;
-        int ret;
+        int ret, height;
 
         hfont = GetStockObject(font[i]);
         ok(hfont != 0, "%d: GetStockObject(%d) failed\n", i, font[i]);
@@ -4859,13 +5003,24 @@ static void test_stock_fonts(void)
                 continue;
             }
 
-            ret = get_font_dpi(&lf);
+            ret = get_font_dpi(&lf, &height);
             if (ret != td[i][j].dpi)
             {
                 trace("%d(%d): font %s %d dpi doesn't match test data %d\n",
                       i, j, lf.lfFaceName, ret, td[i][j].dpi);
                 continue;
             }
+
+            /* FIXME: Remove once Wine is fixed */
+            if (td[i][j].dpi != 96 &&
+                /* MS Sans Serif for 120 dpi and higher should include 12 pixel bitmap set */
+                ((!strcmp(td[i][j].face_name, "MS Sans Serif") && td[i][j].height == 12) ||
+                /* System for 120 dpi and higher should include 20 pixel bitmap set */
+                (!strcmp(td[i][j].face_name, "System") && td[i][j].height > 16)))
+            todo_wine
+            ok(height == td[i][j].height_pixels, "%d(%d): expected height %d, got %d\n", i, j, td[i][j].height_pixels, height);
+            else
+            ok(height == td[i][j].height_pixels, "%d(%d): expected height %d, got %d\n", i, j, td[i][j].height_pixels, height);
 
             ok(td[i][j].weight == lf.lfWeight, "%d(%d): expected lfWeight %d, got %d\n", i, j, td[i][j].weight, lf.lfWeight);
             ok(td[i][j].height == lf.lfHeight, "%d(%d): expected lfHeight %d, got %d\n", i, j, td[i][j].height, lf.lfHeight);
@@ -4885,6 +5040,100 @@ static void test_stock_fonts(void)
     }
 }
 
+static void test_max_height(void)
+{
+    HDC hdc;
+    LOGFONT lf;
+    HFONT hfont, hfont_old;
+    TEXTMETRICA tm1, tm;
+    BOOL r;
+    LONG invalid_height[] = { -65536, -123456, 123456 };
+    size_t i;
+
+    memset(&tm1, 0, sizeof(tm1));
+    memset(&lf, 0, sizeof(lf));
+    strcpy(lf.lfFaceName, "Tahoma");
+    lf.lfHeight = -1;
+
+    hdc = GetDC(NULL);
+
+    /* get 1 ppem value */
+    hfont = CreateFontIndirect(&lf);
+    hfont_old = SelectObject(hdc, hfont);
+    r = GetTextMetrics(hdc, &tm1);
+    ok(r, "GetTextMetrics failed\n");
+    ok(tm1.tmHeight > 0, "expected a positive value, got %d\n", tm1.tmHeight);
+    ok(tm1.tmAveCharWidth > 0, "expected a positive value, got %d\n", tm1.tmHeight);
+    DeleteObject(SelectObject(hdc, hfont_old));
+
+    /* test the largest value */
+    lf.lfHeight = -((1 << 16) - 1);
+    hfont = CreateFontIndirect(&lf);
+    hfont_old = SelectObject(hdc, hfont);
+    memset(&tm, 0, sizeof(tm));
+    r = GetTextMetrics(hdc, &tm);
+    ok(r, "GetTextMetrics failed\n");
+    ok(tm.tmHeight > tm1.tmHeight,
+       "expected greater than 1 ppem value (%d), got %d\n", tm1.tmHeight, tm.tmHeight);
+    ok(tm.tmAveCharWidth > tm1.tmAveCharWidth,
+       "expected greater than 1 ppem value (%d), got %d\n", tm1.tmAveCharWidth, tm.tmAveCharWidth);
+    DeleteObject(SelectObject(hdc, hfont_old));
+
+    /* test an invalid value */
+    for (i = 0; i < sizeof(invalid_height)/sizeof(invalid_height[0]); i++) {
+        lf.lfHeight = invalid_height[i];
+        hfont = CreateFontIndirect(&lf);
+        hfont_old = SelectObject(hdc, hfont);
+        memset(&tm, 0, sizeof(tm));
+        r = GetTextMetrics(hdc, &tm);
+        ok(r, "GetTextMetrics failed\n");
+        ok(tm.tmHeight == tm1.tmHeight,
+           "expected 1 ppem value (%d), got %d\n", tm1.tmHeight, tm.tmHeight);
+        ok(tm.tmAveCharWidth == tm1.tmAveCharWidth,
+           "expected 1 ppem value (%d), got %d\n", tm1.tmAveCharWidth, tm.tmAveCharWidth);
+        DeleteObject(SelectObject(hdc, hfont_old));
+    }
+
+    ReleaseDC(NULL, hdc);
+    return;
+}
+
+static void test_vertical_order(void)
+{
+    struct enum_font_data efd;
+    LOGFONTA lf;
+    HDC hdc;
+    int i, j;
+
+    hdc = CreateCompatibleDC(0);
+    ok(hdc != NULL, "CreateCompatibleDC failed\n");
+
+    memset(&lf, 0, sizeof(lf));
+    lf.lfCharSet = DEFAULT_CHARSET;
+    lf.lfClipPrecision = CLIP_DEFAULT_PRECIS;
+    lf.lfHeight = 16;
+    lf.lfWidth = 16;
+    lf.lfQuality = DEFAULT_QUALITY;
+    lf.lfItalic = FALSE;
+    lf.lfWeight = FW_DONTCARE;
+    efd.total = 0;
+    EnumFontFamiliesExA(hdc, &lf, enum_font_data_proc, (LPARAM)&efd, 0);
+    for (i = 0; i < efd.total; i++)
+    {
+        if (efd.lf[i].lfFaceName[0] != '@') continue;
+        for (j = 0; j < efd.total; j++)
+        {
+            if (!strcmp(efd.lf[i].lfFaceName + 1, efd.lf[j].lfFaceName))
+            {
+                ok(i > j,"Found vertical font %s before its horizontal version\n", efd.lf[i].lfFaceName);
+                break;
+            }
+        }
+    }
+    DeleteDC( hdc );
+}
+
+
 START_TEST(font)
 {
     init();
@@ -4902,6 +5151,7 @@ START_TEST(font)
     test_GetOutlineTextMetrics();
     test_SetTextJustification();
     test_font_charset();
+    test_GdiGetCodePage();
     test_GetFontUnicodeRanges();
     test_nonexistent_font();
     test_orientation();
@@ -4940,6 +5190,8 @@ START_TEST(font)
     test_fullname();
     test_fullname2();
     test_east_asian_font_selection();
+    test_max_height();
+    test_vertical_order();
 
     /* These tests should be last test until RemoveFontResource
      * is properly implemented.

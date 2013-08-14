@@ -888,6 +888,7 @@ BOOL WINAPI DllMain(HINSTANCE hInstDLL, DWORD fdwReason, LPVOID lpv)
             DisableThreadLibraryCalls(hInstDLL);
 	    break;
 	case DLL_PROCESS_DETACH:
+            if (lpv) break;
             TlsFree(MLANG_tls_index);
 	    break;
     }
@@ -1764,7 +1765,7 @@ static HRESULT EnumScript_create( MLang_impl* mlang, DWORD dwFlags,
     EnumScript_impl *es;
     UINT i;
 
-    TRACE("%p, %08x, %04x, %p: stub!\n", mlang, dwFlags, LangId, ppEnumScript);
+    TRACE("%p, %08x, %04x, %p\n", mlang, dwFlags, LangId, ppEnumScript);
 
     if (!dwFlags) /* enumerate all available scripts */
         dwFlags = SCRIPTCONTF_SCRIPT_USER | SCRIPTCONTF_SCRIPT_HIDE | SCRIPTCONTF_SCRIPT_SYSTEM;

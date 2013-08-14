@@ -98,6 +98,9 @@ PUBLIC_IDL_H_SRCS = \
 	textstor.idl \
 	tlogstg.idl \
 	tom.idl \
+	transact.idl \
+	txcoord.idl \
+	txdtc.idl \
 	uiautomationclient.idl \
 	uiautomationcore.idl \
 	unknwn.idl \
@@ -243,6 +246,7 @@ SRCDIR_INCLUDES = \
 	devguid.h \
 	devpkey.h \
 	devpropdef.h \
+	difxapi.h \
 	digitalv.h \
 	dinput.h \
 	dinputd.h \
@@ -484,6 +488,7 @@ SRCDIR_INCLUDES = \
 	rstbas.idl \
 	rstinf.idl \
 	rstloc.idl \
+	rstnot.idl \
 	rtutils.h \
 	scarderr.h \
 	schannel.h \

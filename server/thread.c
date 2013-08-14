@@ -59,8 +59,6 @@ static const unsigned int supported_cpus = CPU_FLAG(CPU_x86);
 static const unsigned int supported_cpus = CPU_FLAG(CPU_x86_64) | CPU_FLAG(CPU_x86);
 #elif defined(__powerpc__)
 static const unsigned int supported_cpus = CPU_FLAG(CPU_POWERPC);
-#elif defined(__sparc__)
-static const unsigned int supported_cpus = CPU_FLAG(CPU_SPARC);
 #elif defined(__arm__)
 static const unsigned int supported_cpus = CPU_FLAG(CPU_ARM);
 #elif defined(__aarch64__)
@@ -215,6 +213,12 @@ static inline int is_valid_address( client_ptr_t addr )
 struct thread *create_thread( int fd, struct process *process )
 {
     struct thread *thread;
+
+    if (process->is_terminating)
+    {
+        set_error( STATUS_PROCESS_IS_TERMINATING );
+        return NULL;
+    }
 
     if (!(thread = alloc_object( &thread_ops ))) return NULL;
 
@@ -477,7 +481,7 @@ static void set_thread_info( struct thread *thread,
         if ((req->affinity & thread->process->affinity) != req->affinity)
             set_error( STATUS_INVALID_PARAMETER );
         else if (thread->state == TERMINATED)
-            set_error( STATUS_ACCESS_DENIED );
+            set_error( STATUS_THREAD_IS_TERMINATING );
         else if (set_thread_affinity( thread, req->affinity ))
             file_set_error();
     }
@@ -648,7 +652,7 @@ static int send_thread_wakeup( struct thread *thread, client_ptr_t cookie, int s
     else if (errno == EPIPE)
         kill_thread( thread, 0 );  /* normal death */
     else
-        fatal_protocol_perror( thread, "write" );
+        fatal_protocol_error( thread, "write: %s\n", strerror( errno ));
     return -1;
 }
 
@@ -1026,7 +1030,6 @@ static unsigned int get_context_system_regs( enum cpu_type cpu )
     case CPU_POWERPC: return 0;
     case CPU_ARM:     return 0;
     case CPU_ARM64:   return 0;
-    case CPU_SPARC:   return 0;
     }
     return 0;
 }
@@ -1052,9 +1055,6 @@ void break_thread( struct thread *thread )
         break;
     case CPU_POWERPC:
         data.exception.address = thread->context->ctl.powerpc_regs.iar;
-        break;
-    case CPU_SPARC:
-        data.exception.address = thread->context->ctl.sparc_regs.pc;
         break;
     case CPU_ARM:
         data.exception.address = thread->context->ctl.arm_regs.pc;

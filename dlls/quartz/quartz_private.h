@@ -59,12 +59,14 @@ HRESULT VMR9Impl_create(IUnknown *pUnkOuter, LPVOID *ppv) DECLSPEC_HIDDEN;
 HRESULT EnumMonikerImpl_Create(IMoniker ** ppMoniker, ULONG nMonikerCount, IEnumMoniker ** ppEnum) DECLSPEC_HIDDEN;
 
 HRESULT IEnumRegFiltersImpl_Construct(REGFILTER * pInRegFilters, const ULONG size, IEnumRegFilters ** ppEnum) DECLSPEC_HIDDEN;
-HRESULT IEnumFiltersImpl_Construct(IBaseFilter ** ppFilters, ULONG nFilters, IEnumFilters ** ppEnum) DECLSPEC_HIDDEN;
+HRESULT IEnumFiltersImpl_Construct(IGraphVersion * pVersionSource, IBaseFilter *** pppFilters, ULONG * pNumFilters, IEnumFilters ** ppEnum) DECLSPEC_HIDDEN;
 
 extern const char * qzdebugstr_guid(const GUID * id) DECLSPEC_HIDDEN;
 extern void video_unregister_windowclass(void) DECLSPEC_HIDDEN;
 
 BOOL CompareMediaTypes(const AM_MEDIA_TYPE * pmt1, const AM_MEDIA_TYPE * pmt2, BOOL bWildcards);
 void dump_AM_MEDIA_TYPE(const AM_MEDIA_TYPE * pmt) DECLSPEC_HIDDEN;
+
+HRESULT GetClassMediaFile(IAsyncReader * pReader, LPCOLESTR pszFileName, GUID * majorType, GUID * minorType, GUID * sourceFilter);
 
 #endif /* __QUARTZ_PRIVATE_INCLUDED__ */

@@ -362,6 +362,9 @@ static BOOL grab_clipping_window( const RECT *clip )
     Window clip_window;
     HWND msg_hwnd = 0;
 
+    if (GetWindowThreadProcessId( GetDesktopWindow(), NULL ) == GetCurrentThreadId())
+        return TRUE;  /* don't clip in the desktop process */
+
     if (!data) return FALSE;
     if (!(clip_window = init_clip_window())) return TRUE;
 
@@ -1220,8 +1223,10 @@ static Cursor create_xlib_color_cursor( HDC hdc, const ICONINFOEXW *icon, int wi
     }
     else  /* invert the mask */
     {
+        unsigned int j;
+
         ptr = (unsigned int *)mask_bits;
-        for (i = 0; i < info->bmiHeader.biSizeImage / sizeof(*ptr); i++, ptr++) *ptr ^= ~0u;
+        for (j = 0; j < info->bmiHeader.biSizeImage / sizeof(*ptr); j++, ptr++) *ptr ^= ~0u;
     }
 
     vis.depth = 1;
@@ -1375,9 +1380,6 @@ BOOL CDECL X11DRV_GetCursorPos(LPPOINT pos)
 BOOL CDECL X11DRV_ClipCursor( LPCRECT clip )
 {
     if (!clip) clip = &virtual_screen_rect;
-
-    if (GetWindowThreadProcessId( GetDesktopWindow(), NULL ) == GetCurrentThreadId())
-        return TRUE;  /* don't clip in the desktop process */
 
     if (grab_pointer)
     {

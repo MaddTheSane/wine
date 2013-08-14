@@ -3013,7 +3013,7 @@ static BOOL InvokeShellLinkerForURL( IUniformResourceLocatorW *url, LPCWSTR link
 {
     char *link_name = NULL, *icon_name = NULL;
     DWORD csidl = -1;
-    LPWSTR urlPath;
+    LPWSTR urlPath = NULL;
     char *escaped_urlPath = NULL;
     HRESULT hr;
     HANDLE hSem = NULL;
@@ -3371,11 +3371,11 @@ static void RefreshFileTypeAssociations(void)
         argv[0] = "update-mime-database";
         argv[1] = mime_dir;
         argv[2] = NULL;
-        spawnvp( _P_DETACH, argv[0], argv );
+        _spawnvp( _P_DETACH, argv[0], argv );
 
         argv[0] = "update-desktop-database";
         argv[1] = applications_dir;
-        spawnvp( _P_DETACH, argv[0], argv );
+        _spawnvp( _P_DETACH, argv[0], argv );
     }
 
 end:

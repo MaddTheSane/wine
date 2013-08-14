@@ -1783,8 +1783,6 @@ static BOOL create_fake_dll( LPCSTR filename )
     nt->FileHeader.Machine = IMAGE_FILE_MACHINE_AMD64;
 #elif defined __powerpc__
     nt->FileHeader.Machine = IMAGE_FILE_MACHINE_POWERPC;
-#elif defined __sparc__
-    nt->FileHeader.Machine = IMAGE_FILE_MACHINE_SPARC;
 #elif defined __arm__
     nt->FileHeader.Machine = IMAGE_FILE_MACHINE_ARMNT;
 #elif defined __aarch64__
@@ -3506,7 +3504,8 @@ static void test_SetFileValidData(void)
 
     if (!OpenProcessToken(GetCurrentProcess(), TOKEN_ADJUST_PRIVILEGES, &token) ||
         !LookupPrivilegeValue(NULL, SE_MANAGE_VOLUME_NAME, &privs.Privileges[0].Luid) ||
-        !AdjustTokenPrivileges(token, FALSE, &privs, sizeof(privs), NULL, NULL))
+        !AdjustTokenPrivileges(token, FALSE, &privs, sizeof(privs), NULL, NULL) ||
+        GetLastError() == ERROR_NOT_ALL_ASSIGNED)
     {
         win_skip("cannot enable SE_MANAGE_VOLUME_NAME privilege\n");
         CloseHandle(token);

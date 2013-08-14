@@ -2,7 +2,7 @@
 use utf8;
 use strict;
 
-# Copyright 2000-2004 Francois Gouget for CodeWeavers
+# Copyright 2000-2004 François Gouget for CodeWeavers
 # Copyright 2004 Dimitrie O. Paun
 # Copyright 2009-2012 André Hentschel
 #
@@ -21,7 +21,7 @@ use strict;
 # Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA
 #
 
-my $version="0.8.3";
+my $version="0.8.4";
 
 use Cwd;
 use File::Basename;
@@ -683,6 +683,11 @@ sub source_scan_project_file($$$)
                         # Additional Include Directories
                         $sfilet=$1;
                         $sfilet=~s/\\/\//g;
+                        my @compinc=split /\/+/, $sfilet;
+                        my $realinc=search_from($path, \@compinc);
+                        if (defined $realinc) {
+                            $sfilet=$realinc;
+                        }
                         if ($sfilet=~/^\w:/) {
                             print STDERR "warning: Can't fix path $sfilet\n"
                         } else {
@@ -894,6 +899,11 @@ sub source_scan_project_file($$$)
                         $sfilet=~s/\\\\/\\/g; #remove double backslash
                         $sfilet=~s/^\.\\//; #remove starting 'this directory'
                         $sfilet=~s/\\/\//g; #make slashes out of backslashes
+                        my @compsrc=split(/\/+/, $sfilet);
+                        my $realsrc=search_from($path, \@compsrc);
+                        if (defined $realsrc) {
+                            $sfilet=$realsrc;
+                        }
                         if ($sfilet =~ /\.c$/i and $sfilet !~ /\.(dbg|spec)\.c$/) {
                             push @sources_c,$sfilet;
                         } elsif ($sfilet =~ /\.cpp$/i) {
@@ -959,8 +969,15 @@ sub source_scan_project_file($$$)
                     if ($vc_compiler_tool->getName eq "AdditionalIncludeDirectories") {
                         $configt=$vc_compiler_tool->getValue;
                         $configt=~s/\\/\//g;
-                        $configt=~s/;/ -I/g;
-                        push @{@$project_settings[$T_INCLUDE_PATH]},"-I".$configt;
+                        my @addincl = split(/\s*;\s*/, $configt);
+                        foreach $configt (@addincl) {
+                            my @compinc=split(/\/+/, $configt);
+                            my $realinc=search_from($path, \@compinc);
+                            if (defined $realinc) {
+                                $configt=$realinc;
+                            }
+                            push @{@$project_settings[$T_INCLUDE_PATH]},"-I".$configt;
+                        }
                     }
                 }
             }
@@ -1121,7 +1138,6 @@ sub source_scan_project_file($$$)
 
     if ((@$project_settings[$T_FLAGS] & $TF_NOMSVCRT) == 0) {
         push @{@$project_settings[$T_CEXTRA]},"-mno-cygwin";
-        push @{@$project_settings[$T_CXXEXTRA]},"-mno-cygwin";
         if ($opt_arch != $OPT_ARCH_DEFAULT) {
             push @{@$project_settings[$T_CEXTRA]},"-m$opt_arch";
             push @{@$project_settings[$T_CXXEXTRA]},"-m$opt_arch";
@@ -1681,7 +1697,6 @@ sub source_scan_directory($$$$)
 
   if ((@$project_settings[$T_FLAGS] & $TF_NOMSVCRT) == 0) {
     push @{@$project_settings[$T_CEXTRA]},"-mno-cygwin";
-    push @{@$project_settings[$T_CXXEXTRA]},"-mno-cygwin";
       if ($opt_arch != $OPT_ARCH_DEFAULT) {
         push @{@$project_settings[$T_CEXTRA]},"-m$opt_arch";
         push @{@$project_settings[$T_CXXEXTRA]},"-m$opt_arch";
@@ -1864,7 +1879,6 @@ sub search_from($$)
   my $path=$_[1];
   my $real_path="";
 
-  $dirname =~ s/(\.\/)+//;
   if ($dirname eq "" or $dirname eq "." or $dirname eq "./") {
     $dirname=cwd;
   } elsif ($dirname !~ m+^/+) {
@@ -2655,7 +2669,7 @@ $opt_no_banner=0;
 sub print_banner()
 {
   print "Winemaker $version\n";
-  print "Copyright 2000-2004 Francois Gouget <fgouget\@codeweavers.com> for CodeWeavers\n";
+  print "Copyright 2000-2004 François Gouget <fgouget\@codeweavers.com> for CodeWeavers\n";
   print "Copyright 2004 Dimitrie O. Paun\n";
   print "Copyright 2009-2012 André Hentschel\n";
 }
@@ -2678,6 +2692,8 @@ sub usage()
   print STDERR "\tPlease read the manual page before use.\n";
   exit (2);
 }
+
+binmode(STDOUT, ":utf8");
 
 target_init(\@global_settings);
 

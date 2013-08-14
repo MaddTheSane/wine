@@ -64,7 +64,6 @@ const char *get_machine_str(int mach)
     case IMAGE_FILE_MACHINE_ARM:        return "ARM";
     case IMAGE_FILE_MACHINE_ARMNT:      return "ARMNT";
     case IMAGE_FILE_MACHINE_THUMB:      return "ARM Thumb";
-    case IMAGE_FILE_MACHINE_SPARC:      return "SPARC";
     }
     return "???";
 }
@@ -548,16 +547,35 @@ static	void	dump_dir_exported_functions(void)
 }
 
 
-struct runtime_function
+struct runtime_function_x86_64
 {
     DWORD BeginAddress;
     DWORD EndAddress;
     DWORD UnwindData;
 };
 
+struct runtime_function_armnt
+{
+    DWORD BeginAddress;
+    union {
+        DWORD UnwindData;
+        struct {
+            DWORD Flag : 2;
+            DWORD FunctionLength : 11;
+            DWORD Ret : 2;
+            DWORD H : 1;
+            DWORD Reg : 3;
+            DWORD R : 1;
+            DWORD L : 1;
+            DWORD C : 1;
+            DWORD StackAdjust : 10;
+        } DUMMYSTRUCTNAME;
+    } DUMMYUNIONNAME;
+};
+
 union handler_data
 {
-    struct runtime_function chain;
+    struct runtime_function_x86_64 chain;
     DWORD handler;
 };
 
@@ -568,7 +586,7 @@ struct opcode
     BYTE info : 4;
 };
 
-struct unwind_info
+struct unwind_info_x86_64
 {
     BYTE version : 3;
     BYTE flags : 5;
@@ -578,6 +596,14 @@ struct unwind_info
     BYTE frame_offset : 4;
     struct opcode opcodes[1];  /* count entries */
     /* followed by union handler_data */
+};
+
+struct unwind_info_armnt
+{
+    WORD function_length;
+    WORD unknown1 : 7;
+    WORD count : 5;
+    WORD unknown2 : 4;
 };
 
 #define UWOP_PUSH_NONVOL     0
@@ -594,20 +620,20 @@ struct unwind_info
 #define UNW_FLAG_UHANDLER  2
 #define UNW_FLAG_CHAININFO 4
 
-static void dump_x86_64_unwind_info( const struct runtime_function *function )
+static void dump_x86_64_unwind_info( const struct runtime_function_x86_64 *function )
 {
     static const char * const reg_names[16] =
         { "rax", "rcx", "rdx", "rbx", "rsp", "rbp", "rsi", "rdi",
           "r8",  "r9",  "r10", "r11", "r12", "r13", "r14", "r15" };
 
     const union handler_data *handler_data;
-    const struct unwind_info *info;
+    const struct unwind_info_x86_64 *info;
     unsigned int i, count;
 
     printf( "\nFunction %08x-%08x:\n", function->BeginAddress, function->EndAddress );
     if (function->UnwindData & 1)
     {
-        const struct runtime_function *next = RVA( function->UnwindData & ~1, sizeof(*next) );
+        const struct runtime_function_x86_64 *next = RVA( function->UnwindData & ~1, sizeof(*next) );
         printf( "  -> function %08x-%08x\n", next->BeginAddress, next->EndAddress );
         return;
     }
@@ -699,19 +725,56 @@ static void dump_x86_64_unwind_info( const struct runtime_function *function )
                 (ULONG)(function->UnwindData + (const char *)(&handler_data->handler + 1) - (const char *)info ));
 }
 
+static void dump_armnt_unwind_info( const struct runtime_function_armnt *function )
+{
+    const struct unwind_info_armnt *info;
+    if (function->u.s.Flag)
+    {
+        printf( "\nFunction %08x-%08x:\n", function->BeginAddress & ~1,
+                (function->BeginAddress & ~1) + function->u.s.FunctionLength * 2 );
+        printf( "    Flag           %x\n", function->u.s.Flag );
+        printf( "    FunctionLength %x\n", function->u.s.FunctionLength );
+        printf( "    Ret            %x\n", function->u.s.Ret );
+        printf( "    H              %x\n", function->u.s.H );
+        printf( "    Reg            %x\n", function->u.s.Reg );
+        printf( "    R              %x\n", function->u.s.R );
+        printf( "    L              %x\n", function->u.s.L );
+        printf( "    C              %x\n", function->u.s.C );
+        printf( "    StackAdjust    %x\n", function->u.s.StackAdjust );
+        return;
+    }
+
+    info = RVA( function->u.UnwindData, sizeof(*info) );
+
+    printf( "\nFunction %08x-%08x:\n", function->BeginAddress & ~1,
+            (function->BeginAddress & ~1) + info->function_length * 2 );
+    printf( "  unwind info at %08x\n", function->u.UnwindData );
+    printf( "    Flag           %x\n", function->u.s.Flag );
+    printf( "    FunctionLength %x\n", info->function_length );
+    printf( "    Unknown1       %x\n", info->unknown1 );
+    printf( "    Count          %x\n", info->count );
+    printf( "    Unknown2       %x\n", info->unknown2 );
+}
+
 static void dump_dir_exceptions(void)
 {
     unsigned int i, size = 0;
-    const struct runtime_function *funcs = get_dir_and_size(IMAGE_FILE_EXCEPTION_DIRECTORY, &size);
+    const void *funcs = get_dir_and_size(IMAGE_FILE_EXCEPTION_DIRECTORY, &size);
     const IMAGE_FILE_HEADER *file_header = &PE_nt_headers->FileHeader;
 
     if (!funcs) return;
 
     if (file_header->Machine == IMAGE_FILE_MACHINE_AMD64)
     {
-        size /= sizeof(*funcs);
+        size /= sizeof(struct runtime_function_x86_64);
         printf( "Exception info (%u functions):\n", size );
-        for (i = 0; i < size; i++) dump_x86_64_unwind_info( funcs + i );
+        for (i = 0; i < size; i++) dump_x86_64_unwind_info( (struct runtime_function_x86_64*)funcs + i );
+    }
+    else if (file_header->Machine == IMAGE_FILE_MACHINE_ARMNT)
+    {
+        size /= sizeof(struct runtime_function_armnt);
+        printf( "Exception info (%u functions):\n", size );
+        for (i = 0; i < size; i++) dump_armnt_unwind_info( (struct runtime_function_armnt*)funcs + i );
     }
     else printf( "Exception information not supported for %s binaries\n",
                  get_machine_str(file_header->Machine));
@@ -872,6 +935,7 @@ static	void	dump_dir_debug_dir(const IMAGE_DEBUG_DIRECTORY* idd, int idx)
     case IMAGE_DEBUG_TYPE_OMAP_FROM_SRC:str = "OMAP_FROM_SRC"; 	break;
     case IMAGE_DEBUG_TYPE_BORLAND:	str = "BORLAND"; 	break;
     case IMAGE_DEBUG_TYPE_RESERVED10:	str = "RESERVED10"; 	break;
+    case IMAGE_DEBUG_TYPE_CLSID:	str = "CLSID"; 	break;
     }
     printf("  Type:              %u (%s)\n", idd->Type, str);
     printf("  SizeOfData:        %u\n", idd->SizeOfData);
@@ -915,6 +979,8 @@ static	void	dump_dir_debug_dir(const IMAGE_DEBUG_DIRECTORY* idd, int idx)
     case IMAGE_DEBUG_TYPE_BORLAND:
 	break;
     case IMAGE_DEBUG_TYPE_RESERVED10:
+	break;
+    case IMAGE_DEBUG_TYPE_CLSID:
 	break;
     }
     printf("\n");
@@ -1318,52 +1384,51 @@ static void dump_dir_resource(void)
     for (i = 0; i< root->NumberOfNamedEntries + root->NumberOfIdEntries; i++)
     {
         e1 = (const IMAGE_RESOURCE_DIRECTORY_ENTRY*)(root + 1) + i;
-        namedir = (const IMAGE_RESOURCE_DIRECTORY *)((const char *)root + e1->u2.s3.OffsetToDirectory);
+        namedir = (const IMAGE_RESOURCE_DIRECTORY *)((const char *)root + e1->u2.s2.OffsetToDirectory);
         for (j = 0; j < namedir->NumberOfNamedEntries + namedir->NumberOfIdEntries; j++)
         {
             e2 = (const IMAGE_RESOURCE_DIRECTORY_ENTRY*)(namedir + 1) + j;
-            langdir = (const IMAGE_RESOURCE_DIRECTORY *)((const char *)root + e2->u2.s3.OffsetToDirectory);
+            langdir = (const IMAGE_RESOURCE_DIRECTORY *)((const char *)root + e2->u2.s2.OffsetToDirectory);
             for (k = 0; k < langdir->NumberOfNamedEntries + langdir->NumberOfIdEntries; k++)
             {
                 e3 = (const IMAGE_RESOURCE_DIRECTORY_ENTRY*)(langdir + 1) + k;
 
                 printf( "\n  " );
-                if (e1->u1.s1.NameIsString)
+                if (e1->u.s.NameIsString)
                 {
-                    string = (const IMAGE_RESOURCE_DIR_STRING_U*)((const char *)root + e1->u1.s1.NameOffset);
+                    string = (const IMAGE_RESOURCE_DIR_STRING_U*)((const char *)root + e1->u.s.NameOffset);
                     dump_unicode_str( string->NameString, string->Length );
                 }
                 else
                 {
-                    const char *type = get_resource_type( e1->u1.s2.Id );
+                    const char *type = get_resource_type( e1->u.Id );
                     if (type) printf( "%s", type );
-                    else printf( "%04x", e1->u1.s2.Id );
+                    else printf( "%04x", e1->u.Id );
                 }
 
                 printf( " Name=" );
-                if (e2->u1.s1.NameIsString)
+                if (e2->u.s.NameIsString)
                 {
-                    string = (const IMAGE_RESOURCE_DIR_STRING_U*) ((const char *)root + e2->u1.s1.NameOffset);
+                    string = (const IMAGE_RESOURCE_DIR_STRING_U*) ((const char *)root + e2->u.s.NameOffset);
                     dump_unicode_str( string->NameString, string->Length );
                 }
                 else
-                    printf( "%04x", e2->u1.s2.Id );
+                    printf( "%04x", e2->u.Id );
 
-                printf( " Language=%04x:\n", e3->u1.s2.Id );
+                printf( " Language=%04x:\n", e3->u.Id );
                 data = (const IMAGE_RESOURCE_DATA_ENTRY *)((const char *)root + e3->u2.OffsetToData);
-                if (e1->u1.s1.NameIsString)
+                if (e1->u.s.NameIsString)
                 {
                     dump_data( RVA( data->OffsetToData, data->Size ), data->Size, "    " );
                 }
-                else switch(e1->u1.s2.Id)
+                else switch(e1->u.Id)
                 {
                 case 6:
-                    dump_string_data( RVA( data->OffsetToData, data->Size ), data->Size,
-                                      e2->u1.s2.Id, "    " );
+                    dump_string_data( RVA( data->OffsetToData, data->Size ), data->Size,                                      e2->u.Id, "    " );
                     break;
                 case 11:
                     dump_msgtable_data( RVA( data->OffsetToData, data->Size ), data->Size,
-                                        e2->u1.s2.Id, "    " );
+                                        e2->u.Id, "    " );
                     break;
                 default:
                     dump_data( RVA( data->OffsetToData, data->Size ), data->Size, "    " );

@@ -37,9 +37,9 @@ static const struct
     const GUID *wic_guid;
     D3DFORMAT d3dformat;
 } wic_pixel_formats[] = {
-    { &GUID_WICPixelFormat8bppIndexed, D3DFMT_L8 },
-    { &GUID_WICPixelFormat1bppIndexed, D3DFMT_L8 },
-    { &GUID_WICPixelFormat4bppIndexed, D3DFMT_L8 },
+    { &GUID_WICPixelFormat8bppIndexed, D3DFMT_P8 },
+    { &GUID_WICPixelFormat1bppIndexed, D3DFMT_P8 },
+    { &GUID_WICPixelFormat4bppIndexed, D3DFMT_P8 },
     { &GUID_WICPixelFormat16bppBGR555, D3DFMT_X1R5G5B5 },
     { &GUID_WICPixelFormat16bppBGR565, D3DFMT_R5G6B5 },
     { &GUID_WICPixelFormat24bppBGR, D3DFMT_R8G8B8 },
@@ -675,6 +675,71 @@ HRESULT load_volume_texture_from_dds(IDirect3DVolumeTexture9 *volume_texture, co
     return D3D_OK;
 }
 
+static BOOL convert_dib_to_bmp(void **data, UINT *size)
+{
+    ULONG header_size;
+    ULONG count = 0;
+    ULONG offset;
+    BITMAPFILEHEADER *header;
+    BYTE *new_data;
+    UINT new_size;
+
+    if ((*size < 4) || (*size < (header_size = *(ULONG*)*data)))
+        return FALSE;
+
+    if ((header_size == sizeof(BITMAPINFOHEADER)) ||
+        (header_size == sizeof(BITMAPV4HEADER)) ||
+        (header_size == sizeof(BITMAPV5HEADER)) ||
+        (header_size == 64 /* sizeof(BITMAPCOREHEADER2) */))
+    {
+        /* All structures begin with the same memory layout as BITMAPINFOHEADER */
+        BITMAPINFOHEADER *info_header = (BITMAPINFOHEADER*)*data;
+        count = info_header->biClrUsed;
+
+        if (!count && info_header->biBitCount <= 8)
+            count = 1 << info_header->biBitCount;
+
+        offset = sizeof(BITMAPFILEHEADER) + header_size + sizeof(RGBQUAD) * count;
+
+        /* For BITMAPINFOHEADER with BI_BITFIELDS compression, there are 3 additional color masks after header */
+        if ((info_header->biSize == sizeof(BITMAPINFOHEADER)) && (info_header->biCompression == BI_BITFIELDS))
+            offset += 3 * sizeof(DWORD);
+    }
+    else if (header_size == sizeof(BITMAPCOREHEADER))
+    {
+        BITMAPCOREHEADER *core_header = (BITMAPCOREHEADER*)*data;
+
+        if (core_header->bcBitCount <= 8)
+            count = 1 << core_header->bcBitCount;
+
+        offset = sizeof(BITMAPFILEHEADER) + header_size + sizeof(RGBTRIPLE) * count;
+    }
+    else
+    {
+        return FALSE;
+    }
+
+    TRACE("Converting DIB file to BMP\n");
+
+    new_size = *size + sizeof(BITMAPFILEHEADER);
+    new_data = HeapAlloc(GetProcessHeap(), 0, new_size);
+    CopyMemory(new_data + sizeof(BITMAPFILEHEADER), *data, *size);
+
+    /* Add BMP header */
+    header = (BITMAPFILEHEADER*)new_data;
+    header->bfType = 0x4d42; /* BM */
+    header->bfSize = new_size;
+    header->bfReserved1 = 0;
+    header->bfReserved2 = 0;
+    header->bfOffBits = offset;
+
+    /* Update input data */
+    *data = new_data;
+    *size = new_size;
+
+    return TRUE;
+}
+
 /************************************************************
  * D3DXGetImageInfoFromFileInMemory
  *
@@ -696,13 +761,14 @@ HRESULT load_volume_texture_from_dds(IDirect3DVolumeTexture9 *volume_texture, co
  *   datasize may be bigger than the actual file size
  *
  */
-HRESULT WINAPI D3DXGetImageInfoFromFileInMemory(LPCVOID data, UINT datasize, D3DXIMAGE_INFO *info)
+HRESULT WINAPI D3DXGetImageInfoFromFileInMemory(const void *data, UINT datasize, D3DXIMAGE_INFO *info)
 {
     IWICImagingFactory *factory;
     IWICBitmapDecoder *decoder = NULL;
     IWICStream *stream;
     HRESULT hr;
     HRESULT initresult;
+    BOOL dib;
 
     TRACE("(%p, %d, %p)\n", data, datasize, info);
 
@@ -716,6 +782,9 @@ HRESULT WINAPI D3DXGetImageInfoFromFileInMemory(LPCVOID data, UINT datasize, D3D
         TRACE("File type is DDS\n");
         return get_image_info_from_dds(data, datasize, info);
     }
+
+    /* In case of DIB file, convert it to BMP */
+    dib = convert_dib_to_bmp((void**)&data, &datasize);
 
     initresult = CoInitializeEx(NULL, COINIT_APARTMENTTHREADED);
 
@@ -732,8 +801,6 @@ HRESULT WINAPI D3DXGetImageInfoFromFileInMemory(LPCVOID data, UINT datasize, D3D
     if (FAILED(hr)) {
         if ((datasize >= 2) && (!strncmp(data, "P3", 2) || !strncmp(data, "P6", 2)))
             FIXME("File type PPM is not supported yet\n");
-        else if ((datasize >= 4) && (*(DWORD*)data == sizeof(BITMAPINFOHEADER)))
-            FIXME("File type DIB is not supported yet\n");
         else if ((datasize >= 10) && !strncmp(data, "#?RADIANCE", 10))
             FIXME("File type HDR is not supported yet\n");
         else if ((datasize >= 2) && (!strncmp(data, "PF", 2) || !strncmp(data, "Pf", 2)))
@@ -747,8 +814,13 @@ HRESULT WINAPI D3DXGetImageInfoFromFileInMemory(LPCVOID data, UINT datasize, D3D
         hr = IWICBitmapDecoder_GetContainerFormat(decoder, &container_format);
         if (SUCCEEDED(hr)) {
             if (IsEqualGUID(&container_format, &GUID_ContainerFormatBmp)) {
-                TRACE("File type is BMP\n");
-                info->ImageFileFormat = D3DXIFF_BMP;
+                if (dib) {
+                    TRACE("File type is DIB\n");
+                    info->ImageFileFormat = D3DXIFF_DIB;
+                } else {
+                    TRACE("File type is BMP\n");
+                    info->ImageFileFormat = D3DXIFF_BMP;
+                }
             } else if (IsEqualGUID(&container_format, &GUID_ContainerFormatPng)) {
                 TRACE("File type is PNG\n");
                 info->ImageFileFormat = D3DXIFF_PNG;
@@ -804,6 +876,9 @@ HRESULT WINAPI D3DXGetImageInfoFromFileInMemory(LPCVOID data, UINT datasize, D3D
 
     if (SUCCEEDED(initresult))
         CoUninitialize();
+
+    if (dib)
+        HeapFree(GetProcessHeap(), 0, (void*)data);
 
     if (FAILED(hr)) {
         TRACE("Invalid or unsupported image file\n");
@@ -950,7 +1025,7 @@ HRESULT WINAPI D3DXLoadSurfaceFromFileInMemory(IDirect3DSurface9 *pDestSurface,
     D3DXIMAGE_INFO imginfo;
     HRESULT hr;
 
-    IWICImagingFactory *factory;
+    IWICImagingFactory *factory = NULL;
     IWICBitmapDecoder *decoder;
     IWICBitmapFrameDecode *bitmapframe;
     IWICStream *stream;
@@ -998,6 +1073,9 @@ HRESULT WINAPI D3DXLoadSurfaceFromFileInMemory(IDirect3DSurface9 *pDestSurface,
         return hr;
     }
 
+    if (imginfo.ImageFileFormat == D3DXIFF_DIB)
+        convert_dib_to_bmp((void**)&pSrcData, &SrcDataSize);
+
     CoInitializeEx(NULL, COINIT_APARTMENTTHREADED);
 
     if (FAILED(CoCreateInstance(&CLSID_WICImagingFactory, NULL, CLSCTX_INPROC_SERVER, &IID_IWICImagingFactory, (void**)&factory)))
@@ -1006,6 +1084,7 @@ HRESULT WINAPI D3DXLoadSurfaceFromFileInMemory(IDirect3DSurface9 *pDestSurface,
     if (FAILED(IWICImagingFactory_CreateStream(factory, &stream)))
     {
         IWICImagingFactory_Release(factory);
+        factory = NULL;
         goto cleanup_err;
     }
 
@@ -1014,7 +1093,6 @@ HRESULT WINAPI D3DXLoadSurfaceFromFileInMemory(IDirect3DSurface9 *pDestSurface,
     hr = IWICImagingFactory_CreateDecoderFromStream(factory, (IStream*)stream, NULL, 0, &decoder);
 
     IWICStream_Release(stream);
-    IWICImagingFactory_Release(factory);
 
     if (FAILED(hr))
         goto cleanup_err;
@@ -1035,6 +1113,8 @@ HRESULT WINAPI D3DXLoadSurfaceFromFileInMemory(IDirect3DSurface9 *pDestSurface,
     {
         BYTE *buffer;
         DWORD pitch;
+        PALETTEENTRY *palette = NULL;
+        WICColor *colors = NULL;
 
         pitch = formatdesc->bytes_per_pixel * wicrect.Width;
         buffer = HeapAlloc(GetProcessHeap(), 0, pitch * wicrect.Height);
@@ -1042,13 +1122,51 @@ HRESULT WINAPI D3DXLoadSurfaceFromFileInMemory(IDirect3DSurface9 *pDestSurface,
         hr = IWICBitmapFrameDecode_CopyPixels(bitmapframe, &wicrect, pitch,
                                               pitch * wicrect.Height, buffer);
 
+        if (SUCCEEDED(hr) && (formatdesc->type == FORMAT_INDEX))
+        {
+            IWICPalette *wic_palette = NULL;
+            UINT nb_colors;
+
+            hr = IWICImagingFactory_CreatePalette(factory, &wic_palette);
+            if (SUCCEEDED(hr))
+                hr = IWICBitmapFrameDecode_CopyPalette(bitmapframe, wic_palette);
+            if (SUCCEEDED(hr))
+                hr = IWICPalette_GetColorCount(wic_palette, &nb_colors);
+            if (SUCCEEDED(hr))
+            {
+                colors = HeapAlloc(GetProcessHeap(), 0, nb_colors * sizeof(colors[0]));
+                palette = HeapAlloc(GetProcessHeap(), 0, nb_colors * sizeof(palette[0]));
+                if (!colors || !palette)
+                    hr = E_OUTOFMEMORY;
+            }
+            if (SUCCEEDED(hr))
+                hr = IWICPalette_GetColors(wic_palette, nb_colors, colors, &nb_colors);
+            if (SUCCEEDED(hr))
+            {
+                UINT i;
+
+                /* Convert colors from WICColor (ARGB) to PALETTEENTRY (ABGR) */
+                for (i = 0; i < nb_colors; i++)
+                {
+                    palette[i].peRed   = (colors[i] >> 16) & 0xff;
+                    palette[i].peGreen = (colors[i] >> 8) & 0xff;
+                    palette[i].peBlue  = colors[i] & 0xff;
+                    palette[i].peFlags = (colors[i] >> 24) & 0xff; /* peFlags is the alpha component in DX8 and higher */
+                }
+            }
+            if (wic_palette)
+                IWICPalette_Release(wic_palette);
+        }
+
         if (SUCCEEDED(hr))
         {
             hr = D3DXLoadSurfaceFromMemory(pDestSurface, pDestPalette, pDestRect,
                                            buffer, imginfo.Format, pitch,
-                                           NULL, &rect, dwFilter, Colorkey);
+                                           palette, &rect, dwFilter, Colorkey);
         }
 
+        HeapFree(GetProcessHeap(), 0, colors);
+        HeapFree(GetProcessHeap(), 0, palette);
         HeapFree(GetProcessHeap(), 0, buffer);
     }
 
@@ -1058,7 +1176,13 @@ cleanup_bmp:
     IWICBitmapDecoder_Release(decoder);
 
 cleanup_err:
+    if (factory)
+        IWICImagingFactory_Release(factory);
+
     CoUninitialize();
+
+    if (imginfo.ImageFileFormat == D3DXIFF_DIB)
+        HeapFree(GetProcessHeap(), 0, (void*)pSrcData);
 
     if (FAILED(hr))
         return D3DXERR_INVALIDDATA;
@@ -1385,7 +1509,8 @@ void copy_pixels(const BYTE *src, UINT src_row_pitch, UINT src_slice_pitch,
  */
 void convert_argb_pixels(const BYTE *src, UINT src_row_pitch, UINT src_slice_pitch, const struct volume *src_size,
         const struct pixel_format_desc *src_format, BYTE *dst, UINT dst_row_pitch, UINT dst_slice_pitch,
-        const struct volume *dst_size, const struct pixel_format_desc *dst_format, D3DCOLOR color_key)
+        const struct volume *dst_size, const struct pixel_format_desc *dst_format, D3DCOLOR color_key,
+        const PALETTEENTRY *palette)
 {
     struct argb_conversion_info conv_info, ck_conv_info;
     const struct pixel_format_desc *ck_format = NULL;
@@ -1439,7 +1564,7 @@ void convert_argb_pixels(const BYTE *src, UINT src_row_pitch, UINT src_slice_pit
 
                     format_to_vec4(src_format, &pixel, &color);
                     if (src_format->to_rgba)
-                        src_format->to_rgba(&color, &tmp);
+                        src_format->to_rgba(&color, &tmp, palette);
                     else
                         tmp = color;
 
@@ -1484,7 +1609,8 @@ void convert_argb_pixels(const BYTE *src, UINT src_row_pitch, UINT src_slice_pit
  */
 void point_filter_argb_pixels(const BYTE *src, UINT src_row_pitch, UINT src_slice_pitch, const struct volume *src_size,
         const struct pixel_format_desc *src_format, BYTE *dst, UINT dst_row_pitch, UINT dst_slice_pitch,
-        const struct volume *dst_size, const struct pixel_format_desc *dst_format, D3DCOLOR color_key)
+        const struct volume *dst_size, const struct pixel_format_desc *dst_format, D3DCOLOR color_key,
+        const PALETTEENTRY *palette)
 {
     struct argb_conversion_info conv_info, ck_conv_info;
     const struct pixel_format_desc *ck_format = NULL;
@@ -1538,7 +1664,7 @@ void point_filter_argb_pixels(const BYTE *src, UINT src_row_pitch, UINT src_slic
 
                     format_to_vec4(src_format, &pixel, &color);
                     if (src_format->to_rgba)
-                        src_format->to_rgba(&color, &tmp);
+                        src_format->to_rgba(&color, &tmp, palette);
                     else
                         tmp = color;
 
@@ -1686,7 +1812,8 @@ HRESULT WINAPI D3DXLoadSurfaceFromMemory(IDirect3DSurface9 *dst_surface,
     }
     else /* Stretching or format conversion. */
     {
-        if (srcformatdesc->type != FORMAT_ARGB || destformatdesc->type != FORMAT_ARGB)
+        if (((srcformatdesc->type != FORMAT_ARGB) && (srcformatdesc->type != FORMAT_INDEX)) ||
+            (destformatdesc->type != FORMAT_ARGB))
         {
             FIXME("Format conversion missing %#x -> %#x\n", src_format, surfdesc.Format);
             return E_NOTIMPL;
@@ -1698,7 +1825,7 @@ HRESULT WINAPI D3DXLoadSurfaceFromMemory(IDirect3DSurface9 *dst_surface,
         if ((filter & 0xf) == D3DX_FILTER_NONE)
         {
             convert_argb_pixels(src_memory, src_pitch, 0, &src_size, srcformatdesc,
-                    lockrect.pBits, lockrect.Pitch, 0, &dst_size, destformatdesc, color_key);
+                    lockrect.pBits, lockrect.Pitch, 0, &dst_size, destformatdesc, color_key, src_palette);
         }
         else /* if ((filter & 0xf) == D3DX_FILTER_POINT) */
         {
@@ -1708,7 +1835,7 @@ HRESULT WINAPI D3DXLoadSurfaceFromMemory(IDirect3DSurface9 *dst_surface,
             /* Always apply a point filter until D3DX_FILTER_LINEAR,
              * D3DX_FILTER_TRIANGLE and D3DX_FILTER_BOX are implemented. */
             point_filter_argb_pixels(src_memory, src_pitch, 0, &src_size, srcformatdesc,
-                    lockrect.pBits, lockrect.Pitch, 0, &dst_size, destformatdesc, color_key);
+                    lockrect.pBits, lockrect.Pitch, 0, &dst_size, destformatdesc, color_key, src_palette);
         }
 
         IDirect3DSurface9_UnlockRect(dst_surface);
@@ -1860,6 +1987,7 @@ HRESULT WINAPI D3DXSaveSurfaceToFileInMemory(ID3DXBuffer **dst_buffer, D3DXIMAGE
     switch (file_format)
     {
         case D3DXIFF_BMP:
+        case D3DXIFF_DIB:
             encoder_clsid = &CLSID_WICBmpEncoder;
             break;
         case D3DXIFF_PNG:
@@ -1870,7 +1998,6 @@ HRESULT WINAPI D3DXSaveSurfaceToFileInMemory(ID3DXBuffer **dst_buffer, D3DXIMAGE
             break;
         case D3DXIFF_DDS:
             return save_dds_surface_to_memory(dst_buffer, src_surface, src_rect);
-        case D3DXIFF_DIB:
         case D3DXIFF_HDR:
         case D3DXIFF_PFM:
         case D3DXIFF_TGA:
@@ -1983,7 +2110,7 @@ HRESULT WINAPI D3DXSaveSurfaceToFileInMemory(ID3DXBuffer **dst_buffer, D3DXIMAGE
             if (SUCCEEDED(hr))
             {
                 convert_argb_pixels(locked_rect.pBits, locked_rect.Pitch, 0, &size, src_format_desc,
-                    dst_data, dst_pitch, 0, &size, dst_format_desc, 0);
+                    dst_data, dst_pitch, 0, &size, dst_format_desc, 0, NULL);
                 IDirect3DSurface9_UnlockRect(src_surface);
             }
 
@@ -2007,6 +2134,10 @@ HRESULT WINAPI D3DXSaveSurfaceToFileInMemory(ID3DXBuffer **dst_buffer, D3DXIMAGE
     }
     size = stream_stats.cbSize.u.LowPart;
 
+    /* Remove BMP header for DIB */
+    if (file_format == D3DXIFF_DIB)
+        size -= sizeof(BITMAPFILEHEADER);
+
     hr = D3DXCreateBuffer(size, &buffer);
     if (FAILED(hr)) goto cleanup;
 
@@ -2015,6 +2146,9 @@ HRESULT WINAPI D3DXSaveSurfaceToFileInMemory(ID3DXBuffer **dst_buffer, D3DXIMAGE
     {
         void *buffer_pointer = ID3DXBuffer_GetBufferPointer(buffer);
         void *stream_data = GlobalLock(stream_hglobal);
+        /* Remove BMP header for DIB */
+        if (file_format == D3DXIFF_DIB)
+            stream_data = (void*)((BYTE*)stream_data + sizeof(BITMAPFILEHEADER));
         memcpy(buffer_pointer, stream_data, size);
         GlobalUnlock(stream_hglobal);
         *dst_buffer = buffer;

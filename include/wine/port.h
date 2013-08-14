@@ -229,7 +229,7 @@ static inline float __port_nan(void)
 int fstatvfs( int fd, struct statvfs *buf );
 #endif
 
-#ifndef HAVE_GETOPT_LONG
+#ifndef HAVE_GETOPT_LONG_ONLY
 extern char *optarg;
 extern int optind;
 extern int opterr;
@@ -252,7 +252,7 @@ extern int getopt_long (int ___argc, char *const *___argv,
 extern int getopt_long_only (int ___argc, char *const *___argv,
                              const char *__shortopts,
                              const struct option *__longopts, int *__longind);
-#endif  /* HAVE_GETOPT_LONG */
+#endif  /* HAVE_GETOPT_LONG_ONLY */
 
 #ifndef HAVE_FFS
 int ffs( int x );
@@ -353,8 +353,8 @@ extern int mkstemps(char *template, int suffix_len);
 # define _P_NOWAITO 3
 # define _P_DETACH  4
 #endif
-#ifndef HAVE_SPAWNVP
-extern int spawnvp(int mode, const char *cmdname, const char * const argv[]);
+#ifndef HAVE__SPAWNVP
+extern int _spawnvp(int mode, const char *cmdname, const char * const argv[]);
 #endif
 
 /* Interlocked functions */

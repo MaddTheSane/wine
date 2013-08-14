@@ -246,13 +246,15 @@ static UINT msi_create_directory( MSIPACKAGE *package, const WCHAR *dir )
     return ERROR_SUCCESS;
 }
 
-static MSIFILE *find_file( MSIPACKAGE *package, const WCHAR *filename )
+static MSIFILE *find_file( MSIPACKAGE *package, UINT disk_id, const WCHAR *filename )
 {
     MSIFILE *file;
 
     LIST_FOR_EACH_ENTRY( file, &package->files, MSIFILE, entry )
     {
-        if (file->state != msifs_installed && !strcmpiW( filename, file->File )) return file;
+        if (file->disk_id == disk_id &&
+            file->state != msifs_installed &&
+            !strcmpiW( filename, file->File )) return file;
     }
     return NULL;
 }
@@ -265,7 +267,7 @@ static BOOL installfiles_cb(MSIPACKAGE *package, LPCWSTR file, DWORD action,
 
     if (action == MSICABEXTRACT_BEGINEXTRACT)
     {
-        if (!(f = find_file( package, file )))
+        if (!(f = find_file( package, disk_id, file )))
         {
             TRACE("unknown file in cabinet (%s)\n", debugstr_w(file));
             return FALSE;
@@ -394,7 +396,7 @@ UINT ACTION_InstallFiles(MSIPACKAGE *package)
         }
         else if (file->state != msifs_installed && !(file->Attributes & msidbFileAttributesPatchAdded))
         {
-            ERR("compressed file wasn't installed (%s)\n", debugstr_w(file->TargetPath));
+            ERR("compressed file wasn't installed (%s)\n", debugstr_w(file->File));
             rc = ERROR_INSTALL_FAILURE;
             goto done;
         }
@@ -443,6 +445,17 @@ static void unload_mspatch(void)
     FreeLibrary(hmspatcha);
 }
 
+static MSIFILEPATCH *get_next_filepatch( MSIPACKAGE *package, const WCHAR *key )
+{
+    MSIFILEPATCH *patch;
+
+    LIST_FOR_EACH_ENTRY( patch, &package->filepatches, MSIFILEPATCH, entry )
+    {
+        if (!patch->IsApplied && !strcmpW( key, patch->File->File )) return patch;
+    }
+    return NULL;
+}
+
 static BOOL patchfiles_cb(MSIPACKAGE *package, LPCWSTR file, DWORD action,
                           LPWSTR *path, DWORD *attrs, PVOID user)
 {
@@ -455,12 +468,9 @@ static BOOL patchfiles_cb(MSIPACKAGE *package, LPCWSTR file, DWORD action,
         if (temp_folder[0] == '\0')
             GetTempPathW(MAX_PATH, temp_folder);
 
-        p = msi_get_loaded_filepatch(package, file);
-        if (!p)
-        {
-            TRACE("unknown file in cabinet (%s)\n", debugstr_w(file));
+        if (!(p = get_next_filepatch(package, file)) || !p->File->Component->Enabled)
             return FALSE;
-        }
+
         GetTempFileNameW(temp_folder, NULL, 0, patch_path);
 
         *path = strdupW(patch_path);

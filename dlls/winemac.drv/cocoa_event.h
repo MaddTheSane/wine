@@ -22,15 +22,31 @@
 #include "macdrv_cocoa.h"
 
 
+@class WineWindow;
+
+
 @interface WineEventQueue : NSObject
 {
     NSMutableArray* events;
     NSLock*         eventsLock;
 
     int             fds[2]; /* Pipe signaling when there are events queued. */
+    int             kq; /* kqueue for waiting in OnMainThread(). */
+
+    macdrv_event_handler event_handler;
 }
 
-    - (void) postEvent:(const macdrv_event*)inEvent;
+    - (void) postEvent:(macdrv_event*)inEvent;
     - (void) discardEventsMatchingMask:(macdrv_event_mask)mask forWindow:(NSWindow*)window;
 
+    - (BOOL) query:(macdrv_query*)query timeout:(NSTimeInterval)timeout processEvents:(BOOL)processEvents;
+    - (BOOL) query:(macdrv_query*)query timeout:(NSTimeInterval)timeout;
+
+    - (void) resetMouseEventPositions:(CGPoint)pos;
+
 @end
+
+void OnMainThread(dispatch_block_t block);
+
+macdrv_event* macdrv_create_event(int type, WineWindow* window) DECLSPEC_HIDDEN;
+macdrv_event* macdrv_retain_event(macdrv_event *event) DECLSPEC_HIDDEN;

@@ -171,6 +171,7 @@ struct loaded_mono
     void (CDECL *mono_runtime_quit)(void);
     void (CDECL *mono_runtime_set_shutting_down)(void);
     void (CDECL *mono_set_dirs)(const char *assembly_dir, const char *config_dir);
+    void (CDECL *mono_set_verbose_level)(DWORD level);
     char* (CDECL *mono_stringify_assembly_name)(MonoAssemblyName *aname);
     void (CDECL *mono_thread_pool_cleanup)(void);
     void (CDECL *mono_thread_suspend_all_other_threads)(void);
@@ -202,6 +203,8 @@ HRESULT WINAPI CLRMetaHost_GetRuntime(ICLRMetaHost* iface, LPCWSTR pwzVersion, R
 extern HRESULT CorDebug_Create(ICLRRuntimeHost *runtimehost, IUnknown** ppUnk) DECLSPEC_HIDDEN;
 
 extern HRESULT create_monodata(REFIID riid, LPVOID *ppObj) DECLSPEC_HIDDEN;
+
+extern HRESULT get_file_from_strongname(WCHAR* stringnameW, WCHAR* assemblies_path, int path_length) DECLSPEC_HIDDEN;
 
 extern void runtimehost_init(void);
 extern void runtimehost_uninit(void);

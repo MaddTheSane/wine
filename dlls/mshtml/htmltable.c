@@ -39,7 +39,6 @@ struct HTMLTable {
     IHTMLTable2 IHTMLTable2_iface;
     IHTMLTable3 IHTMLTable3_iface;
 
-    ConnectionPoint cp;
     nsIDOMHTMLTableElement *nstable;
 };
 
@@ -380,8 +379,21 @@ static HRESULT WINAPI HTMLTable_get_tFoot(IHTMLTable *iface, IHTMLTableSection *
 static HRESULT WINAPI HTMLTable_get_tBodies(IHTMLTable *iface, IHTMLElementCollection **p)
 {
     HTMLTable *This = impl_from_IHTMLTable(iface);
-    FIXME("(%p)->(%p)\n", This, p);
-    return E_NOTIMPL;
+    nsIDOMHTMLCollection *nscol = NULL;
+    nsresult nsres;
+
+    TRACE("(%p)->(%p)\n", This, p);
+
+    nsres = nsIDOMHTMLTableElement_GetTBodies(This->nstable, &nscol);
+    if(NS_FAILED(nsres)) {
+        ERR("GetTBodies failed: %08x\n", nsres);
+        return E_FAIL;
+    }
+
+    *p = create_collection_from_htmlcol(This->element.node.doc, nscol);
+
+    nsIDOMHTMLCollection_Release(nscol);
+    return S_OK;
 }
 
 static HRESULT WINAPI HTMLTable_get_caption(IHTMLTable *iface, IHTMLTableCaption **p)
@@ -742,9 +754,16 @@ static HRESULT HTMLTable_QI(HTMLDOMNode *iface, REFIID riid, void **ppv)
     return HTMLElement_QI(&This->element.node, riid, ppv);
 }
 
+static const cpc_entry_t HTMLTable_cpc[] = {
+    {&DIID_HTMLTableEvents},
+    HTMLELEMENT_CPC,
+    {NULL}
+};
+
 static const NodeImplVtbl HTMLTableImplVtbl = {
     HTMLTable_QI,
     HTMLElement_destructor,
+    HTMLTable_cpc,
     HTMLElement_clone,
     HTMLElement_handle_event,
     HTMLElement_get_attr_col
@@ -782,8 +801,6 @@ HRESULT HTMLTable_Create(HTMLDocumentNode *doc, nsIDOMHTMLElement *nselem, HTMLE
     /* Share the reference with nsnode */
     assert(nsres == NS_OK && (nsIDOMNode*)ret->nstable == ret->element.node.nsnode);
     nsIDOMNode_Release(ret->element.node.nsnode);
-
-    ConnectionPoint_Init(&ret->cp, &ret->element.cp_container, &DIID_HTMLTableEvents, NULL);
 
     *elem = &ret->element;
     return S_OK;

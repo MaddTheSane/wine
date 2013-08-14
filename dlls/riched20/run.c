@@ -415,7 +415,7 @@ void ME_UpdateRunFlags(ME_TextEditor *editor, ME_Run *run)
  * closest = FALSE cx = 0..7 return 0, cx = 8..15 return 1
  * closest = TRUE  cx = 0..3 return 0, cx = 4..11 return 1.
  */
-int ME_CharFromPointContext(ME_Context *c, int cx, ME_Run *run, BOOL closest)
+int ME_CharFromPointContext(ME_Context *c, int cx, ME_Run *run, BOOL closest, BOOL visual_order)
 {
   ME_String *mask_text = NULL;
   WCHAR *str;
@@ -464,13 +464,13 @@ int ME_CharFromPointContext(ME_Context *c, int cx, ME_Run *run, BOOL closest)
   return fit;
 }
 
-int ME_CharFromPoint(ME_TextEditor *editor, int cx, ME_Run *run, BOOL closest)
+int ME_CharFromPoint(ME_TextEditor *editor, int cx, ME_Run *run, BOOL closest, BOOL visual_order)
 {
     ME_Context c;
     int ret;
 
     ME_InitContext( &c, editor, ITextHost_TxGetDC( editor->texthost ) );
-    ret = ME_CharFromPointContext( &c, cx, run, closest );
+    ret = ME_CharFromPointContext( &c, cx, run, closest, visual_order );
     ME_DestroyContext(&c);
     return ret;
 }
@@ -499,7 +499,7 @@ static void ME_GetTextExtent(ME_Context *c, LPCWSTR szText, int nChars, ME_Style
  * Returns a run-relative pixel position given a run-relative character
  * position (character offset)
  */
-int ME_PointFromCharContext(ME_Context *c, ME_Run *pRun, int nOffset)
+int ME_PointFromCharContext(ME_Context *c, ME_Run *pRun, int nOffset, BOOL visual_order)
 {
   SIZE size;
   ME_String *mask_text = NULL;
@@ -532,13 +532,13 @@ int ME_PointFromCharContext(ME_Context *c, ME_Run *pRun, int nOffset)
  *
  * Calls ME_PointFromCharContext after first creating a context.
  */
-int ME_PointFromChar(ME_TextEditor *editor, ME_Run *pRun, int nOffset)
+int ME_PointFromChar(ME_TextEditor *editor, ME_Run *pRun, int nOffset, BOOL visual_order)
 {
     ME_Context c;
     int ret;
 
     ME_InitContext(&c, editor, ITextHost_TxGetDC(editor->texthost));
-    ret = ME_PointFromCharContext( &c, pRun, nOffset );
+    ret = ME_PointFromCharContext( &c, pRun, nOffset, visual_order );
     ME_DestroyContext(&c);
 
     return ret;
@@ -619,19 +619,6 @@ SIZE ME_GetRunSizeCommon(ME_Context *c, const ME_Paragraph *para, ME_Run *run, i
     return size;
   }
   return size;
-}
-
-/******************************************************************************
- * ME_GetRunSize
- * 
- * Finds width and height (but not ascent and descent) of a part of the run
- * up to given character.    
- */     
-SIZE ME_GetRunSize(ME_Context *c, const ME_Paragraph *para,
-                   ME_Run *run, int nLen, int startx)
-{
-  int asc, desc;
-  return ME_GetRunSizeCommon(c, para, run, nLen, startx, &asc, &desc);
 }
 
 /******************************************************************************

@@ -43,8 +43,6 @@ BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpvReserved)
         case DLL_PROCESS_ATTACH:
             DisableThreadLibraryCalls(hinstDLL);
             break;
-        case DLL_PROCESS_DETACH:
-            break;
     }
 
     return WIC_DllMain(hinstDLL, fdwReason, lpvReserved);
@@ -98,7 +96,7 @@ HRESULT copy_pixels(UINT bpp, const BYTE *srcbuffer,
     if (row_offset % 8 == 0)
     {
         /* everything lines up on a byte boundary */
-        UINT row;
+        INT row;
         const BYTE *src;
         BYTE *dst;
 

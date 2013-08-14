@@ -114,7 +114,7 @@
  119 stdcall -ordinal IsLFNDrive(ptr) IsLFNDriveAW
  120 stdcall -noname FileMenu_AbortInitMenu()
  121 stdcall -noname SHFlushClipboard()
- 122 stdcall -private @(long long long str long) shell.dll16.RunDLL_CallEntry16
+ 122 stdcall -private @(long long ptr str long) shell.dll16.RunDLL_CallEntry16
  123 stdcall -noname SHFreeUnusedLibraries()
  124 stdcall -noname FileMenu_AppendFilesForPidl(long ptr long)
  125 stdcall -noname FileMenu_AddFilesForPidl(long long long ptr long long ptr)
@@ -388,6 +388,7 @@
 @ stdcall SHGetSpecialFolderLocation(long long ptr)
 @ stdcall SHGetSpecialFolderPathA(long ptr long long)
 @ stdcall SHGetSpecialFolderPathW(long ptr long long)
+@ stdcall SHGetStockIconInfo(long long ptr)
 @ stdcall SHHelpShortcuts_RunDLL(long long long long) SHHelpShortcuts_RunDLLA
 @ stdcall SHHelpShortcuts_RunDLLA(long long long long)
 @ stdcall SHHelpShortcuts_RunDLLW(long long long long)
@@ -445,13 +446,13 @@
 @ stdcall StrCmpNIW(wstr wstr long) shlwapi.StrCmpNIW
 @ stdcall StrCmpNW(wstr wstr long) shlwapi.StrCmpNW
 @ stdcall StrCpyNA (ptr str long) kernel32.lstrcpynA
-@ stdcall StrCpyNW(wstr wstr long) shlwapi.StrCpyNW
+@ stdcall StrCpyNW(ptr wstr long) shlwapi.StrCpyNW
 @ stdcall StrNCmpA(str str long) shlwapi.StrCmpNA
 @ stdcall StrNCmpIA(str str long) shlwapi.StrCmpNIA
 @ stdcall StrNCmpIW(wstr wstr long) shlwapi.StrCmpNIW
 @ stdcall StrNCmpW(wstr wstr long) shlwapi.StrCmpNW
 @ stdcall StrNCpyA (ptr str long) kernel32.lstrcpynA
-@ stdcall StrNCpyW(wstr wstr long) shlwapi.StrCpyNW
+@ stdcall StrNCpyW(ptr wstr long) shlwapi.StrCpyNW
 @ stdcall StrRChrA(str str long) shlwapi.StrRChrA
 @ stdcall StrRChrIA(str str long) shlwapi.StrRChrIA
 @ stdcall StrRChrIW(wstr wstr long) shlwapi.StrRChrIW

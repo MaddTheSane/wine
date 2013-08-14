@@ -64,7 +64,7 @@
 @ stub CM_Get_DevNode_Status_Ex
 @ stdcall CM_Get_Device_IDA(ptr ptr long long) setupapi.CM_Get_Device_IDA
 @ stdcall CM_Get_Device_IDW(ptr ptr long long) setupapi.CM_Get_Device_IDW
-@ stub CM_Get_Device_ID_ExA
+@ stdcall CM_Get_Device_ID_ExA(ptr ptr long long ptr) setupapi.CM_Get_Device_ID_ExA
 @ stdcall CM_Get_Device_ID_ExW(ptr ptr long long ptr) setupapi.CM_Get_Device_ID_ExW
 @ stdcall CM_Get_Device_ID_ListA(str ptr long long) setupapi.CM_Get_Device_ID_ListA
 @ stdcall CM_Get_Device_ID_ListW(wstr ptr long long) setupapi.CM_Get_Device_ID_ListW
@@ -141,8 +141,8 @@
 @ stub CM_Query_Arbitrator_Free_Size_Ex
 @ stub CM_Query_Remove_SubTree
 @ stub CM_Query_Remove_SubTree_Ex
-@ stub CM_Reenumerate_DevNode
-@ stub CM_Reenumerate_DevNode_Ex
+@ stdcall CM_Reenumerate_DevNode(ptr long) setupapi.CM_Reenumerate_DevNode
+@ stdcall CM_Reenumerate_DevNode_Ex(ptr long ptr) setupapi.CM_Reenumerate_DevNode_Ex
 @ stub CM_Register_Device_Driver
 @ stub CM_Register_Device_Driver_Ex
 @ stub CM_Register_Device_InterfaceA

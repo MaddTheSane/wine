@@ -135,7 +135,8 @@ static HRESULT WINAPI WebBrowser_QueryInterface(IWebBrowser2 *iface, REFIID riid
         TRACE("(%p)->(IID_IMarshal %p) returning NULL\n", This, ppv);
         return E_NOINTERFACE;
     }else if(IsEqualGUID(&IID_IStdMarshalInfo, riid)) {
-        TRACE("(%p)->(IID_IStdMarshalInfo %p) returning NULL\n", This, ppv);
+        /* This is implemented since IE10 */
+        WARN("(%p)->(IID_IStdMarshalInfo %p) returning NULL\n", This, ppv);
         return E_NOINTERFACE;
     }else if(HlinkFrame_QI(&This->hlink_frame, riid, ppv)) {
         return S_OK;
@@ -258,8 +259,8 @@ static HRESULT WINAPI WebBrowser_GoBack(IWebBrowser2 *iface)
 static HRESULT WINAPI WebBrowser_GoForward(IWebBrowser2 *iface)
 {
     WebBrowser *This = impl_from_IWebBrowser2(iface);
-    FIXME("(%p)\n", This);
-    return E_NOTIMPL;
+    TRACE("(%p)\n", This);
+    return go_forward(&This->doc_host);
 }
 
 static HRESULT WINAPI WebBrowser_GoHome(IWebBrowser2 *iface)

@@ -690,7 +690,7 @@ static void test_reset(void)
 
     hr = IDirect3DDevice9Ex_GetScissorRect(device, &rect);
     ok(SUCCEEDED(hr), "Failed to get scissor rect, hr %#x.\n", hr);
-    todo_wine ok(rect.left == 0 && rect.top == 0 && rect.right == 200 && rect.bottom == 150,
+    ok(rect.left == 0 && rect.top == 0 && rect.right == 200 && rect.bottom == 150,
             "Got unexpected scissor rect {%d, %d, %d, %d}.\n",
             rect.left, rect.top, rect.right, rect.bottom);
 
@@ -698,8 +698,8 @@ static void test_reset(void)
     ok(SUCCEEDED(hr), "Failed to get viewport, hr %#x.\n", hr);
     ok(vp.X == 0, "Got unexpected vp.X %u.\n", vp.X);
     ok(vp.Y == 0, "Got unexpected vp.Y %u.\n", vp.Y);
-    todo_wine ok(vp.Width == 200, "Got unexpected vp.Width %u.\n", vp.Width);
-    todo_wine ok(vp.Height == 150, "Got unexpected vp.Height %u.\n", vp.Height);
+    ok(vp.Width == 200, "Got unexpected vp.Width %u.\n", vp.Width);
+    ok(vp.Height == 150, "Got unexpected vp.Height %u.\n", vp.Height);
     ok(vp.MinZ == 2.0f, "Got unexpected vp.MinZ %.8e.\n", vp.MinZ);
     ok(vp.MaxZ == 3.0f, "Got unexpected vp,MaxZ %.8e.\n", vp.MaxZ);
 
@@ -707,8 +707,8 @@ static void test_reset(void)
     ok(SUCCEEDED(hr), "Failed to get swapchain, hr %#x.\n", hr);
     hr = IDirect3DSwapChain9_GetPresentParameters(swapchain, &d3dpp);
     ok(SUCCEEDED(hr), "Failed to get present parameters, hr %#x.\n", hr);
-    todo_wine ok(d3dpp.BackBufferWidth == 200, "Got unexpected backbuffer width %u.\n", d3dpp.BackBufferWidth);
-    todo_wine ok(d3dpp.BackBufferHeight == 150, "Got unexpected backbuffer height %u.\n", d3dpp.BackBufferHeight);
+    ok(d3dpp.BackBufferWidth == 200, "Got unexpected backbuffer width %u.\n", d3dpp.BackBufferWidth);
+    ok(d3dpp.BackBufferHeight == 150, "Got unexpected backbuffer height %u.\n", d3dpp.BackBufferHeight);
     IDirect3DSwapChain9_Release(swapchain);
 
     memset(&d3dpp, 0, sizeof(d3dpp));
@@ -908,6 +908,54 @@ done:
     DestroyWindow(window);
 }
 
+static void test_vidmem_accounting(void)
+{
+    IDirect3DDevice9Ex *device;
+    unsigned int i;
+    HWND window;
+    HRESULT hr = D3D_OK;
+    ULONG ref;
+    UINT vidmem_start, vidmem_end;
+    INT diff;
+    IDirect3DTexture9 *textures[20];
+
+    window = CreateWindowA("static", "d3d9_test", WS_OVERLAPPEDWINDOW,
+            0, 0, 640, 480, 0, 0, 0, 0);
+    if (!(device = create_device(window, window, TRUE)))
+    {
+        skip("Failed to create a D3D device, skipping tests.\n");
+        goto done;
+    }
+
+    vidmem_start = IDirect3DDevice9_GetAvailableTextureMem(device);
+    memset(textures, 0, sizeof(textures));
+    for (i = 0; i < 20 && SUCCEEDED(hr); i++)
+    {
+        hr = IDirect3DDevice9_CreateTexture(device, 1024, 1024, 1, D3DUSAGE_RENDERTARGET,
+                D3DFMT_X8R8G8B8, D3DPOOL_DEFAULT, &textures[i], NULL);
+        /* No D3DERR_OUTOFVIDEOMEMORY in d3d9ex */
+        ok(SUCCEEDED(hr) || hr == E_OUTOFMEMORY, "Failed to create texture, hr %#x.\n", hr);
+    }
+    vidmem_end = IDirect3DDevice9_GetAvailableTextureMem(device);
+
+    diff = vidmem_start - vidmem_end;
+    diff = abs(diff);
+    ok(diff < 1024 * 1024, "Expected a video memory difference of less than 1 MB, got %u MB.\n",
+            diff / 1024 / 1024);
+
+    for (i = 0; i < 20; i++)
+    {
+        if (textures[i])
+            IDirect3DTexture9_Release(textures[i]);
+    }
+
+    ref = IDirect3DDevice9_Release(device);
+    ok(ref == 0, "The device was not properly freed: refcount %u.\n", ref);
+
+done:
+    DestroyWindow(window);
+}
+
 START_TEST(d3d9ex)
 {
     d3d9_handle = LoadLibraryA("d3d9.dll");
@@ -935,4 +983,5 @@ START_TEST(d3d9ex)
     test_texture_sysmem_create();
     test_reset();
     test_reset_resources();
+    test_vidmem_accounting();
 }

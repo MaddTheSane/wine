@@ -712,8 +712,8 @@ static void test_MapViewOfFile(void)
     ok(info.BaseAddress == ptr, "BaseAddress should have been %p but was %p instead\n", ptr, info.BaseAddress);
     ok(info.AllocationBase == ptr, "AllocationBase should have been %p but was %p instead\n", ptr, info.AllocationBase);
     ok(info.RegionSize == 0x10000, "RegionSize should have been 0x10000 but was 0x%lx\n", info.RegionSize);
-    ok(info.State == MEM_COMMIT, "State should have been MEM_RESERVE instead of 0x%x\n", info.State);
-    ok(info.Protect == PAGE_READONLY, "Protect should have been 0 instead of 0x%x\n", info.Protect);
+    ok(info.State == MEM_COMMIT, "State should have been MEM_COMMIT instead of 0x%x\n", info.State);
+    ok(info.Protect == PAGE_READONLY, "Protect should have been PAGE_READONLY instead of 0x%x\n", info.Protect);
     if (info.Type == MEM_PRIVATE)  /* win9x is different for uncommitted mappings */
     {
         ok(info.AllocationProtect == PAGE_NOACCESS,
@@ -1581,7 +1581,7 @@ static void test_VirtualProtect(void)
         { PAGE_EXECUTE_WRITECOPY | PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_READ, 0 }, /* 0xe0 */
         { PAGE_EXECUTE_WRITECOPY | PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_READ | PAGE_EXECUTE, 0 } /* 0xf0 */
     };
-    char *base;
+    char *base, *ptr;
     DWORD ret, old_prot, rw_prot, exec_prot, i, j;
     MEMORY_BASIC_INFORMATION info;
     SYSTEM_INFO si;
@@ -1650,6 +1650,27 @@ static void test_VirtualProtect(void)
         for (j = 0; j <= 4; j++)
         {
             DWORD prot = exec_prot | rw_prot;
+
+            SetLastError(0xdeadbeef);
+            ptr = VirtualAlloc(base, si.dwPageSize, MEM_COMMIT, prot);
+            if ((rw_prot && exec_prot) || (!rw_prot && !exec_prot))
+            {
+                ok(!ptr, "VirtualAlloc(%02x) should fail\n", prot);
+                ok(GetLastError() == ERROR_INVALID_PARAMETER, "expected ERROR_INVALID_PARAMETER, got %d\n", GetLastError());
+            }
+            else
+            {
+                if (prot & (PAGE_WRITECOPY | PAGE_EXECUTE_WRITECOPY))
+                {
+                    ok(!ptr, "VirtualAlloc(%02x) should fail\n", prot);
+                    ok(GetLastError() == ERROR_INVALID_PARAMETER, "expected ERROR_INVALID_PARAMETER, got %d\n", GetLastError());
+                }
+                else
+                {
+                    ok(ptr != NULL, "VirtualAlloc(%02x) error %d\n", prot, GetLastError());
+                    ok(ptr == base, "expected %p, got %p\n", base, ptr);
+                }
+            }
 
             SetLastError(0xdeadbeef);
             ret = VirtualProtect(base, si.dwPageSize, prot, &old_prot);
@@ -1734,7 +1755,7 @@ static void test_VirtualAlloc_protection(void)
         { PAGE_EXECUTE_WRITECOPY | PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_READ, FALSE }, /* 0xe0 */
         { PAGE_EXECUTE_WRITECOPY | PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_READ | PAGE_EXECUTE, FALSE } /* 0xf0 */
     };
-    char *base;
+    char *base, *ptr;
     DWORD ret, i;
     MEMORY_BASIC_INFORMATION info;
     SYSTEM_INFO si;
@@ -1771,6 +1792,10 @@ static void test_VirtualAlloc_protection(void)
                 ok(ret, "VirtualQuery failed %d\n", GetLastError());
                 ok(info.Protect == td[i].prot, "%d: got %#x != expected %#x\n", i, info.Protect, td[i].prot);
             }
+
+            SetLastError(0xdeadbeef);
+            ptr = VirtualAlloc(base, si.dwPageSize, MEM_COMMIT, td[i].prot);
+            ok(ptr == base, "%d: VirtualAlloc failed %d\n", i, GetLastError());
 
             VirtualFree(base, 0, MEM_FREE);
         }
@@ -1824,7 +1849,7 @@ static void test_CreateFileMapping_protection(void)
         { PAGE_EXECUTE_WRITECOPY | PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_READ, FALSE, PAGE_NOACCESS }, /* 0xe0 */
         { PAGE_EXECUTE_WRITECOPY | PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_READ | PAGE_EXECUTE, FALSE, PAGE_NOACCESS } /* 0xf0 */
     };
-    char *base;
+    char *base, *ptr;
     DWORD ret, i, alloc_prot, prot, old_prot;
     MEMORY_BASIC_INFORMATION info;
     SYSTEM_INFO si;
@@ -1894,6 +1919,27 @@ static void test_CreateFileMapping_protection(void)
                 ret = VirtualQuery(base, &info, sizeof(info));
                 ok(ret, "VirtualQuery failed %d\n", GetLastError());
                 ok(info.Protect == td[i].prot, "%d: got %#x != expected %#x\n", i, info.Protect, td[i].prot);
+            }
+
+            SetLastError(0xdeadbeef);
+            ptr = VirtualAlloc(base, si.dwPageSize, MEM_COMMIT, td[i].prot);
+            /* FIXME: remove once Wine is fixed */
+            if (td[i].prot == PAGE_WRITECOPY || td[i].prot == PAGE_EXECUTE_WRITECOPY)
+            ok(!ptr, "%d: VirtualAlloc(%02x) should fail\n", i, td[i].prot);
+            else
+todo_wine
+            ok(!ptr, "%d: VirtualAlloc(%02x) should fail\n", i, td[i].prot);
+todo_wine
+            ok(GetLastError() == ERROR_ACCESS_DENIED, "%d: expected ERROR_ACCESS_DENIED, got %d\n", i, GetLastError());
+
+            SetLastError(0xdeadbeef);
+            ret = VirtualProtect(base, si.dwPageSize, td[i].prot, &old_prot);
+            if (td[i].prot == PAGE_READONLY || td[i].prot == PAGE_WRITECOPY)
+                ok(ret, "%d: VirtualProtect(%02x) error %d\n", i, td[i].prot, GetLastError());
+            else
+            {
+                ok(!ret, "%d: VirtualProtect(%02x) should fail\n", i, td[i].prot);
+                ok(GetLastError() == ERROR_INVALID_PARAMETER, "%d: expected ERROR_INVALID_PARAMETER, got %d\n", i, GetLastError());
             }
 
             UnmapViewOfFile(base);
@@ -2196,7 +2242,7 @@ static void test_mapping(void)
         { FILE_MAP_EXECUTE | SECTION_MAP_EXECUTE | FILE_MAP_READ | FILE_MAP_WRITE, PAGE_EXECUTE_READWRITE }, /* 0x2e */
         { FILE_MAP_EXECUTE | SECTION_MAP_EXECUTE | FILE_MAP_READ | FILE_MAP_WRITE | FILE_MAP_COPY, PAGE_EXECUTE_READWRITE } /* 0x2f */
     };
-    void *base, *nt_base;
+    void *base, *nt_base, *ptr;
     DWORD i, j, k, ret, old_prot, prev_prot;
     SYSTEM_INFO si;
     char temp_path[MAX_PATH];
@@ -2376,6 +2422,21 @@ static void test_mapping(void)
                 }
             }
 
+            for (k = 0; k < sizeof(page_prot)/sizeof(page_prot[0]); k++)
+            {
+                /*trace("map %#x, view %#x, requested prot %#x\n", page_prot[i], view[j].prot, page_prot[k]);*/
+                SetLastError(0xdeadbeef);
+                ptr = VirtualAlloc(base, si.dwPageSize, MEM_COMMIT, page_prot[k]);
+                /* FIXME: remove once Wine is fixed */
+                if (page_prot[k] == PAGE_WRITECOPY || page_prot[k] == PAGE_EXECUTE_WRITECOPY)
+                ok(!ptr, "VirtualAlloc(%02x) should fail\n", page_prot[k]);
+                else
+todo_wine
+                ok(!ptr, "VirtualAlloc(%02x) should fail\n", page_prot[k]);
+todo_wine
+                ok(GetLastError() == ERROR_ACCESS_DENIED, "expected ERROR_ACCESS_DENIED, got %d\n", GetLastError());
+            }
+
             UnmapViewOfFile(base);
         }
 
@@ -2384,6 +2445,48 @@ static void test_mapping(void)
 
     CloseHandle(hfile);
     DeleteFile(file_name);
+}
+
+static void test_shared_memory(int is_child)
+{
+    HANDLE mapping;
+    LONG *p;
+
+    SetLastError(0xdeadbef);
+    mapping = CreateFileMapping(INVALID_HANDLE_VALUE, NULL, PAGE_READWRITE, 0, 4096, "winetest_virtual.c");
+    ok(mapping != 0, "CreateFileMapping error %d\n", GetLastError());
+    if (is_child)
+        ok(GetLastError() == ERROR_ALREADY_EXISTS, "expected ERROR_ALREADY_EXISTS, got %d\n", GetLastError());
+
+    SetLastError(0xdeadbef);
+    p = MapViewOfFile(mapping, FILE_MAP_READ|FILE_MAP_WRITE, 0, 0, 4096);
+    ok(p != NULL, "MapViewOfFile error %d\n", GetLastError());
+
+    if (is_child)
+    {
+        ok(*p == 0x1a2b3c4d, "expected 0x1a2b3c4d in child, got %#x\n", *p);
+    }
+    else
+    {
+        char **argv;
+        char cmdline[MAX_PATH];
+        PROCESS_INFORMATION pi;
+        STARTUPINFO si = { sizeof(si) };
+        DWORD ret;
+
+        *p = 0x1a2b3c4d;
+
+        winetest_get_mainargs(&argv);
+        sprintf(cmdline, "\"%s\" virtual sharedmem", argv[0]);
+        ret = CreateProcess(argv[0], cmdline, NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi);
+        ok(ret, "CreateProcess(%s) error %d\n", cmdline, GetLastError());
+        winetest_wait_child_process(pi.hProcess);
+        CloseHandle(pi.hThread);
+        CloseHandle(pi.hProcess);
+    }
+
+    UnmapViewOfFile(p);
+    CloseHandle(mapping);
 }
 
 START_TEST(virtual)
@@ -2397,6 +2500,11 @@ START_TEST(virtual)
         if (!strcmp(argv[2], "sleep"))
         {
             Sleep(5000); /* spawned process runs for at most 5 seconds */
+            return;
+        }
+        if (!strcmp(argv[2], "sharedmem"))
+        {
+            test_shared_memory(1);
             return;
         }
         while (1)
@@ -2424,6 +2532,7 @@ START_TEST(virtual)
     pNtMapViewOfSection = (void *)GetProcAddress(GetModuleHandle("ntdll.dll"), "NtMapViewOfSection");
     pNtUnmapViewOfSection = (void *)GetProcAddress(GetModuleHandle("ntdll.dll"), "NtUnmapViewOfSection");
 
+    test_shared_memory(0);
     test_mapping();
     test_CreateFileMapping_protection();
     test_VirtualAlloc_protection();

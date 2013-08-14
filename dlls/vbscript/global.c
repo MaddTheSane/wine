@@ -114,6 +114,16 @@ static HRESULT return_int(VARIANT *res, int val)
     return S_OK;
 }
 
+static HRESULT return_bool(VARIANT *res, int val)
+{
+    if(res) {
+        V_VT(res) = VT_BOOL;
+        V_BOOL(res) = val != 0 ? VARIANT_TRUE : VARIANT_FALSE;
+    }
+
+    return S_OK;
+}
+
 static inline HRESULT return_double(VARIANT *res, double val)
 {
     if(res) {
@@ -150,12 +160,20 @@ static HRESULT to_int(VARIANT *v, int *ret)
         *ret = V_I4(v);
         break;
     case VT_R8: {
-        double n = round(V_R8(v));
+        double n = floor(V_R8(v)+0.5);
+        INT32 i;
+
         if(!is_int32(n)) {
             FIXME("%lf is out of int range\n", n);
             return E_FAIL;
         }
-        *ret = n;
+
+        /* Round half to even */
+        i = n;
+        if(i%2 && n-V_R8(v) == 0.5)
+            i--;
+
+        *ret = i;
         break;
     }
     case VT_BOOL:
@@ -370,8 +388,18 @@ static HRESULT Global_CCur(vbdisp_t *This, VARIANT *arg, unsigned args_cnt, VARI
 
 static HRESULT Global_CInt(vbdisp_t *This, VARIANT *arg, unsigned args_cnt, VARIANT *res)
 {
-    FIXME("\n");
-    return E_NOTIMPL;
+    int val;
+    HRESULT hres;
+
+    TRACE("%s\n", debugstr_variant(arg));
+
+    assert(args_cnt == 1);
+
+    hres = to_int(arg, &val);
+    if(FAILED(hres))
+        return hres;
+
+    return return_int(res, val);
 }
 
 static HRESULT Global_CLng(vbdisp_t *This, VARIANT *arg, unsigned args_cnt, VARIANT *res)
@@ -382,8 +410,30 @@ static HRESULT Global_CLng(vbdisp_t *This, VARIANT *arg, unsigned args_cnt, VARI
 
 static HRESULT Global_CBool(vbdisp_t *This, VARIANT *arg, unsigned args_cnt, VARIANT *res)
 {
-    FIXME("\n");
-    return E_NOTIMPL;
+    int val;
+    TRACE("%s\n", debugstr_variant(arg));
+
+    assert(args_cnt == 1);
+
+    switch(V_VT(arg)) {
+    case VT_I2:
+        val = V_I2(arg);
+        break;
+    case VT_I4:
+        val = V_I4(arg);
+        break;
+    case VT_R4:
+	val = V_R4(arg) > 0.0 || V_R4(arg) < 0.0;
+        break;
+    case VT_R8:
+        val = V_R8(arg) > 0.0 || V_R8(arg) < 0.0;
+        break;
+    default:
+        ERR("Not a numeric value: %s\n", debugstr_variant(arg));
+        return E_FAIL;
+    }
+
+    return return_bool(res, val);
 }
 
 static HRESULT Global_CByte(vbdisp_t *This, VARIANT *arg, unsigned args_cnt, VARIANT *res)
@@ -1010,8 +1060,7 @@ static HRESULT Global_InStr(vbdisp_t *This, VARIANT *args, unsigned args_cnt, VA
     case 4:
         FIXME("unsupported compare argument %s\n", debugstr_variant(args));
         return E_NOTIMPL;
-    default:
-        assert(0);
+    DEFAULT_UNREACHABLE;
     }
 
     if(startv) {
@@ -1088,7 +1137,7 @@ static HRESULT Global_Chr(vbdisp_t *This, VARIANT *arg, unsigned args_cnt, VARIA
     if(FAILED(hres))
         return hres;
 
-    if(c <= 0 || c >= 0x100) {
+    if(c < 0 || c >= 0x100) {
         FIXME("invalid arg\n");
         return E_FAIL;
     }
@@ -1609,250 +1658,98 @@ static HRESULT Global_GetRef(vbdisp_t *This, VARIANT *arg, unsigned args_cnt, VA
     return E_NOTIMPL;
 }
 
-static HRESULT Global_vbUseDefault(vbdisp_t *This, VARIANT *arg, unsigned args_cnt, VARIANT *res)
-{
-    FIXME("\n");
-    return E_NOTIMPL;
-}
-
-static HRESULT Global_vbBinaryCompare(vbdisp_t *This, VARIANT *arg, unsigned args_cnt, VARIANT *res)
-{
-    FIXME("\n");
-    return E_NOTIMPL;
-}
-
-static HRESULT Global_vbTextCompare(vbdisp_t *This, VARIANT *arg, unsigned args_cnt, VARIANT *res)
-{
-    FIXME("\n");
-    return E_NOTIMPL;
-}
-
-static HRESULT Global_vbDatabaseCompare(vbdisp_t *This, VARIANT *arg, unsigned args_cnt, VARIANT *res)
-{
-    FIXME("\n");
-    return E_NOTIMPL;
-}
-
-static HRESULT Global_vbGeneralDate(vbdisp_t *This, VARIANT *arg, unsigned args_cnt, VARIANT *res)
-{
-    FIXME("\n");
-    return E_NOTIMPL;
-}
-
-static HRESULT Global_vbLongDate(vbdisp_t *This, VARIANT *arg, unsigned args_cnt, VARIANT *res)
-{
-    FIXME("\n");
-    return E_NOTIMPL;
-}
-
-static HRESULT Global_vbShortDate(vbdisp_t *This, VARIANT *arg, unsigned args_cnt, VARIANT *res)
-{
-    FIXME("\n");
-    return E_NOTIMPL;
-}
-
-static HRESULT Global_vbLongTime(vbdisp_t *This, VARIANT *arg, unsigned args_cnt, VARIANT *res)
-{
-    FIXME("\n");
-    return E_NOTIMPL;
-}
-
-static HRESULT Global_vbShortTime(vbdisp_t *This, VARIANT *arg, unsigned args_cnt, VARIANT *res)
-{
-    FIXME("\n");
-    return E_NOTIMPL;
-}
-
-static HRESULT Global_vbObjectError(vbdisp_t *This, VARIANT *arg, unsigned args_cnt, VARIANT *res)
-{
-    FIXME("\n");
-    return E_NOTIMPL;
-}
-
-static HRESULT Global_vbBlack(vbdisp_t *This, VARIANT *arg, unsigned args_cnt, VARIANT *res)
-{
-    FIXME("\n");
-    return E_NOTIMPL;
-}
-
-static HRESULT Global_vbBlue(vbdisp_t *This, VARIANT *arg, unsigned args_cnt, VARIANT *res)
-{
-    FIXME("\n");
-    return E_NOTIMPL;
-}
-
-static HRESULT Global_vbCyan(vbdisp_t *This, VARIANT *arg, unsigned args_cnt, VARIANT *res)
-{
-    FIXME("\n");
-    return E_NOTIMPL;
-}
-
-static HRESULT Global_vbGreen(vbdisp_t *This, VARIANT *arg, unsigned args_cnt, VARIANT *res)
-{
-    FIXME("\n");
-    return E_NOTIMPL;
-}
-
-static HRESULT Global_vbMagenta(vbdisp_t *This, VARIANT *arg, unsigned args_cnt, VARIANT *res)
-{
-    FIXME("\n");
-    return E_NOTIMPL;
-}
-
-static HRESULT Global_vbRed(vbdisp_t *This, VARIANT *arg, unsigned args_cnt, VARIANT *res)
-{
-    FIXME("\n");
-    return E_NOTIMPL;
-}
-
-static HRESULT Global_vbWhite(vbdisp_t *This, VARIANT *arg, unsigned args_cnt, VARIANT *res)
-{
-    FIXME("\n");
-    return E_NOTIMPL;
-}
-
-static HRESULT Global_vbYellow(vbdisp_t *This, VARIANT *arg, unsigned args_cnt, VARIANT *res)
-{
-    FIXME("\n");
-    return E_NOTIMPL;
-}
-
-static HRESULT Global_vbCr(vbdisp_t *This, VARIANT *arg, unsigned args_cnt, VARIANT *res)
-{
-    FIXME("\n");
-    return E_NOTIMPL;
-}
-
-static HRESULT Global_vbCrLf(vbdisp_t *This, VARIANT *arg, unsigned args_cnt, VARIANT *res)
-{
-    FIXME("\n");
-    return E_NOTIMPL;
-}
-
-static HRESULT Global_vbNewLine(vbdisp_t *This, VARIANT *arg, unsigned args_cnt, VARIANT *res)
-{
-    FIXME("\n");
-    return E_NOTIMPL;
-}
-
-static HRESULT Global_vbFormFeed(vbdisp_t *This, VARIANT *arg, unsigned args_cnt, VARIANT *res)
-{
-    FIXME("\n");
-    return E_NOTIMPL;
-}
-
-static HRESULT Global_vbLf(vbdisp_t *This, VARIANT *arg, unsigned args_cnt, VARIANT *res)
-{
-    FIXME("\n");
-    return E_NOTIMPL;
-}
-
-static HRESULT Global_vbNullChar(vbdisp_t *This, VARIANT *arg, unsigned args_cnt, VARIANT *res)
-{
-    FIXME("\n");
-    return E_NOTIMPL;
-}
-
-static HRESULT Global_vbNullString(vbdisp_t *This, VARIANT *arg, unsigned args_cnt, VARIANT *res)
-{
-    FIXME("\n");
-    return E_NOTIMPL;
-}
-
-static HRESULT Global_vbTab(vbdisp_t *This, VARIANT *arg, unsigned args_cnt, VARIANT *res)
-{
-    FIXME("\n");
-    return E_NOTIMPL;
-}
-
-static HRESULT Global_vbVerticalTab(vbdisp_t *This, VARIANT *arg, unsigned args_cnt, VARIANT *res)
-{
-    FIXME("\n");
-    return E_NOTIMPL;
-}
+static const string_constant_t vbCr          = {1, {'\r'}};
+static const string_constant_t vbCrLf        = {2, {'\r','\n'}};
+static const string_constant_t vbNewLine     = {2, {'\r','\n'}};
+static const string_constant_t vbFormFeed    = {1, {0xc}};
+static const string_constant_t vbLf          = {1, {'\n'}};
+static const string_constant_t vbNullChar    = {1};
+static const string_constant_t vbNullString  = {0};
+static const string_constant_t vbTab         = {1, {'\t'}};
+static const string_constant_t vbVerticalTab = {1, {0xb}};
 
 static const builtin_prop_t global_props[] = {
-    {DISPID_GLOBAL_VBUSESYSTEM,        NULL, BP_GET, 0},
-    {DISPID_GLOBAL_USESYSTEMDAYOFWEEK, NULL, BP_GET, 0},
-    {DISPID_GLOBAL_VBSUNDAY,           NULL, BP_GET, 1},
-    {DISPID_GLOBAL_VBMONDAY,           NULL, BP_GET, 2},
-    {DISPID_GLOBAL_VBTUESDAY,          NULL, BP_GET, 3},
-    {DISPID_GLOBAL_VBWEDNESDAY,        NULL, BP_GET, 4},
-    {DISPID_GLOBAL_VBTHURSDAY,         NULL, BP_GET, 5},
-    {DISPID_GLOBAL_VBFRIDAY,           NULL, BP_GET, 6},
-    {DISPID_GLOBAL_VBSATURDAY,         NULL, BP_GET, 7},
-    {DISPID_GLOBAL_VBFIRSTJAN1,        NULL, BP_GET, 1},
-    {DISPID_GLOBAL_VBFIRSTFOURDAYS,    NULL, BP_GET, 2},
-    {DISPID_GLOBAL_VBFIRSTFULLWEEK,    NULL, BP_GET, 3},
-    {DISPID_GLOBAL_VBOKONLY,           NULL, BP_GET, MB_OK},
-    {DISPID_GLOBAL_VBOKCANCEL,         NULL, BP_GET, MB_OKCANCEL},
-    {DISPID_GLOBAL_VBABORTRETRYIGNORE, NULL, BP_GET, MB_ABORTRETRYIGNORE},
-    {DISPID_GLOBAL_VBYESNOCANCEL,      NULL, BP_GET, MB_YESNOCANCEL},
-    {DISPID_GLOBAL_VBYESNO,            NULL, BP_GET, MB_YESNO},
-    {DISPID_GLOBAL_VBRETRYCANCEL,      NULL, BP_GET, MB_RETRYCANCEL},
-    {DISPID_GLOBAL_VBCRITICAL,         NULL, BP_GET, MB_ICONHAND},
-    {DISPID_GLOBAL_VBQUESTION,         NULL, BP_GET, MB_ICONQUESTION},
-    {DISPID_GLOBAL_VBEXCLAMATION,      NULL, BP_GET, MB_ICONEXCLAMATION},
-    {DISPID_GLOBAL_VBINFORMATION,      NULL, BP_GET, MB_ICONASTERISK},
-    {DISPID_GLOBAL_VBDEFAULTBUTTON1,   NULL, BP_GET, MB_DEFBUTTON1},
-    {DISPID_GLOBAL_VBDEFAULTBUTTON2,   NULL, BP_GET, MB_DEFBUTTON2},
-    {DISPID_GLOBAL_VBDEFAULTBUTTON3,   NULL, BP_GET, MB_DEFBUTTON3},
-    {DISPID_GLOBAL_VBDEFAULTBUTTON4,   NULL, BP_GET, MB_DEFBUTTON4},
-    {DISPID_GLOBAL_VBAPPLICATIONMODAL, NULL, BP_GET, MB_APPLMODAL},
-    {DISPID_GLOBAL_VBSYSTEMMODAL,      NULL, BP_GET, MB_SYSTEMMODAL},
-    {DISPID_GLOBAL_VBOK,               NULL, BP_GET, IDOK},
-    {DISPID_GLOBAL_VBCANCEL,           NULL, BP_GET, IDCANCEL},
-    {DISPID_GLOBAL_VBABORT,            NULL, BP_GET, IDABORT},
-    {DISPID_GLOBAL_VBRETRY,            NULL, BP_GET, IDRETRY},
-    {DISPID_GLOBAL_VBIGNORE,           NULL, BP_GET, IDIGNORE},
-    {DISPID_GLOBAL_VBYES,              NULL, BP_GET, IDYES},
-    {DISPID_GLOBAL_VBNO,               NULL, BP_GET, IDNO},
-    {DISPID_GLOBAL_VBEMPTY,            NULL, BP_GET, VT_EMPTY},
-    {DISPID_GLOBAL_VBNULL,             NULL, BP_GET, VT_NULL},
-    {DISPID_GLOBAL_VBINTEGER,          NULL, BP_GET, VT_I2},
-    {DISPID_GLOBAL_VBLONG,             NULL, BP_GET, VT_I4},
-    {DISPID_GLOBAL_VBSINGLE,           NULL, BP_GET, VT_R4},
-    {DISPID_GLOBAL_VBDOUBLE,           NULL, BP_GET, VT_R8},
-    {DISPID_GLOBAL_VBCURRENCY,         NULL, BP_GET, VT_CY},
-    {DISPID_GLOBAL_VBDATE,             NULL, BP_GET, VT_DATE},
-    {DISPID_GLOBAL_VBSTRING,           NULL, BP_GET, VT_BSTR},
-    {DISPID_GLOBAL_VBOBJECT,           NULL, BP_GET, VT_DISPATCH},
-    {DISPID_GLOBAL_VBERROR,            NULL, BP_GET, VT_ERROR},
-    {DISPID_GLOBAL_VBBOOLEAN,          NULL, BP_GET, VT_BOOL},
-    {DISPID_GLOBAL_VBVARIANT,          NULL, BP_GET, VT_VARIANT},
-    {DISPID_GLOBAL_VBDATAOBJECT,       NULL, BP_GET, VT_UNKNOWN},
-    {DISPID_GLOBAL_VBDECIMAL,          NULL, BP_GET, VT_DECIMAL},
-    {DISPID_GLOBAL_VBBYTE,             NULL, BP_GET, VT_UI1},
-    {DISPID_GLOBAL_VBARRAY,            NULL, BP_GET, VT_ARRAY},
-    {DISPID_GLOBAL_VBTRUE,             NULL, BP_GET, VARIANT_TRUE},
-    {DISPID_GLOBAL_VBFALSE,            NULL, BP_GET, VARIANT_FALSE},
-    {DISPID_GLOBAL_VBUSEDEFAULT,       Global_vbUseDefault, BP_GET},
-    {DISPID_GLOBAL_VBBINARYCOMPARE,    Global_vbBinaryCompare, BP_GET},
-    {DISPID_GLOBAL_VBTEXTCOMPARE,      Global_vbTextCompare, BP_GET},
-    {DISPID_GLOBAL_VBDATABASECOMPARE,  Global_vbDatabaseCompare, BP_GET},
-    {DISPID_GLOBAL_VBGENERALDATE,      Global_vbGeneralDate, BP_GET},
-    {DISPID_GLOBAL_VBLONGDATE,         Global_vbLongDate, BP_GET},
-    {DISPID_GLOBAL_VBSHORTDATE,        Global_vbShortDate, BP_GET},
-    {DISPID_GLOBAL_VBLONGTIME,         Global_vbLongTime, BP_GET},
-    {DISPID_GLOBAL_VBSHORTTIME,        Global_vbShortTime, BP_GET},
-    {DISPID_GLOBAL_VBOBJECTERROR,      Global_vbObjectError, BP_GET},
-    {DISPID_GLOBAL_VBBLACK,            Global_vbBlack, BP_GET},
-    {DISPID_GLOBAL_VBBLUE,             Global_vbBlue, BP_GET},
-    {DISPID_GLOBAL_VBCYAN,             Global_vbCyan, BP_GET},
-    {DISPID_GLOBAL_VBGREEN,            Global_vbGreen, BP_GET},
-    {DISPID_GLOBAL_VBMAGENTA,          Global_vbMagenta, BP_GET},
-    {DISPID_GLOBAL_VBRED,              Global_vbRed, BP_GET},
-    {DISPID_GLOBAL_VBWHITE,            Global_vbWhite, BP_GET},
-    {DISPID_GLOBAL_VBYELLOW,           Global_vbYellow, BP_GET},
-    {DISPID_GLOBAL_VBCR,               Global_vbCr, BP_GET},
-    {DISPID_GLOBAL_VBCRLF,             Global_vbCrLf, BP_GET},
-    {DISPID_GLOBAL_VBNEWLINE,          Global_vbNewLine, BP_GET},
-    {DISPID_GLOBAL_VBFORMFEED,         Global_vbFormFeed, BP_GET},
-    {DISPID_GLOBAL_VBLF,               Global_vbLf, BP_GET},
-    {DISPID_GLOBAL_VBNULLCHAR,         Global_vbNullChar, BP_GET},
-    {DISPID_GLOBAL_VBNULLSTRING,       Global_vbNullString, BP_GET},
-    {DISPID_GLOBAL_VBTAB,              Global_vbTab, BP_GET},
-    {DISPID_GLOBAL_VBVERTICALTAB,      Global_vbVerticalTab, BP_GET},
+    {DISPID_GLOBAL_VBUSESYSTEM,        NULL, BP_GET, VT_I2, 0},
+    {DISPID_GLOBAL_USESYSTEMDAYOFWEEK, NULL, BP_GET, VT_I2, 0},
+    {DISPID_GLOBAL_VBSUNDAY,           NULL, BP_GET, VT_I2, 1},
+    {DISPID_GLOBAL_VBMONDAY,           NULL, BP_GET, VT_I2, 2},
+    {DISPID_GLOBAL_VBTUESDAY,          NULL, BP_GET, VT_I2, 3},
+    {DISPID_GLOBAL_VBWEDNESDAY,        NULL, BP_GET, VT_I2, 4},
+    {DISPID_GLOBAL_VBTHURSDAY,         NULL, BP_GET, VT_I2, 5},
+    {DISPID_GLOBAL_VBFRIDAY,           NULL, BP_GET, VT_I2, 6},
+    {DISPID_GLOBAL_VBSATURDAY,         NULL, BP_GET, VT_I2, 7},
+    {DISPID_GLOBAL_VBFIRSTJAN1,        NULL, BP_GET, VT_I2, 1},
+    {DISPID_GLOBAL_VBFIRSTFOURDAYS,    NULL, BP_GET, VT_I2, 2},
+    {DISPID_GLOBAL_VBFIRSTFULLWEEK,    NULL, BP_GET, VT_I2, 3},
+    {DISPID_GLOBAL_VBOKONLY,           NULL, BP_GET, VT_I2, MB_OK},
+    {DISPID_GLOBAL_VBOKCANCEL,         NULL, BP_GET, VT_I2, MB_OKCANCEL},
+    {DISPID_GLOBAL_VBABORTRETRYIGNORE, NULL, BP_GET, VT_I2, MB_ABORTRETRYIGNORE},
+    {DISPID_GLOBAL_VBYESNOCANCEL,      NULL, BP_GET, VT_I2, MB_YESNOCANCEL},
+    {DISPID_GLOBAL_VBYESNO,            NULL, BP_GET, VT_I2, MB_YESNO},
+    {DISPID_GLOBAL_VBRETRYCANCEL,      NULL, BP_GET, VT_I2, MB_RETRYCANCEL},
+    {DISPID_GLOBAL_VBCRITICAL,         NULL, BP_GET, VT_I2, MB_ICONHAND},
+    {DISPID_GLOBAL_VBQUESTION,         NULL, BP_GET, VT_I2, MB_ICONQUESTION},
+    {DISPID_GLOBAL_VBEXCLAMATION,      NULL, BP_GET, VT_I2, MB_ICONEXCLAMATION},
+    {DISPID_GLOBAL_VBINFORMATION,      NULL, BP_GET, VT_I2, MB_ICONASTERISK},
+    {DISPID_GLOBAL_VBDEFAULTBUTTON1,   NULL, BP_GET, VT_I2, MB_DEFBUTTON1},
+    {DISPID_GLOBAL_VBDEFAULTBUTTON2,   NULL, BP_GET, VT_I2, MB_DEFBUTTON2},
+    {DISPID_GLOBAL_VBDEFAULTBUTTON3,   NULL, BP_GET, VT_I2, MB_DEFBUTTON3},
+    {DISPID_GLOBAL_VBDEFAULTBUTTON4,   NULL, BP_GET, VT_I2, MB_DEFBUTTON4},
+    {DISPID_GLOBAL_VBAPPLICATIONMODAL, NULL, BP_GET, VT_I2, MB_APPLMODAL},
+    {DISPID_GLOBAL_VBSYSTEMMODAL,      NULL, BP_GET, VT_I2, MB_SYSTEMMODAL},
+    {DISPID_GLOBAL_VBOK,               NULL, BP_GET, VT_I2, IDOK},
+    {DISPID_GLOBAL_VBCANCEL,           NULL, BP_GET, VT_I2, IDCANCEL},
+    {DISPID_GLOBAL_VBABORT,            NULL, BP_GET, VT_I2, IDABORT},
+    {DISPID_GLOBAL_VBRETRY,            NULL, BP_GET, VT_I2, IDRETRY},
+    {DISPID_GLOBAL_VBIGNORE,           NULL, BP_GET, VT_I2, IDIGNORE},
+    {DISPID_GLOBAL_VBYES,              NULL, BP_GET, VT_I2, IDYES},
+    {DISPID_GLOBAL_VBNO,               NULL, BP_GET, VT_I2, IDNO},
+    {DISPID_GLOBAL_VBEMPTY,            NULL, BP_GET, VT_I2, VT_EMPTY},
+    {DISPID_GLOBAL_VBNULL,             NULL, BP_GET, VT_I2, VT_NULL},
+    {DISPID_GLOBAL_VBINTEGER,          NULL, BP_GET, VT_I2, VT_I2},
+    {DISPID_GLOBAL_VBLONG,             NULL, BP_GET, VT_I2, VT_I4},
+    {DISPID_GLOBAL_VBSINGLE,           NULL, BP_GET, VT_I2, VT_R4},
+    {DISPID_GLOBAL_VBDOUBLE,           NULL, BP_GET, VT_I2, VT_R8},
+    {DISPID_GLOBAL_VBCURRENCY,         NULL, BP_GET, VT_I2, VT_CY},
+    {DISPID_GLOBAL_VBDATE,             NULL, BP_GET, VT_I2, VT_DATE},
+    {DISPID_GLOBAL_VBSTRING,           NULL, BP_GET, VT_I2, VT_BSTR},
+    {DISPID_GLOBAL_VBOBJECT,           NULL, BP_GET, VT_I2, VT_DISPATCH},
+    {DISPID_GLOBAL_VBERROR,            NULL, BP_GET, VT_I2, VT_ERROR},
+    {DISPID_GLOBAL_VBBOOLEAN,          NULL, BP_GET, VT_I2, VT_BOOL},
+    {DISPID_GLOBAL_VBVARIANT,          NULL, BP_GET, VT_I2, VT_VARIANT},
+    {DISPID_GLOBAL_VBDATAOBJECT,       NULL, BP_GET, VT_I2, VT_UNKNOWN},
+    {DISPID_GLOBAL_VBDECIMAL,          NULL, BP_GET, VT_I2, VT_DECIMAL},
+    {DISPID_GLOBAL_VBBYTE,             NULL, BP_GET, VT_I2, VT_UI1},
+    {DISPID_GLOBAL_VBARRAY,            NULL, BP_GET, VT_I2, VT_ARRAY},
+    {DISPID_GLOBAL_VBTRUE,             NULL, BP_GET, VT_I2, VARIANT_TRUE},
+    {DISPID_GLOBAL_VBFALSE,            NULL, BP_GET, VT_I2, VARIANT_FALSE},
+    {DISPID_GLOBAL_VBUSEDEFAULT,       NULL, BP_GET, VT_I2, -2},
+    {DISPID_GLOBAL_VBBINARYCOMPARE,    NULL, BP_GET, VT_I2, 0},
+    {DISPID_GLOBAL_VBTEXTCOMPARE,      NULL, BP_GET, VT_I2, 1},
+    {DISPID_GLOBAL_VBDATABASECOMPARE,  NULL, BP_GET, VT_I2, 2},
+    {DISPID_GLOBAL_VBGENERALDATE,      NULL, BP_GET, VT_I2, 0},
+    {DISPID_GLOBAL_VBLONGDATE,         NULL, BP_GET, VT_I2, 1},
+    {DISPID_GLOBAL_VBSHORTDATE,        NULL, BP_GET, VT_I2, 2},
+    {DISPID_GLOBAL_VBLONGTIME,         NULL, BP_GET, VT_I2, 3},
+    {DISPID_GLOBAL_VBSHORTTIME,        NULL, BP_GET, VT_I2, 4},
+    {DISPID_GLOBAL_VBOBJECTERROR,      NULL, BP_GET, VT_I4, 0x80040000},
+    {DISPID_GLOBAL_VBBLACK,            NULL, BP_GET, VT_I4, 0x000000},
+    {DISPID_GLOBAL_VBBLUE,             NULL, BP_GET, VT_I4, 0xff0000},
+    {DISPID_GLOBAL_VBCYAN,             NULL, BP_GET, VT_I4, 0xffff00},
+    {DISPID_GLOBAL_VBGREEN,            NULL, BP_GET, VT_I4, 0x00ff00},
+    {DISPID_GLOBAL_VBMAGENTA,          NULL, BP_GET, VT_I4, 0xff00ff},
+    {DISPID_GLOBAL_VBRED,              NULL, BP_GET, VT_I4, 0x0000ff},
+    {DISPID_GLOBAL_VBWHITE,            NULL, BP_GET, VT_I4, 0xffffff},
+    {DISPID_GLOBAL_VBYELLOW,           NULL, BP_GET, VT_I4, 0x00ffff},
+    {DISPID_GLOBAL_VBCR,               NULL, BP_GET, VT_BSTR, (UINT_PTR)&vbCr},
+    {DISPID_GLOBAL_VBCRLF,             NULL, BP_GET, VT_BSTR, (UINT_PTR)&vbCrLf},
+    {DISPID_GLOBAL_VBNEWLINE,          NULL, BP_GET, VT_BSTR, (UINT_PTR)&vbNewLine},
+    {DISPID_GLOBAL_VBFORMFEED,         NULL, BP_GET, VT_BSTR, (UINT_PTR)&vbFormFeed},
+    {DISPID_GLOBAL_VBLF,               NULL, BP_GET, VT_BSTR, (UINT_PTR)&vbLf},
+    {DISPID_GLOBAL_VBNULLCHAR,         NULL, BP_GET, VT_BSTR, (UINT_PTR)&vbNullChar},
+    {DISPID_GLOBAL_VBNULLSTRING,       NULL, BP_GET, VT_BSTR, (UINT_PTR)&vbNullString},
+    {DISPID_GLOBAL_VBTAB,              NULL, BP_GET, VT_BSTR, (UINT_PTR)&vbTab},
+    {DISPID_GLOBAL_VBVERTICALTAB,      NULL, BP_GET, VT_BSTR, (UINT_PTR)&vbVerticalTab},
     {DISPID_GLOBAL_CCUR,                      Global_CCur, 0, 1},
     {DISPID_GLOBAL_CINT,                      Global_CInt, 0, 1},
     {DISPID_GLOBAL_CLNG,                      Global_CLng, 0, 1},
@@ -1960,10 +1857,10 @@ static const builtin_prop_t global_props[] = {
     {DISPID_GLOBAL_EXECUTE,                   Global_Execute, 0, 1},
     {DISPID_GLOBAL_EXECUTEGLOBAL,             Global_ExecuteGlobal, 0, 1},
     {DISPID_GLOBAL_GETREF,                    Global_GetRef, 0, 1},
-    {DISPID_GLOBAL_VBMSGBOXHELPBUTTON,     NULL, BP_GET, MB_HELP},
-    {DISPID_GLOBAL_VBMSGBOXSETFOREGROUND,  NULL, BP_GET, MB_SETFOREGROUND},
-    {DISPID_GLOBAL_VBMSGBOXRIGHT,          NULL, BP_GET, MB_RIGHT},
-    {DISPID_GLOBAL_VBMSGBOXRTLREADING,     NULL, BP_GET, MB_RTLREADING}
+    {DISPID_GLOBAL_VBMSGBOXHELPBUTTON,     NULL, BP_GET, VT_I4, MB_HELP},
+    {DISPID_GLOBAL_VBMSGBOXSETFOREGROUND,  NULL, BP_GET, VT_I4, MB_SETFOREGROUND},
+    {DISPID_GLOBAL_VBMSGBOXRIGHT,          NULL, BP_GET, VT_I4, MB_RIGHT},
+    {DISPID_GLOBAL_VBMSGBOXRTLREADING,     NULL, BP_GET, VT_I4, MB_RTLREADING}
 };
 
 HRESULT init_global(script_ctx_t *ctx)

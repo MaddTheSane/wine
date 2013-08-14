@@ -527,7 +527,7 @@ int CDECL MSVCRT__stricoll( const char* str1, const char* str2 )
 /*********************************************************************
  *              _strncoll_l (MSVCRT.@)
  */
-int CDECL MSVCRT_strncoll_l( const char* str1, const char* str2, MSVCRT_size_t count, MSVCRT__locale_t locale )
+int CDECL MSVCRT__strncoll_l( const char* str1, const char* str2, MSVCRT_size_t count, MSVCRT__locale_t locale )
 {
     MSVCRT_pthreadlocinfo locinfo;
 
@@ -540,11 +540,11 @@ int CDECL MSVCRT_strncoll_l( const char* str1, const char* str2, MSVCRT_size_t c
 }
 
 /*********************************************************************
- *              strncoll (MSVCRT.@)
+ *              _strncoll (MSVCRT.@)
  */
-int CDECL MSVCRT_strncoll( const char* str1, const char* str2, MSVCRT_size_t count )
+int CDECL MSVCRT__strncoll( const char* str1, const char* str2, MSVCRT_size_t count )
 {
-    return MSVCRT_strncoll_l(str1, str2, count, NULL);
+    return MSVCRT__strncoll_l(str1, str2, count, NULL);
 }
 
 /*********************************************************************
@@ -569,6 +569,19 @@ int CDECL MSVCRT__strnicoll_l( const char* str1, const char* str2, MSVCRT_size_t
 int CDECL MSVCRT__strnicoll( const char* str1, const char* str2, MSVCRT_size_t count )
 {
     return MSVCRT__strnicoll_l(str1, str2, count, NULL);
+}
+
+/*********************************************************************
+ *                  strncpy (MSVCRT.@)
+ */
+char* __cdecl MSVCRT_strncpy(char *dst, const char *src, MSVCRT_size_t len)
+{
+    MSVCRT_size_t i;
+
+    for(i=0; i<len; i++)
+        if((dst[i] = src[i]) == '\0') break;
+
+    return dst;
 }
 
 /*********************************************************************
@@ -861,7 +874,7 @@ __int64 CDECL MSVCRT_strtoi64(const char *nptr, char **endptr, int base)
 /*********************************************************************
  *  _atoi_l (MSVCRT.@)
  */
-int MSVCRT__atoi_l(const char *str, MSVCRT__locale_t locale)
+int __cdecl MSVCRT__atoi_l(const char *str, MSVCRT__locale_t locale)
 {
     __int64 ret = MSVCRT_strtoi64_l(str, NULL, 10, locale);
 
@@ -873,6 +886,34 @@ int MSVCRT__atoi_l(const char *str, MSVCRT__locale_t locale)
         *MSVCRT__errno() = MSVCRT_ERANGE;
     }
     return ret;
+}
+
+/*********************************************************************
+ *  atoi (MSVCRT.@)
+ */
+int __cdecl MSVCRT_atoi(const char *str)
+{
+    BOOL minus = FALSE;
+    int ret = 0;
+
+    if(!str)
+        return 0;
+
+    while(isspace(*str)) str++;
+
+    if(*str == '+') {
+        str++;
+    }else if(*str == '-') {
+        minus = TRUE;
+        str++;
+    }
+
+    while(*str>='0' && *str<='9') {
+        ret = ret*10+*str-'0';
+        str++;
+    }
+
+    return minus ? -ret : ret;
 }
 
 /*********************************************************************
@@ -1187,7 +1228,7 @@ int CDECL MSVCRT__ui64tow_s( unsigned __int64 value, MSVCRT_wchar_t *str,
         return MSVCRT_EINVAL;
     }
 
-    memcpy(str, pos, buffer-pos+65);
+    memcpy(str, pos, (buffer-pos+65)*sizeof(MSVCRT_wchar_t));
     return 0;
 }
 
@@ -1248,7 +1289,7 @@ int CDECL _ultoa_s(MSVCRT_ulong value, char *str, MSVCRT_size_t size, int radix)
 /*********************************************************************
  *  _ultow_s (MSVCRT.@)
  */
-int CDECL _ultow_s(MSVCRT_ulong value, WCHAR *str, MSVCRT_size_t size, int radix)
+int CDECL _ultow_s(MSVCRT_ulong value, MSVCRT_wchar_t *str, MSVCRT_size_t size, int radix)
 {
     MSVCRT_ulong digit;
     WCHAR buffer[33], *pos;
@@ -1295,7 +1336,7 @@ int CDECL _ultow_s(MSVCRT_ulong value, WCHAR *str, MSVCRT_size_t size, int radix
         return MSVCRT_ERANGE;
     }
 
-    memcpy(str, pos, len * sizeof(WCHAR));
+    memcpy(str, pos, len * sizeof(MSVCRT_wchar_t));
     return 0;
 }
 
@@ -1556,6 +1597,38 @@ int CDECL MSVCRT_I10_OUTPUT(MSVCRT__LDOUBLE ld80, int prec, int flag, struct _I1
 void * __cdecl MSVCRT_memcpy( void *dst, const void *src, size_t n )
 {
     return memmove( dst, src, n );
+}
+
+/*********************************************************************
+ *		    memset (MSVCRT.@)
+ */
+void* __cdecl MSVCRT_memset(void *dst, int c, MSVCRT_size_t n)
+{
+    return memset(dst, c, n);
+}
+
+/*********************************************************************
+ *		    strchr (MSVCRT.@)
+ */
+char* __cdecl MSVCRT_strchr(const char *str, int c)
+{
+    return strchr(str, c);
+}
+
+/*********************************************************************
+ *                  memchr   (MSVCRT.@)
+ */
+void* __cdecl MSVCRT_memchr(const void *ptr, int c, MSVCRT_size_t n)
+{
+    return memchr(ptr, c, n);
+}
+
+/*********************************************************************
+ *                  strncmp   (MSVCRT.@)
+ */
+int __cdecl MSVCRT_strncmp(const char *str1, const char *str2, MSVCRT_size_t len)
+{
+    return strncmp(str1, str2, len);
 }
 
 /*********************************************************************

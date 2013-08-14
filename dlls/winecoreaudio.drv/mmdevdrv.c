@@ -263,6 +263,7 @@ BOOL WINAPI DllMain(HINSTANCE dll, DWORD reason, void *reserved)
         break;
 
     case DLL_PROCESS_DETACH:
+        if (reserved) break;
         DeleteCriticalSection(&g_sessions_lock);
         break;
     }
@@ -428,7 +429,7 @@ HRESULT WINAPI AUDDRV_GetEndpointIDs(EDataFlow flow, WCHAR ***ids,
     }
 
     *guids = HeapAlloc(GetProcessHeap(), 0, ndevices * sizeof(GUID));
-    if(!*ids){
+    if(!*guids){
         HeapFree(GetProcessHeap(), 0, *ids);
         HeapFree(GetProcessHeap(), 0, devices);
         return E_OUTOFMEMORY;

@@ -1,6 +1,6 @@
 /*
  * Copyright 2005, 2007-2008 Henri Verbeet
- * Copyright (C) 2007-2008 Stefan Dösinger(for CodeWeavers)
+ * Copyright (C) 2007-2013 Stefan Dösinger(for CodeWeavers)
  * Copyright (C) 2008 Jason Green(for TransGaming)
  *
  * This library is free software; you can redistribute it and/or
@@ -932,32 +932,32 @@ static void fog_test(IDirect3DDevice9 *device)
 
     /* Gets full z based fog with linear fog, no fog with specular color */
     struct sVertex untransformed_1[] = {
-        {-1,    -1,   0.1f,         0xFFFF0000,     0xFF000000  },
-        {-1,     0,   0.1f,         0xFFFF0000,     0xFF000000  },
-        { 0,     0,   0.1f,         0xFFFF0000,     0xFF000000  },
-        { 0,    -1,   0.1f,         0xFFFF0000,     0xFF000000  },
+        {-1,    -1,   0.1f,         0xffff0000,     0xff000000  },
+        {-1,     0,   0.1f,         0xffff0000,     0xff000000  },
+        { 0,     0,   0.1f,         0xffff0000,     0xff000000  },
+        { 0,    -1,   0.1f,         0xffff0000,     0xff000000  },
     };
     /* Ok, I am too lazy to deal with transform matrices */
     struct sVertex untransformed_2[] = {
-        {-1,     0,   1.0f,         0xFFFF0000,     0xFF000000  },
-        {-1,     1,   1.0f,         0xFFFF0000,     0xFF000000  },
-        { 0,     1,   1.0f,         0xFFFF0000,     0xFF000000  },
-        { 0,     0,   1.0f,         0xFFFF0000,     0xFF000000  },
+        {-1,     0,   1.0f,         0xffff0000,     0xff000000  },
+        {-1,     1,   1.0f,         0xffff0000,     0xff000000  },
+        { 0,     1,   1.0f,         0xffff0000,     0xff000000  },
+        { 0,     0,   1.0f,         0xffff0000,     0xff000000  },
     };
     /* Untransformed ones. Give them a different diffuse color to make the test look
      * nicer. It also makes making sure that they are drawn correctly easier.
      */
     struct sVertexT transformed_1[] = {
-        {320,    0,   1.0f, 1.0f,   0xFFFFFF00,     0xFF000000  },
-        {640,    0,   1.0f, 1.0f,   0xFFFFFF00,     0xFF000000  },
-        {640,  240,   1.0f, 1.0f,   0xFFFFFF00,     0xFF000000  },
-        {320,  240,   1.0f, 1.0f,   0xFFFFFF00,     0xFF000000  },
+        {320,    0,   1.0f, 1.0f,   0xffffff00,     0xff000000  },
+        {640,    0,   1.0f, 1.0f,   0xffffff00,     0xff000000  },
+        {640,  240,   1.0f, 1.0f,   0xffffff00,     0xff000000  },
+        {320,  240,   1.0f, 1.0f,   0xffffff00,     0xff000000  },
     };
     struct sVertexT transformed_2[] = {
-        {320,  240,   1.0f, 1.0f,   0xFFFFFF00,     0xFF000000  },
-        {640,  240,   1.0f, 1.0f,   0xFFFFFF00,     0xFF000000  },
-        {640,  480,   1.0f, 1.0f,   0xFFFFFF00,     0xFF000000  },
-        {320,  480,   1.0f, 1.0f,   0xFFFFFF00,     0xFF000000  },
+        {320,  240,   1.0f, 1.0f,   0xffffff00,     0xff000000  },
+        {640,  240,   1.0f, 1.0f,   0xffffff00,     0xff000000  },
+        {640,  480,   1.0f, 1.0f,   0xffffff00,     0xff000000  },
+        {320,  480,   1.0f, 1.0f,   0xffffff00,     0xff000000  },
     };
     struct vertex rev_fog_quads[] = {
        {-1.0,   -1.0,   0.1,    0x000000ff},
@@ -1037,7 +1037,7 @@ static void fog_test(IDirect3DDevice9 *device)
     ok(hr == D3D_OK, "Turning off lighting returned %08x\n", hr);
     hr = IDirect3DDevice9_SetRenderState(device, D3DRS_FOGENABLE, TRUE);
     ok(hr == D3D_OK, "Turning on fog calculations returned %08x\n", hr);
-    hr = IDirect3DDevice9_SetRenderState(device, D3DRS_FOGCOLOR, 0xFF00FF00 /* A nice green */);
+    hr = IDirect3DDevice9_SetRenderState(device, D3DRS_FOGCOLOR, 0xff00ff00 /* A nice green */);
     ok(hr == D3D_OK, "Setting fog color returned %#08x\n", hr);
 
     /* First test: Both table fog and vertex fog off */
@@ -1101,11 +1101,11 @@ static void fog_test(IDirect3DDevice9 *device)
     }
 
     color = getPixelColor(device, 160, 360);
-    ok(color == 0x00FF0000, "Untransformed vertex with no table or vertex fog has color %08x\n", color);
+    ok(color == 0x00ff0000, "Untransformed vertex with no table or vertex fog has color %08x\n", color);
     color = getPixelColor(device, 160, 120);
     ok(color_match(color, 0x0000ff00, 1), "Untransformed vertex with linear vertex fog has color %08x\n", color);
     color = getPixelColor(device, 480, 120);
-    ok(color == 0x00FFFF00, "Transformed vertex with linear vertex fog has color %08x\n", color);
+    ok(color == 0x00ffff00, "Transformed vertex with linear vertex fog has color %08x\n", color);
     if(caps.RasterCaps & D3DPRASTERCAPS_FOGTABLE)
     {
         color = getPixelColor(device, 480, 360);
@@ -1117,7 +1117,7 @@ static void fog_test(IDirect3DDevice9 *device)
          * The settings above result in no fogging with vertex fog
          */
         color = getPixelColor(device, 480, 120);
-        ok(color == 0x00FFFF00, "Transformed vertex with linear vertex fog has color %08x\n", color);
+        ok(color == 0x00ffff00, "Transformed vertex with linear vertex fog has color %08x\n", color);
         trace("Info: Table fog not supported by this device\n");
     }
     IDirect3DDevice9_Present(device, NULL, NULL, NULL, NULL);
@@ -1177,7 +1177,7 @@ static void fog_test(IDirect3DDevice9 *device)
     color = getPixelColor(device, 160, 120);
     ok(color_match(color, 0x0000ff00, 1), "Untransformed vertex with vertex fog and z = 1.0 has color %08x\n", color);
     color = getPixelColor(device, 480, 120);
-    ok(color == 0x00FFFF00, "Transformed vertex with linear vertex fog has color %08x\n", color);
+    ok(color == 0x00ffff00, "Transformed vertex with linear vertex fog has color %08x\n", color);
     IDirect3DDevice9_Present(device, NULL, NULL, NULL, NULL);
 
     /* Test "reversed" fog without shaders. With shaders this fails on a few Windows D3D implementations,
@@ -1347,10 +1347,10 @@ static void fog_test(IDirect3DDevice9 *device)
     {
         struct sVertex untransformed_3[] =
         {
-            {-1.0,-1.0,   0.4999f,      0xFFFF0000,     0xFF000000  },
-            {-1.0, 1.0,   0.4999f,      0xFFFF0000,     0xFF000000  },
-            { 1.0,-1.0,   0.4999f,      0xFFFF0000,     0xFF000000  },
-            { 1.0, 1.0,   0.4999f,      0xFFFF0000,     0xFF000000  },
+            {-1.0,-1.0,   0.4999f,      0xffff0000,     0xff000000  },
+            {-1.0, 1.0,   0.4999f,      0xffff0000,     0xff000000  },
+            { 1.0,-1.0,   0.4999f,      0xffff0000,     0xff000000  },
+            { 1.0, 1.0,   0.4999f,      0xffff0000,     0xff000000  },
         };
 
         hr = IDirect3DDevice9_Clear(device, 0, NULL, D3DCLEAR_TARGET, 0xffff00ff, 0.0, 0);
@@ -1798,10 +1798,10 @@ static void fog_with_shader_test(IDirect3DDevice9 *device)
     };
 
     static struct vertex quad[] = {
-        {-1.0f, -1.0f,  0.0f,          0xFFFF0000  },
-        {-1.0f,  1.0f,  0.0f,          0xFFFF0000  },
-        { 1.0f, -1.0f,  0.0f,          0xFFFF0000  },
-        { 1.0f,  1.0f,  0.0f,          0xFFFF0000  },
+        {-1.0f, -1.0f,  0.0f,          0xffff0000  },
+        {-1.0f,  1.0f,  0.0f,          0xffff0000  },
+        { 1.0f, -1.0f,  0.0f,          0xffff0000  },
+        { 1.0f,  1.0f,  0.0f,          0xffff0000  },
     };
 
     static const D3DVERTEXELEMENT9 decl_elements[] = {
@@ -2021,7 +2021,7 @@ static void fog_with_shader_test(IDirect3DDevice9 *device)
     ok(hr == D3D_OK, "Turning off lighting failed (%08x)\n", hr);
     hr = IDirect3DDevice9_SetRenderState(device, D3DRS_FOGENABLE, TRUE);
     ok(hr == D3D_OK, "Turning on fog calculations failed (%08x)\n", hr);
-    hr = IDirect3DDevice9_SetRenderState(device, D3DRS_FOGCOLOR, 0xFF00FF00 /* A nice green */);
+    hr = IDirect3DDevice9_SetRenderState(device, D3DRS_FOGCOLOR, 0xff00ff00 /* A nice green */);
     ok(hr == D3D_OK, "Setting fog color failed (%08x)\n", hr);
     hr = IDirect3DDevice9_SetVertexDeclaration(device, vertex_declaration);
     ok(SUCCEEDED(hr), "SetVertexDeclaration failed (%08x)\n", hr);
@@ -2488,7 +2488,8 @@ static void z_range_test(IDirect3DDevice9 *device)
     IDirect3DVertexShader9 *shader;
     IDirect3DVertexDeclaration9 *decl;
     D3DCAPS9 caps;
-    const DWORD shader_code[] = {
+    static const DWORD shader_code[] =
+    {
         0xfffe0101,                                     /* vs_1_1           */
         0x0000001f, 0x80000000, 0x900f0000,             /* dcl_position v0  */
         0x00000001, 0xc00f0000, 0x90e40000,             /* mov oPos, v0     */
@@ -3759,7 +3760,7 @@ static void float_texture_test(IDirect3DDevice9 *device)
     ok(hr == D3D_OK, "IDirect3DDevice9_SetTexture failed with %08x\n", hr);
 
     color = getPixelColor(device, 240, 320);
-    ok(color == 0x0000FFFF, "R32F with value 0.0 has color %08x, expected 0x0000FFFF\n", color);
+    ok(color == 0x0000ffff, "R32F with value 0.0 has color %08x, expected 0x0000ffff\n", color);
 
     hr = IDirect3DDevice9_Present(device, NULL, NULL, NULL, NULL);
     ok(hr == D3D_OK, "IDirect3DDevice9_Present failed with %08x\n", hr);
@@ -4221,13 +4222,13 @@ static void texture_transform_flags_test(IDirect3DDevice9 *device)
         ok(hr == D3D_OK, "IDirect3DDevice9_EndScene failed with %08x\n", hr);
     }
     color = getPixelColor(device, 160, 360);
-    ok(color_match(color, 0x00FFFF00, 1), "quad 1 has color %08x, expected 0x00FFFF00\n", color);
+    ok(color_match(color, 0x00ffff00, 1), "quad 1 has color %08x, expected 0x00ffff00\n", color);
     color = getPixelColor(device, 160, 120);
     ok(color == 0x00000000, "quad 2 has color %08x, expected 0x0000000\n", color);
     color = getPixelColor(device, 480, 120);
-    ok(color_match(color, 0x0000FF00, 1), "quad 3 has color %08x, expected 0x0000FF00\n", color);
+    ok(color_match(color, 0x0000ff00, 1), "quad 3 has color %08x, expected 0x0000ff00\n", color);
     color = getPixelColor(device, 480, 360);
-    ok(color_match(color, 0x00FF0000, 1), "quad 4 has color %08x, expected 0x00FF0000\n", color);
+    ok(color_match(color, 0x00ff0000, 1), "quad 4 has color %08x, expected 0x00ff0000\n", color);
     hr = IDirect3DDevice9_Present(device, NULL, NULL, NULL, NULL);
     ok(hr == D3D_OK, "IDirect3DDevice9_Present failed with %08x\n", hr);
 
@@ -4305,14 +4306,14 @@ static void texture_transform_flags_test(IDirect3DDevice9 *device)
         ok(hr == D3D_OK, "IDirect3DDevice9_EndScene failed with %08x\n", hr);
     }
     color = getPixelColor(device, 160, 360);
-    ok(color_match(color, 0x00FF0000, 1), "quad 1 has color %08x, expected 0x00FF0000\n", color);
+    ok(color_match(color, 0x00ff0000, 1), "quad 1 has color %08x, expected 0x00ff0000\n", color);
     color = getPixelColor(device, 160, 120);
     ok(color == 0x00000000, "quad 2 has color %08x, expected 0x0000000\n", color);
     color = getPixelColor(device, 480, 120);
     ok(color_match(color, 0x00ff8000, 1) || color == 0x00000000,
        "quad 3 has color %08x, expected 0x00ff8000\n", color);
     color = getPixelColor(device, 480, 360);
-    ok(color_match(color, 0x0033cc00, 1) || color_match(color, 0x00FF0000, 1),
+    ok(color_match(color, 0x0033cc00, 1) || color_match(color, 0x00ff0000, 1),
        "quad 4 has color %08x, expected 0x0033cc00\n", color);
     hr = IDirect3DDevice9_Present(device, NULL, NULL, NULL, NULL);
     ok(hr == D3D_OK, "IDirect3DDevice9_Present failed with %08x\n", hr);
@@ -4688,7 +4689,8 @@ static void texdepth_test(IDirect3DDevice9 *device)
     const float texdepth_test_data5[] = { 1.00, -0.1, 0.0, 0.0};
     const float texdepth_test_data6[] = { 1.00,  0.5, 0.0, 0.0};
     const float texdepth_test_data7[] = { 0.50,  0.0, 0.0, 0.0};
-    DWORD shader_code[] = {
+    static const DWORD shader_code[] =
+    {
         0xffff0104,                                                                 /* ps_1_4               */
         0x00000051, 0xa00f0001, 0x00000000, 0x00000000, 0x3f800000, 0x3f800000,     /* def c1, 0, 0, 1, 1   */
         0x00000001, 0x800f0005, 0xa0e40000,                                         /* mov r5, c0           */
@@ -4919,20 +4921,22 @@ static void texkill_test(IDirect3DDevice9 *device)
          1.0,    1.0,   0.0,    0.9,   -0.1,   -0.1,    0.9,
     };
 
-    DWORD shader_code_11[] = {
-    0xffff0101,                                                             /* ps_1_1                     */
-    0x00000051, 0xa00f0000, 0x3f800000, 0x00000000, 0x00000000, 0x3f800000, /* def c0, 1.0, 0.0, 0.0, 1.0 */
-    0x00000041, 0xb00f0000,                                                 /* texkill t0                 */
-    0x00000001, 0x800f0000, 0xa0e40000,                                     /* mov r0, c0                 */
-    0x0000ffff                                                              /* end                        */
+    static const DWORD shader_code_11[] =
+    {
+        0xffff0101,                                                             /* ps_1_1                     */
+        0x00000051, 0xa00f0000, 0x3f800000, 0x00000000, 0x00000000, 0x3f800000, /* def c0, 1.0, 0.0, 0.0, 1.0 */
+        0x00000041, 0xb00f0000,                                                 /* texkill t0                 */
+        0x00000001, 0x800f0000, 0xa0e40000,                                     /* mov r0, c0                 */
+        0x0000ffff                                                              /* end                        */
     };
-    DWORD shader_code_20[] = {
-    0xffff0200,                                                             /* ps_2_0                     */
-    0x0200001f, 0x80000000, 0xb00f0000,                                     /* dcl t0                     */
-    0x05000051, 0xa00f0000, 0x00000000, 0x00000000, 0x3f800000, 0x3f800000, /* def c0, 0.0, 0.0, 1.0, 1.0 */
-    0x01000041, 0xb00f0000,                                                 /* texkill t0                 */
-    0x02000001, 0x800f0800, 0xa0e40000,                                     /* mov oC0, c0                */
-    0x0000ffff                                                              /* end                        */
+    static const DWORD shader_code_20[] =
+    {
+        0xffff0200,                                                             /* ps_2_0                     */
+        0x0200001f, 0x80000000, 0xb00f0000,                                     /* dcl t0                     */
+        0x05000051, 0xa00f0000, 0x00000000, 0x00000000, 0x3f800000, 0x3f800000, /* def c0, 0.0, 0.0, 1.0, 1.0 */
+        0x01000041, 0xb00f0000,                                                 /* texkill t0                 */
+        0x02000001, 0x800f0800, 0xa0e40000,                                     /* mov oC0, c0                */
+        0x0000ffff                                                              /* end                        */
     };
 
     hr = IDirect3DDevice9_Clear(device, 0, NULL, D3DCLEAR_TARGET, 0xff00ff00, 0.0, 0);
@@ -5070,13 +5074,15 @@ static void x8l8v8u8_test(IDirect3DDevice9 *device)
     IDirect3DPixelShader9 *shader2;
     D3DLOCKED_RECT lr;
     DWORD color;
-    DWORD shader_code[] = {
+    static const DWORD shader_code[] =
+    {
         0xffff0101,                             /* ps_1_1       */
         0x00000042, 0xb00f0000,                 /* tex t0       */
         0x00000001, 0x800f0000, 0xb0e40000,     /* mov r0, t0   */
         0x0000ffff                              /* end          */
     };
-    DWORD shader_code2[] = {
+    static const DWORD shader_code2[] =
+    {
         0xffff0101,                             /* ps_1_1       */
         0x00000042, 0xb00f0000,                 /* tex t0       */
         0x00000001, 0x800f0000, 0xb0ff0000,     /* mov r0, t0.w */
@@ -5280,7 +5286,8 @@ static void test_constant_clamp_vs(IDirect3DDevice9 *device)
     IDirect3DVertexDeclaration9 *decl;
     HRESULT hr;
     DWORD color;
-    DWORD shader_code_11[] =  {
+    static const DWORD shader_code_11[] =
+    {
         0xfffe0101,                                         /* vs_1_1           */
         0x0000001f, 0x80000000, 0x900f0000,                 /* dcl_position v0  */
         0x00000001, 0x800f0001, 0xa0e40001,                 /* mov r1, c1       */
@@ -5288,7 +5295,8 @@ static void test_constant_clamp_vs(IDirect3DDevice9 *device)
         0x00000001, 0xc00f0000, 0x90e40000,                 /* mov oPos, v0     */
         0x0000ffff                                          /* end              */
     };
-    DWORD shader_code_11_2[] =  {
+    static const DWORD shader_code_11_2[] =
+    {
         0xfffe0101,                                         /* vs_1_1           */
         0x00000051, 0xa00f0001, 0x3fa00000, 0xbf000000, 0xbfc00000, 0x3f800000, /* dcl ... */
         0x00000051, 0xa00f0002, 0xbf000000, 0x3fa00000, 0x40000000, 0x3f800000, /* dcl ... */
@@ -5298,7 +5306,8 @@ static void test_constant_clamp_vs(IDirect3DDevice9 *device)
         0x00000001, 0xc00f0000, 0x90e40000,                 /* mov oPos, v0     */
         0x0000ffff                                          /* end              */
     };
-    DWORD shader_code_20[] =  {
+    static const DWORD shader_code_20[] =
+    {
         0xfffe0200,                                         /* vs_2_0           */
         0x0200001f, 0x80000000, 0x900f0000,                 /* dcl_position v0  */
         0x02000001, 0x800f0001, 0xa0e40001,                 /* mov r1, c1       */
@@ -5306,7 +5315,8 @@ static void test_constant_clamp_vs(IDirect3DDevice9 *device)
         0x02000001, 0xc00f0000, 0x90e40000,                 /* mov oPos, v0     */
         0x0000ffff                                          /* end              */
     };
-    DWORD shader_code_20_2[] =  {
+    static const DWORD shader_code_20_2[] =
+    {
         0xfffe0200,                                         /* vs_2_0           */
         0x05000051, 0xa00f0001, 0x3fa00000, 0xbf000000, 0xbfc00000, 0x3f800000,
         0x05000051, 0xa00f0002, 0xbf000000, 0x3fa00000, 0x40000000, 0x3f800000,
@@ -5436,33 +5446,36 @@ static void constant_clamp_ps_test(IDirect3DDevice9 *device)
     IDirect3DPixelShader9 *shader_11, *shader_12, *shader_14, *shader_20;
     HRESULT hr;
     DWORD color;
-    DWORD shader_code_11[] =  {
+    static const DWORD shader_code_11[] =
+    {
         0xffff0101,                                         /* ps_1_1           */
         0x00000001, 0x800f0001, 0xa0e40001,                 /* mov r1, c1       */
         0x00000002, 0x800f0000, 0x80e40001, 0xa0e40002,     /* add r0, r1, c2   */
         0x0000ffff                                          /* end              */
     };
-    DWORD shader_code_12[] =  {
+    static const DWORD shader_code_12[] =
+    {
         0xffff0102,                                         /* ps_1_2           */
         0x00000001, 0x800f0001, 0xa0e40001,                 /* mov r1, c1       */
         0x00000002, 0x800f0000, 0x80e40001, 0xa0e40002,     /* add r0, r1, c2   */
         0x0000ffff                                          /* end              */
     };
-    /* Skip 1.3 shaders because we have only 4 quads(ok, could make them smaller if needed).
-     * 1.2 and 1.4 shaders behave the same, so it's unlikely that 1.3 shaders are different.
-     * During development of this test, 1.3 shaders were verified too
-     */
-    DWORD shader_code_14[] =  {
+    /* Skip 1.3 shaders because we have only 4 quads (ok, could make them
+     * smaller if needed). 1.2 and 1.4 shaders behave the same, so it's
+     * unlikely that 1.3 shaders are different. During development of this
+     * test, 1.3 shaders were verified too. */
+    static const DWORD shader_code_14[] =
+    {
         0xffff0104,                                         /* ps_1_4           */
-        /* Try to make one constant local. It gets clamped too, although the binary contains
-         * the bigger numbers
-         */
+        /* Try to make one constant local. It gets clamped too, although the
+         * binary contains the bigger numbers. */
         0x00000051, 0xa00f0002, 0xbf000000, 0x3fa00000, 0x40000000, 0x3f800000, /* def c2, -0.5, 1.25, 2, 1 */
         0x00000001, 0x800f0001, 0xa0e40001,                 /* mov r1, c1       */
         0x00000002, 0x800f0000, 0x80e40001, 0xa0e40002,     /* add r0, r1, c2   */
         0x0000ffff                                          /* end              */
     };
-    DWORD shader_code_20[] =  {
+    static const DWORD shader_code_20[] =
+    {
         0xffff0200,                                         /* ps_2_0           */
         0x02000001, 0x800f0001, 0xa0e40001,                 /* mov r1, c1       */
         0x03000002, 0x800f0000, 0x80e40001, 0xa0e40002,     /* add r0, r1, c2   */
@@ -5697,13 +5710,15 @@ static void cnd_test(IDirect3DDevice9 *device)
 {
     IDirect3DPixelShader9 *shader_11, *shader_12, *shader_13, *shader_14;
     IDirect3DPixelShader9 *shader_11_coissue, *shader_12_coissue, *shader_13_coissue, *shader_14_coissue;
+    IDirect3DPixelShader9 *shader_11_coissue_2, *shader_12_coissue_2, *shader_13_coissue_2, *shader_14_coissue_2;
     HRESULT hr;
     DWORD color;
-    /* ps 1.x shaders are rather picky with writemasks and source swizzles. The dp3 is
-     * used to copy r0.r to all components of r1, then copy r1.a to c0.a. Essentially it
-     * does a mov r0.a, r0.r, which isn't allowed as-is in 1.x pixel shaders.
-     */
-    DWORD shader_code_11[] =  {
+    /* ps 1.x shaders are rather picky with writemasks and source swizzles.
+     * The dp3 is used to copy r0.r to all components of r1, then copy r1.a to
+     * r0.a. Essentially it does a mov r0.a, r0.r, which isn't allowed as-is
+     * in 1.x pixel shaders. */
+    static const DWORD shader_code_11[] =
+    {
         0xffff0101,                                                                 /* ps_1_1               */
         0x00000051, 0xa00f0000, 0x3f800000, 0x00000000, 0x00000000, 0x00000000,     /* def c0, 1, 0, 0, 0   */
         0x00000040, 0xb00f0000,                                                     /* texcoord t0          */
@@ -5713,7 +5728,8 @@ static void cnd_test(IDirect3DDevice9 *device)
         0x00000050, 0x800f0000, 0x80ff0000, 0xa0e40001, 0xa0e40002,                 /* cnd r0, r0.a, c1, c2 */
         0x0000ffff                                                                  /* end                  */
     };
-    DWORD shader_code_12[] =  {
+    static const DWORD shader_code_12[] =
+    {
         0xffff0102,                                                                 /* ps_1_2               */
         0x00000051, 0xa00f0000, 0x3f800000, 0x00000000, 0x00000000, 0x00000000,     /* def c0, 1, 0, 0, 0   */
         0x00000040, 0xb00f0000,                                                     /* texcoord t0          */
@@ -5723,7 +5739,8 @@ static void cnd_test(IDirect3DDevice9 *device)
         0x00000050, 0x800f0000, 0x80ff0000, 0xa0e40001, 0xa0e40002,                 /* cnd r0, r0.a, c1, c2 */
         0x0000ffff                                                                  /* end                  */
     };
-    DWORD shader_code_13[] =  {
+    static const DWORD shader_code_13[] =
+    {
         0xffff0103,                                                                 /* ps_1_3               */
         0x00000051, 0xa00f0000, 0x3f800000, 0x00000000, 0x00000000, 0x00000000,     /* def c0, 1, 0, 0, 0   */
         0x00000040, 0xb00f0000,                                                     /* texcoord t0          */
@@ -5733,7 +5750,8 @@ static void cnd_test(IDirect3DDevice9 *device)
         0x00000050, 0x800f0000, 0x80ff0000, 0xa0e40001, 0xa0e40002,                 /* cnd r0, r0.a, c1, c2 */
         0x0000ffff                                                                  /* end                  */
     };
-    DWORD shader_code_14[] =  {
+    static const DWORD shader_code_14[] =
+    {
         0xffff0104,                                                                 /* ps_1_3               */
         0x00000051, 0xa00f0000, 0x00000000, 0x00000000, 0x00000000, 0x3f800000,     /* def c0, 0, 0, 0, 1   */
         0x00000040, 0x80070000, 0xb0e40000,                                         /* texcrd r0, t0        */
@@ -5754,7 +5772,8 @@ static void cnd_test(IDirect3DDevice9 *device)
      * constants are clamped to [-1;1], a 2.0 is constructed by adding c0.r(=1.0) to c0.r into r1.r,
      * then r1(2.0, 0.0, 0.0, 0.0) is passed to dp3(explained above).
      */
-    DWORD shader_code_11_coissue[] =  {
+    static const DWORD shader_code_11_coissue[] =
+    {
         0xffff0101,                                                             /* ps_1_1                   */
         0x00000051, 0xa00f0000, 0x3f800000, 0x00000000, 0x00000000, 0x00000000, /* def c0, 1, 0, 0, 0       */
         0x00000051, 0xa00f0003, 0x3f000000, 0x3f000000, 0x3f000000, 0x00000000, /* def c3, 0.5, 0.5, 0.5, 0 */
@@ -5762,13 +5781,29 @@ static void cnd_test(IDirect3DDevice9 *device)
         0x00000001, 0x800f0000, 0xb0e40000,                                     /* mov r0, t0               */
         0x00000003, 0x800f0000, 0x80e40000, 0xa0e40003,                         /* sub r0, r0, c3           */
         0x00000002, 0x800f0001, 0xa0e40000, 0xa0e40000,                         /* add r1, c0, c0           */
-        0x00000008, 0x800f0001, 0x80e40000, 0x80e40001,                         /* dp3, r1, r0, r1          */
+        0x00000008, 0x800f0001, 0x80e40000, 0x80e40001,                         /* dp3 r1, r0, r1           */
         0x00000001, 0x80080000, 0x80ff0001,                                     /* mov r0.a, r1.a           */
-        /* 0x40000000 = D3DSI_COISSUE */
-        0x40000050, 0x80070000, 0x80ff0000, 0xa0e40001, 0xa0e40002,             /* cnd r0.xyz, r0.a, c1, c2 */
+        0x40000050, 0x80070000, 0x80ff0000, 0xa0e40001, 0xa0e40002,             /* +cnd r0.xyz, r0.a, c1, c2*/
         0x0000ffff                                                              /* end                      */
     };
-    DWORD shader_code_12_coissue[] =  {
+    static const DWORD shader_code_11_coissue_2[] =
+    {
+        0xffff0101,                                                             /* ps_1_1                   */
+        0x00000051, 0xa00f0000, 0x3f800000, 0x00000000, 0x00000000, 0x00000000, /* def c0, 1, 0, 0, 0       */
+        0x00000051, 0xa00f0003, 0x3f000000, 0x3f000000, 0x3f000000, 0x00000000, /* def c3, 0.5, 0.5, 0.5, 0 */
+        0x00000040, 0xb00f0000,                                                 /* texcoord t0              */
+        0x00000001, 0x800f0000, 0xb0e40000,                                     /* mov r0, t0               */
+        0x00000003, 0x800f0000, 0x80e40000, 0xa0e40003,                         /* sub r0, r0, c3           */
+        0x00000002, 0x800f0001, 0xa0e40000, 0xa0e40000,                         /* add r1, c0, c0           */
+        0x00000008, 0x800f0001, 0x80e40000, 0x80e40001,                         /* dp3 r1, r0, r1           */
+        0x00000001, 0x800f0000, 0x80e40001,                                     /* mov r0, r1               */
+        0x00000001, 0x80070000, 0x80ff0001,                                     /* mov r0.xyz, r1.a         */
+        0x40000050, 0x80080000, 0x80ff0000, 0xa0e40001, 0xa0e40002,             /* +cnd r0.a, r0.a, c1, c2  */
+        0x00000001, 0x80070000, 0x80ff0000,                                     /* mov r0.xyz, r0.a         */
+        0x0000ffff                                                              /* end                      */
+    };
+    static const DWORD shader_code_12_coissue[] =
+    {
         0xffff0102,                                                             /* ps_1_2                   */
         0x00000051, 0xa00f0000, 0x3f800000, 0x00000000, 0x00000000, 0x00000000, /* def c0, 1, 0, 0, 0       */
         0x00000051, 0xa00f0003, 0x3f000000, 0x3f000000, 0x3f000000, 0x00000000, /* def c3, 0.5, 0.5, 0.5, 0 */
@@ -5776,13 +5811,29 @@ static void cnd_test(IDirect3DDevice9 *device)
         0x00000001, 0x800f0000, 0xb0e40000,                                     /* mov r0, t0               */
         0x00000003, 0x800f0000, 0x80e40000, 0xa0e40003,                         /* sub r0, r0, c3           */
         0x00000002, 0x800f0001, 0xa0e40000, 0xa0e40000,                         /* add r1, c0, c0           */
-        0x00000008, 0x800f0001, 0x80e40000, 0x80e40001,                         /* dp3, r1, r0, r1          */
+        0x00000008, 0x800f0001, 0x80e40000, 0x80e40001,                         /* dp3 r1, r0, r1           */
         0x00000001, 0x80080000, 0x80ff0001,                                     /* mov r0.a, r1.a           */
-        /* 0x40000000 = D3DSI_COISSUE */
-        0x40000050, 0x80070000, 0x80ff0000, 0xa0e40001, 0xa0e40002,             /* cnd r0.xyz, r0.a, c1, c2 */
+        0x40000050, 0x80070000, 0x80ff0000, 0xa0e40001, 0xa0e40002,             /* +cnd r0.xyz, r0.a, c1, c2*/
         0x0000ffff                                                              /* end                      */
     };
-    DWORD shader_code_13_coissue[] =  {
+    static const DWORD shader_code_12_coissue_2[] =
+    {
+        0xffff0102,                                                             /* ps_1_2                   */
+        0x00000051, 0xa00f0000, 0x3f800000, 0x00000000, 0x00000000, 0x00000000, /* def c0, 1, 0, 0, 0       */
+        0x00000051, 0xa00f0003, 0x3f000000, 0x3f000000, 0x3f000000, 0x00000000, /* def c3, 0.5, 0.5, 0.5, 0 */
+        0x00000040, 0xb00f0000,                                                 /* texcoord t0              */
+        0x00000001, 0x800f0000, 0xb0e40000,                                     /* mov r0, t0               */
+        0x00000003, 0x800f0000, 0x80e40000, 0xa0e40003,                         /* sub r0, r0, c3           */
+        0x00000002, 0x800f0001, 0xa0e40000, 0xa0e40000,                         /* add r1, c0, c0           */
+        0x00000008, 0x800f0001, 0x80e40000, 0x80e40001,                         /* dp3 r1, r0, r1           */
+        0x00000001, 0x800f0000, 0x80e40001,                                     /* mov r0, r1               */
+        0x00000001, 0x80070000, 0x80ff0001,                                     /* mov r0.xyz, r1.a         */
+        0x40000050, 0x80080000, 0x80ff0000, 0xa0e40001, 0xa0e40002,             /* +cnd r0.a, r0.a, c1, c2  */
+        0x00000001, 0x80070000, 0x80ff0000,                                     /* mov r0.xyz, r0.a         */
+        0x0000ffff                                                              /* end                      */
+    };
+    static const DWORD shader_code_13_coissue[] =
+    {
         0xffff0103,                                                             /* ps_1_3                   */
         0x00000051, 0xa00f0000, 0x3f800000, 0x00000000, 0x00000000, 0x00000000, /* def c0, 1, 0, 0, 0       */
         0x00000051, 0xa00f0003, 0x3f000000, 0x3f000000, 0x3f000000, 0x00000000, /* def c3, 0.5, 0.5, 0.5, 0 */
@@ -5790,22 +5841,48 @@ static void cnd_test(IDirect3DDevice9 *device)
         0x00000001, 0x800f0000, 0xb0e40000,                                     /* mov r0, t0               */
         0x00000003, 0x800f0000, 0x80e40000, 0xa0e40003,                         /* sub r0, r0, c3           */
         0x00000002, 0x800f0001, 0xa0e40000, 0xa0e40000,                         /* add r1, c0, c0           */
-        0x00000008, 0x800f0001, 0x80e40000, 0x80e40001,                         /* dp3, r1, r0, r1          */
+        0x00000008, 0x800f0001, 0x80e40000, 0x80e40001,                         /* dp3 r1, r0, r1           */
         0x00000001, 0x80080000, 0x80ff0001,                                     /* mov r0.a, r1.a           */
-        /* 0x40000000 = D3DSI_COISSUE */
-        0x40000050, 0x80070000, 0x80ff0000, 0xa0e40001, 0xa0e40002,             /* cnd r0.xyz, r0.a, c1, c2 */
+        0x40000050, 0x80070000, 0x80ff0000, 0xa0e40001, 0xa0e40002,             /* +cnd r0.xyz, r0.a, c1, c2*/
         0x0000ffff                                                              /* end                      */
     };
-    /* ps_1_4 does not have a different cnd behavior, just pass the [0;1] texcrd result to cnd, it will
-     * compare against 0.5
-     */
-    DWORD shader_code_14_coissue[] =  {
+    static const DWORD shader_code_13_coissue_2[] =
+    {
+        0xffff0103,                                                             /* ps_1_3                   */
+        0x00000051, 0xa00f0000, 0x3f800000, 0x00000000, 0x00000000, 0x00000000, /* def c0, 1, 0, 0, 0       */
+        0x00000051, 0xa00f0003, 0x3f000000, 0x3f000000, 0x3f000000, 0x00000000, /* def c3, 0.5, 0.5, 0.5, 0 */
+        0x00000040, 0xb00f0000,                                                 /* texcoord t0              */
+        0x00000001, 0x800f0000, 0xb0e40000,                                     /* mov r0, t0               */
+        0x00000003, 0x800f0000, 0x80e40000, 0xa0e40003,                         /* sub r0, r0, c3           */
+        0x00000002, 0x800f0001, 0xa0e40000, 0xa0e40000,                         /* add r1, c0, c0           */
+        0x00000008, 0x800f0001, 0x80e40000, 0x80e40001,                         /* dp3 r1, r0, r1           */
+        0x00000001, 0x800f0000, 0x80e40001,                                     /* mov r0, r1               */
+        0x00000001, 0x80070000, 0x80ff0001,                                     /* mov r0.xyz, r1.a         */
+        0x40000050, 0x80080000, 0x80ff0000, 0xa0e40001, 0xa0e40002,             /* +cnd r0.a, r0.a, c1, c2  */
+        0x00000001, 0x80070000, 0x80ff0000,                                     /* mov r0.xyz, r0.a         */
+        0x0000ffff                                                              /* end                      */
+    };
+    /* ps_1_4 does not have a different cnd behavior, just pass the [0;1]
+     * texcrd result to cnd, it will compare against 0.5. */
+    static const DWORD shader_code_14_coissue[] =
+    {
         0xffff0104,                                                             /* ps_1_4                   */
         0x00000051, 0xa00f0000, 0x00000000, 0x00000000, 0x00000000, 0x3f800000, /* def c0, 0, 0, 0, 1       */
-        0x00000040, 0x80070000, 0xb0e40000,                                     /* texcrd r0, t0            */
+        0x00000040, 0x80070000, 0xb0e40000,                                     /* texcrd r0.xyz, t0        */
         0x00000001, 0x80080000, 0xa0ff0000,                                     /* mov r0.a, c0.a           */
-        /* 0x40000000 = D3DSI_COISSUE */
-        0x40000050, 0x80070000, 0x80e40000, 0xa0e40001, 0xa0e40002,             /* cnd r0.xyz, r0, c1, c2   */
+        0x40000050, 0x80070000, 0x80e40000, 0xa0e40001, 0xa0e40002,             /* +cnd r0.xyz, r0, c1, c2  */
+        0x0000ffff                                                              /* end                      */
+    };
+    static const DWORD shader_code_14_coissue_2[] =
+    {
+        0xffff0104,                                                             /* ps_1_4                   */
+        0x00000051, 0xa00f0000, 0x00000000, 0x00000000, 0x00000000, 0x3f800000, /* def c0, 0, 0, 0, 1       */
+        0x00000040, 0x80070000, 0xb0e40000,                                     /* texcrd r0.xyz, t0        */
+        0x00000001, 0x80080000, 0x80000000,                                     /* mov r0.a, r0.x           */
+        0x00000001, 0x80070001, 0xa0ff0000,                                     /* mov r1.xyz, c0.a         */
+        0x40000050, 0x80080001, 0x80ff0000, 0xa0e40001, 0xa0e40002,             /* +cnd r1.a, r0.a, c1, c2  */
+        0x00000001, 0x80070000, 0x80ff0001,                                     /* mov r0.xyz, r1.a         */
+        0x00000001, 0x80080000, 0xa0ff0000,                                     /* mov r0.a, c0.a           */
         0x0000ffff                                                              /* end                      */
     };
     float quad1[] = {
@@ -5855,6 +5932,14 @@ static void cnd_test(IDirect3DDevice9 *device)
     hr = IDirect3DDevice9_CreatePixelShader(device, shader_code_13_coissue, &shader_13_coissue);
     ok(hr == D3D_OK, "IDirect3DDevice9_CreatePixelShader returned %08x\n", hr);
     hr = IDirect3DDevice9_CreatePixelShader(device, shader_code_14_coissue, &shader_14_coissue);
+    ok(hr == D3D_OK, "IDirect3DDevice9_CreatePixelShader returned %08x\n", hr);
+    hr = IDirect3DDevice9_CreatePixelShader(device, shader_code_11_coissue_2, &shader_11_coissue_2);
+    ok(hr == D3D_OK, "IDirect3DDevice9_CreatePixelShader returned %08x\n", hr);
+    hr = IDirect3DDevice9_CreatePixelShader(device, shader_code_12_coissue_2, &shader_12_coissue_2);
+    ok(hr == D3D_OK, "IDirect3DDevice9_CreatePixelShader returned %08x\n", hr);
+    hr = IDirect3DDevice9_CreatePixelShader(device, shader_code_13_coissue_2, &shader_13_coissue_2);
+    ok(hr == D3D_OK, "IDirect3DDevice9_CreatePixelShader returned %08x\n", hr);
+    hr = IDirect3DDevice9_CreatePixelShader(device, shader_code_14_coissue_2, &shader_14_coissue_2);
     ok(hr == D3D_OK, "IDirect3DDevice9_CreatePixelShader returned %08x\n", hr);
 
     hr = IDirect3DDevice9_SetPixelShaderConstantF(device, 1, test_data_c1, 1);
@@ -5998,49 +6083,143 @@ static void cnd_test(IDirect3DDevice9 *device)
      * (The Win7 nvidia driver always selects c2)
      */
     color = getPixelColor(device, 158, 358);
-    ok(color_match(color, 0x0000ff00, 1) || color_match(color, 0x00ff00ff, 1),
+    ok(color_match(color, 0x0000ff00, 1) || broken(color_match(color, 0x00ff00ff, 1)),
         "pixel 158, 358 has color %08x, expected 0x0000ff00\n", color);
     color = getPixelColor(device, 162, 358);
-    ok(color_match(color, 0x0000ff00, 1) || color_match(color, 0x00ff00ff, 1),
+    ok(color_match(color, 0x0000ff00, 1) || broken(color_match(color, 0x00ff00ff, 1)),
         "pixel 162, 358 has color %08x, expected 0x0000ff00\n", color);
     color = getPixelColor(device, 158, 362);
-    ok(color_match(color, 0x0000ff00, 1) || color_match(color, 0x00ff00ff, 1),
+    ok(color_match(color, 0x0000ff00, 1) || broken(color_match(color, 0x00ff00ff, 1)),
         "pixel 158, 362 has color %08x, expected 0x0000ff00\n", color);
     color = getPixelColor(device, 162, 362);
-    ok(color_match(color, 0x0000ff00, 1) || color_match(color, 0x00ff00ff, 1),
+    ok(color_match(color, 0x0000ff00, 1) || broken(color_match(color, 0x00ff00ff, 1)),
         "pixel 162, 362 has color %08x, expected 0x0000ff00\n", color);
 
     /* 1.2 shader */
     color = getPixelColor(device, 478, 358);
-    ok(color_match(color, 0x0000ff00, 1) || color_match(color, 0x00ff00ff, 1),
+    ok(color_match(color, 0x0000ff00, 1) || broken(color_match(color, 0x00ff00ff, 1)),
         "pixel 478, 358 has color %08x, expected 0x0000ff00\n", color);
     color = getPixelColor(device, 482, 358);
-    ok(color_match(color, 0x0000ff00, 1) || color_match(color, 0x00ff00ff, 1),
+    ok(color_match(color, 0x0000ff00, 1) || broken(color_match(color, 0x00ff00ff, 1)),
         "pixel 482, 358 has color %08x, expected 0x0000ff00\n", color);
     color = getPixelColor(device, 478, 362);
-    ok(color_match(color, 0x0000ff00, 1) || color_match(color, 0x00ff00ff, 1),
+    ok(color_match(color, 0x0000ff00, 1) || broken(color_match(color, 0x00ff00ff, 1)),
         "pixel 478, 362 has color %08x, expected 0x0000ff00\n", color);
     color = getPixelColor(device, 482, 362);
-    ok(color_match(color, 0x0000ff00, 1) || color_match(color, 0x00ff00ff, 1),
+    ok(color_match(color, 0x0000ff00, 1) || broken(color_match(color, 0x00ff00ff, 1)),
         "pixel 482, 362 has color %08x, expected 0x0000ff00\n", color);
 
     /* 1.3 shader */
     color = getPixelColor(device, 478, 118);
-    ok(color_match(color, 0x0000ff00, 1) || color_match(color, 0x00ff00ff, 1),
+    ok(color_match(color, 0x0000ff00, 1) || broken(color_match(color, 0x00ff00ff, 1)),
         "pixel 478, 118 has color %08x, expected 0x0000ff00\n", color);
     color = getPixelColor(device, 482, 118);
-    ok(color_match(color, 0x0000ff00, 1) || color_match(color, 0x00ff00ff, 1),
+    ok(color_match(color, 0x0000ff00, 1) || broken(color_match(color, 0x00ff00ff, 1)),
         "pixel 482, 118 has color %08x, expected 0x0000ff00\n", color);
     color = getPixelColor(device, 478, 122);
-    ok(color_match(color, 0x0000ff00, 1) || color_match(color, 0x00ff00ff, 1),
+    ok(color_match(color, 0x0000ff00, 1) || broken(color_match(color, 0x00ff00ff, 1)),
         "pixel 478, 122 has color %08x, expected 0x0000ff00\n", color);
     color = getPixelColor(device, 482, 122);
-    ok(color_match(color, 0x0000ff00, 1) || color_match(color, 0x00ff00ff, 1),
+    ok(color_match(color, 0x0000ff00, 1) || broken(color_match(color, 0x00ff00ff, 1)),
         "pixel 482, 122 has color %08x, expected 0x0000ff00\n", color);
 
     hr = IDirect3DDevice9_Present(device, NULL, NULL, NULL, NULL);
     ok(hr == D3D_OK, "IDirect3DDevice9_Present failed with %08x\n", hr);
 
+    /* Retest with the coissue flag on the alpha instruction instead. This works "as expected". */
+    hr = IDirect3DDevice9_Clear(device, 0, NULL, D3DCLEAR_TARGET, 0xff00ffff, 0.0, 0);
+    ok(hr == D3D_OK, "IDirect3DDevice9_Clear returned %08x\n", hr);
+
+    hr = IDirect3DDevice9_BeginScene(device);
+    ok(hr == D3D_OK, "IDirect3DDevice9_BeginScene returned %08x\n", hr);
+    if(SUCCEEDED(hr))
+    {
+        hr = IDirect3DDevice9_SetPixelShader(device, shader_11_coissue_2);
+        ok(hr == D3D_OK, "IDirect3DDevice9_SetPixelShader returned %08x\n", hr);
+        hr = IDirect3DDevice9_DrawPrimitiveUP(device, D3DPT_TRIANGLESTRIP, 2, quad1, 6 * sizeof(float));
+        ok(hr == D3D_OK, "DrawPrimitiveUP failed (%08x)\n", hr);
+
+        hr = IDirect3DDevice9_SetPixelShader(device, shader_12_coissue_2);
+        ok(hr == D3D_OK, "IDirect3DDevice9_SetPixelShader returned %08x\n", hr);
+        hr = IDirect3DDevice9_DrawPrimitiveUP(device, D3DPT_TRIANGLESTRIP, 2, quad2, 6 * sizeof(float));
+        ok(hr == D3D_OK, "DrawPrimitiveUP failed (%08x)\n", hr);
+
+        hr = IDirect3DDevice9_SetPixelShader(device, shader_13_coissue_2);
+        ok(hr == D3D_OK, "IDirect3DDevice9_SetPixelShader returned %08x\n", hr);
+        hr = IDirect3DDevice9_DrawPrimitiveUP(device, D3DPT_TRIANGLESTRIP, 2, quad3, 6 * sizeof(float));
+        ok(hr == D3D_OK, "DrawPrimitiveUP failed (%08x)\n", hr);
+
+        hr = IDirect3DDevice9_SetPixelShader(device, shader_14_coissue_2);
+        ok(hr == D3D_OK, "IDirect3DDevice9_SetPixelShader returned %08x\n", hr);
+        hr = IDirect3DDevice9_DrawPrimitiveUP(device, D3DPT_TRIANGLESTRIP, 2, quad4, 6 * sizeof(float));
+        ok(hr == D3D_OK, "DrawPrimitiveUP failed (%08x)\n", hr);
+
+        hr = IDirect3DDevice9_EndScene(device);
+        ok(hr == D3D_OK, "IDirect3DDevice9_EndScene returned %08x\n", hr);
+    }
+
+    hr = IDirect3DDevice9_SetPixelShader(device, NULL);
+    ok(hr == D3D_OK, "IDirect3DDevice9_SetPixelShader returned %08x\n", hr);
+
+    /* 1.4 shader */
+    color = getPixelColor(device, 158, 118);
+    ok(color == 0x00ffffff, "pixel 158, 118 has color %08x, expected 0x00ffffff\n", color);
+    color = getPixelColor(device, 162, 118);
+    ok(color == 0x00000000, "pixel 162, 118 has color %08x, expected 0x00000000\n", color);
+    color = getPixelColor(device, 158, 122);
+    ok(color == 0x00ffffff, "pixel 162, 122 has color %08x, expected 0x00ffffff\n", color);
+    color = getPixelColor(device, 162, 122);
+    ok(color == 0x00000000, "pixel 162, 122 has color %08x, expected 0x00000000\n", color);
+
+    /* 1.1 shader */
+    color = getPixelColor(device, 238, 358);
+    ok(color_match(color, 0x00ffffff, 1),
+        "pixel 238, 358 has color %08x, expected 0x00ffffff\n", color);
+    color = getPixelColor(device, 242, 358);
+    ok(color_match(color, 0x00000000, 1),
+        "pixel 242, 358 has color %08x, expected 0x00000000\n", color);
+    color = getPixelColor(device, 238, 362);
+    ok(color_match(color, 0x00ffffff, 1),
+        "pixel 238, 362 has color %08x, expected 0x00ffffff\n", color);
+    color = getPixelColor(device, 242, 362);
+    ok(color_match(color, 0x00000000, 1),
+        "pixel 242, 362 has color %08x, expected 0x00000000\n", color);
+
+    /* 1.2 shader */
+    color = getPixelColor(device, 558, 358);
+    ok(color_match(color, 0x00ffffff, 1),
+        "pixel 558, 358 has color %08x, expected 0x00ffffff\n", color);
+    color = getPixelColor(device, 562, 358);
+    ok(color_match(color, 0x00000000, 1),
+        "pixel 562, 358 has color %08x, expected 0x00000000\n", color);
+    color = getPixelColor(device, 558, 362);
+    ok(color_match(color, 0x00ffffff, 1),
+        "pixel 558, 362 has color %08x, expected 0x00ffffff\n", color);
+    color = getPixelColor(device, 562, 362);
+    ok(color_match(color, 0x00000000, 1),
+        "pixel 562, 362 has color %08x, expected 0x00000000\n", color);
+
+    /* 1.3 shader */
+    color = getPixelColor(device, 558, 118);
+    ok(color_match(color, 0x00ffffff, 1),
+        "pixel 558, 118 has color %08x, expected 0x00ffffff\n", color);
+    color = getPixelColor(device, 562, 118);
+    ok(color_match(color, 0x00000000, 1),
+        "pixel 562, 118 has color %08x, expected 0x00000000\n", color);
+    color = getPixelColor(device, 558, 122);
+    ok(color_match(color, 0x00ffffff, 1),
+        "pixel 558, 122 has color %08x, expected 0x00ffffff\n", color);
+    color = getPixelColor(device, 562, 122);
+    ok(color_match(color, 0x00000000, 1),
+        "pixel 562, 122 has color %08x, expected 0x00000000\n", color);
+
+    hr = IDirect3DDevice9_Present(device, NULL, NULL, NULL, NULL);
+    ok(hr == D3D_OK, "IDirect3DDevice9_Present failed with %08x\n", hr);
+
+    IDirect3DPixelShader9_Release(shader_14_coissue_2);
+    IDirect3DPixelShader9_Release(shader_13_coissue_2);
+    IDirect3DPixelShader9_Release(shader_12_coissue_2);
+    IDirect3DPixelShader9_Release(shader_11_coissue_2);
     IDirect3DPixelShader9_Release(shader_14_coissue);
     IDirect3DPixelShader9_Release(shader_13_coissue);
     IDirect3DPixelShader9_Release(shader_12_coissue);
@@ -6051,8 +6230,10 @@ static void cnd_test(IDirect3DDevice9 *device)
     IDirect3DPixelShader9_Release(shader_11);
 }
 
-static void nested_loop_test(IDirect3DDevice9 *device) {
-    const DWORD shader_code[] = {
+static void nested_loop_test(IDirect3DDevice9 *device)
+{
+    static const DWORD shader_code[] =
+    {
         0xffff0300,                                                             /* ps_3_0               */
         0x05000051, 0xa00f0000, 0x00000000, 0x00000000, 0x00000000, 0x3f800000, /* def c0, 0, 0, 0, 1   */
         0x05000051, 0xa00f0001, 0x3d000000, 0x00000000, 0x00000000, 0x00000000, /* def c1, 1/32, 0, 0, 0*/
@@ -6066,7 +6247,8 @@ static void nested_loop_test(IDirect3DDevice9 *device) {
         0x02000001, 0x800f0800, 0x80e40000,                                     /* mov oC0, r0          */
         0x0000ffff                                                              /* end                  */
     };
-    const DWORD vshader_code[] = {
+    static const DWORD vshader_code[] =
+    {
         0xfffe0300,                                                             /* vs_3_0               */
         0x0200001f, 0x80000000, 0x900f0000,                                     /* dcl_position v0      */
         0x0200001f, 0x80000000, 0xe00f0000,                                     /* dcl_position o0      */
@@ -6145,40 +6327,47 @@ struct hugeVertex
     DWORD diffuse, specular;
 };
 
-static void pretransformed_varying_test(IDirect3DDevice9 *device) {
+static void pretransformed_varying_test(IDirect3DDevice9 *device)
+{
     /* dcl_position: fails to compile */
-    const DWORD blendweight_code[] = {
+    static const DWORD blendweight_code[] =
+    {
         0xffff0300,                             /* ps_3_0                   */
         0x0200001f, 0x80000001, 0x900f0000,     /* dcl_blendweight, v0      */
         0x02000001, 0x800f0800, 0x90e40000,     /* mov oC0, v0              */
         0x0000ffff                              /* end                      */
     };
-    const DWORD blendindices_code[] = {
+    static const DWORD blendindices_code[] =
+    {
         0xffff0300,                             /* ps_3_0                   */
         0x0200001f, 0x80000002, 0x900f0000,     /* dcl_blendindices, v0     */
         0x02000001, 0x800f0800, 0x90e40000,     /* mov oC0, v0              */
         0x0000ffff                              /* end                      */
     };
-    const DWORD normal_code[] = {
+    static const DWORD normal_code[] =
+    {
         0xffff0300,                             /* ps_3_0                   */
         0x0200001f, 0x80000003, 0x900f0000,     /* dcl_normal, v0           */
         0x02000001, 0x800f0800, 0x90e40000,     /* mov oC0, v0              */
         0x0000ffff                              /* end                      */
     };
     /* psize: fails? */
-    const DWORD texcoord0_code[] = {
+    static const DWORD texcoord0_code[] =
+    {
         0xffff0300,                             /* ps_3_0                   */
         0x0200001f, 0x80000005, 0x900f0000,     /* dcl_texcoord0, v0        */
         0x02000001, 0x800f0800, 0x90e40000,     /* mov oC0, v0              */
         0x0000ffff                              /* end                      */
     };
-    const DWORD tangent_code[] = {
+    static const DWORD tangent_code[] =
+    {
         0xffff0300,                             /* ps_3_0                   */
         0x0200001f, 0x80000006, 0x900f0000,     /* dcl_tangent, v0          */
         0x02000001, 0x800f0800, 0x90e40000,     /* mov oC0, v0              */
         0x0000ffff                              /* end                      */
     };
-    const DWORD binormal_code[] = {
+    static const DWORD binormal_code[] =
+    {
         0xffff0300,                             /* ps_3_0                   */
         0x0200001f, 0x80000007, 0x900f0000,     /* dcl_binormal, v0         */
         0x02000001, 0x800f0800, 0x90e40000,     /* mov oC0, v0              */
@@ -6186,25 +6375,29 @@ static void pretransformed_varying_test(IDirect3DDevice9 *device) {
     };
     /* tessfactor: fails */
     /* positiont: fails */
-    const DWORD color_code[] = {
+    static const DWORD color_code[] =
+    {
         0xffff0300,                             /* ps_3_0                   */
         0x0200001f, 0x8000000a, 0x900f0000,     /* dcl_color0, v0           */
         0x02000001, 0x800f0800, 0x90e40000,     /* mov oC0, v0              */
         0x0000ffff                              /* end                      */
     };
-    const DWORD fog_code[] = {
+    static const DWORD fog_code[] =
+    {
         0xffff0300,                             /* ps_3_0                   */
         0x0200001f, 0x8000000b, 0x900f0000,     /* dcl_fog, v0              */
         0x02000001, 0x800f0800, 0x90e40000,     /* mov oC0, v0              */
         0x0000ffff                              /* end                      */
     };
-    const DWORD depth_code[] = {
+    static const DWORD depth_code[] =
+    {
         0xffff0300,                             /* ps_3_0                   */
         0x0200001f, 0x8000000c, 0x900f0000,     /* dcl_depth, v0            */
         0x02000001, 0x800f0800, 0x90e40000,     /* mov oC0, v0              */
         0x0000ffff                              /* end                      */
     };
-    const DWORD specular_code[] = {
+    static const DWORD specular_code[] =
+    {
         0xffff0300,                             /* ps_3_0                   */
         0x0200001f, 0x8001000a, 0x900f0000,     /* dcl_color1, v0           */
         0x02000001, 0x800f0800, 0x90e40000,     /* mov oC0, v0              */
@@ -6373,7 +6566,8 @@ static void pretransformed_varying_test(IDirect3DDevice9 *device) {
 
 static void test_compare_instructions(IDirect3DDevice9 *device)
 {
-    DWORD shader_sge_vec_code[] = {
+    static const DWORD shader_sge_vec_code[] =
+    {
         0xfffe0101,                                         /* vs_1_1                   */
         0x0000001f, 0x80000000, 0x900f0000,                 /* dcl_position v0          */
         0x00000001, 0xc00f0000, 0x90e40000,                 /* mov oPos, v0             */
@@ -6381,7 +6575,8 @@ static void test_compare_instructions(IDirect3DDevice9 *device)
         0x0000000d, 0xd00f0000, 0x80e40000, 0xa0e40001,     /* sge oD0, r0, c1          */
         0x0000ffff                                          /* end                      */
     };
-    DWORD shader_slt_vec_code[] = {
+    static const DWORD shader_slt_vec_code[] =
+    {
         0xfffe0101,                                         /* vs_1_1                   */
         0x0000001f, 0x80000000, 0x900f0000,                 /* dcl_position v0          */
         0x00000001, 0xc00f0000, 0x90e40000,                 /* mov oPos, v0             */
@@ -6389,7 +6584,8 @@ static void test_compare_instructions(IDirect3DDevice9 *device)
         0x0000000c, 0xd00f0000, 0x80e40000, 0xa0e40001,     /* slt oD0, r0, c1          */
         0x0000ffff                                          /* end                      */
     };
-    DWORD shader_sge_scalar_code[] = {
+    static const DWORD shader_sge_scalar_code[] =
+    {
         0xfffe0101,                                         /* vs_1_1                   */
         0x0000001f, 0x80000000, 0x900f0000,                 /* dcl_position v0          */
         0x00000001, 0xc00f0000, 0x90e40000,                 /* mov oPos, v0             */
@@ -6399,7 +6595,8 @@ static void test_compare_instructions(IDirect3DDevice9 *device)
         0x0000000d, 0xd0040000, 0x80aa0000, 0xa0000001,     /* slt oD0.b, r0.b, c1.g    */
         0x0000ffff                                          /* end                      */
     };
-    DWORD shader_slt_scalar_code[] = {
+    static const DWORD shader_slt_scalar_code[] =
+    {
         0xfffe0101,                                         /* vs_1_1                   */
         0x0000001f, 0x80000000, 0x900f0000,                 /* dcl_position v0          */
         0x00000001, 0xc00f0000, 0x90e40000,                 /* mov oPos, v0             */
@@ -6494,11 +6691,11 @@ static void test_compare_instructions(IDirect3DDevice9 *device)
     ok(hr == D3D_OK, "IDirect3DDevice9_SetVertexShader returned %08x\n", hr);
 
     color = getPixelColor(device, 160, 360);
-    ok(color == 0x00FF00FF, "Compare test: Quad 1(sge vec) returned color 0x%08x, expected 0x00FF00FF\n", color);
+    ok(color == 0x00ff00ff, "Compare test: Quad 1(sge vec) returned color 0x%08x, expected 0x00ff00ff\n", color);
     color = getPixelColor(device, 480, 360);
-    ok(color == 0x0000FF00, "Compare test: Quad 2(slt vec) returned color 0x%08x, expected 0x0000FF00\n", color);
+    ok(color == 0x0000ff00, "Compare test: Quad 2(slt vec) returned color 0x%08x, expected 0x0000ff00\n", color);
     color = getPixelColor(device, 160, 120);
-    ok(color == 0x00FFFFFF, "Compare test: Quad 3(sge scalar) returned color 0x%08x, expected 0x00FFFFFF\n", color);
+    ok(color == 0x00ffffff, "Compare test: Quad 3(sge scalar) returned color 0x%08x, expected 0x00ffffff\n", color);
     color = getPixelColor(device, 480, 160);
     ok(color == 0x000000ff, "Compare test: Quad 4(slt scalar) returned color 0x%08x, expected 0x000000ff\n", color);
 
@@ -6795,29 +6992,29 @@ static void test_vshader_input(IDirect3DDevice9 *device)
         if(i == 3 || i == 2) {
             color = getPixelColor(device, 160, 360);
             ok(color_match(color, D3DCOLOR_ARGB(0x00, 0xff, 0xff, 0x80), 1),
-               "Input test: Quad 1(2crd) returned color 0x%08x, expected 0x00FFFF80\n", color);
+               "Input test: Quad 1(2crd) returned color 0x%08x, expected 0x00ffff80\n", color);
 
             /* The last value of the read but undefined stream is used, it is 0x00. The defined input is vec4(1, 0, 0, 0) */
             color = getPixelColor(device, 480, 360);
-            ok(color == 0x00FFFF00 || color ==0x00FF0000,
-               "Input test: Quad 2(1crd) returned color 0x%08x, expected 0x00FFFF00\n", color);
+            ok(color == 0x00ffff00 || color ==0x00ff0000,
+               "Input test: Quad 2(1crd) returned color 0x%08x, expected 0x00ffff00\n", color);
             color = getPixelColor(device, 160, 120);
             /* Same as above, accept both the last used value and 0.0 for the undefined streams */
             ok(color_match(color, D3DCOLOR_ARGB(0x00, 0xff, 0x00, 0x80), 1) || color == D3DCOLOR_ARGB(0x00, 0xff, 0x00, 0x00),
-               "Input test: Quad 3(2crd-wrongidx) returned color 0x%08x, expected 0x00FF0080\n", color);
+               "Input test: Quad 3(2crd-wrongidx) returned color 0x%08x, expected 0x00ff0080\n", color);
 
             color = getPixelColor(device, 480, 160);
             ok(color == 0x00000000, "Input test: Quad 4(2crd-rightorder) returned color 0x%08x, expected 0x00000000\n", color);
         } else if(i == 1) {
             color = getPixelColor(device, 160, 360);
             ok(color_match(color, D3DCOLOR_ARGB(0x00, 0xff, 0xff, 0x80), 1),
-               "Input test: Quad 1(2crd) returned color 0x%08x, expected 0x00FFFF80\n", color);
+               "Input test: Quad 1(2crd) returned color 0x%08x, expected 0x00ffff80\n", color);
             color = getPixelColor(device, 480, 360);
             /* Accept the clear color as well in this case, since SW VP returns an error */
-            ok(color == 0x00FFFF00 || color == 0x00FF0000, "Input test: Quad 2(1crd) returned color 0x%08x, expected 0x00FFFF00\n", color);
+            ok(color == 0x00ffff00 || color == 0x00ff0000, "Input test: Quad 2(1crd) returned color 0x%08x, expected 0x00ffff00\n", color);
             color = getPixelColor(device, 160, 120);
             ok(color_match(color, D3DCOLOR_ARGB(0x00, 0xff, 0x00, 0x80), 1) || color == D3DCOLOR_ARGB(0x00, 0xff, 0x00, 0x00),
-               "Input test: Quad 3(2crd-wrongidx) returned color 0x%08x, expected 0x00FF0080\n", color);
+               "Input test: Quad 3(2crd-wrongidx) returned color 0x%08x, expected 0x00ff0080\n", color);
             color = getPixelColor(device, 480, 160);
             ok(color == 0x00000000, "Input test: Quad 4(2crd-rightorder) returned color 0x%08x, expected 0x00000000\n", color);
         }
@@ -6881,8 +7078,8 @@ static void test_vshader_input(IDirect3DDevice9 *device)
          *
          * A test app for this behavior is Half Life 2 Episode 2 in dxlevel 95, and related games(Portal, TF2).
          */
-        ok(color == 0x000000FF || color == 0x00808080 || color == 0x00000000,
-           "Input test: Quad 2(different colors) returned color 0x%08x, expected 0x000000FF, 0x00808080 or 0x00000000\n", color);
+        ok(color == 0x000000ff || color == 0x00808080 || color == 0x00000000,
+           "Input test: Quad 2(different colors) returned color 0x%08x, expected 0x000000ff, 0x00808080 or 0x00000000\n", color);
 
         hr = IDirect3DDevice9_Present(device, NULL, NULL, NULL, NULL);
         ok(hr == D3D_OK, "IDirect3DDevice9_Present failed with %08x\n", hr);
@@ -6967,7 +7164,7 @@ static void test_vshader_input(IDirect3DDevice9 *device)
            "Input test: Quad 3(color-color) returned color 0x%08x, expected 0x00ff8040\n", color);
         color = getPixelColor(device, 480, 160);
         ok(color_match(color, D3DCOLOR_ARGB(0x00, 0xff, 0xff, 0x00), 1),
-           "Input test: Quad 4(color-float) returned color 0x%08x, expected 0x00FFFF00\n", color);
+           "Input test: Quad 4(color-float) returned color 0x%08x, expected 0x00ffff00\n", color);
 
         hr = IDirect3DDevice9_Present(device, NULL, NULL, NULL, NULL);
         ok(hr == D3D_OK, "IDirect3DDevice9_Present failed with %08x\n", hr);
@@ -7910,10 +8107,14 @@ static void test_vshader_float16(IDirect3DDevice9 *device)
     IDirect3DVertexDeclaration9 *vdecl = NULL;
     IDirect3DVertexBuffer9 *buffer = NULL;
     IDirect3DVertexShader9 *shader;
-    DWORD shader_code[] = {
-        0xfffe0101, 0x0000001f, 0x80000000, 0x900f0000, 0x0000001f, 0x8000000a,
-        0x900f0001, 0x00000001, 0xc00f0000, 0x90e40000, 0x00000001, 0xd00f0000,
-        0x90e40001, 0x0000ffff
+    static const DWORD shader_code[] =
+    {
+        0xfffe0101,                             /* vs_1_1           */
+        0x0000001f, 0x80000000, 0x900f0000,     /* dcl_position v0  */
+        0x0000001f, 0x8000000a, 0x900f0001,     /* dcl_color v1     */
+        0x00000001, 0xc00f0000, 0x90e40000,     /* mov oPos, v0     */
+        0x00000001, 0xd00f0000, 0x90e40001,     /* mov oD0, v1      */
+        0x0000ffff,
     };
     struct vertex_float16color quad[] = {
         { -1.0,   -1.0,     0.1,        0x3c000000, 0x00000000 }, /* green */
@@ -8162,7 +8363,8 @@ static void vFace_register_test(IDirect3DDevice9 *device)
 {
     HRESULT hr;
     DWORD color;
-    const DWORD shader_code[] = {
+    static const DWORD shader_code[] =
+    {
         0xffff0300,                                                             /* ps_3_0                     */
         0x05000051, 0xa00f0000, 0x00000000, 0x3f800000, 0x00000000, 0x00000000, /* def c0, 0.0, 1.0, 0.0, 0.0 */
         0x05000051, 0xa00f0001, 0x3f800000, 0x00000000, 0x00000000, 0x00000000, /* def c1, 1.0, 0.0, 0.0, 0.0 */
@@ -8172,7 +8374,8 @@ static void vFace_register_test(IDirect3DDevice9 *device)
         0x02000001, 0x800f0800, 0x80e40000,                                     /* mov oC0, r0                */
         0x0000ffff                                                              /* END                        */
     };
-    const DWORD vshader_code[] = {
+    static const DWORD vshader_code[] =
+    {
         0xfffe0300,                                                             /* vs_3_0               */
         0x0200001f, 0x80000000, 0x900f0000,                                     /* dcl_position v0      */
         0x0200001f, 0x80000000, 0xe00f0000,                                     /* dcl_position o0      */
@@ -8741,28 +8944,31 @@ static void vpos_register_test(IDirect3DDevice9 *device)
 {
     HRESULT hr;
     DWORD color;
-    const DWORD shader_code[] = {
-    0xffff0300,                                                             /* ps_3_0                     */
-    0x0200001f, 0x80000000, 0x90031000,                                     /* dcl vPos.xy                */
-    0x03000002, 0x80030000, 0x90541000, 0xa1fe0000,                         /* sub r0.xy, vPos.xy, c0.zw  */
-    0x02000001, 0x800f0001, 0xa0e40000,                                     /* mov r1, c0                 */
-    0x02000001, 0x80080002, 0xa0550000,                                     /* mov r2.a, c0.y             */
-    0x02000001, 0x80010002, 0xa0550000,                                     /* mov r2.r, c0.y             */
-    0x04000058, 0x80020002, 0x80000000, 0x80000001, 0x80550001,             /* cmp r2.g, r0.x, r1.x, r1.y */
-    0x04000058, 0x80040002, 0x80550000, 0x80000001, 0x80550001,             /* cmp r2.b, r0.y, r1.x, r1.y */
-    0x02000001, 0x800f0800, 0x80e40002,                                     /* mov oC0, r2                */
-    0x0000ffff                                                              /* end                        */
+    static const DWORD shader_code[] =
+    {
+        0xffff0300,                                                             /* ps_3_0                     */
+        0x0200001f, 0x80000000, 0x90031000,                                     /* dcl vPos.xy                */
+        0x03000002, 0x80030000, 0x90541000, 0xa1fe0000,                         /* sub r0.xy, vPos.xy, c0.zw  */
+        0x02000001, 0x800f0001, 0xa0e40000,                                     /* mov r1, c0                 */
+        0x02000001, 0x80080002, 0xa0550000,                                     /* mov r2.a, c0.y             */
+        0x02000001, 0x80010002, 0xa0550000,                                     /* mov r2.r, c0.y             */
+        0x04000058, 0x80020002, 0x80000000, 0x80000001, 0x80550001,             /* cmp r2.g, r0.x, r1.x, r1.y */
+        0x04000058, 0x80040002, 0x80550000, 0x80000001, 0x80550001,             /* cmp r2.b, r0.y, r1.x, r1.y */
+        0x02000001, 0x800f0800, 0x80e40002,                                     /* mov oC0, r2                */
+        0x0000ffff                                                              /* end                        */
     };
-    const DWORD shader_frac_code[] = {
-    0xffff0300,                                                             /* ps_3_0                     */
-    0x05000051, 0xa00f0000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, /* def c0, 0.0, 0.0, 0.0, 0.0 */
-    0x0200001f, 0x80000000, 0x90031000,                                     /* dcl vPos.xy                */
-    0x02000001, 0x800f0000, 0xa0e40000,                                     /* mov r0, c0                 */
-    0x02000013, 0x80030000, 0x90541000,                                     /* frc r0.xy, vPos.xy         */
-    0x02000001, 0x800f0800, 0x80e40000,                                     /* mov oC0, r0                */
-    0x0000ffff                                                              /* end                        */
+    static const DWORD shader_frac_code[] =
+    {
+        0xffff0300,                                                             /* ps_3_0                     */
+        0x05000051, 0xa00f0000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, /* def c0, 0.0, 0.0, 0.0, 0.0 */
+        0x0200001f, 0x80000000, 0x90031000,                                     /* dcl vPos.xy                */
+        0x02000001, 0x800f0000, 0xa0e40000,                                     /* mov r0, c0                 */
+        0x02000013, 0x80030000, 0x90541000,                                     /* frc r0.xy, vPos.xy         */
+        0x02000001, 0x800f0800, 0x80e40000,                                     /* mov oC0, r0                */
+        0x0000ffff                                                              /* end                        */
     };
-    const DWORD vshader_code[] = {
+    static const DWORD vshader_code[] =
+    {
         0xfffe0300,                                                             /* vs_3_0               */
         0x0200001f, 0x80000000, 0x900f0000,                                     /* dcl_position v0      */
         0x0200001f, 0x80000000, 0xe00f0000,                                     /* dcl_position o0      */
@@ -9651,7 +9857,7 @@ static void tssargtemp_test(IDirect3DDevice9 *device)
         ok(hr == D3D_OK, "IDirect3DDevice9_EndScene failed, hr = %08x\n", hr);
     }
     color = getPixelColor(device, 320, 240);
-    ok(color == 0x00FFFF00, "TSSARGTEMP test returned color 0x%08x, expected 0x00FFFF00\n", color);
+    ok(color == 0x00ffff00, "TSSARGTEMP test returned color 0x%08x, expected 0x00ffff00\n", color);
     IDirect3DDevice9_Present(device, NULL, NULL, NULL, NULL);
 
     /* Set stage 1 back to default */
@@ -9722,7 +9928,7 @@ static void stream_test(IDirect3DDevice9 *device)
     DWORD ind;
     unsigned i;
 
-    const DWORD shader_code[] =
+    static const DWORD shader_code[] =
     {
         0xfffe0101,                                     /* vs_1_1 */
         0x0000001f, 0x80000000, 0x900f0000,             /* dcl_position v0 */
@@ -10179,8 +10385,9 @@ static void texop_test(IDirect3DDevice9 *device)
         ok(SUCCEEDED(hr), "Present failed with 0x%08x\n", hr);
     }
 
-    if (texture) IDirect3DTexture9_Release(texture);
-    if (vertex_declaration) IDirect3DVertexDeclaration9_Release(vertex_declaration);
+    hr = IDirect3DDevice9_SetTexture(device, 0, NULL);
+    IDirect3DTexture9_Release(texture);
+    IDirect3DVertexDeclaration9_Release(vertex_declaration);
 }
 
 static void yuv_color_test(IDirect3DDevice9 *device) {
@@ -10223,7 +10430,7 @@ static void yuv_color_test(IDirect3DDevice9 *device) {
 
       { 0x4cff4c54, 0x00ff0000, 0x00ff0000, 0x000b8b00, 0x00b6ffa3 },
       { 0x00800080, 0x00000000, 0x00000000, 0x0000ff00, 0x0000ff00 },
-      { 0xFF80FF80, 0x00ffffff, 0x00ffffff, 0x00ff00ff, 0x00ff00ff },
+      { 0xff80ff80, 0x00ffffff, 0x00ffffff, 0x00ff00ff, 0x00ff00ff },
       { 0x1c6b1cff, 0x000000fd, 0x000000fd, 0x006dff45, 0x0000d500 },
     };
 
@@ -10253,8 +10460,11 @@ static void yuv_color_test(IDirect3DDevice9 *device) {
             continue;
         }
 
-        /* A pixel is effectively 16 bit large, but two pixels are stored together, so the minimum size is 2x1 */
-        hr = IDirect3DDevice9_CreateOffscreenPlainSurface(device, 2, 1, format, D3DPOOL_DEFAULT, &surface, NULL);
+        /* A pixel is effectively 16 bit large, but two pixels are stored together, so the minimum size is 2x1
+         * However, Nvidia Windows drivers have problems with 2x1 YUY2/UYVY surfaces, so use a 4x1 surface and
+         * fill the second block with dummy data. If the surface has a size of 2x1, those drivers ignore the
+         * second luminance value, resulting in an incorrect color in the right pixel. */
+        hr = IDirect3DDevice9_CreateOffscreenPlainSurface(device, 4, 1, format, D3DPOOL_DEFAULT, &surface, NULL);
         ok(hr == D3D_OK, "IDirect3DDevice9_CreateOffscreenPlainSurface failed, hr = %08x\n", hr);
 
         for(i = 0; i < (sizeof(test_data)/sizeof(test_data[0])); i++) {
@@ -10269,7 +10479,8 @@ static void yuv_color_test(IDirect3DDevice9 *device) {
             memset(&lr, 0, sizeof(lr));
             hr = IDirect3DSurface9_LockRect(surface, &lr, NULL, 0);
             ok(hr == D3D_OK, "IDirect3DSurface9_LockRect failed, hr = %08x\n", hr);
-            *((DWORD *) lr.pBits) = test_data[i].in;
+            ((DWORD *) lr.pBits)[0] = test_data[i].in;
+            ((DWORD *) lr.pBits)[1] = 0x00800080;
             hr = IDirect3DSurface9_UnlockRect(surface);
             ok(hr == D3D_OK, "IDirect3DSurface9_UnlockRect failed, hr = %08x\n", hr);
 
@@ -10283,24 +10494,13 @@ static void yuv_color_test(IDirect3DDevice9 *device) {
              * want to add tests for the filtered pixels as well.
              *
              * Unfortunately different implementations(Windows-NV and Mac-ATI tested) interpret some colors vastly
-             * differently, so we need a max diff of 16
+             * differently, so we need a max diff of 18
              */
-            color = getPixelColor(device, 40, 240);
-
-            /* Newer versions of the Nvidia Windows driver mix up the U and V channels, breaking all the tests
-             * where U != V. Skip the entire test if this bug in this case
-             */
-            if (broken(test_data[i].in == 0xff000000 && color == 0x00008800 && format == D3DFMT_UYVY))
-            {
-                skip("Nvidia channel confusion bug detected, skipping YUV tests\n");
-                IDirect3DSurface9_Release(surface);
-                goto out;
-            }
-
+            color = getPixelColor(device, 1, 240);
             ok(color_match(color, ref_color_left, 18),
                "Input 0x%08x: Got color 0x%08x for pixel 1/1, expected 0x%08x, format %s\n",
                test_data[i].in, color, ref_color_left, fmt_string);
-            color = getPixelColor(device, 600, 240);
+            color = getPixelColor(device, 318, 240);
             ok(color_match(color, ref_color_right, 18),
                "Input 0x%08x: Got color 0x%08x for pixel 2/1, expected 0x%08x, format %s\n",
                test_data[i].in, color, ref_color_right, fmt_string);
@@ -10310,7 +10510,6 @@ static void yuv_color_test(IDirect3DDevice9 *device) {
         IDirect3DSurface9_Release(surface);
     }
 
-out:
     IDirect3DSurface9_Release(target);
     IDirect3D9_Release(d3d);
 }
@@ -10636,15 +10835,18 @@ static void alphatest_test(IDirect3DDevice9 *device) {
     hr = IDirect3DDevice9_SetFVF(device, D3DFVF_XYZ | D3DFVF_DIFFUSE);
     ok(hr == D3D_OK, "IDirect3DDevice9_SetFVF failed with 0x%08x\n", hr);
 
-    for(j = 0; j < 2; j++) {
-        if(j == 1) {
-            /* Try a pixel shader instead of fixed function. The wined3d code may emulate
-             * the alpha test either for performance reasons(floating point RTs) or to work
-             * around driver bugs(Geforce 7x00 cards on MacOS). There may be a different
-             * codepath for ffp and shader in this case, and the test should cover both
-             */
+    for (j = 0; j < 2; ++j)
+    {
+        if (j == 1)
+        {
+            /* Try a pixel shader instead of fixed function. The wined3d code
+             * may emulate the alpha test either for performance reasons
+             * (floating point RTs) or to work around driver bugs (GeForce
+             * 7x00 cards on MacOS). There may be a different codepath for ffp
+             * and shader in this case, and the test should cover both. */
             IDirect3DPixelShader9 *ps;
-            DWORD shader_code[] = {
+            static const DWORD shader_code[] =
+            {
                 0xffff0101,                                 /* ps_1_1           */
                 0x00000001, 0x800f0000, 0x90e40000,         /* mov r0, v0       */
                 0x0000ffff                                  /* end              */
@@ -10729,8 +10931,10 @@ static void alphatest_test(IDirect3DDevice9 *device) {
     ok(hr == D3D_OK, "IDirect3DDevice9_SetPixelShader failed with 0x%08x\n", hr);
 }
 
-static void sincos_test(IDirect3DDevice9 *device) {
-    const DWORD sin_shader_code[] = {
+static void sincos_test(IDirect3DDevice9 *device)
+{
+    static const DWORD sin_shader_code[] =
+    {
         0xfffe0200,                                                                 /* vs_2_0                       */
         0x0200001f, 0x80000000, 0x900f0000,                                         /* dcl_position v0              */
         0x05000051, 0xa00f0002, 0x40490fdb, 0x3f800000, 0x00000000, 0x3f59999a,     /* def c2, 3.14159, 1, 0, 0.85  */
@@ -10741,7 +10945,8 @@ static void sincos_test(IDirect3DDevice9 *device) {
         0x02000001, 0xd00f0000, 0xa0a60002,                                         /* mov oD0, c2.zyzz             */
         0x0000ffff                                                                  /* end                          */
     };
-    const DWORD cos_shader_code[] = {
+    static const DWORD cos_shader_code[] =
+    {
         0xfffe0200,                                                                 /* vs_2_0                       */
         0x0200001f, 0x80000000, 0x900f0000,                                         /* dcl_position v0              */
         0x05000051, 0xa00f0002, 0x40490fdb, 0x3f800000, 0x00000000, 0x3f59999a,     /* def c2, 3.14159, 1, 0, 0.85  */
@@ -10806,8 +11011,10 @@ static void sincos_test(IDirect3DDevice9 *device) {
     IDirect3DVertexShader9_Release(cos_shader);
 }
 
-static void loop_index_test(IDirect3DDevice9 *device) {
-    const DWORD shader_code[] = {
+static void loop_index_test(IDirect3DDevice9 *device)
+{
+    static const DWORD shader_code[] =
+    {
         0xfffe0200,                                                 /* vs_2_0                   */
         0x0200001f, 0x80000000, 0x900f0000,                         /* dcl_position v0          */
         0x02000001, 0x800f0000, 0xa0e40000,                         /* mov r0, c0               */
@@ -10905,8 +11112,10 @@ static void loop_index_test(IDirect3DDevice9 *device) {
     IDirect3DVertexShader9_Release(shader);
 }
 
-static void sgn_test(IDirect3DDevice9 *device) {
-    const DWORD shader_code[] = {
+static void sgn_test(IDirect3DDevice9 *device)
+{
+    static const DWORD shader_code[] =
+    {
         0xfffe0200,                                                             /* vs_2_0                       */
         0x0200001f, 0x80000000, 0x900f0000,                                     /* dcl_position o0              */
         0x05000051, 0xa00f0000, 0xbf000000, 0x00000000, 0x3f000000, 0x41400000, /* def c0, -0.5, 0.0, 0.5, 12.0 */
@@ -11557,10 +11766,10 @@ static void depth_blit_test(IDirect3DDevice9 *device)
 {
     static const struct vertex quad1[] =
     {
-        { -1.0,  1.0, 0.50f, 0xff00ff00},
-        {  1.0,  1.0, 0.50f, 0xff00ff00},
-        { -1.0, -1.0, 0.50f, 0xff00ff00},
-        {  1.0, -1.0, 0.50f, 0xff00ff00},
+        { -1.0,  1.0, 0.33f, 0xff00ff00},
+        {  1.0,  1.0, 0.33f, 0xff00ff00},
+        { -1.0, -1.0, 0.33f, 0xff00ff00},
+        {  1.0, -1.0, 0.33f, 0xff00ff00},
     };
     static const struct vertex quad2[] =
     {
@@ -12258,13 +12467,14 @@ static void clip_planes_test(IDirect3DDevice9 *device)
 {
     const float plane0[4] = {0.0f, 1.0f, 0.0f, 0.5f / 480.0f}; /* a quarter-pixel offset */
 
-    const DWORD shader_code[] = {
-        0xfffe0200, /* vs_2_0 */
-        0x0200001f, 0x80000000, 0x900f0000, /* dcl_position v0 */
-        0x0200001f, 0x8000000a, 0x900f0001, /* dcl_color0 v1 */
-        0x02000001, 0xc00f0000, 0x90e40000, /* mov oPos, v0 */
-        0x02000001, 0xd00f0000, 0x90e40001, /* mov oD0, v1 */
-        0x0000ffff /* end */
+    static const DWORD shader_code[] =
+    {
+        0xfffe0200,                             /* vs_2_0 */
+        0x0200001f, 0x80000000, 0x900f0000,     /* dcl_position v0 */
+        0x0200001f, 0x8000000a, 0x900f0001,     /* dcl_color0 v1 */
+        0x02000001, 0xc00f0000, 0x90e40000,     /* mov oPos, v0 */
+        0x02000001, 0xd00f0000, 0x90e40001,     /* mov oD0, v1 */
+        0x0000ffff                              /* end */
     };
     IDirect3DVertexShader9 *shader;
 
@@ -12336,10 +12546,12 @@ static void clip_planes_test(IDirect3DDevice9 *device)
 
 static void fp_special_test(IDirect3DDevice9 *device)
 {
+    /* Microsoft's assembler generates nan and inf with "1.#QNAN" and "1.#INF." respectively */
     static const DWORD vs_header[] =
     {
         0xfffe0200,                                                             /* vs_2_0                       */
         0x05000051, 0xa00f0000, 0x00000000, 0x3f000000, 0x3f800000, 0x40000000, /* def c0, 0.0, 0.5, 1.0, 2.0   */
+        0x05000051, 0xa00f0001, 0x7fc00000, 0xff800000, 0x7f800000, 0x00000000, /* def c1, nan, -inf, inf, 0    */
         0x0200001f, 0x80000000, 0x900f0000,                                     /* dcl_position v0              */
         0x0200001f, 0x80000005, 0x900f0001,                                     /* dcl_texcoord0 v1             */
     };
@@ -12354,6 +12566,9 @@ static void fp_special_test(IDirect3DDevice9 *device)
     static const DWORD vs_rsq2[] = {0x02000007, 0x80010000, 0x91000001};        /* rsq r0.x, -v1.x              */
     static const DWORD vs_lit[] = {0x02000010, 0x800f0000, 0x90000001,          /* lit r0, v1.xxxx              */
             0x02000001, 0x80010000, 0x80aa0000};                                /* mov r0.x, v0.z               */
+    static const DWORD vs_def1[] = {0x02000001, 0x80010000, 0xa0000001};        /* mov r0.x, c1.x               */
+    static const DWORD vs_def2[] = {0x02000001, 0x80010000, 0xa0550001};        /* mov r0.x, c1.y               */
+    static const DWORD vs_def3[] = {0x02000001, 0x80010000, 0xa0aa0001};        /* mov r0.x, c1.z               */
 
     static const DWORD vs_footer[] =
     {
@@ -12380,6 +12595,7 @@ static void fp_special_test(IDirect3DDevice9 *device)
         const char *name;
         const DWORD *ops;
         DWORD size;
+        D3DCOLOR r500;
         D3DCOLOR r600;
         D3DCOLOR nv40;
         D3DCOLOR nv50;
@@ -12398,14 +12614,17 @@ static void fp_special_test(IDirect3DDevice9 *device)
          *
          * There are considerable differences between graphics cards in how
          * these are handled, but pow and nrm never generate INF or NAN. */
-        {"log",     vs_log,     sizeof(vs_log),     0x00000000, 0x00ff0000, 0x00ff7f00},
-        {"pow",     vs_pow,     sizeof(vs_pow),     0x000000ff, 0x0000ff00, 0x000000ff},
-        {"nrm",     vs_nrm,     sizeof(vs_nrm),     0x00ff0000, 0x0000ff00, 0x00ff0000},
-        {"rcp1",    vs_rcp1,    sizeof(vs_rcp1),    0x000000ff, 0x00ff00ff, 0x00ff7f00},
-        {"rcp2",    vs_rcp2,    sizeof(vs_rcp2),    0x00000000, 0x00ff0000, 0x00ff7f00},
-        {"rsq1",    vs_rsq1,    sizeof(vs_rsq1),    0x000000ff, 0x00ff00ff, 0x00ff7f00},
-        {"rsq2",    vs_rsq2,    sizeof(vs_rsq2),    0x000000ff, 0x00ff00ff, 0x00ff7f00},
-        {"lit",     vs_lit,     sizeof(vs_lit),     0x00ff0000, 0x00ff0000, 0x00ff0000},
+        {"log",     vs_log,     sizeof(vs_log),     0x00000000, 0x00000000, 0x00ff0000, 0x00ff7f00},
+        {"pow",     vs_pow,     sizeof(vs_pow),     0x000000ff, 0x000000ff, 0x0000ff00, 0x000000ff},
+        {"nrm",     vs_nrm,     sizeof(vs_nrm),     0x00ff0000, 0x00ff0000, 0x0000ff00, 0x00ff0000},
+        {"rcp1",    vs_rcp1,    sizeof(vs_rcp1),    0x000000ff, 0x000000ff, 0x00ff00ff, 0x00ff7f00},
+        {"rcp2",    vs_rcp2,    sizeof(vs_rcp2),    0x000000ff, 0x00000000, 0x00ff0000, 0x00ff7f00},
+        {"rsq1",    vs_rsq1,    sizeof(vs_rsq1),    0x000000ff, 0x000000ff, 0x00ff00ff, 0x00ff7f00},
+        {"rsq2",    vs_rsq2,    sizeof(vs_rsq2),    0x000000ff, 0x000000ff, 0x00ff00ff, 0x00ff7f00},
+        {"lit",     vs_lit,     sizeof(vs_lit),     0x00ff0000, 0x00ff0000, 0x00ff0000, 0x00ff0000},
+        {"def1",    vs_def1,    sizeof(vs_def1),    0x000000ff, 0x00007f00, 0x0000ff00, 0x00007f00},
+        {"def2",    vs_def2,    sizeof(vs_def2),    0x00ff0000, 0x00ff7f00, 0x00ff0000, 0x00ff7f00},
+        {"def3",    vs_def3,    sizeof(vs_def3),    0x00ff00ff, 0x00ff7f00, 0x00ff00ff, 0x00ff7f00},
     };
 
     static const DWORD ps_code[] =
@@ -12761,6 +12980,7 @@ static void unbound_sampler_test(IDirect3DDevice9 *device)
     IDirect3DPixelShader9 *ps, *ps_cube, *ps_volume;
     IDirect3DSurface9 *rt, *old_rt;
     DWORD color;
+    D3DCAPS9 caps;
 
     static const DWORD ps_code[] =
     {
@@ -12802,6 +13022,14 @@ static void unbound_sampler_test(IDirect3DDevice9 *device)
         { 1.0f,  -1.0f,  0.1f,   0.0f,   1.0f},
         { 1.0f,   1.0f,  0.1f,   1.0f,   1.0f}
     };
+
+    hr = IDirect3DDevice9_GetDeviceCaps(device, &caps);
+    ok(SUCCEEDED(hr), "GetDeviceCaps failed, hr %#x.\n", hr);
+    if (!(caps.TextureCaps & D3DPTEXTURECAPS_CUBEMAP) || !(caps.TextureCaps & D3DPTEXTURECAPS_VOLUMEMAP))
+    {
+        skip("No cube / volume textures support, skipping the unbound sampler test.\n");
+        return;
+    }
 
     hr = IDirect3DDevice9_SetTexture(device, 0, NULL);
     ok(SUCCEEDED(hr), "IDirect3DDevice9_SetTextureStage failed, %#x.\n", hr);
@@ -14037,6 +14265,171 @@ static void zenable_test(IDirect3DDevice9 *device)
     }
 }
 
+static void fog_special_test(IDirect3DDevice9 *device)
+{
+    static const struct
+    {
+        struct vec3 position;
+        D3DCOLOR diffuse;
+    }
+    quad[] =
+    {
+        {{ -1.0f,  -1.0f,  0.0f}, 0xff00ff00},
+        {{  1.0f,  -1.0f,  1.0f}, 0xff00ff00},
+        {{ -1.0f,   1.0f,  0.0f}, 0xff00ff00},
+        {{  1.0f,   1.0f,  1.0f}, 0xff00ff00}
+    };
+    static const struct
+    {
+        DWORD vertexmode, tablemode;
+        BOOL vs, ps;
+        D3DCOLOR color_left, color_right;
+    }
+    tests[] =
+    {
+        {D3DFOG_LINEAR, D3DFOG_NONE,   FALSE, FALSE, 0x00ff0000, 0x00ff0000},
+        {D3DFOG_LINEAR, D3DFOG_NONE,   FALSE, TRUE,  0x00ff0000, 0x00ff0000},
+        {D3DFOG_LINEAR, D3DFOG_NONE,   TRUE,  FALSE, 0x00ff0000, 0x00ff0000},
+        {D3DFOG_LINEAR, D3DFOG_NONE,   TRUE,  TRUE,  0x00ff0000, 0x00ff0000},
+
+        {D3DFOG_NONE,   D3DFOG_LINEAR, FALSE, FALSE, 0x0000ff00, 0x00ff0000},
+        {D3DFOG_NONE,   D3DFOG_LINEAR, FALSE, TRUE,  0x0000ff00, 0x00ff0000},
+        {D3DFOG_NONE,   D3DFOG_LINEAR, TRUE,  FALSE, 0x0000ff00, 0x00ff0000},
+        {D3DFOG_NONE,   D3DFOG_LINEAR, TRUE,  TRUE,  0x0000ff00, 0x00ff0000},
+    };
+    static const DWORD pixel_shader_code[] =
+    {
+        0xffff0101,                                 /* ps_1_1           */
+        0x00000001, 0x800f0000, 0x90e40000,         /* mov r0, v0       */
+        0x0000ffff
+    };
+    static const DWORD vertex_shader_code[] =
+    {
+        0xfffe0101,                                 /* vs_1_1           */
+        0x0000001f, 0x80000000, 0x900f0000,         /* dcl_position v0  */
+        0x0000001f, 0x8000000a, 0x900f0001,         /* dcl_color0 v1    */
+        0x00000001, 0xc00f0000, 0x90e40000,         /* mov oPos, v0     */
+        0x00000001, 0xd00f0000, 0x90e40001,         /* mov oD0, v1      */
+        0x0000ffff
+    };
+    union
+    {
+        float f;
+        DWORD d;
+    } conv;
+    DWORD color;
+    HRESULT hr;
+    unsigned int i;
+    IDirect3DPixelShader9 *ps;
+    IDirect3DVertexShader9 *vs;
+    D3DCAPS9 caps;
+
+    hr = IDirect3DDevice9_GetDeviceCaps(device, &caps);
+    ok(SUCCEEDED(hr), "Failed to get device caps, hr %#x.\n", hr);
+    if (caps.VertexShaderVersion >= D3DVS_VERSION(1, 1))
+    {
+        hr = IDirect3DDevice9_CreateVertexShader(device, vertex_shader_code, &vs);
+        ok(SUCCEEDED(hr), "Failed to create vertex shader, hr %#x.\n", hr);
+    }
+    else
+    {
+        skip("Vertex Shaders not supported, skipping some fog tests.\n");
+        vs = NULL;
+    }
+    if (caps.PixelShaderVersion >= D3DPS_VERSION(1, 1))
+    {
+        hr = IDirect3DDevice9_CreatePixelShader(device, pixel_shader_code, &ps);
+        ok(SUCCEEDED(hr), "Failed to create pixel shader, hr %#x.\n", hr);
+    }
+    else
+    {
+        skip("Pixel Shaders not supported, skipping some fog tests.\n");
+        ps = NULL;
+    }
+
+    hr = IDirect3DDevice9_SetFVF(device, D3DFVF_XYZ | D3DFVF_DIFFUSE);
+    ok(SUCCEEDED(hr), "Failed to set FVF, hr %#x.\n", hr);
+    hr = IDirect3DDevice9_SetRenderState(device, D3DRS_FOGENABLE, TRUE);
+    ok(SUCCEEDED(hr), "Failed to enable fog, hr %#x.\n", hr);
+    hr = IDirect3DDevice9_SetRenderState(device, D3DRS_FOGCOLOR, 0xffff0000);
+    ok(SUCCEEDED(hr), "Failed to set fog color, hr %#x.\n", hr);
+
+    conv.f = 0.5f;
+    hr = IDirect3DDevice9_SetRenderState(device, D3DRS_FOGSTART, conv.d);
+    ok(SUCCEEDED(hr), "Failed to set fog start, hr %#x.\n", hr);
+    hr = IDirect3DDevice9_SetRenderState(device, D3DRS_FOGEND, conv.d);
+    ok(SUCCEEDED(hr), "Failed to set fog end, hr %#x.\n", hr);
+
+    for (i = 0; i < sizeof(tests) / sizeof(*tests); i++)
+    {
+        hr = IDirect3DDevice9_Clear(device, 0, NULL, D3DCLEAR_TARGET, 0xff0000ff, 0.0f, 0);
+        ok(SUCCEEDED(hr), "Failed to clear render target, hr %#x.\n", hr);
+
+        if (!tests[i].vs)
+        {
+            hr = IDirect3DDevice9_SetVertexShader(device, NULL);
+            ok(SUCCEEDED(hr), "Failed to set vertex shader, hr %#x.\n", hr);
+        }
+        else if (vs)
+        {
+            hr = IDirect3DDevice9_SetVertexShader(device, vs);
+            ok(SUCCEEDED(hr), "Failed to set vertex shader, hr %#x.\n", hr);
+        }
+        else
+        {
+            continue;
+        }
+
+        if (!tests[i].ps)
+        {
+            hr = IDirect3DDevice9_SetPixelShader(device, NULL);
+            ok(SUCCEEDED(hr), "Failed to set pixel shader, hr %#x.\n", hr);
+        }
+        else if (ps)
+        {
+            hr = IDirect3DDevice9_SetPixelShader(device, ps);
+            ok(SUCCEEDED(hr), "Failed to set pixel shader, hr %#x.\n", hr);
+        }
+        else
+        {
+            continue;
+        }
+
+        hr = IDirect3DDevice9_SetRenderState(device, D3DRS_FOGVERTEXMODE, tests[i].vertexmode);
+        ok(SUCCEEDED(hr), "Failed to set fogvertexmode, hr %#x.\n", hr);
+        hr = IDirect3DDevice9_SetRenderState(device, D3DRS_FOGTABLEMODE, tests[i].tablemode);
+        ok(SUCCEEDED(hr), "Failed to set fogtablemode, hr %#x.\n", hr);
+
+        hr = IDirect3DDevice9_BeginScene(device);
+        ok(SUCCEEDED(hr), "Failed to begin scene, hr %#x.\n", hr);
+        hr = IDirect3DDevice9_DrawPrimitiveUP(device, D3DPT_TRIANGLESTRIP, 2, quad, sizeof(*quad));
+        ok(SUCCEEDED(hr), "Failed to draw, hr %#x.\n", hr);
+        hr = IDirect3DDevice9_EndScene(device);
+        ok(SUCCEEDED(hr), "Failed to end scene, hr %#x.\n", hr);
+
+        color = getPixelColor(device, 310, 240);
+        ok(color_match(color, tests[i].color_left, 1),
+                "Expected left color 0x%08x, got 0x%08x, case %u.\n", tests[i].color_left, color, i);
+        color = getPixelColor(device, 330, 240);
+        ok(color_match(color, tests[i].color_right, 1),
+                "Expected right color 0x%08x, got 0x%08x, case %u.\n", tests[i].color_right, color, i);
+
+        hr = IDirect3DDevice9_Present(device, NULL, NULL, NULL, NULL);
+        ok(SUCCEEDED(hr), "Failed to present backbuffer, hr %#x.\n", hr);
+    }
+
+    hr = IDirect3DDevice9_SetRenderState(device, D3DRS_FOGENABLE, FALSE);
+    ok(SUCCEEDED(hr), "Failed to disable fog, hr %#x.\n", hr);
+    hr = IDirect3DDevice9_SetPixelShader(device, NULL);
+    ok(SUCCEEDED(hr), "Failed to set pixel shader, hr %#x.\n", hr);
+    hr = IDirect3DDevice9_SetVertexShader(device, NULL);
+    ok(SUCCEEDED(hr), "Failed to set vertex shader, hr %#x.\n", hr);
+    if (vs)
+        IDirect3DVertexShader9_Release(vs);
+    if (ps)
+        IDirect3DPixelShader9_Release(ps);
+}
+
 START_TEST(visual)
 {
     IDirect3D9 *d3d9;
@@ -14214,6 +14607,7 @@ START_TEST(visual)
     update_surface_test(device_ptr);
     multisample_get_rtdata_test(device_ptr);
     zenable_test(device_ptr);
+    fog_special_test(device_ptr);
 
     hr = IDirect3DDevice9_GetDirect3D(device_ptr, &d3d9);
     ok(SUCCEEDED(hr), "Failed to get d3d9 interface, hr %#x.\n", hr);

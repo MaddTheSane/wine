@@ -1147,7 +1147,6 @@ void CDECL __wine_kernel_init(void)
     setbuf(stderr,NULL);
     kernel32_handle = GetModuleHandleW(kernel32W);
     IsWow64Process( GetCurrentProcess(), &is_wow64 );
-    NtQuerySystemInformation( SystemBasicInformation, &system_info, sizeof(system_info), NULL );
 
     LOCALE_Init();
 
@@ -2594,7 +2593,15 @@ DWORD WINAPI LoadModule( LPCSTR name, LPVOID paramBlock )
  */
 BOOL WINAPI TerminateProcess( HANDLE handle, DWORD exit_code )
 {
-    NTSTATUS status = NtTerminateProcess( handle, exit_code );
+    NTSTATUS status;
+
+    if (!handle)
+    {
+        SetLastError( ERROR_INVALID_HANDLE );
+        return FALSE;
+    }
+
+    status = NtTerminateProcess( handle, exit_code );
     if (status) SetLastError( RtlNtStatusToDosError(status) );
     return !status;
 }
@@ -2623,6 +2630,10 @@ __ASM_STDCALL_FUNC( ExitProcess, 4, /* Shrinker depend on this particular ExitPr
 
 void WINAPI process_ExitProcess( DWORD status )
 {
+    ULONG magic;
+    LdrLockLoaderLock( 0, 0, &magic );
+    RtlAcquirePebLock();
+    NtTerminateProcess(0, status);
     LdrShutdownProcess();
     NtTerminateProcess(GetCurrentProcess(), status);
     exit(status);
@@ -2632,6 +2643,8 @@ void WINAPI process_ExitProcess( DWORD status )
 
 void WINAPI ExitProcess( DWORD status )
 {
+    RtlAcquirePebLock();
+    NtTerminateProcess(0, status);
     LdrShutdownProcess();
     NtTerminateProcess(GetCurrentProcess(), status);
     exit(status);

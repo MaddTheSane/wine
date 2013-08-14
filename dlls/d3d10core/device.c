@@ -1532,8 +1532,7 @@ static HRESULT STDMETHODCALLTYPE d3d10_device_CreateQuery(ID3D10Device *iface,
     if (!object)
         return E_OUTOFMEMORY;
 
-    hr = d3d10_query_init(object);
-    if (FAILED(hr))
+    if (FAILED(hr = d3d10_query_init(object, FALSE)))
     {
         WARN("Failed to initialize query, hr %#x.\n", hr);
         HeapFree(GetProcessHeap(), 0, object);
@@ -1549,9 +1548,34 @@ static HRESULT STDMETHODCALLTYPE d3d10_device_CreateQuery(ID3D10Device *iface,
 static HRESULT STDMETHODCALLTYPE d3d10_device_CreatePredicate(ID3D10Device *iface,
         const D3D10_QUERY_DESC *desc, ID3D10Predicate **predicate)
 {
-    FIXME("iface %p, desc %p, predicate %p stub!\n", iface, desc, predicate);
+    struct d3d10_query *object;
+    HRESULT hr;
 
-    return E_NOTIMPL;
+    TRACE("iface %p, desc %p, predicate %p.\n", iface, desc, predicate);
+
+    if (!desc)
+        return E_INVALIDARG;
+
+    if (desc->Query != D3D10_QUERY_OCCLUSION_PREDICATE && desc->Query != D3D10_QUERY_SO_OVERFLOW_PREDICATE)
+    {
+        WARN("Query type %#x is not a predicate.\n", desc->Query);
+        return E_INVALIDARG;
+    }
+
+    if (!(object = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(*object))))
+        return E_OUTOFMEMORY;
+
+    if (FAILED(hr = d3d10_query_init(object, TRUE)))
+    {
+        WARN("Failed to initialize predicate, hr %#x.\n", hr);
+        HeapFree(GetProcessHeap(), 0, object);
+        return hr;
+    }
+
+    TRACE("Created predicate %p.\n", object);
+    *predicate = (ID3D10Predicate *)&object->ID3D10Query_iface;
+
+    return S_OK;
 }
 
 static HRESULT STDMETHODCALLTYPE d3d10_device_CreateCounter(ID3D10Device *iface,
@@ -1807,22 +1831,21 @@ static void CDECL device_parent_mode_changed(struct wined3d_device_parent *devic
 }
 
 static HRESULT CDECL device_parent_create_texture_surface(struct wined3d_device_parent *device_parent,
-        void *container_parent, UINT width, UINT height, enum wined3d_format_id format, DWORD usage,
-        enum wined3d_pool pool, UINT sub_resource_idx, struct wined3d_surface **surface)
+        void *container_parent, const struct wined3d_resource_desc *desc, UINT sub_resource_idx,
+        DWORD flags, struct wined3d_surface **surface)
 {
     struct d3d10_device *device = device_from_wined3d_device_parent(device_parent);
 
-    TRACE("device_parent %p, container_parent %p, width %u, height %u, format %#x, usage %#x,\n"
-            "\tpool %#x, sub_resource_idx %u, surface %p.\n",
-            device_parent, container_parent, width, height, format, usage, pool, sub_resource_idx, surface);
+    TRACE("device_parent %p, container_parent %p, desc %p, sub_resource_idx %u, flags %#x, surface %p.\n",
+            device_parent, container_parent, desc, sub_resource_idx, flags, surface);
 
-    return wined3d_surface_create(device->wined3d_device, width, height, format, usage, pool,
-            WINED3D_MULTISAMPLE_NONE, 0, 0, container_parent, &d3d10_null_wined3d_parent_ops, surface);
+    return wined3d_surface_create(device->wined3d_device, desc->width, desc->height, desc->format,
+            desc->usage, desc->pool, desc->multisample_type, desc->multisample_quality, flags,
+            container_parent, &d3d10_null_wined3d_parent_ops, surface);
 }
 
 static HRESULT CDECL device_parent_create_swapchain_surface(struct wined3d_device_parent *device_parent,
-        void *container_parent, UINT width, UINT height, enum wined3d_format_id format_id, DWORD usage,
-        enum wined3d_multisample_type multisample_type, DWORD multisample_quality, struct wined3d_surface **surface)
+        void *container_parent, const struct wined3d_resource_desc *wined3d_desc, struct wined3d_surface **surface)
 {
     struct d3d10_device *device = device_from_wined3d_device_parent(device_parent);
     struct wined3d_resource *sub_resource;
@@ -1830,20 +1853,18 @@ static HRESULT CDECL device_parent_create_swapchain_surface(struct wined3d_devic
     D3D10_TEXTURE2D_DESC desc;
     HRESULT hr;
 
-    FIXME("device_parent %p, container_parent %p, width %u, height %u, format_id %#x, usage %#x,\n"
-            "\tmultisample_type %#x, multisample_quality %u, surface %p partial stub!\n",
-            device_parent, container_parent, width, height, format_id, usage,
-            multisample_type, multisample_quality, surface);
+    FIXME("device_parent %p, container_parent %p, wined3d_desc %p, surface %p partial stub!\n",
+            device_parent, container_parent, wined3d_desc, surface);
 
     FIXME("Implement DXGI<->wined3d usage conversion\n");
 
-    desc.Width = width;
-    desc.Height = height;
+    desc.Width = wined3d_desc->width;
+    desc.Height = wined3d_desc->height;
     desc.MipLevels = 1;
     desc.ArraySize = 1;
-    desc.Format = dxgi_format_from_wined3dformat(format_id);
-    desc.SampleDesc.Count = multisample_type ? multisample_type : 1;
-    desc.SampleDesc.Quality = multisample_quality;
+    desc.Format = dxgi_format_from_wined3dformat(wined3d_desc->format);
+    desc.SampleDesc.Count = wined3d_desc->multisample_type ? wined3d_desc->multisample_type : 1;
+    desc.SampleDesc.Quality = wined3d_desc->multisample_quality;
     desc.Usage = D3D10_USAGE_DEFAULT;
     desc.BindFlags = D3D10_BIND_RENDER_TARGET;
     desc.CPUAccessFlags = 0;

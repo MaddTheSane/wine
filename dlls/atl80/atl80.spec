@@ -27,7 +27,7 @@
 39 stdcall AtlAxCreateControl(ptr ptr ptr ptr) atl100.AtlAxCreateControl
 40 stdcall AtlAxCreateControlEx(ptr ptr ptr ptr ptr ptr ptr) atl100.AtlAxCreateControlEx
 41 stdcall AtlAxAttachControl(ptr ptr ptr) atl100.AtlAxAttachControl
-42 stdcall AtlAxWinInit() atl100.AtlAxWinInit
+42 stdcall AtlAxWinInit()
 43 stdcall AtlWinModuleAddCreateWndData(ptr ptr ptr) atl100.AtlWinModuleAddCreateWndData
 44 stdcall AtlWinModuleExtractCreateWndData(ptr) atl100.AtlWinModuleExtractCreateWndData
 45 stub AtlWinModuleRegisterWndClassInfoW
@@ -37,7 +37,7 @@
 49 stdcall AtlRegisterClassCategoriesHelper(ptr ptr long) atl100.AtlRegisterClassCategoriesHelper
 50 stdcall AtlIPersistStreamInit_Load(ptr ptr ptr ptr) atl100.AtlIPersistStreamInit_Load
 51 stdcall AtlIPersistStreamInit_Save(ptr long ptr ptr ptr) atl100.AtlIPersistStreamInit_Save
-52 stub AtlIPersistPropertyBag_Load
+52 stdcall AtlIPersistPropertyBag_Load(ptr ptr ptr ptr ptr) atl100.AtlIPersistPropertyBag_Load
 53 stub AtlIPersistPropertyBag_Save
 54 stdcall AtlGetObjectSourceInterface(ptr ptr ptr ptr ptr) atl100.AtlGetObjectSourceInterface
 55 stub AtlUnRegisterTypeLib

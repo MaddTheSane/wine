@@ -158,7 +158,6 @@ static const struct
     { "i786",    CPU_x86 },
     { "amd64",   CPU_x86_64 },
     { "x86_64",  CPU_x86_64 },
-    { "sparc",   CPU_SPARC },
     { "powerpc", CPU_POWERPC },
     { "arm",     CPU_ARM },
     { "aarch64", CPU_ARM64 }
@@ -218,8 +217,6 @@ struct options
 static const enum target_cpu build_cpu = CPU_x86;
 #elif defined(__x86_64__)
 static const enum target_cpu build_cpu = CPU_x86_64;
-#elif defined(__sparc__)
-static const enum target_cpu build_cpu = CPU_SPARC;
 #elif defined(__powerpc__)
 static const enum target_cpu build_cpu = CPU_POWERPC;
 #elif defined(__arm__)
@@ -346,11 +343,9 @@ static int check_platform( struct options *opts, const char *file )
             if (!memcmp( header, "\177ELF", 4 ))
             {
                 if (header[4] == 2)  /* 64-bit */
-                    ret = (opts->force_pointer_size == 8 ||
-                           (!opts->force_pointer_size && (opts->target_cpu == CPU_x86_64 || opts->target_cpu == CPU_ARM64)));
+                    ret = (opts->target_cpu == CPU_x86_64 || opts->target_cpu == CPU_ARM64);
                 else
-                    ret = (opts->force_pointer_size == 4 ||
-                           (!opts->force_pointer_size && opts->target_cpu != CPU_x86_64 && opts->target_cpu != CPU_ARM64));
+                    ret = (opts->target_cpu != CPU_x86_64 && opts->target_cpu != CPU_ARM64);
             }
         }
         close( fd );
@@ -366,25 +361,37 @@ static char *get_lib_dir( struct options *opts )
 
     for (i = 0; i < sizeof(stdlibpath)/sizeof(stdlibpath[0]); i++)
     {
-        char *p, *buffer = xmalloc( strlen(stdlibpath[i]) + strlen(libwine) + 3 );
+        char *p, *buffer = xmalloc( strlen(stdlibpath[i]) + strlen("/arm-linux-gnueabi") + strlen(libwine) + 1 );
         strcpy( buffer, stdlibpath[i] );
         p = buffer + strlen(buffer);
         while (p > buffer && p[-1] == '/') p--;
         strcpy( p, libwine );
         if (check_platform( opts, buffer )) goto found;
         if (p > buffer + 2 && (!memcmp( p - 2, "32", 2 ) || !memcmp( p - 2, "64", 2 ))) p -= 2;
-        if (opts->force_pointer_size == 4 || (!opts->force_pointer_size && opts->target_cpu != CPU_x86_64 && opts->target_cpu != CPU_ARM64))
+        if (opts->target_cpu != CPU_x86_64 && opts->target_cpu != CPU_ARM64)
         {
             strcpy( p, "32" );
             strcat( p, libwine );
             if (check_platform( opts, buffer )) goto found;
         }
-        if (opts->force_pointer_size == 8 || (!opts->force_pointer_size && (opts->target_cpu == CPU_x86_64 || opts->target_cpu == CPU_ARM64)))
+        if (opts->target_cpu == CPU_x86_64 || opts->target_cpu == CPU_ARM64)
         {
             strcpy( p, "64" );
             strcat( p, libwine );
             if (check_platform( opts, buffer )) goto found;
         }
+        switch(opts->target_cpu)
+        {
+        case CPU_x86:     strcpy( p, "/i386-linux-gnu" ); break;
+        case CPU_x86_64:  strcpy( p, "/x86_64-linux-gnu" ); break;
+        case CPU_ARM:     strcpy( p, "/arm-linux-gnueabi" ); break;
+        case CPU_ARM64:   strcpy( p, "/aarch64-linux-gnu" ); break;
+        case CPU_POWERPC: strcpy( p, "/powerpc-linux-gnu" ); break;
+        default:
+            assert(0);
+        }
+        strcat( p, libwine );
+        if (check_platform( opts, buffer )) goto found;
         free( buffer );
         continue;
 
@@ -791,6 +798,8 @@ static void build(struct options* opts)
         if (opts->win16_app)
             error( "Building 16-bit code is not supported for Windows\n" );
 
+        strarray_addall(link_args, get_translator(opts));
+
         if (opts->shared)
         {
             /* run winebuild to generate the .def file */
@@ -807,16 +816,13 @@ static void build(struct options* opts)
             spawn(opts->prefix, spec_args, 0);
             strarray_free(spec_args);
 
-            if (opts->target) strarray_add(link_args, strmake("%s-dllwrap", opts->target));
-            else strarray_add(link_args, "dllwrap");
+            strarray_add(link_args, "-shared");
             if (verbose) strarray_add(link_args, "-v");
-            strarray_add(link_args, "-k");
-            strarray_add(link_args, "--def");
+            strarray_add(link_args, "-Wl,--kill-at");
             strarray_add(link_args, spec_def_name);
         }
         else
         {
-            strarray_addall(link_args, get_translator(opts));
             strarray_add(link_args, opts->gui_app ? "-mwindows" : "-mconsole");
             if (opts->nodefaultlibs) strarray_add(link_args, "-nodefaultlibs");
         }
@@ -934,6 +940,7 @@ static void build(struct options* opts)
 
     /* run winebuild to generate the .spec.o file */
     spec_args = get_winebuild_args( opts );
+    strarray_add( spec_args, strmake( "--cc-cmd=%s", build_tool_name( opts, "gcc", CC )));
     spec_o_name = get_temp_file(output_name, ".spec.o");
     if (opts->force_pointer_size)
         strarray_add(spec_args, strmake("-m%u", 8 * opts->force_pointer_size ));
@@ -1409,6 +1416,10 @@ int main(int argc, char **argv)
                     }
 		    else if (strcmp("-m64", argv[i]) == 0)
                     {
+                        if (opts.target_cpu == CPU_x86)
+                            opts.target_cpu = CPU_x86_64;
+                        else if (opts.target_cpu == CPU_ARM)
+                            opts.target_cpu = CPU_ARM64;
                         opts.force_pointer_size = 8;
 			raw_linker_arg = 1;
                     }

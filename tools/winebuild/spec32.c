@@ -38,7 +38,6 @@
 #define IMAGE_FILE_MACHINE_AMD64   0x8664
 #define IMAGE_FILE_MACHINE_ARMNT   0x01C4
 /* Wine extension */
-#define IMAGE_FILE_MACHINE_SPARC   0x2000
 #define IMAGE_FILE_MACHINE_ARM64   0x01C5
 
 #define IMAGE_SIZEOF_NT_OPTIONAL32_HEADER 224
@@ -364,12 +363,11 @@ void output_exports( DLLSPEC *spec )
         output( "\n.L__wine_spec_exp_ordinals:\n" );
         for (i = 0; i < spec->nb_names; i++)
         {
-            output( "\t%s %d\n",
-                     get_asm_short_keyword(), spec->names[i]->ordinal - spec->base );
+            output( "\t.short %d\n", spec->names[i]->ordinal - spec->base );
         }
         if (spec->nb_names % 2)
         {
-            output( "\t%s 0\n", get_asm_short_keyword() );
+            output( "\t.short 0\n" );
         }
     }
 
@@ -439,11 +437,6 @@ static void output_asm_constructor( const char *constructor )
             output( "\n\t.section \".init\",\"ax\"\n" );
             output( "\tcall %s\n", asm_name(constructor) );
             break;
-        case CPU_SPARC:
-            output( "\n\t.section \".init\",\"ax\"\n" );
-            output( "\tcall %s\n", asm_name(constructor) );
-            output( "\tnop\n" );
-            break;
         case CPU_ARM:
             output( "\n\t.section \".text\",\"ax\"\n" );
             output( "\tblx %s\n", asm_name(constructor) );
@@ -488,7 +481,6 @@ void output_module( DLLSPEC *spec )
         {
         case CPU_x86:
         case CPU_x86_64:
-        case CPU_SPARC:
             output( "\n\t.section \".init\",\"ax\"\n" );
             output( "\tjmp 1f\n" );
             break;
@@ -520,25 +512,21 @@ void output_module( DLLSPEC *spec )
     {
     case CPU_x86:     machine = IMAGE_FILE_MACHINE_I386; break;
     case CPU_x86_64:  machine = IMAGE_FILE_MACHINE_AMD64; break;
+    case CPU_POWERPC: machine = IMAGE_FILE_MACHINE_POWERPC; break;
     case CPU_ARM:     machine = IMAGE_FILE_MACHINE_ARMNT; break;
     case CPU_ARM64:   machine = IMAGE_FILE_MACHINE_ARM64; break;
-    case CPU_POWERPC: machine = IMAGE_FILE_MACHINE_POWERPC; break;
-    case CPU_SPARC:   machine = IMAGE_FILE_MACHINE_SPARC; break;
     }
-    output( "\t%s 0x%04x\n",              /* Machine */
-             get_asm_short_keyword(), machine );
-    output( "\t%s 0\n",                   /* NumberOfSections */
-             get_asm_short_keyword() );
+    output( "\t.short 0x%04x\n",          /* Machine */
+             machine );
+    output( "\t.short 0\n" );             /* NumberOfSections */
     output( "\t.long 0\n" );              /* TimeDateStamp */
     output( "\t.long 0\n" );              /* PointerToSymbolTable */
     output( "\t.long 0\n" );              /* NumberOfSymbols */
-    output( "\t%s %d\n",                  /* SizeOfOptionalHeader */
-             get_asm_short_keyword(),
+    output( "\t.short %d\n",              /* SizeOfOptionalHeader */
              get_ptr_size() == 8 ? IMAGE_SIZEOF_NT_OPTIONAL64_HEADER : IMAGE_SIZEOF_NT_OPTIONAL32_HEADER );
-    output( "\t%s 0x%04x\n",              /* Characteristics */
-             get_asm_short_keyword(), spec->characteristics );
-    output( "\t%s 0x%04x\n",              /* Magic */
-             get_asm_short_keyword(),
+    output( "\t.short 0x%04x\n",          /* Characteristics */
+             spec->characteristics );
+    output( "\t.short 0x%04x\n",          /* Magic */
              get_ptr_size() == 8 ? IMAGE_NT_OPTIONAL_HDR64_MAGIC : IMAGE_NT_OPTIONAL_HDR32_MAGIC );
     output( "\t.byte 0\n" );              /* MajorLinkerVersion */
     output( "\t.byte 0\n" );              /* MinorLinkerVersion */
@@ -557,21 +545,19 @@ void output_module( DLLSPEC *spec )
              get_asm_ptr_keyword() );
     output( "\t.long %u\n", page_size );  /* SectionAlignment */
     output( "\t.long %u\n", page_size );  /* FileAlignment */
-    output( "\t%s 1,0\n",                 /* Major/MinorOperatingSystemVersion */
-             get_asm_short_keyword() );
-    output( "\t%s 0,0\n",                 /* Major/MinorImageVersion */
-             get_asm_short_keyword() );
-    output( "\t%s %u,%u\n",               /* Major/MinorSubsystemVersion */
-             get_asm_short_keyword(), spec->subsystem_major, spec->subsystem_minor );
+    output( "\t.short 1,0\n" );           /* Major/MinorOperatingSystemVersion */
+    output( "\t.short 0,0\n" );           /* Major/MinorImageVersion */
+    output( "\t.short %u,%u\n",           /* Major/MinorSubsystemVersion */
+             spec->subsystem_major, spec->subsystem_minor );
     output( "\t.long 0\n" );                          /* Win32VersionValue */
     output( "\t.long %s-.L__wine_spec_rva_base\n",    /* SizeOfImage */
              asm_name("_end") );
     output( "\t.long %u\n", page_size );  /* SizeOfHeaders */
     output( "\t.long 0\n" );              /* CheckSum */
-    output( "\t%s 0x%04x\n",              /* Subsystem */
-             get_asm_short_keyword(), spec->subsystem );
-    output( "\t%s 0x%04x\n",              /* DllCharacteristics */
-            get_asm_short_keyword(), spec->dll_characteristics );
+    output( "\t.short 0x%04x\n",          /* Subsystem */
+             spec->subsystem );
+    output( "\t.short 0x%04x\n",          /* DllCharacteristics */
+            spec->dll_characteristics );
     output( "\t%s %u,%u\n",               /* SizeOfStackReserve/Commit */
              get_asm_ptr_keyword(), (spec->stack_size ? spec->stack_size : 1024) * 1024, page_size );
     output( "\t%s %u,%u\n",               /* SizeOfHeapReserve/Commit */
@@ -709,7 +695,6 @@ void output_fake_module( DLLSPEC *spec )
     case CPU_x86:     put_word( IMAGE_FILE_MACHINE_I386 ); break;
     case CPU_x86_64:  put_word( IMAGE_FILE_MACHINE_AMD64 ); break;
     case CPU_POWERPC: put_word( IMAGE_FILE_MACHINE_POWERPC ); break;
-    case CPU_SPARC:   put_word( IMAGE_FILE_MACHINE_SPARC ); break;
     case CPU_ARM:     put_word( IMAGE_FILE_MACHINE_ARMNT ); break;
     case CPU_ARM64:   put_word( IMAGE_FILE_MACHINE_ARM64 ); break;
     }

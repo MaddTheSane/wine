@@ -4,7 +4,7 @@
  * Copyright 2005 Mike McCormack for CodeWeavers
  * Copyright 2007-2008 Alistair Leslie-Hughes
  * Copyright 2010-2011 Adam Martinson for CodeWeavers
- * Copyright 2010-2012 Nikolay Sivov for CodeWeavers
+ * Copyright 2010-2013 Nikolay Sivov for CodeWeavers
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -385,6 +385,15 @@ static const WCHAR szComplete6[] = {
     '<','o','p','e','n','>','<','/','o','p','e','n','>','\n',0
 };
 
+static const char complete7[] = {
+    "<?xml version=\"1.0\"?>\n\t"
+    "<root>\n"
+    "\t<a/>\n"
+    "\t<b/>\n"
+    "\t<c/>\n"
+    "</root>"
+};
+
 #define DECL_WIN_1252 \
 "<?xml version=\"1.0\" encoding=\"Windows-1252\"?>"
 
@@ -434,6 +443,13 @@ static const char szExampleXML[] =
 "        <d>D4 field</d>\n"
 "    </elem>\n"
 "</root>\n";
+
+static const char charrefsxml[] =
+"<?xml version='1.0'?>"
+"<a>"
+"<b1> Text &#65; end </b1>"
+"<b2>&#65;&#66; &#67; </b2>"
+"</a>";
 
 static const CHAR szNodeTypesXML[] =
 "<?xml version='1.0'?>"
@@ -4154,10 +4170,62 @@ static inline void _check_ws_preserved(int line, IXMLDOMDocument2* doc, char con
     IXMLDOMNode_Release(node2);
 }
 
+static void test_preserve_charref(IXMLDOMDocument2 *doc, VARIANT_BOOL preserve)
+{
+    static const WCHAR b1_p[] = {' ','T','e','x','t',' ','A',' ','e','n','d',' ',0};
+    static const WCHAR b1_i[] = {'T','e','x','t',' ','A',' ','e','n','d',0};
+    static const WCHAR b2_p[] = {'A','B',' ','C',' ',0};
+    static const WCHAR b2_i[] = {'A','B',' ','C',0};
+    IXMLDOMNodeList *list;
+    IXMLDOMElement *root;
+    IXMLDOMNode *node;
+    const WCHAR *text;
+    VARIANT_BOOL b;
+    HRESULT hr;
+    BSTR s;
+
+    hr = IXMLDOMDocument2_put_preserveWhiteSpace(doc, preserve);
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+
+    hr = IXMLDOMDocument2_loadXML(doc, _bstr_(charrefsxml), &b);
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+
+    hr = IXMLDOMDocument2_get_documentElement(doc, &root);
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+
+    hr = IXMLDOMElement_get_childNodes(root, &list);
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+    IXMLDOMElement_Release(root);
+
+    text = preserve == VARIANT_TRUE ? b1_p : b1_i;
+    hr = IXMLDOMNodeList_get_item(list, 0, &node);
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+    hr = IXMLDOMNode_get_text(node, &s);
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+    ok(!lstrcmpW(s, text), "0x%x, got %s\n", preserve, wine_dbgstr_w(s));
+    SysFreeString(s);
+    IXMLDOMNode_Release(node);
+
+    text = preserve == VARIANT_TRUE ? b2_p : b2_i;
+    hr = IXMLDOMNodeList_get_item(list, 1, &node);
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+    hr = IXMLDOMNode_get_text(node, &s);
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+    ok(!lstrcmpW(s, text), "0x%x, got %s\n", preserve, wine_dbgstr_w(s));
+    SysFreeString(s);
+    IXMLDOMNode_Release(node);
+
+    IXMLDOMNodeList_Release(list);
+}
+
 static void test_whitespace(void)
 {
-    VARIANT_BOOL b;
     IXMLDOMDocument2 *doc1, *doc2, *doc3, *doc4;
+    IXMLDOMNodeList *list;
+    IXMLDOMElement *root;
+    VARIANT_BOOL b;
+    HRESULT hr;
+    LONG len;
 
     doc1 = create_document(&IID_IXMLDOMDocument2);
     doc2 = create_document(&IID_IXMLDOMDocument2);
@@ -4224,10 +4292,35 @@ static void test_whitespace(void)
     check_ws_preserved(doc3, NULL);
     check_ws_ignored(doc4, NULL);
 
-    IXMLDOMDocument2_Release(doc1);
     IXMLDOMDocument2_Release(doc2);
     IXMLDOMDocument2_Release(doc3);
     IXMLDOMDocument2_Release(doc4);
+
+    /* text with char references */
+    test_preserve_charref(doc1, VARIANT_TRUE);
+    test_preserve_charref(doc1, VARIANT_FALSE);
+
+    /* formatting whitespaces */
+    hr = IXMLDOMDocument2_put_preserveWhiteSpace(doc1, VARIANT_FALSE);
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+
+    hr = IXMLDOMDocument2_loadXML(doc1, _bstr_(complete7), &b);
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+    ok(b == VARIANT_TRUE, "for %x\n", b);
+
+    hr = IXMLDOMDocument2_get_documentElement(doc1, &root);
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+    hr = IXMLDOMElement_get_childNodes(root, &list);
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+    len = 0;
+    hr = IXMLDOMNodeList_get_length(list, &len);
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+    ok(len == 3, "got %d\n", len);
+    IXMLDOMNodeList_Release(list);
+    IXMLDOMElement_Release(root);
+
+    IXMLDOMDocument2_Release(doc1);
+
     free_bstrs();
 }
 
@@ -4268,9 +4361,49 @@ static const selection_ns_t selection_ns_data[] = {
     { NULL }
 };
 
+typedef struct {
+    const char *query;
+    const char *list;
+} xpath_test_t;
+
+static const xpath_test_t xpath_test[] = {
+    { "*/a", "E1.E1.E2.D1 E1.E2.E2.D1 E1.E4.E2.D1" },
+    { "*/b", "E2.E1.E2.D1 E2.E2.E2.D1 E2.E4.E2.D1" },
+    { "*/c", "E3.E1.E2.D1 E3.E2.E2.D1" },
+    { "*/d", "E4.E1.E2.D1 E4.E2.E2.D1 E4.E4.E2.D1" },
+    { "//a", "E1.E1.E2.D1 E1.E2.E2.D1 E1.E4.E2.D1" },
+    { "//b", "E2.E1.E2.D1 E2.E2.E2.D1 E2.E4.E2.D1" },
+    { "//c", "E3.E1.E2.D1 E3.E2.E2.D1" },
+    { "//d", "E4.E1.E2.D1 E4.E2.E2.D1 E4.E4.E2.D1" },
+    { "//c[@type]", "E3.E2.E2.D1" },
+    { "//c[@type]/ancestor::node()[1]", "E2.E2.D1" },
+    { "//c[@type]/ancestor-or-self::node()[1]", "E3.E2.E2.D1" },
+    { "//c[@type]/attribute::node()[1]", "A'type'.E3.E2.E2.D1" },
+    { "//c[@type]/child::node()[1]", "T1.E3.E2.E2.D1"  },
+    { "//c[@type]/descendant::node()[1]", "T1.E3.E2.E2.D1" },
+    { "//c[@type]/descendant-or-self::node()[1]", "E3.E2.E2.D1" },
+    { "//c[@type]/following::node()[1]", "E4.E2.E2.D1" },
+    { "//c[@type]/following-sibling::node()[1]", "E4.E2.E2.D1" },
+    { "//c[@type]/parent::node()[1]", "E2.E2.D1" },
+    { "//c[@type]/preceding::node()[1]", "T1.E2.E2.E2.D1" },
+    { "//c[@type]/self::node()[1]", "E3.E2.E2.D1" },
+    { "child::*", "E1.E2.D1 E2.E2.D1 E3.E2.D1 E4.E2.D1" },
+    { "child::node()", "E1.E2.D1 E2.E2.D1 E3.E2.D1 E4.E2.D1" },
+    { "child::text()", "" },
+    { "child::*/..", "E2.D1" },
+    { "child::*//@*/..", "E2.E5.E1.E2.D1 E3.E2.E2.D1" },
+    { "self::node()", "E2.D1" },
+    { "ancestor::node()", "D1" },
+    { "elem[c][last()]/a", "E1.E2.E2.D1"},
+    { "ancestor-or-self::node()[1]", "E2.D1" },
+    { "((//a)[1])[last()]", "E1.E1.E2.D1" },
+    { NULL }
+};
+
 static void test_XPath(void)
 {
     const selection_ns_t *ptr = selection_ns_data;
+    const xpath_test_t *xptest = xpath_test;
     VARIANT var;
     VARIANT_BOOL b;
     IXMLDOMDocument2 *doc;
@@ -4312,6 +4445,26 @@ static void test_XPath(void)
     hr = IXMLDOMNodeList_reset(list);
     EXPECT_HR(hr, S_OK);
     expect_list_and_release(list, "E2.D1");
+
+    /* peform xpath tests */
+    for ( ; xptest->query ; xptest++ )
+    {
+        char *str;
+
+        hr = IXMLDOMNode_selectNodes(rootNode, _bstr_(xptest->query), &list);
+        ok(hr == S_OK, "query evaluation failed for query=%s\n", xptest->query);
+
+        if (hr != S_OK)
+            continue;
+
+        str = list_to_string(list);
+
+        ok(strcmp(str, xptest->list)==0, "query=%s, invalid node list: %s, expected %s\n",
+            xptest->query, str, xptest->list);
+
+        if (list)
+            IXMLDOMNodeList_Release(list);
+    }
 
 if (0)
 {
@@ -8046,10 +8199,15 @@ static void test_put_nodeTypedValue(void)
 static void test_get_xml(void)
 {
     static const char xmlA[] = "<?xml version=\"1.0\" encoding=\"UTF-16\"?>\r\n<a>test</a>\r\n";
+    static const char attrA[] = "attr=\"&quot;a &amp; b&quot;\"";
+    static const char attr2A[] = "\"a & b\"";
+    static const char attr3A[] = "attr=\"&amp;quot;a\"";
+    static const char attr4A[] = "&quot;a";
     static const char fooA[] = "<foo/>";
     IXMLDOMProcessingInstruction *pi;
     IXMLDOMNode *first;
     IXMLDOMElement *elem = NULL;
+    IXMLDOMAttribute *attr;
     IXMLDOMDocument *doc;
     VARIANT_BOOL b;
     VARIANT v;
@@ -8105,6 +8263,51 @@ static void test_get_xml(void)
     SysFreeString(xml);
 
     IXMLDOMElement_Release(elem);
+
+    /* attribute node */
+    hr = IXMLDOMDocument_createAttribute(doc, _bstr_("attr"), &attr);
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+
+    V_VT(&v) = VT_BSTR;
+    V_BSTR(&v) = _bstr_("\"a & b\"");
+    hr = IXMLDOMAttribute_put_value(attr, v);
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+
+    xml = NULL;
+    hr = IXMLDOMAttribute_get_xml(attr, &xml);
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+    ok(!memcmp(xml, _bstr_(attrA), (sizeof(attrA)-1)*sizeof(WCHAR)), "got %s\n", wine_dbgstr_w(xml));
+    SysFreeString(xml);
+
+    VariantInit(&v);
+    hr = IXMLDOMAttribute_get_value(attr, &v);
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+    ok(V_VT(&v) == VT_BSTR, "got type %d\n", V_VT(&v));
+    ok(!memcmp(V_BSTR(&v), _bstr_(attr2A), (sizeof(attr2A)-1)*sizeof(WCHAR)),
+        "got %s\n", wine_dbgstr_w(V_BSTR(&v)));
+    VariantClear(&v);
+
+    V_VT(&v) = VT_BSTR;
+    V_BSTR(&v) = _bstr_("&quot;a");
+    hr = IXMLDOMAttribute_put_value(attr, v);
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+
+    xml = NULL;
+    hr = IXMLDOMAttribute_get_xml(attr, &xml);
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+    ok(!memcmp(xml, _bstr_(attr3A), (sizeof(attr3A)-1)*sizeof(WCHAR)), "got %s\n", wine_dbgstr_w(xml));
+    SysFreeString(xml);
+
+    VariantInit(&v);
+    hr = IXMLDOMAttribute_get_value(attr, &v);
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+    ok(V_VT(&v) == VT_BSTR, "got type %d\n", V_VT(&v));
+    ok(!memcmp(V_BSTR(&v), _bstr_(attr4A), (sizeof(attr4A)-1)*sizeof(WCHAR)),
+        "got %s\n", wine_dbgstr_w(V_BSTR(&v)));
+    VariantClear(&v);
+
+    IXMLDOMAttribute_Release(attr);
+
     IXMLDOMDocument_Release(doc);
 
     free_bstrs();
@@ -8270,15 +8473,30 @@ todo_wine {
 
 static void test_insertBefore(void)
 {
-    IXMLDOMDocument *doc, *doc2;
+    IXMLDOMDocument *doc, *doc2, *doc3;
     IXMLDOMAttribute *attr;
     IXMLDOMElement *elem1, *elem2, *elem3, *elem4, *elem5;
-    IXMLDOMNode *node, *newnode;
+    IXMLDOMNode *node, *newnode, *cdata;
     HRESULT hr;
     VARIANT v;
     BSTR p;
 
     doc = create_document(&IID_IXMLDOMDocument);
+    doc3 = create_document(&IID_IXMLDOMDocument);
+
+    /* document to document */
+    V_VT(&v) = VT_NULL;
+    node = (void*)0xdeadbeef;
+    hr = IXMLDOMDocument_insertBefore(doc, (IXMLDOMNode*)doc3, v, &node);
+    ok(hr == E_FAIL, "got 0x%08x\n", hr);
+    ok(node == NULL, "got %p\n", node);
+
+    /* document to itself */
+    V_VT(&v) = VT_NULL;
+    node = (void*)0xdeadbeef;
+    hr = IXMLDOMDocument_insertBefore(doc, (IXMLDOMNode*)doc, v, &node);
+    ok(hr == E_FAIL, "got 0x%08x\n", hr);
+    ok(node == NULL, "got %p\n", node);
 
     /* insertBefore behaviour for attribute node */
     V_VT(&v) = VT_I4;
@@ -8288,6 +8506,47 @@ static void test_insertBefore(void)
     hr = IXMLDOMDocument_createNode(doc, v, _bstr_("attr"), NULL, (IXMLDOMNode**)&attr);
     ok(hr == S_OK, "got 0x%08x\n", hr);
     ok(attr != NULL, "got %p\n", attr);
+
+    /* attribute to document */
+    V_VT(&v) = VT_NULL;
+    node = (void*)0xdeadbeef;
+    hr = IXMLDOMDocument_insertBefore(doc3, (IXMLDOMNode*)attr, v, &node);
+    ok(hr == E_FAIL, "got 0x%08x\n", hr);
+    ok(node == NULL, "got %p\n", node);
+
+    /* cdata to document */
+    V_VT(&v) = VT_I4;
+    V_I4(&v) = NODE_CDATA_SECTION;
+
+    cdata = NULL;
+    hr = IXMLDOMDocument_createNode(doc3, v, _bstr_("cdata"), NULL, &cdata);
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+    ok(cdata != NULL, "got %p\n", cdata);
+
+    EXPECT_NO_CHILDREN(cdata);
+
+    /* attribute to cdata */
+    V_VT(&v) = VT_NULL;
+    node = (void*)0xdeadbeef;
+    hr = IXMLDOMNode_insertBefore(cdata, (IXMLDOMNode*)attr, v, &node);
+    ok(hr == E_FAIL, "got 0x%08x\n", hr);
+    ok(node == NULL, "got %p\n", node);
+
+    /* document to cdata */
+    V_VT(&v) = VT_NULL;
+    node = (void*)0xdeadbeef;
+    hr = IXMLDOMNode_insertBefore(cdata, (IXMLDOMNode*)doc, v, &node);
+    ok(hr == E_FAIL, "got 0x%08x\n", hr);
+    ok(node == NULL, "got %p\n", node);
+
+    V_VT(&v) = VT_NULL;
+    node = (void*)0xdeadbeef;
+    hr = IXMLDOMDocument_insertBefore(doc3, cdata, v, &node);
+    ok(hr == E_FAIL, "got 0x%08x\n", hr);
+    ok(node == NULL, "got %p\n", node);
+
+    IXMLDOMNode_Release(cdata);
+    IXMLDOMDocument_Release(doc3);
 
     /* attribute to attribute */
     V_VT(&v) = VT_I4;
@@ -8393,6 +8652,12 @@ static void test_insertBefore(void)
     EXPECT_NO_CHILDREN(elem3);
 
     todo_wine EXPECT_REF(elem2, 2);
+
+    /* document to element */
+    V_VT(&v) = VT_DISPATCH;
+    V_DISPATCH(&v) = NULL;
+    hr = IXMLDOMElement_insertBefore(elem1, (IXMLDOMNode*)doc, v, NULL);
+    ok(hr == E_FAIL, "got 0x%08x\n", hr);
 
     V_VT(&v) = VT_DISPATCH;
     V_DISPATCH(&v) = NULL;
@@ -10642,6 +10907,61 @@ static void test_nodeValue(void)
     IXMLDOMDocument_Release(doc);
 }
 
+static void test_xmlns_attribute(void)
+{
+    BSTR str;
+    IXMLDOMDocument *doc;
+    IXMLDOMElement *root;
+    IXMLDOMAttribute *pAttribute;
+    IXMLDOMElement *elem;
+    HRESULT hr;
+
+    doc = create_document(&IID_IXMLDOMDocument);
+    if (!doc) return;
+
+    hr = IXMLDOMDocument_createElement(doc, _bstr_("Testing"), &root);
+    EXPECT_HR(hr, S_OK);
+
+    hr = IXMLDOMDocument_appendChild(doc, (IXMLDOMNode*)root, NULL);
+    EXPECT_HR(hr, S_OK);
+
+    str = SysAllocString(szAttribute);
+    hr = IXMLDOMDocument_createAttribute(doc, _bstr_("xmlns:dt"), &pAttribute);
+    ok( hr == S_OK, "returns %08x\n", hr );
+    if(hr == S_OK)
+    {
+        VARIANT v;
+
+        V_VT(&v) = VT_BSTR;
+        V_BSTR(&v) = _bstr_("urn:schemas-microsoft-com:datatypes");
+        hr = IXMLDOMAttribute_put_nodeValue(pAttribute, v);
+
+        hr = IXMLDOMElement_setAttributeNode(root, pAttribute, NULL);
+        ok(hr == S_OK, "ret %08x\n", hr );
+
+        hr = IXMLDOMNode_put_dataType((IXMLDOMNode*)root, _bstr_("bin.base64"));
+        ok(hr == S_OK, "ret %08x\n", hr );
+
+        hr = IXMLDOMDocument_get_documentElement(doc, &elem);
+        EXPECT_HR(hr, S_OK);
+
+        hr = IXMLDOMElement_get_xml(elem, &str);
+        ok( hr == S_OK, "got 0x%08x\n", hr);
+        todo_wine ok( lstrcmpW(str, _bstr_("<Testing xmlns:dt=\"urn:schemas-microsoft-com:datatypes\" dt:dt=\"bin.base64\"/>")) == 0,
+        "got %s\n", wine_dbgstr_w(str));
+        SysFreeString(str);
+
+        IXMLDOMElement_Release(elem);
+        IXMLDOMAttribute_Release( pAttribute);
+    }
+
+    SysFreeString(str);
+
+    IXMLDOMDocument_Release(doc);
+
+    free_bstrs();
+}
+
 static const char namespacesA[] =
 "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
 "   <ns1:elem1 xmlns:ns1=\"http://blah.org\" b='1' >"
@@ -11349,6 +11669,7 @@ START_TEST(domdoc)
     test_put_data();
     test_putref_schemas();
     test_namedmap_newenum();
+    test_xmlns_attribute();
 
     test_xsltemplate();
     test_xsltext();

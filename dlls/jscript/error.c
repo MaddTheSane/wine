@@ -83,12 +83,16 @@ static HRESULT Error_toString(script_ctx_t *ctx, vdisp_t *vthis, WORD flags,
         unsigned msg_len = msg ? jsstr_length(msg) : 0;
 
         if(name_len && msg_len) {
-            ret = jsstr_alloc_buf(name_len + msg_len + 2);
-            if(ret) {
-                memcpy(ret->str, name->str, name_len*sizeof(WCHAR));
-                ret->str[name_len] = ':';
-                ret->str[name_len+1] = ' ';
-                memcpy(ret->str+name_len+2, msg->str, msg_len*sizeof(WCHAR));
+            WCHAR *ptr;
+
+            ptr = jsstr_alloc_buf(name_len + msg_len + 2, &ret);
+            if(ptr) {
+                jsstr_flush(name, ptr);
+                ptr[name_len] = ':';
+                ptr[name_len+1] = ' ';
+                jsstr_flush(msg, ptr+name_len+2);
+            }else {
+                hres = E_OUTOFMEMORY;
             }
         }else if(name_len) {
             ret = name;
@@ -180,10 +184,9 @@ static HRESULT alloc_error(script_ctx_t *ctx, jsdisp_t *prototype,
 }
 
 static HRESULT create_error(script_ctx_t *ctx, jsdisp_t *constr,
-        UINT number, const WCHAR *msg, jsdisp_t **ret)
+        UINT number, jsstr_t *msg, jsdisp_t **ret)
 {
     jsdisp_t *err;
-    jsstr_t *str;
     HRESULT hres;
 
     hres = alloc_error(ctx, NULL, constr, &err);
@@ -196,16 +199,9 @@ static HRESULT create_error(script_ctx_t *ctx, jsdisp_t *constr,
         return hres;
     }
 
-    if(msg) str = jsstr_alloc(msg);
-    else str = jsstr_empty();
-    if(str) {
-        hres = jsdisp_propput_name(err, messageW, jsval_string(str));
-        if(SUCCEEDED(hres))
-            hres = jsdisp_propput_dontenum(err, descriptionW, jsval_string(str));
-        jsstr_release(str);
-    }else {
-        hres = E_OUTOFMEMORY;
-    }
+    hres = jsdisp_propput_name(err, messageW, jsval_string(msg));
+    if(SUCCEEDED(hres))
+        hres = jsdisp_propput_dontenum(err, descriptionW, jsval_string(msg));
     if(FAILED(hres)) {
         jsdisp_release(err);
         return hres;
@@ -235,19 +231,21 @@ static HRESULT error_constr(script_ctx_t *ctx, WORD flags, unsigned argc, jsval_
         num = n;
     }
 
-    if(argc>1 && !msg) {
-        hres = to_string(ctx, argv[1], &msg);
-        if(FAILED(hres))
-            return hres;
+    if(!msg) {
+        if(argc > 1) {
+            hres = to_string(ctx, argv[1], &msg);
+            if(FAILED(hres))
+                return hres;
+        }else {
+            msg = jsstr_empty();
+        }
     }
 
     switch(flags) {
     case INVOKE_FUNC:
     case DISPATCH_CONSTRUCT:
-        hres = create_error(ctx, constr, num, msg ? msg->str : NULL, &err);
-        if(msg)
-            jsstr_release(msg);
-
+        hres = create_error(ctx, constr, num, msg, &err);
+        jsstr_release(msg);
         if(FAILED(hres))
             return hres;
 
@@ -375,6 +373,7 @@ static HRESULT throw_error(script_ctx_t *ctx, HRESULT error, const WCHAR *str, j
 {
     WCHAR buf[1024], *pos = NULL;
     jsdisp_t *err;
+    jsstr_t *msg;
     HRESULT hres;
 
     if(!is_jscript_error(error))
@@ -392,7 +391,12 @@ static HRESULT throw_error(script_ctx_t *ctx, HRESULT error, const WCHAR *str, j
 
     WARN("%s\n", debugstr_w(buf));
 
-    hres = create_error(ctx, constr, error, buf, &err);
+    msg = jsstr_alloc(buf);
+    if(!msg)
+        return E_OUTOFMEMORY;
+
+    hres = create_error(ctx, constr, error, msg, &err);
+    jsstr_release(msg);
     if(FAILED(hres))
         return hres;
 

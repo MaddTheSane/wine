@@ -398,8 +398,11 @@ static GpStatus alpha_blend_hdc_pixels(GpGraphics *graphics, INT dst_x, INT dst_
     hbitmap = CreateDIBSection(hdc, (BITMAPINFO*)&bih, DIB_RGB_COLORS,
         (void**)&temp_bits, NULL, 0);
 
-    convert_32bppARGB_to_32bppPARGB(src_width, src_height, temp_bits,
-        4 * src_width, src, src_stride);
+    if (GetDeviceCaps(graphics->hdc, SHADEBLENDCAPS) == SB_NONE)
+        memcpy(temp_bits, src, src_width * src_height * 4);
+    else
+        convert_32bppARGB_to_32bppPARGB(src_width, src_height, temp_bits,
+                                        4 * src_width, src, src_stride);
 
     SelectObject(hdc, hbitmap);
     gdi_alpha_blend(graphics, dst_x, dst_y, src_width, src_height,
@@ -2096,7 +2099,7 @@ static void get_font_hfont(GpGraphics *graphics, GDIPCONST GpFont *font,
                       (pt[2].X-pt[0].X)*(pt[2].X-pt[0].X));
 
     get_log_fontW(font, graphics, &lfw);
-    lfw.lfHeight = gdip_round(font_height * rel_height);
+    lfw.lfHeight = -gdip_round(font_height * rel_height);
     unscaled_font = CreateFontIndirectW(&lfw);
 
     SelectObject(hdc, unscaled_font);
@@ -2192,6 +2195,9 @@ GpStatus graphics_from_image(GpImage *image, GpGraphics **graphics)
     (*graphics)->hwnd = NULL;
     (*graphics)->owndc = FALSE;
     (*graphics)->image = image;
+    /* We have to store the image type here because the image may be freed
+     * before GdipDeleteGraphics is called, and metafiles need special treatment. */
+    (*graphics)->image_type = image->type;
     (*graphics)->smoothing = SmoothingModeDefault;
     (*graphics)->compqual = CompositingQualityDefault;
     (*graphics)->interpolation = InterpolationModeBilinear;
@@ -2386,7 +2392,7 @@ GpStatus WINGDIPAPI GdipDeleteGraphics(GpGraphics *graphics)
     if(!graphics) return InvalidParameter;
     if(graphics->busy) return ObjectBusy;
 
-    if (graphics->image && graphics->image->type == ImageTypeMetafile)
+    if (graphics->image && graphics->image_type == ImageTypeMetafile)
     {
         stat = METAFILE_GraphicsDeleted((GpMetafile*)graphics->image);
         if (stat != Ok)
@@ -4412,7 +4418,7 @@ GpStatus WINGDIPAPI GdipIsVisibleRectI(GpGraphics *graphics, INT x, INT y, INT w
 
 GpStatus gdip_format_string(HDC hdc,
     GDIPCONST WCHAR *string, INT length, GDIPCONST GpFont *font,
-    GDIPCONST RectF *rect, GDIPCONST GpStringFormat *format,
+    GDIPCONST RectF *rect, GDIPCONST GpStringFormat *format, int ignore_empty_clip,
     gdip_format_string_callback callback, void *user_data)
 {
     WCHAR* stringdup;
@@ -4435,6 +4441,11 @@ GpStatus gdip_format_string(HDC hdc,
 
     nwidth = rect->Width;
     nheight = rect->Height;
+    if (ignore_empty_clip)
+    {
+        if (!nwidth) nwidth = INT_MAX;
+        if (!nheight) nheight = INT_MAX;
+    }
 
     if (format)
         hkprefix = format->hkprefix;
@@ -4676,21 +4687,8 @@ GpStatus WINGDIPAPI GdipMeasureCharacterRanges(GpGraphics* graphics,
 
     scaled_rect.X = (layoutRect->X + margin_x) * args.rel_width;
     scaled_rect.Y = layoutRect->Y * args.rel_height;
-    if (stringFormat->attr & StringFormatFlagsNoClip)
-    {
-        scaled_rect.Width = (REAL)(1 << 23);
-        scaled_rect.Height = (REAL)(1 << 23);
-    }
-    else
-    {
-        scaled_rect.Width = layoutRect->Width * args.rel_width;
-        scaled_rect.Height = layoutRect->Height * args.rel_height;
-    }
-    if (scaled_rect.Width >= 0.5)
-    {
-        scaled_rect.Width -= margin_x * 2.0 * args.rel_width;
-        if (scaled_rect.Width < 0.5) return Ok; /* doesn't fit */
-    }
+    scaled_rect.Width = layoutRect->Width * args.rel_width;
+    scaled_rect.Height = layoutRect->Height * args.rel_height;
 
     get_font_hfont(graphics, font, stringFormat, &gdifont, NULL);
     oldfont = SelectObject(hdc, gdifont);
@@ -4705,7 +4703,7 @@ GpStatus WINGDIPAPI GdipMeasureCharacterRanges(GpGraphics* graphics,
     args.regions = regions;
 
     stat = gdip_format_string(hdc, string, length, font, &scaled_rect, stringFormat,
-        measure_ranges_callback, &args);
+        (stringFormat->attr & StringFormatFlagsNoClip) != 0, measure_ranges_callback, &args);
 
     SelectObject(hdc, oldfont);
     DeleteObject(gdifont);
@@ -4765,7 +4763,7 @@ GpStatus WINGDIPAPI GdipMeasureString(GpGraphics *graphics,
     GpPointF pt[3];
     RectF scaled_rect;
     REAL margin_x;
-    INT lines, glyphs, format_flags = format ? format->attr : 0;
+    INT lines, glyphs;
 
     TRACE("(%p, %s, %i, %p, %s, %p, %p, %p, %p)\n", graphics,
         debugstr_wn(string, length), length, font, debugstr_rectf(rect), format,
@@ -4807,20 +4805,14 @@ GpStatus WINGDIPAPI GdipMeasureString(GpGraphics *graphics,
     scaled_rect.Y = rect->Y * args.rel_height;
     scaled_rect.Width = rect->Width * args.rel_width;
     scaled_rect.Height = rect->Height * args.rel_height;
-
-    if ((format_flags & StringFormatFlagsNoClip) ||
-        scaled_rect.Width >= 1 << 23 || scaled_rect.Width < 0.5) scaled_rect.Width = 1 << 23;
-    if ((format_flags & StringFormatFlagsNoClip) ||
-        scaled_rect.Height >= 1 << 23 || scaled_rect.Height < 0.5) scaled_rect.Height = 1 << 23;
-
     if (scaled_rect.Width >= 0.5)
     {
         scaled_rect.Width -= margin_x * 2.0 * args.rel_width;
         if (scaled_rect.Width < 0.5) return Ok; /* doesn't fit */
     }
 
-    if (scaled_rect.Width >= 1 << 23 || scaled_rect.Width < 0.5) scaled_rect.Width = 1 << 23;
-    if (scaled_rect.Height >= 1 << 23 || scaled_rect.Height < 0.5) scaled_rect.Height = 1 << 23;
+    if (scaled_rect.Width >= 1 << 23) scaled_rect.Width = 1 << 23;
+    if (scaled_rect.Height >= 1 << 23) scaled_rect.Height = 1 << 23;
 
     get_font_hfont(graphics, font, format, &gdifont, NULL);
     oldfont = SelectObject(hdc, gdifont);
@@ -4835,7 +4827,7 @@ GpStatus WINGDIPAPI GdipMeasureString(GpGraphics *graphics,
     args.linesfilled = &lines;
     lines = glyphs = 0;
 
-    gdip_format_string(hdc, string, length, font, &scaled_rect, format,
+    gdip_format_string(hdc, string, length, font, &scaled_rect, format, TRUE,
         measure_string_callback, &args);
 
     if (linesfilled) *linesfilled = lines;
@@ -4986,20 +4978,14 @@ GpStatus WINGDIPAPI GdipDrawString(GpGraphics *graphics, GDIPCONST WCHAR *string
     scaled_rect.Y = 0.0;
     scaled_rect.Width = rel_width * rect->Width;
     scaled_rect.Height = rel_height * rect->Height;
-
-    if ((format_flags & StringFormatFlagsNoClip) ||
-        scaled_rect.Width >= 1 << 23 || scaled_rect.Width < 0.5) scaled_rect.Width = 1 << 23;
-    if ((format_flags & StringFormatFlagsNoClip) ||
-        scaled_rect.Height >= 1 << 23 || scaled_rect.Height < 0.5) scaled_rect.Height = 1 << 23;
-
     if (scaled_rect.Width >= 0.5)
     {
         scaled_rect.Width -= margin_x * 2.0 * rel_width;
         if (scaled_rect.Width < 0.5) return Ok; /* doesn't fit */
     }
 
-    if (scaled_rect.Width >= 1 << 23 || scaled_rect.Width < 0.5) scaled_rect.Width = 1 << 23;
-    if (scaled_rect.Height >= 1 << 23 || scaled_rect.Height < 0.5) scaled_rect.Height = 1 << 23;
+    if (scaled_rect.Width >= 1 << 23) scaled_rect.Width = 1 << 23;
+    if (scaled_rect.Height >= 1 << 23) scaled_rect.Height = 1 << 23;
 
     if (!(format_flags & StringFormatFlagsNoClip) &&
         scaled_rect.Width != 1 << 23 && scaled_rect.Height != 1 << 23)
@@ -5024,7 +5010,7 @@ GpStatus WINGDIPAPI GdipDrawString(GpGraphics *graphics, GDIPCONST WCHAR *string
     GetTextMetricsW(hdc, &textmetric);
     args.ascent = textmetric.tmAscent / rel_height;
 
-    gdip_format_string(hdc, string, length, font, &scaled_rect, format,
+    gdip_format_string(hdc, string, length, font, &scaled_rect, format, TRUE,
         draw_string_callback, &args);
 
     DeleteObject(rgn);

@@ -8968,6 +8968,68 @@ methods:
 }
 
 /*****************************************************************************
+ *    IHTMLLabelElement interface
+ */
+[
+    odl,
+    oleautomation,
+    dual,
+    uuid(3050f32a-98b5-11cf-bb82-00aa00bdce0b)
+]
+interface IHTMLLabelElement : IDispatch
+{
+    [propput, id(DISPID_IHTMLLABELELEMENT_HTMLFOR), displaybind, bindable]
+    HRESULT htmlFor([in] BSTR v);
+
+    [propget, id(DISPID_IHTMLLABELELEMENT_HTMLFOR), displaybind, bindable]
+    HRESULT htmlFor([out, retval] BSTR *p);
+
+    [propput, id(DISPID_IHTMLLABELELEMENT_ACCESSKEY), displaybind, bindable]
+    HRESULT accessKey([in] BSTR v);
+
+    [propget, id(DISPID_IHTMLLABELELEMENT_ACCESSKEY), displaybind, bindable]
+    HRESULT accessKey([out, retval] BSTR *p);
+}
+
+/*****************************************************************************
+ *    IHTMLLabelElement2 interface
+ */
+[
+    odl,
+    oleautomation,
+    dual,
+    uuid(3050f832-98b5-11cf-bb82-00aa00bdce0b)
+]
+interface IHTMLLabelElement2 : IDispatch
+{
+    [propget, id(DISPID_IHTMLLABELELEMENT2_FORM)]
+    HRESULT form([out, retval] IHTMLFormElement **p);
+}
+
+/*****************************************************************************
+ *    DispHTMLLabelElement dispinterface
+ */
+[
+    hidden,
+    uuid(3050f522-98b5-11cf-bb82-00aa00bdce0b)
+]
+dispinterface DispHTMLLabelElement
+{
+properties:
+methods:
+    WINE_HTMLDATAELEMENT_DISPINTERFACE_DECL;
+
+    [propput, id(DISPID_IHTMLLABELELEMENT_HTMLFOR), displaybind, bindable]
+    void htmlFor(BSTR v);
+
+    [propget, id(DISPID_IHTMLLABELELEMENT_HTMLFOR), displaybind, bindable]
+    BSTR htmlFor();
+
+    [propget, id(DISPID_IHTMLLABELELEMENT2_FORM)]
+    IHTMLFormElement *form();
+}
+
+/*****************************************************************************
  *    IHTMLElementCollection interface
  */
 [
@@ -10073,6 +10135,95 @@ methods:
     BSTR wrap();
 
     [id(DISPID_IHTMLTEXTAREAELEMENT_CREATETEXTRANGE)]
+    IHTMLTxtRange *createTextRange();
+}
+
+/*****************************************************************************
+ *    IHTMLButtonElement interface
+ */
+[
+    odl,
+    oleautomation,
+    dual,
+    uuid(3050f2bb-98b5-11cf-bb82-00aa00bdce0b)
+]
+interface IHTMLButtonElement : IDispatch
+{
+    [propget, id(DISPID_IHTMLBUTTONELEMENT_TYPE)]
+    HRESULT type([out, retval] BSTR *p);
+
+    [propput, id(DISPID_IHTMLBUTTONELEMENT_VALUE), displaybind, bindable]
+    HRESULT value([in] BSTR v);
+
+    [propget, id(DISPID_IHTMLBUTTONELEMENT_VALUE), displaybind, bindable]
+    HRESULT value([out, retval] BSTR *p);
+
+    [propput, id(DISPID_IHTMLBUTTONELEMENT_NAME), displaybind, bindable]
+    HRESULT name([in] BSTR v);
+
+    [propget, id(DISPID_IHTMLBUTTONELEMENT_NAME), displaybind, bindable]
+    HRESULT name([out, retval] BSTR *p);
+
+    [propput, id(DISPID_IHTMLBUTTONELEMENT_STATUS)]
+    HRESULT status([in] VARIANT v);
+
+    [propget, id(DISPID_IHTMLBUTTONELEMENT_STATUS)]
+    HRESULT status([out, retval] VARIANT *p);
+
+    [propput, id(DISPID_IHTMLBUTTONELEMENT_DISABLED), displaybind, bindable]
+    HRESULT disabled([in] VARIANT_BOOL v);
+
+    [propget, id(DISPID_IHTMLBUTTONELEMENT_DISABLED), displaybind, bindable]
+    HRESULT disabled([out, retval] VARIANT_BOOL *p);
+
+    [propget, id(DISPID_IHTMLBUTTONELEMENT_FORM)]
+    HRESULT form([out, retval] IHTMLFormElement **p);
+
+    [id(DISPID_IHTMLBUTTONELEMENT_CREATETEXTRANGE)]
+    HRESULT createTextRange([out, retval] IHTMLTxtRange **range);
+}
+
+/*****************************************************************************
+ *    DispHTMLButtonElement dispinterface
+ */
+[
+    hidden,
+    uuid(3050f51f-98b5-11cf-bb82-00aa00bdce0b)
+]
+dispinterface DispHTMLButtonElement
+{
+properties:
+methods:
+    WINE_HTMLDATAELEMENT_DISPINTERFACE_DECL;
+
+    [propget, id(DISPID_IHTMLDOMCONSTRUCTOR_CONSTRUCTOR), hidden]
+    IDispatch *constructor();
+
+    [propget, id(DISPID_IHTMLBUTTONELEMENT_TYPE)]
+    BSTR type();
+
+    [propput, id(DISPID_IHTMLBUTTONELEMENT_VALUE), displaybind, bindable]
+    void value(BSTR v);
+
+    [propget, id(DISPID_IHTMLBUTTONELEMENT_VALUE), displaybind, bindable]
+    BSTR value();
+
+    [propput, id(DISPID_IHTMLBUTTONELEMENT_NAME), displaybind, bindable]
+    void name(BSTR v);
+
+    [propget, id(DISPID_IHTMLBUTTONELEMENT_NAME), displaybind, bindable]
+    BSTR name();
+
+    [propput, id(DISPID_IHTMLBUTTONELEMENT_STATUS)]
+    void status(VARIANT v);
+
+    [propget, id(DISPID_IHTMLBUTTONELEMENT_STATUS)]
+    VARIANT status();
+
+    [propget, id(DISPID_IHTMLBUTTONELEMENT_FORM)]
+    IHTMLFormElement *form();
+
+    [id(DISPID_IHTMLBUTTONELEMENT_CREATETEXTRANGE)]
     IHTMLTxtRange *createTextRange();
 }
 

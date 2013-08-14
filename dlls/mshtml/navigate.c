@@ -1954,7 +1954,7 @@ static void navigate_proc(task_t *_task)
     navigate_task_t *task = (navigate_task_t*)_task;
     HRESULT hres;
 
-    hres = set_moniker(&task->window->doc_obj->basedoc, task->mon, NULL, task->bscallback, TRUE);
+    hres = set_moniker(&task->window->doc_obj->basedoc, task->mon, task->uri, NULL, task->bscallback, TRUE);
     if(SUCCEEDED(hres)) {
         set_current_mon(task->window, task->bscallback->bsc.mon, task->flags);
         set_current_uri(task->window, task->uri);
@@ -2266,7 +2266,9 @@ static HRESULT navigate_uri(HTMLOuterWindow *window, IUri *uri, const WCHAR *dis
     nsWineURI *nsuri;
     HRESULT hres;
 
-    if(window->doc_obj && window->doc_obj->is_webbrowser && window == window->doc_obj->basedoc.window) {
+    TRACE("%s\n", debugstr_w(display_uri));
+
+    if(window->doc_obj && window->doc_obj->webbrowser && window == window->doc_obj->basedoc.window) {
         if(!(flags & BINDING_REFRESH)) {
             BOOL cancel = FALSE;
 
@@ -2294,7 +2296,7 @@ static HRESULT navigate_uri(HTMLOuterWindow *window, IUri *uri, const WCHAR *dis
         }
     }
 
-    hres = create_doc_uri(window, display_uri, &nsuri);
+    hres = create_doc_uri(window, uri, &nsuri);
     if(FAILED(hres))
         return hres;
 
@@ -2327,7 +2329,7 @@ HRESULT navigate_url(HTMLOuterWindow *window, const WCHAR *new_url, IUri *base_u
         hres = CoInternetCombineUrlEx(base_uri, new_url, URL_ESCAPE_SPACES_ONLY|URL_DONT_ESCAPE_EXTRA_INFO,
                 &uri, 0);
     else
-        hres = CreateUri(new_url, 0, 0, &uri);
+        hres = create_uri(new_url, 0, &uri);
     if(FAILED(hres))
         return hres;
 
@@ -2346,7 +2348,7 @@ HRESULT navigate_url(HTMLOuterWindow *window, const WCHAR *new_url, IUri *base_u
             TRACE("%08x %s -> %s\n", hres, debugstr_w(display_uri), debugstr_w(translated_url));
             SysFreeString(display_uri);
             IUri_Release(uri);
-            hres = CreateUri(translated_url, 0, 0, &uri);
+            hres = create_uri(translated_url, 0, &uri);
             CoTaskMemFree(translated_url);
             if(FAILED(hres))
                 return hres;

@@ -5,7 +5,7 @@ msgstr ""
 "Project-Id-Version: Wine\n"
 "Report-Msgid-Bugs-To: http://bugs.winehq.org\n"
 "POT-Creation-Date: N/A\n"
-"PO-Revision-Date: 2011-06-16 13:52-0500\n"
+"PO-Revision-Date: 2013-06-24 09:18-0700\n"
 "Last-Translator: Automatically generated\n"
 "Language-Team: none\n"
 "Language: Chinese (PRC)\n"
@@ -28,16 +28,11 @@ msgid "&Install..."
 msgstr "安装(&I)..."
 
 #: appwiz.rc:62
-#, fuzzy
-#| msgid ""
-#| "The following software can be automatically removed. To remove a program "
-#| "or to modify its installed components, select it from the list and click "
-#| "Change/Remove."
 msgid ""
 "The following software can be automatically removed. To remove a program or "
 "to modify its installed components, select it from the list and click Modify/"
 "Remove."
-msgstr "下列软件可以自动卸载。 按'添加/删除'可卸载选定程序或者调整已安装部件。"
+msgstr "下列软件可以自动卸载。 按'修改/删除'可卸载选定程序或者调整已安装部件。"
 
 #: appwiz.rc:64
 msgid "&Support Information"
@@ -154,21 +149,10 @@ msgid "Cancel"
 msgstr "取消"
 
 #: appwiz.rc:112
-#, fuzzy
-#| msgid "Wine Gecko Installer"
 msgid "Wine Mono Installer"
-msgstr "Wine Gecko 安装"
+msgstr "Wine Mono 安装"
 
 #: appwiz.rc:115
-#, fuzzy
-#| msgid ""
-#| "Wine could not find a Gecko package which is needed for applications "
-#| "embedding HTML to work correctly. Wine can automatically download and "
-#| "install it for you.\n"
-#| "\n"
-#| "Note: it is recommended to use your distribution's packages instead. See "
-#| "<a href=\"http://wiki.winehq.org/Gecko\">http://wiki.winehq.org/Gecko</a> "
-#| "for details."
 msgid ""
 "Wine could not find a Mono package which is needed for .NET applications to "
 "work correctly. Wine can automatically download and install it for you.\n"
@@ -177,10 +161,10 @@ msgid ""
 "href=\"http://wiki.winehq.org/Mono\">http://wiki.winehq.org/Mono</a> for "
 "details."
 msgstr ""
-"Wine 未找到到用于支持嵌入 HTML 的 Gecko 引擎。Wine 可以自动并下载安装它。\n"
+"Wine 未找到到用于支持 .NET 应用的 Mono 组件。Wine 可以自动并下载安装它。\n"
 "\n"
 "注意: 推荐您安装为发行版定制的软件包。具体请参看 <a href=\"http://wiki."
-"winehq.org/Gecko\">http://wiki.winehq.org/Gecko</a>。"
+"winehq.org/Mono\">http://wiki.winehq.org/Mono</a>。"
 
 #: appwiz.rc:28
 msgid "Add/Remove Programs"
@@ -200,7 +184,7 @@ msgstr "应用程序"
 msgid ""
 "Unable to execute the uninstaller, '%s'. Do you want to remove the uninstall "
 "entry for this program from the registry?"
-msgstr "不能运行卸载程序 '%s'。 你想把这个卸载程序从注册表中删除吗?"
+msgstr "不能运行卸载程序 '%s'。您想把这个卸载条目从注册表中删除吗?"
 
 #: appwiz.rc:33
 msgid "Not specified"
@@ -3354,22 +3338,16 @@ msgid "&Disable"
 msgstr "停用(&D)"
 
 #: joy.rc:37
-#, fuzzy
-#| msgid "&enable"
 msgid "&Enable"
 msgstr "启用(&E)"
 
 #: joy.rc:38
-#, fuzzy
-#| msgid "Disconnected"
 msgid "Connected"
-msgstr "连接断开"
+msgstr "已连接"
 
 #: joy.rc:40
-#, fuzzy
-#| msgid "&Disable"
 msgid "Disabled"
-msgstr "停用(&D)"
+msgstr "停用"
 
 #: joy.rc:42
 msgid ""
@@ -3390,10 +3368,8 @@ msgid "Test Force Feedback"
 msgstr ""
 
 #: joy.rc:64
-#, fuzzy
-#| msgid "Available formats"
 msgid "Available Effects"
-msgstr "可选格式"
+msgstr "可选效果"
 
 #: joy.rc:66
 msgid ""
@@ -3402,10 +3378,8 @@ msgid ""
 msgstr ""
 
 #: joy.rc:28
-#, fuzzy
-#| msgid "Create Control"
 msgid "Game Controllers"
-msgstr "建立控件"
+msgstr "游戏控制器"
 
 #: jscript.rc:25
 msgid "Error converting object to primitive type"
@@ -3456,10 +3430,8 @@ msgid "Expected ')'"
 msgstr ""
 
 #: jscript.rc:37
-#, fuzzy
-#| msgid "Invalid parameter.\n"
 msgid "Invalid character"
-msgstr "无效参数。\n"
+msgstr "无效字符"
 
 #: jscript.rc:38
 msgid "Unterminated string constant"
@@ -3546,10 +3518,8 @@ msgid "Number of fraction digits is out of range"
 msgstr ""
 
 #: jscript.rc:59
-#, fuzzy
-#| msgid "Print range"
 msgid "Precision is out of range"
-msgstr "打印范围"
+msgstr "精度超出范围"
 
 #: jscript.rc:60
 msgid "Array length must be a finite positive integer"
@@ -3588,9 +3558,8 @@ msgid "Invalid handle.\n"
 msgstr ""
 
 #: winerror.mc:61
-#, fuzzy
 msgid "Memory trashed.\n"
-msgstr "内存监视器。\n"
+msgstr "内存已回收。\n"
 
 #: winerror.mc:66
 msgid "Not enough memory.\n"
@@ -3686,16 +3655,15 @@ msgstr "读取错误。\n"
 
 #: winerror.mc:181
 msgid "General failure.\n"
-msgstr ""
+msgstr "一般性错误。\n"
 
 #: winerror.mc:186
 msgid "Sharing violation.\n"
 msgstr ""
 
 #: winerror.mc:191
-#, fuzzy
 msgid "Lock violation.\n"
-msgstr "位置。\n"
+msgstr ""
 
 #: winerror.mc:196
 msgid "Wrong disk.\n"
@@ -4090,9 +4058,8 @@ msgid "Resource in use.\n"
 msgstr "资源已被占用。\n"
 
 #: winerror.mc:696
-#, fuzzy
 msgid "Cancel violation.\n"
-msgstr "信息。\n"
+msgstr ""
 
 #: winerror.mc:701
 msgid "Atomic locks not supported.\n"
@@ -4559,9 +4526,8 @@ msgid "Driver failure cannot be detected.\n"
 msgstr ""
 
 #: winerror.mc:1281
-#, fuzzy
 msgid "Process abort cannot be detected.\n"
-msgstr "结束进程(&E)。\n"
+msgstr "进程中止未被检测到。\n"
 
 #: winerror.mc:1286
 msgid "No recovery program for service.\n"
@@ -5038,9 +5004,8 @@ msgid "The site does not exist.\n"
 msgstr "站点不存在。\n"
 
 #: winerror.mc:1881
-#, fuzzy
 msgid "The domain controller already exists.\n"
-msgstr "端口 %s 已经存在。\n"
+msgstr "该域控制器已存在。\n"
 
 #: winerror.mc:1886
 msgid "Supported only when connected.\n"
@@ -5279,9 +5244,8 @@ msgid "No such domain.\n"
 msgstr ""
 
 #: winerror.mc:2181
-#, fuzzy
 msgid "Domain already exists.\n"
-msgstr "端口 %s 已经存在。\n"
+msgstr "域名已存在。\n"
 
 #: winerror.mc:2186
 msgid "Domain limit exceeded.\n"
@@ -5457,9 +5421,8 @@ msgid "Invalid menu handle.\n"
 msgstr ""
 
 #: winerror.mc:2406
-#, fuzzy
 msgid "Invalid cursor handle.\n"
-msgstr "数字格式无效。\n"
+msgstr "无效光标句柄。\n"
 
 #: winerror.mc:2411
 msgid "Invalid accelerator table handle.\n"
@@ -5490,14 +5453,12 @@ msgid "Hotkey already registered.\n"
 msgstr "热键已被注册。\n"
 
 #: winerror.mc:2446
-#, fuzzy
 msgid "Class already exists.\n"
-msgstr "端口 %s 已经存在。\n"
+msgstr "该类已存在。\n"
 
 #: winerror.mc:2451
-#, fuzzy
 msgid "Class does not exist.\n"
-msgstr "路径不存在。\n"
+msgstr "该类不存在。\n"
 
 #: winerror.mc:2456
 #, fuzzy
@@ -5805,9 +5766,8 @@ msgid "Failed to open installation log file.\n"
 msgstr ""
 
 #: winerror.mc:2836
-#, fuzzy
 msgid "Installation language not supported.\n"
-msgstr "不支持 OLE 储存文件。\n"
+msgstr "不被支持的安装语言。\n"
 
 #: winerror.mc:2841
 msgid "Installation transform failed to apply.\n"
@@ -5950,14 +5910,12 @@ msgid "RPC server not listening.\n"
 msgstr ""
 
 #: winerror.mc:3011
-#, fuzzy
 msgid "Unknown manager type.\n"
-msgstr "不明类型。\n"
+msgstr "未知管理员类型。\n"
 
 #: winerror.mc:3016
-#, fuzzy
 msgid "Unknown interface.\n"
-msgstr "不明来源。\n"
+msgstr "未知接口。\n"
 
 #: winerror.mc:3021
 msgid "No bindings.\n"
@@ -6084,9 +6042,8 @@ msgid "Can't perform operation.\n"
 msgstr ""
 
 #: winerror.mc:3181
-#, fuzzy
 msgid "Endpoints not registered.\n"
-msgstr "退出注册表编辑器。\n"
+msgstr "终点尚未注册。\n"
 
 #: winerror.mc:3186
 msgid "Nothing to export.\n"
@@ -6301,7 +6258,7 @@ msgid "No more bindings.\n"
 msgstr ""
 
 #: winerror.mc:3446
-msgid "Can't logon with interdomain trust account.\n"
+msgid "Can't logon with inter-domain trust account.\n"
 msgstr ""
 
 #: winerror.mc:3451
@@ -6408,9 +6365,8 @@ msgid "Wrong pipe version.\n"
 msgstr ""
 
 #: winerror.mc:3576
-#, fuzzy
 msgid "Group member not found.\n"
-msgstr "路径 %s 没找到。\n"
+msgstr "无法找到该群组成员。\n"
 
 #: winerror.mc:3581
 msgid "Can't create endpoint mapper DB.\n"
@@ -6449,9 +6405,8 @@ msgid "User must change password.\n"
 msgstr ""
 
 #: winerror.mc:3626
-#, fuzzy
 msgid "Domain controller not found.\n"
-msgstr "找不到文件。\n"
+msgstr "找不到域控制器。\n"
 
 #: winerror.mc:3631
 msgid "Account locked out.\n"
@@ -6520,29 +6475,24 @@ msgid "The interface could not be exported.\n"
 msgstr "不能导出接口。\n"
 
 #: winerror.mc:3711
-#, fuzzy
 msgid "The profile could not be added.\n"
-msgstr "找不到“%s”。"
+msgstr "无法添加该档案。\n"
 
 #: winerror.mc:3716
-#, fuzzy
 msgid "The profile element could not be added.\n"
-msgstr "找不到“%s”。"
+msgstr "无法添加该档案元素。\n"
 
 #: winerror.mc:3721
-#, fuzzy
 msgid "The profile element could not be removed.\n"
-msgstr "找不到“%s”。"
+msgstr "无法删除该档案元素。\n"
 
 #: winerror.mc:3726
-#, fuzzy
 msgid "The group element could not be added.\n"
-msgstr "找不到“%s”。"
+msgstr "无法添加该群组元素。\n"
 
 #: winerror.mc:3731
-#, fuzzy
 msgid "The group element could not be removed.\n"
-msgstr "找不到“%s”。"
+msgstr "无法删除该群组元素。\n"
 
 #: winerror.mc:3736
 msgid "The username could not be found.\n"
@@ -8168,20 +8118,16 @@ msgid "Security Warning"
 msgstr "安全警告"
 
 #: urlmon.rc:32
-#, fuzzy
-#| msgid "Do you want to continue anyway?"
 msgid "Do you want to install this software?"
-msgstr "还是要继续吗？"
+msgstr "是否安装该软件？"
 
 #: urlmon.rc:34 explorer.rc:29
 msgid "Location:"
 msgstr "位置:"
 
 #: urlmon.rc:36
-#, fuzzy
-#| msgid "Install/Uninstall"
 msgid "Don't install"
-msgstr "安装/卸载"
+msgstr "不要安装"
 
 #: urlmon.rc:40
 msgid ""
@@ -8190,22 +8136,16 @@ msgid ""
 msgstr ""
 
 #: urlmon.rc:48
-#, fuzzy
-#| msgid "Installation failure.\n"
 msgid "Installation of component failed: %08x"
-msgstr "安装失败。\n"
+msgstr "安装组件失败：%08x"
 
 #: urlmon.rc:49
-#, fuzzy
-#| msgid "&Install"
 msgid "Install (%d)"
-msgstr "安装(&I)"
+msgstr "安装 (%d)"
 
 #: urlmon.rc:50
-#, fuzzy
-#| msgid "&Install"
 msgid "Install"
-msgstr "安装(&I)"
+msgstr "安装"
 
 #: user32.rc:27 user32.rc:40 taskmgr.rc:138
 msgctxt "window"
@@ -9058,13 +8998,13 @@ msgstr ""
 msgid "Referral hop limit exceeded"
 msgstr ""
 
-#: attrib.rc:27 cmd.rc:325
+#: attrib.rc:27 cmd.rc:322
 msgid ""
 "Not Yet Implemented\n"
 "\n"
 msgstr ""
 
-#: attrib.rc:28 cmd.rc:328
+#: attrib.rc:28 cmd.rc:325
 msgid "%1: File Not Found\n"
 msgstr "%1: 找不到文件\n"
 
@@ -9187,17 +9127,14 @@ msgstr ""
 msgid "ERASE <filename> deletes a file or set of files.\n"
 msgstr ""
 
-#: cmd.rc:69
+#: cmd.rc:66
 msgid ""
 "The FOR command is used to execute a command for each of a set of files.\n"
 "\n"
 "Syntax: FOR %variable IN (set) DO command\n"
-"\n"
-"The requirement to double the % sign when using FOR in a batch file does\n"
-"not exist in wine's cmd.\n"
 msgstr ""
 
-#: cmd.rc:81
+#: cmd.rc:78
 msgid ""
 "The GOTO command transfers execution to another statement within a\n"
 "batch file.\n"
@@ -9211,13 +9148,13 @@ msgid ""
 "GOTO has no effect when used interactively.\n"
 msgstr ""
 
-#: cmd.rc:84
+#: cmd.rc:81
 msgid ""
 "HELP <command> shows brief help details on a topic.\n"
 "HELP without an argument shows all CMD built-in commands.\n"
 msgstr ""
 
-#: cmd.rc:94
+#: cmd.rc:91
 msgid ""
 "IF is used to conditionally execute a command.\n"
 "\n"
@@ -9229,7 +9166,7 @@ msgid ""
 "quotes. The comparison is not case-sensitive.\n"
 msgstr ""
 
-#: cmd.rc:100
+#: cmd.rc:97
 msgid ""
 "LABEL is used to set a disk volume label.\n"
 "\n"
@@ -9238,15 +9175,15 @@ msgid ""
 "You can display the disk volume label with the VOL command.\n"
 msgstr ""
 
-#: cmd.rc:103
+#: cmd.rc:100
 msgid "MD <name> is the short version of MKDIR. It creates a subdirectory.\n"
 msgstr ""
 
-#: cmd.rc:104
+#: cmd.rc:101
 msgid "MKDIR <name> creates a subdirectory.\n"
 msgstr ""
 
-#: cmd.rc:111
+#: cmd.rc:108
 msgid ""
 "MOVE relocates a file or directory to a new point within the file system.\n"
 "\n"
@@ -9257,7 +9194,7 @@ msgid ""
 "MOVE fails if the old and new locations are on different DOS drive letters.\n"
 msgstr ""
 
-#: cmd.rc:122
+#: cmd.rc:119
 msgid ""
 "PATH displays or changes the cmd search path.\n"
 "\n"
@@ -9270,7 +9207,7 @@ msgid ""
 "PATH %PATH%;c:\\temp\n"
 msgstr ""
 
-#: cmd.rc:128
+#: cmd.rc:125
 msgid ""
 "PAUSE displays a message on the screen asking the user to press a key.\n"
 "\n"
@@ -9278,7 +9215,7 @@ msgid ""
 "of a previous command before it scrolls off the screen.\n"
 msgstr ""
 
-#: cmd.rc:149
+#: cmd.rc:146
 msgid ""
 "PROMPT sets the command-line prompt.\n"
 "\n"
@@ -9301,29 +9238,29 @@ msgid ""
 "so the command 'SET PROMPT=text' has the same effect as 'PROMPT text'.\n"
 msgstr ""
 
-#: cmd.rc:153
+#: cmd.rc:150
 msgid ""
 "A command line beginning with REM (followed by a space) performs no\n"
 "action, and can therefore be used as a comment in a batch file.\n"
 msgstr ""
 
-#: cmd.rc:156
+#: cmd.rc:153
 msgid "REN <filename> is the short version of RENAME. It renames a file.\n"
 msgstr ""
 
-#: cmd.rc:157
+#: cmd.rc:154
 msgid "RENAME <filename> renames a file.\n"
 msgstr ""
 
-#: cmd.rc:159
+#: cmd.rc:156
 msgid "RD <dir> is the short version of RMDIR. It deletes a subdirectory.\n"
 msgstr ""
 
-#: cmd.rc:160
+#: cmd.rc:157
 msgid "RMDIR <dir> deletes a subdirectory.\n"
 msgstr ""
 
-#: cmd.rc:204
+#: cmd.rc:201
 msgid ""
 "SET displays or changes the cmd environment variables.\n"
 "\n"
@@ -9343,14 +9280,14 @@ msgid ""
 "not possible to affect the operating system environment from within cmd.\n"
 msgstr ""
 
-#: cmd.rc:209
+#: cmd.rc:206
 msgid ""
 "SHIFT is used in a batch file to remove one parameter from the head of\n"
 "the list, so parameter 2 becomes parameter 1 and so on. It has no effect\n"
 "if called from the command line.\n"
 msgstr ""
 
-#: cmd.rc:186 start.rc:50
+#: cmd.rc:183 start.rc:50
 msgid ""
 "Start a program, or open a document in the program normally used for files "
 "with that suffix.\n"
@@ -9380,21 +9317,21 @@ msgid ""
 "/?           Display this help and exit.\n"
 msgstr ""
 
-#: cmd.rc:211
+#: cmd.rc:208
 msgid "TIME sets or shows the current system time.\n"
 msgstr ""
 
-#: cmd.rc:213
+#: cmd.rc:210
 msgid "TITLE <string> sets the window title for the cmd window.\n"
 msgstr ""
 
-#: cmd.rc:217
+#: cmd.rc:214
 msgid ""
 "TYPE <filename> copies <filename> to the console device (or elsewhere\n"
 "if redirected). No check is made that the file is readable text.\n"
 msgstr ""
 
-#: cmd.rc:226
+#: cmd.rc:223
 msgid ""
 "VERIFY is used to set, clear or test the verify flag. Valid forms are:\n"
 "\n"
@@ -9405,21 +9342,21 @@ msgid ""
 "The verify flag has no function in Wine.\n"
 msgstr ""
 
-#: cmd.rc:229
+#: cmd.rc:226
 msgid "VER displays the version of cmd you are running.\n"
 msgstr ""
 
-#: cmd.rc:231
+#: cmd.rc:228
 msgid "VOL shows the volume label of a disk device.\n"
 msgstr ""
 
-#: cmd.rc:235
+#: cmd.rc:232
 msgid ""
 "ENDLOCAL ends localization of environment changes in a batch file\n"
 "which were introduced by a preceding SETLOCAL.\n"
 msgstr ""
 
-#: cmd.rc:243
+#: cmd.rc:240
 msgid ""
 "SETLOCAL starts localization of environment changes in a batch file.\n"
 "\n"
@@ -9429,17 +9366,17 @@ msgid ""
 "settings are restored.\n"
 msgstr ""
 
-#: cmd.rc:246
+#: cmd.rc:243
 msgid ""
 "PUSHD <directoryname> saves the current directory onto a\n"
 "stack, and then changes the current directory to the supplied one.\n"
 msgstr ""
 
-#: cmd.rc:248
+#: cmd.rc:245
 msgid "POPD changes current directory to the last one saved with PUSHD.\n"
 msgstr ""
 
-#: cmd.rc:256
+#: cmd.rc:253
 msgid ""
 "ASSOC shows or modifies file extension associations.\n"
 "\n"
@@ -9451,7 +9388,7 @@ msgid ""
 "association, if any.\n"
 msgstr ""
 
-#: cmd.rc:267
+#: cmd.rc:264
 msgid ""
 "FTYPE shows or modifies open commands associated with file types.\n"
 "\n"
@@ -9465,24 +9402,24 @@ msgid ""
 "associated to the specified file type.\n"
 msgstr ""
 
-#: cmd.rc:269
+#: cmd.rc:266
 msgid "MORE displays output of files or piped input in pages.\n"
 msgstr ""
 
-#: cmd.rc:273
+#: cmd.rc:270
 msgid ""
 "CHOICE displays a text and waits, until the User\n"
 "presses an allowed Key from a selectable list.\n"
 "CHOICE is mainly used to build a menu selection in a batch file.\n"
 msgstr ""
 
-#: cmd.rc:277
+#: cmd.rc:274
 msgid ""
 "EXIT terminates the current command session and returns\n"
 "to the operating system or shell from which you invoked cmd.\n"
 msgstr ""
 
-#: cmd.rc:315
+#: cmd.rc:312
 msgid ""
 "CMD built-in commands are:\n"
 "ASSOC\t\tShow or modify file extension associations\n"
@@ -9524,181 +9461,181 @@ msgid ""
 "Enter HELP <command> for further information on any of the above commands.\n"
 msgstr ""
 
-#: cmd.rc:317
+#: cmd.rc:314
 msgid "Are you sure?"
 msgstr ""
 
-#: cmd.rc:318 xcopy.rc:40
+#: cmd.rc:315 xcopy.rc:40
 msgctxt "Yes key"
 msgid "Y"
 msgstr ""
 
-#: cmd.rc:319 xcopy.rc:41
+#: cmd.rc:316 xcopy.rc:41
 msgctxt "No key"
 msgid "N"
 msgstr ""
 
-#: cmd.rc:320
+#: cmd.rc:317
 msgid "File association missing for extension %1\n"
 msgstr ""
 
-#: cmd.rc:321
+#: cmd.rc:318
 msgid "No open command associated with file type '%1'\n"
 msgstr ""
 
-#: cmd.rc:322
+#: cmd.rc:319
 msgid "Overwrite %1?"
 msgstr ""
 
-#: cmd.rc:323
+#: cmd.rc:320
 msgid "More..."
 msgstr ""
 
-#: cmd.rc:324
+#: cmd.rc:321
 msgid "Line in Batch processing possibly truncated. Using:\n"
 msgstr ""
 
-#: cmd.rc:326
+#: cmd.rc:323
 msgid "Argument missing\n"
 msgstr ""
 
-#: cmd.rc:327
+#: cmd.rc:324
 msgid "Syntax error\n"
 msgstr ""
 
-#: cmd.rc:329
+#: cmd.rc:326
 msgid "No help available for %1\n"
 msgstr "%1 的帮助不可用\n"
 
-#: cmd.rc:330
+#: cmd.rc:327
 msgid "Target to GOTO not found\n"
 msgstr ""
 
-#: cmd.rc:331
+#: cmd.rc:328
 msgid "Current Date is %1\n"
 msgstr "当前日期是 %1\n"
 
-#: cmd.rc:332
+#: cmd.rc:329
 msgid "Current Time is %1\n"
 msgstr ""
 
-#: cmd.rc:333
+#: cmd.rc:330
 msgid "Enter new date: "
 msgstr ""
 
-#: cmd.rc:334
+#: cmd.rc:331
 msgid "Enter new time: "
 msgstr ""
 
-#: cmd.rc:335
+#: cmd.rc:332
 msgid "Environment variable %1 not defined\n"
 msgstr ""
 
-#: cmd.rc:336 xcopy.rc:38
+#: cmd.rc:333 xcopy.rc:38
 msgid "Failed to open '%1'\n"
 msgstr ""
 
-#: cmd.rc:337
+#: cmd.rc:334
 msgid "Cannot call batch label outside of a batch script\n"
 msgstr ""
 
-#: cmd.rc:338 xcopy.rc:42
+#: cmd.rc:335 xcopy.rc:42
 msgctxt "All key"
 msgid "A"
 msgstr ""
 
-#: cmd.rc:339
+#: cmd.rc:336
 msgid "Delete %1?"
 msgstr "删除 %1？"
 
-#: cmd.rc:340
+#: cmd.rc:337
 msgid "Echo is %1\n"
 msgstr ""
 
-#: cmd.rc:341
+#: cmd.rc:338
 msgid "Verify is %1\n"
 msgstr ""
 
-#: cmd.rc:342
+#: cmd.rc:339
 msgid "Verify must be ON or OFF\n"
 msgstr ""
 
-#: cmd.rc:343
+#: cmd.rc:340
 msgid "Parameter error\n"
 msgstr ""
 
-#: cmd.rc:344
+#: cmd.rc:341
 msgid ""
 "Volume Serial Number is %1!04x!-%2!04x!\n"
 "\n"
 msgstr ""
 
-#: cmd.rc:345
+#: cmd.rc:342
 msgid "Volume label (11 characters, <Enter> for none)?"
 msgstr ""
 
-#: cmd.rc:346
+#: cmd.rc:343
 msgid "PATH not found\n"
 msgstr ""
 
-#: cmd.rc:347
+#: cmd.rc:344
 msgid "Press any key to continue... "
 msgstr ""
 
-#: cmd.rc:348
+#: cmd.rc:345
 msgid "Wine Command Prompt"
 msgstr ""
 
-#: cmd.rc:349
+#: cmd.rc:346
 msgid "Wine CMD Version %1!S!\n"
 msgstr ""
 
-#: cmd.rc:350
+#: cmd.rc:347
 msgid "More? "
 msgstr ""
 
-#: cmd.rc:351
+#: cmd.rc:348
 msgid "The input line is too long.\n"
 msgstr ""
 
-#: cmd.rc:352
+#: cmd.rc:349
 msgid "Volume in drive %1!c! is %2\n"
 msgstr ""
 
-#: cmd.rc:353
+#: cmd.rc:350
 msgid "Volume in drive %1!c! has no label.\n"
 msgstr ""
 
-#: cmd.rc:354
+#: cmd.rc:351
 msgid " (Yes|No)"
-msgstr ""
+msgstr " (是(Y)|否(N))"
 
-#: cmd.rc:355
+#: cmd.rc:352
 msgid " (Yes|No|All)"
-msgstr ""
+msgstr " (是(Y)|否(N)|全部(A))"
 
-#: cmd.rc:356
+#: cmd.rc:353
 msgid ""
 "Can't recognize '%1' as an internal or external command, or batch script.\n"
 msgstr ""
 
-#: cmd.rc:357
+#: cmd.rc:354
 msgid "Division by zero error.\n"
 msgstr ""
 
-#: cmd.rc:358
+#: cmd.rc:355
 msgid "Expected an operand.\n"
 msgstr ""
 
-#: cmd.rc:359
+#: cmd.rc:356
 msgid "Expected an operator.\n"
 msgstr ""
 
-#: cmd.rc:360
+#: cmd.rc:357
 msgid "Mismatch in parentheses.\n"
 msgstr ""
 
-#: cmd.rc:361
+#: cmd.rc:358
 msgid ""
 "Badly formed number - must be one of decimal (12),\n"
 " hexadecimal (0x34) or octal (056).\n"
@@ -9808,6 +9745,13 @@ msgid ""
 "\n"
 "Where 'command' is one of HELP, START, STOP or USE.\n"
 msgstr ""
+"本命令格式为:\n"
+"\n"
+"NET 命令 [参数]\n"
+"    -或-\n"
+"NET 命令 /HELP\n"
+"\n"
+"其中“命令”为 HELP、START、STOP 或 USE 其中之一。\n"
 
 #: net.rc:28
 msgid ""
@@ -9818,6 +9762,12 @@ msgid ""
 "Displays the list of running services if 'service' is omitted. Otherwise "
 "'service' is the name of the service to start.\n"
 msgstr ""
+"本命令格式为:\n"
+"\n"
+"NET START [服务]\n"
+"\n"
+"如果没有指定“服务”，则显示所有正在运行的服务清单。否则“服务”为要启动的服务的"
+"名称。\n"
 
 #: net.rc:29
 msgid ""
@@ -9827,10 +9777,15 @@ msgid ""
 "\n"
 "Where 'service' is the name of the service to stop.\n"
 msgstr ""
+"本命令的格式为:\n"
+"\n"
+"NET STOP 服务\n"
+"\n"
+"其中“服务”为要停止的服务的名称。\n"
 
 #: net.rc:30
 msgid "Stopping dependent service: %1\n"
-msgstr ""
+msgstr "正在停止依赖的服务: %1\n"
 
 #: net.rc:31
 msgid "Could not stop service %1\n"
@@ -9838,19 +9793,19 @@ msgstr "不能停止服务 %1\n"
 
 #: net.rc:32
 msgid "Could not get handle to service control manager.\n"
-msgstr ""
+msgstr "无法获取服务控制管理器的句柄。\n"
 
 #: net.rc:33
 msgid "Could not get handle to service.\n"
-msgstr ""
+msgstr "无法获取服务的句柄。\n"
 
 #: net.rc:34
 msgid "The %1 service is starting.\n"
-msgstr ""
+msgstr "正在启动服务 %1。\n"
 
 #: net.rc:35
 msgid "The %1 service was started successfully.\n"
-msgstr ""
+msgstr "服务 %1 启动成功。\n"
 
 #: net.rc:36
 msgid "The %1 service failed to start.\n"
@@ -9858,11 +9813,11 @@ msgstr "服务 %1 启动失败。\n"
 
 #: net.rc:37
 msgid "The %1 service is stopping.\n"
-msgstr "服务 %1 正在停止。\n"
+msgstr "正在停止服务 %1。\n"
 
 #: net.rc:38
 msgid "The %1 service was stopped successfully.\n"
-msgstr ""
+msgstr "服务 %1 停止成功。\n"
 
 #: net.rc:39
 msgid "The %1 service failed to stop.\n"
@@ -9870,7 +9825,7 @@ msgstr "服务 %1 停止失败。\n"
 
 #: net.rc:41
 msgid "There are no entries in the list.\n"
-msgstr ""
+msgstr "列表中没有内容。\n"
 
 #: net.rc:42
 msgid ""
@@ -9878,10 +9833,13 @@ msgid ""
 "Status  Local   Remote\n"
 "---------------------------------------------------------------\n"
 msgstr ""
+"\n"
+"状态    本地    远程\n"
+"---------------------------------------------------------------\n"
 
 #: net.rc:43
 msgid "%1      %2      %3      Open resources: %4!u!\n"
-msgstr ""
+msgstr "%1      %2      %3      打开资源: %4!u!\n"
 
 #: net.rc:45
 msgid "Paused"
@@ -9905,145 +9863,119 @@ msgstr "正在重新连接"
 
 #: net.rc:40
 msgid "The following services are running:\n"
-msgstr ""
+msgstr "下列服务正在运行:\n"
 
 #: netstat.rc:27
-#, fuzzy
-#| msgid "LAN Connection"
 msgid "Active Connections"
-msgstr "局域网连接"
+msgstr "活跃连接"
 
 #: netstat.rc:28
 msgid "Proto"
-msgstr ""
+msgstr "协议"
 
 #: netstat.rc:29
-#, fuzzy
-#| msgid "Local hard disk"
 msgid "Local Address"
-msgstr "本地硬盘"
+msgstr "本地地址"
 
 #: netstat.rc:30
 msgid "Foreign Address"
-msgstr ""
+msgstr "远程地址"
 
 #: netstat.rc:31
-#, fuzzy
-#| msgid "Status"
 msgid "State"
 msgstr "状态"
 
 #: netstat.rc:32
-#, fuzzy
-#| msgid "Interfaces"
 msgid "Interface Statistics"
-msgstr "界面"
+msgstr "接口统计"
 
 #: netstat.rc:33
 msgid "Sent"
-msgstr ""
+msgstr "送出"
 
 #: netstat.rc:34
 msgid "Received"
-msgstr ""
+msgstr "收到"
 
 #: netstat.rc:35
-#, fuzzy
-#| msgid "bytes"
 msgid "Bytes"
 msgstr "字节"
 
 #: netstat.rc:36
 msgid "Unicast packets"
-msgstr ""
+msgstr "单播数据包"
 
 #: netstat.rc:37
 msgid "Non-unicast packets"
-msgstr ""
+msgstr "多播数据包"
 
 #: netstat.rc:38
 msgid "Discards"
-msgstr ""
+msgstr "丢弃数据包"
 
 #: netstat.rc:39
-#, fuzzy
-#| msgid "Error"
 msgid "Errors"
 msgstr "错误"
 
 #: netstat.rc:40
-#, fuzzy
-#| msgid "Unknown port.\n"
 msgid "Unknown protocols"
-msgstr "未知端口。\n"
+msgstr "未知协议"
 
 #: netstat.rc:41
 msgid "TCP Statistics for IPv4"
-msgstr ""
+msgstr "IPv4 TCP 统计"
 
 #: netstat.rc:42
-#, fuzzy
-#| msgid "LAN Connection"
 msgid "Active Opens"
-msgstr "局域网连接"
+msgstr "主动打开连接数"
 
 #: netstat.rc:43
 msgid "Passive Opens"
-msgstr ""
+msgstr "被动打开连接数"
 
 #: netstat.rc:44
-#, fuzzy
-#| msgid "LAN Connection"
 msgid "Failed Connection Attempts"
-msgstr "局域网连接"
+msgstr "连接失败次数"
 
 #: netstat.rc:45
-#, fuzzy
-#| msgid "LAN Connection"
 msgid "Reset Connections"
-msgstr "局域网连接"
+msgstr "连接重置次数"
 
 #: netstat.rc:46
-#, fuzzy
-#| msgid "LAN Connection"
 msgid "Current Connections"
-msgstr "局域网连接"
+msgstr "当前连接数"
 
 #: netstat.rc:47
 msgid "Segments Received"
-msgstr ""
+msgstr "收到报文段数"
 
 #: netstat.rc:48
 msgid "Segments Sent"
-msgstr ""
+msgstr "送出报文段数"
 
 #: netstat.rc:49
 msgid "Segments Retransmitted"
-msgstr ""
+msgstr "重传报文段数"
 
 #: netstat.rc:50
 msgid "UDP Statistics for IPv4"
-msgstr ""
+msgstr "IPv4 UDP 统计"
 
 #: netstat.rc:51
 msgid "Datagrams Received"
-msgstr ""
+msgstr "收到数据报数"
 
 #: netstat.rc:52
-#, fuzzy
-#| msgid "Local Port"
 msgid "No Ports"
-msgstr "本地端口"
+msgstr "没有端口"
 
 #: netstat.rc:53
-#, fuzzy
-#| msgid "Error"
 msgid "Receive Errors"
-msgstr "错误"
+msgstr "接收错误数"
 
 #: netstat.rc:54
 msgid "Datagrams Sent"
-msgstr ""
+msgstr "送出数据报数"
 
 #: notepad.rc:27
 msgid "&New\tCtrl+N"
@@ -10100,7 +10032,7 @@ msgstr "全选(&A)\tCtrl+A"
 
 #: notepad.rc:47
 msgid "&Time/Date\tF5"
-msgstr "插入日期、时间(&T)\tF5"
+msgstr "插入日期/时间(&T)\tF5"
 
 #: notepad.rc:49
 msgid "&Wrap long lines"
@@ -10132,11 +10064,11 @@ msgstr "页面设置"
 
 #: notepad.rc:99
 msgid "&Header:"
-msgstr "页眉(&H)："
+msgstr "页眉(&H):"
 
 #: notepad.rc:101
 msgid "&Footer:"
-msgstr "页脚(&F)："
+msgstr "页脚(&F):"
 
 #: notepad.rc:104
 msgid "Margins (millimeters)"
@@ -10144,35 +10076,35 @@ msgstr "边距(毫米)"
 
 #: notepad.rc:105
 msgid "&Left:"
-msgstr "左(&L)："
+msgstr "左(&L):"
 
 #: notepad.rc:107
 msgid "&Top:"
-msgstr "上(&T)："
+msgstr "上(&T):"
 
 #: notepad.rc:123
 msgid "Encoding:"
-msgstr "编码："
+msgstr "编码:"
 
 #: notepad.rc:129 wordpad.rc:278
 msgctxt "accelerator Select All"
 msgid "A"
-msgstr ""
+msgstr "A"
 
 #: notepad.rc:130 wordpad.rc:280
 msgctxt "accelerator Copy"
 msgid "C"
-msgstr ""
+msgstr "C"
 
 #: notepad.rc:131 regedit.rc:320 wordpad.rc:276
 msgctxt "accelerator Find"
 msgid "F"
-msgstr ""
+msgstr "F"
 
 #: notepad.rc:132 wordpad.rc:277
 msgctxt "accelerator Replace"
 msgid "H"
-msgstr ""
+msgstr "H"
 
 #: notepad.rc:133 wordpad.rc:286
 msgctxt "accelerator New"
@@ -10187,27 +10119,27 @@ msgstr "O"
 #: notepad.rc:135 regedit.rc:321 wordpad.rc:289
 msgctxt "accelerator Print"
 msgid "P"
-msgstr ""
+msgstr "P"
 
 #: notepad.rc:136 wordpad.rc:288
 msgctxt "accelerator Save"
 msgid "S"
-msgstr ""
+msgstr "S"
 
 #: notepad.rc:137
 msgctxt "accelerator Paste"
 msgid "V"
-msgstr ""
+msgstr "V"
 
 #: notepad.rc:138 wordpad.rc:279
 msgctxt "accelerator Cut"
 msgid "X"
-msgstr ""
+msgstr "X"
 
 #: notepad.rc:139 wordpad.rc:281
 msgctxt "accelerator Undo"
 msgid "Z"
-msgstr ""
+msgstr "Z"
 
 #: notepad.rc:66
 msgid "Page &p"
@@ -10305,11 +10237,11 @@ msgstr "&CoCreateInstance 参数"
 
 #: oleview.rc:41
 msgid "&In-process server"
-msgstr ""
+msgstr "进程内服务器(&I)"
 
 #: oleview.rc:42
 msgid "In-process &handler"
-msgstr ""
+msgstr "进程内处理函数(&H)"
 
 #: oleview.rc:43
 msgid "&Local server"
@@ -10329,7 +10261,7 @@ msgstr "创建实例(&I)"
 
 #: oleview.rc:50
 msgid "Create Instance &On..."
-msgstr "创建实例在(&O)..."
+msgstr "创建实例于(&O)..."
 
 #: oleview.rc:51
 msgid "&Release Instance"
@@ -10381,11 +10313,11 @@ msgstr "连接到另外一台计算机"
 
 #: oleview.rc:157
 msgid "&Machine name:"
-msgstr "计算机名称(&M)："
+msgstr "计算机名称(&M):"
 
 #: oleview.rc:165
 msgid "System Configuration"
-msgstr "系统设置"
+msgstr "系统配置"
 
 #: oleview.rc:168
 msgid "System Settings"
@@ -10404,20 +10336,20 @@ msgid ""
 "These settings change only registry values.\n"
 "They have no effect on Wine performance."
 msgstr ""
-"这些设置只改变寄存器值(register values)。\n"
+"这些设置只改变注册表的值。\n"
 "它对Wine的性能没有影响。"
 
 #: oleview.rc:178
 msgid "Default Interface Viewer"
-msgstr "默认界面查看器"
+msgstr "默认接口查看器"
 
 #: oleview.rc:181
 msgid "Interface"
-msgstr "界面"
+msgstr "接口"
 
 #: oleview.rc:183
 msgid "IID:"
-msgstr "IID："
+msgstr "IID:"
 
 #: oleview.rc:186
 msgid "&View Type Info"
@@ -10425,19 +10357,19 @@ msgstr "查看类型信息(&V)"
 
 #: oleview.rc:191
 msgid "IPersist Interface Viewer"
-msgstr "IPersist 界面查看器"
+msgstr "IPersist 接口查看器"
 
 #: oleview.rc:194 oleview.rc:206
 msgid "Class Name:"
-msgstr "类别名称："
+msgstr "类名:"
 
 #: oleview.rc:196 oleview.rc:208
 msgid "CLSID:"
-msgstr "CLSID："
+msgstr "CLSID:"
 
 #: oleview.rc:203
 msgid "IPersistStream Interface Viewer"
-msgstr "IPersistStream 界面查看器"
+msgstr "IPersistStream 接口查看器"
 
 #: oleview.rc:93 oleview.rc:94
 msgid "OleView"
@@ -10461,7 +10393,7 @@ msgstr "TypeLib 文件 (*.tlb; *.olb; *.dll; *.ocx; *.exe)"
 
 #: oleview.rc:103
 msgid "Bind to file via a File Moniker"
-msgstr "通过文件绰号绑定到文件"
+msgstr "通过文件标记绑定到文件"
 
 #: oleview.rc:104
 msgid "Open a TypeLib file and view the contents"
@@ -10485,7 +10417,7 @@ msgstr "创建当前选定对象实例"
 
 #: oleview.rc:109
 msgid "Create an instance of the selected object on a specific machine"
-msgstr "创建当前选定对象在指定计算机的实例"
+msgstr "在指定机器上创建当前选定对象的实例"
 
 #: oleview.rc:110
 msgid "Release the currently selected object instance"
@@ -10526,19 +10458,19 @@ msgstr "显示程序信息、版本号及版权"
 
 #: oleview.rc:113
 msgid "Ask for an in-process server when calling CoGetClassObject"
-msgstr ""
+msgstr "调用 CoGetClassObject 时请求进程内服务器"
 
 #: oleview.rc:114
 msgid "Ask for an in-process handler when calling CoGetClassObject"
-msgstr ""
+msgstr "调用 CoGetClassObject 时请求进程内处理函数"
 
 #: oleview.rc:115
 msgid "Ask for a local server when calling CoGetClassObject"
-msgstr "呼叫 CoGetClassObject 时请求本地服务器"
+msgstr "调用 CoGetClassObject 时请求本地服务器"
 
 #: oleview.rc:116
 msgid "Ask for a remote server when calling CoGetClassObject"
-msgstr "呼叫 CoGetClassObject 时请求远程服务器"
+msgstr "调用 CoGetClassObject 时请求远程服务器"
 
 #: oleview.rc:128
 msgid "ObjectClasses"
@@ -10582,7 +10514,7 @@ msgstr "注册表"
 
 #: oleview.rc:139
 msgid "Implementation"
-msgstr "实行"
+msgstr "实现"
 
 #: oleview.rc:140
 msgid "Activation"
@@ -10606,7 +10538,7 @@ msgstr "LoadTypeLib( %1 ) 失败 ($%2!x!)"
 
 #: oleview.rc:149
 msgid "Inherited Interfaces"
-msgstr "继承的界面"
+msgstr "继承的接口"
 
 #: oleview.rc:124
 msgid "Save as an .IDL or .H file"
@@ -10778,11 +10710,11 @@ msgstr "信息"
 
 #: progman.rc:65
 msgid "Delete group `%s'?"
-msgstr "是否删除程序组 `%s'？"
+msgstr "是否删除程序组 “%s”？"
 
 #: progman.rc:66
 msgid "Delete program `%s'?"
-msgstr "是否删除程序组 `%s'?"
+msgstr "是否删除程序组 “%s”?"
 
 #: progman.rc:67
 msgid "Not implemented"
@@ -10790,18 +10722,18 @@ msgstr "尚未实现"
 
 #: progman.rc:68
 msgid "Error reading `%s'."
-msgstr "读取文件 %s 时发生错误。"
+msgstr "读取文件 “%s” 时发生错误。"
 
 #: progman.rc:69
 msgid "Error writing `%s'."
-msgstr "写入文件 %s 时发生错误。"
+msgstr "写入文件 “%s” 时发生错误。"
 
 #: progman.rc:72
 msgid ""
 "The group file `%s' cannot be opened.\n"
 "Should it be tried further on?"
 msgstr ""
-"不能打开组文件 `%s' 。\n"
+"不能打开组文件 “%s” 。\n"
 "是否继续尝试？"
 
 #: progman.rc:74
@@ -10814,11 +10746,11 @@ msgstr "在 %s 中发现未知特性"
 
 #: progman.rc:76
 msgid "File `%s' exists. Not overwritten."
-msgstr "文件 %s 已经存在。不覆盖已有文件。"
+msgstr "文件 “%s” 已经存在。不覆盖已有文件。"
 
 #: progman.rc:77
 msgid "Save group as `%s to prevent overwriting original files."
-msgstr "将程序组保存为 %s 可以避免复盖已有的文件。"
+msgstr "将程序组保存为 “%s” 可以避免复盖已有的文件。"
 
 #: progman.rc:81
 msgid "Libraries (*.dll)"
@@ -10839,41 +10771,45 @@ msgid ""
 "REG [ ADD | DELETE | QUERY ]\n"
 "REG command /?\n"
 msgstr ""
+"本命令格式为:\n"
+"\n"
+"REG [ ADD | DELETE | QUERY ]\n"
+"REG 命令 /?\n"
 
 #: reg.rc:28
 msgid ""
 "REG ADD key_name [/v value_name | /ve] [/t type] [/s separator] [/d data] [/"
 "f]\n"
-msgstr ""
+msgstr "REG ADD 键名 [/v 值名 | /ve] [/t 类型] [/s 分隔符] [/d 数据] [/f]\n"
 
 #: reg.rc:29
 msgid "REG DELETE key_name [/v value_name | /ve | /va] [/f]\n"
-msgstr ""
+msgstr "REG DELETE 键名 [/v 值名 | /ve | /va] [/f]\n"
 
 #: reg.rc:30
 msgid "REG QUERY key_name [/v value_name | /ve] [/s]\n"
-msgstr ""
+msgstr "REG QUERY 键名 [/v 值名 | /ve] [/s]\n"
 
 #: reg.rc:31
 msgid "The operation completed successfully\n"
-msgstr ""
+msgstr "操作完成\n"
 
 #: reg.rc:32
 msgid "Error: Invalid key name\n"
-msgstr ""
+msgstr "错误：键名无效\n"
 
 #: reg.rc:33
 msgid "Error: Invalid command line parameters\n"
-msgstr ""
+msgstr "错误：命令行参数无效\n"
 
 #: reg.rc:34
 msgid "Error: Unable to add keys to remote machine\n"
-msgstr ""
+msgstr "错误：无法将键添加到远程机器\n"
 
 #: reg.rc:35
 msgid ""
 "Error: The system was unable to find the specified registry key or value\n"
-msgstr ""
+msgstr "错误：系统无法找到指定的注册表键或值\n"
 
 #: regedit.rc:31
 msgid "&Registry"
@@ -10953,15 +10889,15 @@ msgstr "导出注册表"
 
 #: regedit.rc:217
 msgid "S&elected branch:"
-msgstr "指定分支(&E)："
+msgstr "指定分支(&E):"
 
 #: regedit.rc:226
 msgid "Find:"
-msgstr "查找："
+msgstr "查找:"
 
 #: regedit.rc:228
 msgid "Find in:"
-msgstr "在这找："
+msgstr "在这找:"
 
 #: regedit.rc:229
 msgid "Keys"
@@ -10985,7 +10921,7 @@ msgstr "添加收藏"
 
 #: regedit.rc:242 regedit.rc:253
 msgid "Name:"
-msgstr "名称："
+msgstr "名称:"
 
 #: regedit.rc:250
 msgid "Remove Favorite"
@@ -10997,11 +10933,11 @@ msgstr "编辑字符串"
 
 #: regedit.rc:264 regedit.rc:277 regedit.rc:293 regedit.rc:306
 msgid "Value name:"
-msgstr "值名称："
+msgstr "值名称:"
 
 #: regedit.rc:266 regedit.rc:279 regedit.rc:295 regedit.rc:308
 msgid "Value data:"
-msgstr "值数据："
+msgstr "值数据:"
 
 #: regedit.rc:274
 msgid "Edit DWORD"
@@ -11190,7 +11126,7 @@ msgstr "确认删除值"
 
 #: regedit.rc:182
 msgid "Are you sure you want to delete value '%s'?"
-msgstr "你确认要删除值 '%s' 吗?"
+msgstr "您确认要删除值 '%s' 吗?"
 
 #: regedit.rc:186
 msgid "Search string '%s' not found"
@@ -11198,7 +11134,7 @@ msgstr "未找到字符串 '%s'"
 
 #: regedit.rc:183
 msgid "Are you sure you want to delete these values?"
-msgstr "你确认要删除这些值吗?"
+msgstr "您确认要删除这些值吗?"
 
 #: regedit.rc:184
 msgid "New Key #%d"
@@ -11226,67 +11162,69 @@ msgid ""
 "specified file.\n"
 "ShellExecuteEx failed"
 msgstr ""
+"无法启动程序，或者没有为指定文件关联应用程序。\n"
+"ShellExecuteEx 失败"
 
 #: start.rc:54
 msgid "Could not translate the specified Unix filename to a DOS filename."
-msgstr ""
+msgstr "无法将指定 Unix 文件名转换为 DOS 文件名。"
 
 #: taskkill.rc:27
 msgid "Usage: taskkill [/?] [/f] [/im ProcessName | /pid ProcessID]\n"
-msgstr ""
+msgstr "用法：taskkill [/?] [/f] [/im 进程名 | /pid 进程ID]\n"
 
 #: taskkill.rc:28
 msgid "Error: Unknown or invalid command line option specified.\n"
-msgstr ""
+msgstr "错误：指定的命令行选项未知或无效。\n"
 
 #: taskkill.rc:29
 msgid "Error: Invalid command line parameter specified.\n"
-msgstr ""
+msgstr "错误：指定的命令行参数未知或无效。\n"
 
 #: taskkill.rc:30
 msgid "Error: One of options /im or /pid must be specified.\n"
-msgstr ""
+msgstr "错误：必须指定 /im 或 /pid 选项。\n"
 
 #: taskkill.rc:31
 msgid "Error: Option %1 expects a command line parameter.\n"
-msgstr ""
+msgstr "错误：选项 %1 需要命令行参数值。\n"
 
 #: taskkill.rc:32
 msgid "Error: Options /im and /pid are mutually exclusive.\n"
-msgstr ""
+msgstr "错误：选项 /im 和 /pid 不能共存。\n"
 
 #: taskkill.rc:33
 msgid "Close message sent to top-level windows of process with PID %1!u!.\n"
-msgstr ""
+msgstr "关闭消息已发送到 PID 为 %1!u! 的进程的顶级窗口。\n"
 
 #: taskkill.rc:34
 msgid ""
 "Close message sent to top-level windows of process \"%1\" with PID %2!u!.\n"
-msgstr ""
+msgstr "关闭消息已发送到 PID 为 %2!u! 的进程 \"%1\" 的顶级窗口。\n"
 
 #: taskkill.rc:35
 msgid "Process with PID %1!u! was forcibly terminated.\n"
-msgstr ""
+msgstr "已经强行结束 PID 为 %1!u! 的进程。\n"
 
 #: taskkill.rc:36
 msgid "Process \"%1\" with PID %2!u! was forcibly terminated.\n"
-msgstr ""
+msgstr "已经强行结束 PID 为 %2!u! 的进程 \"%1\"。\n"
 
 #: taskkill.rc:37
 msgid "Error: Could not find process \"%1\".\n"
-msgstr ""
+msgstr "错误：找不到进程 \"%1\"。\n"
 
 #: taskkill.rc:38
 msgid "Error: Unable to enumerate the process list.\n"
-msgstr ""
+msgstr "错误：无法列举进程清单。\n"
 
 #: taskkill.rc:39
 msgid "Error: Unable to terminate process \"%1\".\n"
-msgstr ""
+msgstr "错误：无法结束进程 \"%1\"。\n"
 
 #: taskkill.rc:40
 msgid "Error: Process self-termination is not permitted.\n"
-msgstr ""
+msgstr "错误：不允许结束本进程。\n"
 
 #: taskmgr.rc:37 taskmgr.rc:108
 msgid "&New Task (Run...)"
@@ -11350,7 +11288,7 @@ msgstr "每一个 C&PU 各一张图"
 
 #: taskmgr.rc:76 taskmgr.rc:261
 msgid "&Show Kernel Times"
-msgstr "显示内核时间(&S)"
+msgstr "显示内核耗时(&S)"
 
 #: taskmgr.rc:80 taskmgr.rc:96 taskmgr.rc:123 winefile.rc:73
 msgid "Tile &Horizontally"
@@ -11402,7 +11340,7 @@ msgstr "调试(&D)"
 
 #: taskmgr.rc:154
 msgid "Set &Priority"
-msgstr "指定优先权(&P)"
+msgstr "指定优先级(&P)"
 
 #: taskmgr.rc:156
 msgid "&Realtime"
@@ -11418,7 +11356,7 @@ msgstr "低于正常(&B)"
 
 #: taskmgr.rc:169
 msgid "Set &Affinity..."
-msgstr "亲和度指定(&A)..."
+msgstr "关联 CPU(&A)..."
 
 #: taskmgr.rc:170
 msgid "Edit Debug &Channels..."
@@ -11438,11 +11376,11 @@ msgstr "显示所有用户的进程(&S)"
 
 #: taskmgr.rc:372
 msgid "CPU usage"
-msgstr "CPU 用量"
+msgstr "CPU 负载率"
 
 #: taskmgr.rc:373
 msgid "Mem usage"
-msgstr "内存用量"
+msgstr "内存占用"
 
 #: taskmgr.rc:374
 msgid "Totals"
@@ -11490,19 +11428,19 @@ msgstr "系统缓存"
 
 #: taskmgr.rc:406
 msgid "Paged"
-msgstr "已分页"
+msgstr "可换页"
 
 #: taskmgr.rc:407
 msgid "Nonpaged"
-msgstr "未分页"
+msgstr "不可换页"
 
 #: taskmgr.rc:414
 msgid "CPU usage history"
-msgstr "CPU 用量历史"
+msgstr "CPU 负载率历史"
 
 #: taskmgr.rc:415
 msgid "Memory usage history"
-msgstr "内存用量历史"
+msgstr "内存占用历史"
 
 #: taskmgr.rc:428 taskmgr.rc:327
 msgid "Debug Channels"
@@ -11510,13 +11448,13 @@ msgstr "调试频道"
 
 #: taskmgr.rc:439
 msgid "Processor Affinity"
-msgstr "处理器亲和度"
+msgstr "处理器关联"
 
 #: taskmgr.rc:444
 msgid ""
 "The Processor Affinity setting controls which CPUs the process will be "
 "allowed to execute on."
-msgstr "处理器亲和度决定了各进程允许运行在哪些 CPU 上。"
+msgstr "处理器关联决定了各进程允许运行在哪些 CPU 上。"
 
 #: taskmgr.rc:446
 msgid "CPU 0"
@@ -11653,7 +11591,7 @@ msgstr "选择列项"
 #: taskmgr.rc:519
 msgid ""
 "Select the columns that will appear on the Process page of the Task Manager."
-msgstr "选择任务管理器中“进程”标签页显示哪些列。"
+msgstr "选择任务管理器中进程标签页显示哪些列。"
 
 #: taskmgr.rc:521
 msgid "&Image Name"
@@ -11665,23 +11603,23 @@ msgstr "&PID (进程编号)"
 
 #: taskmgr.rc:525
 msgid "&CPU Usage"
-msgstr "&CPU 用量"
+msgstr "&CPU 负载率"
 
 #: taskmgr.rc:527
 msgid "CPU Tim&e"
-msgstr "CPU 时间(&T)"
+msgstr "CPU 耗时(&T)"
 
 #: taskmgr.rc:529
 msgid "&Memory Usage"
-msgstr "内存用量(&M)"
+msgstr "内存占用(&M)"
 
 #: taskmgr.rc:531
 msgid "Memory Usage &Delta"
-msgstr "内存用量差值(&D)"
+msgstr "内存占用差值(&D)"
 
 #: taskmgr.rc:533
 msgid "Pea&k Memory Usage"
-msgstr "内存用量峰值(&K)"
+msgstr "内存占用峰值(&K)"
 
 #: taskmgr.rc:535
 msgid "Page &Faults"
@@ -11717,15 +11655,15 @@ msgstr "虚拟内存大小(&V)"
 
 #: taskmgr.rc:551
 msgid "Pa&ged Pool"
-msgstr "已分页池(&G)"
+msgstr "可换页池(&G)"
 
 #: taskmgr.rc:553
 msgid "N&on-paged Pool"
-msgstr "未分页池(&O)"
+msgstr "不可换页池(&O)"
 
 #: taskmgr.rc:555
 msgid "Base P&riority"
-msgstr "基本优先权(&R)"
+msgstr "基本优先级(&R)"
 
 #: taskmgr.rc:557
 msgid "&Handle Count"
@@ -11793,15 +11731,15 @@ msgstr "显示每个任务的详细信息"
 
 #: taskmgr.rc:196
 msgid "Updates the display twice per second"
-msgstr "每秒更新显示两次"
+msgstr "每秒更新两次"
 
 #: taskmgr.rc:197
 msgid "Updates the display every two seconds"
-msgstr "每两秒更新显示一次"
+msgstr "每两秒更新一次"
 
 #: taskmgr.rc:198
 msgid "Updates the display every four seconds"
-msgstr "每四秒更新显示一次"
+msgstr "每四秒更新一次"
 
 #: taskmgr.rc:203
 msgid "Does not automatically update"
@@ -11853,7 +11791,7 @@ msgstr "选择在“进程”标签页显示的列项"
 
 #: taskmgr.rc:217
 msgid "Displays kernel time in the performance graphs"
-msgstr "在性能图上显示内核时间"
+msgstr "在性能图上显示内核耗时"
 
 #: taskmgr.rc:219
 msgid "A single history graph shows total CPU usage"
@@ -11929,15 +11867,15 @@ msgstr "性能"
 
 #: taskmgr.rc:265
 msgid "CPU Usage: %3d%%"
-msgstr ""
+msgstr "CPU 负载率: %3d%%"
 
 #: taskmgr.rc:266
 msgid "Processes: %d"
-msgstr ""
+msgstr "进程数: %d"
 
 #: taskmgr.rc:267
 msgid "Mem Usage: %1!u!kB / %2!u!kB"
-msgstr ""
+msgstr "内存占用: %1!u!kB / %2!u!kB"
 
 #: taskmgr.rc:272
 msgid "Image Name"
@@ -11945,27 +11883,27 @@ msgstr "映像名字"
 
 #: taskmgr.rc:273
 msgid "PID"
-msgstr ""
+msgstr "PID"
 
 #: taskmgr.rc:274
 msgid "CPU"
-msgstr ""
+msgstr "CPU"
 
 #: taskmgr.rc:275
 msgid "CPU Time"
-msgstr ""
+msgstr "CPU 耗时"
 
 #: taskmgr.rc:276
 msgid "Mem Usage"
-msgstr ""
+msgstr "内存占用"
 
 #: taskmgr.rc:277
 msgid "Mem Delta"
-msgstr ""
+msgstr "内存占用差值"
 
 #: taskmgr.rc:278
 msgid "Peak Mem Usage"
-msgstr ""
+msgstr "内存占用峰值"
 
 #: taskmgr.rc:279
 msgid "Page Faults"
@@ -11973,36 +11911,35 @@ msgstr "页错误"
 
 #: taskmgr.rc:280
 msgid "USER Objects"
-msgstr ""
+msgstr "用户对象"
 
 #: taskmgr.rc:283
 msgid "Session ID"
-msgstr ""
+msgstr "会话 ID"
 
 #: taskmgr.rc:284
 msgid "Username"
-msgstr ""
+msgstr "用户名"
 
 #: taskmgr.rc:285
 msgid "PF Delta"
-msgstr ""
+msgstr "页错误差值"
 
 #: taskmgr.rc:286
 msgid "VM Size"
-msgstr ""
+msgstr "虚拟内存大小"
 
 #: taskmgr.rc:287
-#, fuzzy
 msgid "Paged Pool"
-msgstr "向下翻页"
+msgstr "可换页池"
 
 #: taskmgr.rc:288
 msgid "NP Pool"
-msgstr ""
+msgstr "不可换页池"
 
 #: taskmgr.rc:289
 msgid "Base Pri"
-msgstr ""
+msgstr "基本优先级"
 
 #: taskmgr.rc:301
 msgid "Task Manager Warning"
@@ -12014,10 +11951,12 @@ msgid ""
 "cause undesired results including system instability. Are you\n"
 "sure you want to change the priority class?"
 msgstr ""
+"警告：改变此进程优先级可能导致意料之外的后果，例如系统不稳定。\n"
+"您确定要改变优先权吗？"
 
 #: taskmgr.rc:305
 msgid "Unable to Change Priority"
-msgstr ""
+msgstr "无法更改优先级"
 
 #: taskmgr.rc:310
 msgid ""
@@ -12027,44 +11966,48 @@ msgid ""
 "data before it is terminated. Are you sure you want to\n"
 "terminate the process?"
 msgstr ""
+"警告：结束此进程可能会导致意料之外的后果，例如数据丢失或者系统不稳定。此\n"
+"进程可能在被结束之前来不及保存它的状态和数据。您确定要结束这个进程吗？"
 
 #: taskmgr.rc:311
 msgid "Unable to Terminate Process"
-msgstr ""
+msgstr "无法结束进程"
 
 #: taskmgr.rc:313
 msgid ""
 "WARNING: Debugging this process may result in loss of data.\n"
 "Are you sure you wish to attach the debugger?"
 msgstr ""
+"警告：调试此进程可能会导致数据丢失。\n"
+"您确定要连接调试器吗？"
 
 #: taskmgr.rc:314
 msgid "Unable to Debug Process"
-msgstr ""
+msgstr "无法调试进程"
 
 #: taskmgr.rc:315
 msgid "The process must have affinity with at least one processor"
-msgstr ""
+msgstr "必须为进程关联至少一个处理器"
 
 #: taskmgr.rc:316
 msgid "Invalid Option"
-msgstr ""
+msgstr "无效选项"
 
 #: taskmgr.rc:317
 msgid "Unable to Access or Set Process Affinity"
-msgstr ""
+msgstr "无法获取或设置进程分配"
 
 #: taskmgr.rc:322
 msgid "System Idle Process"
-msgstr ""
+msgstr "系统空闲进程"
 
 #: taskmgr.rc:323
 msgid "Not Responding"
-msgstr ""
+msgstr "没有响应"
 
 #: taskmgr.rc:324
 msgid "Running"
-msgstr ""
+msgstr "正在运行"
 
 #: taskmgr.rc:325
 msgid "Task"
@@ -12081,7 +12024,7 @@ msgid ""
 "Do you want to remove the uninstall entry from the registry?"
 msgstr ""
 "卸载命令 '%s' 运行失败，可能是找不到可执行程序。\n"
-"你想把这项卸载命令从注册表中删除吗？"
+"您想把这项卸载条目从注册表中删除吗？"
 
 #: view.rc:33
 msgid "&Pan"
@@ -12120,7 +12063,7 @@ msgid ""
 msgstr ""
 "正在模拟关机，但是这个程序没有响应。\n"
 "\n"
-"如果你中断进程，有可能丢失没有保存的数据。"
+"如果您中断进程，有可能丢失没有保存的数据。"
 
 #: wineboot.rc:39
 msgid "Wine"
@@ -12137,6 +12080,9 @@ msgid ""
 "Free Software Foundation; either version 2.1 of the License, or (at your "
 "option) any later version."
 msgstr ""
+"本程序为自由软件，您可以遵照自由软件基金会出版的 GNU 较宽松通用公共许可证协议"
+"（LGPL）来对其进行添加、修改和重新发布。许可协议版本为2.1，您也可以选择采用更"
+"新的版本。"
 
 #: winecfg.rc:134
 msgid "Windows registration information"
@@ -12181,7 +12127,7 @@ msgstr "窗口设置"
 
 #: winecfg.rc:161
 msgid "Automatically capture the &mouse in full-screen windows"
-msgstr ""
+msgstr "全屏模式下自动捕获光标(&M)"
 
 #: winecfg.rc:162
 msgid "Allow the window manager to &decorate the windows"
@@ -12205,7 +12151,7 @@ msgstr "屏幕分辨率"
 
 #: winecfg.rc:175
 msgid "This is a sample text using 10 point Tahoma"
-msgstr ""
+msgstr "这是使用 10 号 Tahoma 字体的示例文本"
 
 #: winecfg.rc:182
 msgid "DLL overrides"
@@ -12312,27 +12258,27 @@ msgstr "显示隐藏文件(&D)"
 
 #: winecfg.rc:256
 msgid "Driver diagnostics"
-msgstr ""
+msgstr "驱动程序诊断"
 
 #: winecfg.rc:258
 msgid "Defaults"
-msgstr ""
+msgstr "默认值"
 
 #: winecfg.rc:259
 msgid "Output device:"
-msgstr ""
+msgstr "输出设备："
 
 #: winecfg.rc:260
 msgid "Voice output device:"
-msgstr ""
+msgstr "语音输出设备："
 
 #: winecfg.rc:261
 msgid "Input device:"
-msgstr ""
+msgstr "输入设备："
 
 #: winecfg.rc:262
 msgid "Voice input device:"
-msgstr ""
+msgstr "语音输入设备："
 
 #: winecfg.rc:267
 msgid "&Test Sound"
@@ -12428,7 +12374,7 @@ msgstr "Wine 设置：针对 %s"
 
 #: winecfg.rc:81
 msgid "Selected driver: %s"
-msgstr ""
+msgstr "选中的驱动：%s"
 
 #: winecfg.rc:82
 msgid "(None)"
@@ -12436,7 +12382,7 @@ msgstr "(无)"
 
 #: winecfg.rc:83
 msgid "Audio test failed!"
-msgstr ""
+msgstr "音频测试失败！"
 
 #: winecfg.rc:85
 msgid "(System default)"
@@ -12508,7 +12454,7 @@ msgstr "软盘"
 
 #: winecfg.rc:70
 msgid "CD-ROM"
-msgstr ""
+msgstr "光驱"
 
 #: winecfg.rc:71
 msgid ""
@@ -12909,7 +12855,7 @@ msgstr "程序错误"
 msgid ""
 "The program %s has encountered a serious problem and needs to close. We are "
 "sorry for the inconvenience."
-msgstr ""
+msgstr "程序 %s 遇到严重的问题需要关闭。我们对此造成的不便表示抱歉。"
 
 #: winedbg.rc:55
 msgid ""
@@ -12917,6 +12863,8 @@ msgid ""
 "may want to check the <a href=\"http://appdb.winehq.org\">Application "
 "Database</a> for tips about running this application."
 msgstr ""
+"这可能是由程序的问题或者 Wine 的缺陷造成的。你可能需要查看 <a href=\"http://"
+"appdb.winehq.org\">Application Databa</a> 来获取运行该应用的相关技巧。"
 
 #: winedbg.rc:58
 msgid "Show &Details"
@@ -12933,18 +12881,21 @@ msgid ""
 "button, then <a href=\"http://wiki.winehq.org/Bugs\">file a bug report</a> "
 "and attach that file to the report."
 msgstr ""
+"若该问题在 Windows 不会出现并且未曾被报告过，您可以使用“另存为”按钮将详细信息"
+"保存为一个文件，然后<a href=\"http://wiki.winehq.org/Bugs\">新建一个错误报告"
+"</a>并且附带上该文件。"
 
 #: winedbg.rc:35
 msgid "Wine program crash"
-msgstr ""
+msgstr "Wine 程序崩溃"
 
 #: winedbg.rc:36
 msgid "Internal errors - invalid parameters received"
-msgstr ""
+msgstr "内部错误 - 收到无效参数"
 
 #: winedbg.rc:37
 msgid "(unidentified)"
-msgstr ""
+msgstr "（未被识别的）"
 
 #: winedbg.rc:40
 msgid "Saving failed"
@@ -12952,7 +12903,7 @@ msgstr "保存失败"
 
 #: winedbg.rc:41
 msgid "Loading detailed information, please wait..."
-msgstr ""
+msgstr "正在载入详细信息，请稍候……"
 
 #: winefile.rc:26
 msgid "&Open\tEnter"
@@ -13052,7 +13003,7 @@ msgstr "文件类型"
 
 #: winefile.rc:141
 msgid "&Directories"
-msgstr ""
+msgstr "目录(&D)"
 
 #: winefile.rc:143
 msgid "&Programs"
@@ -13064,11 +13015,11 @@ msgstr "文档(&M)"
 
 #: winefile.rc:147
 msgid "&Other files"
-msgstr ""
+msgstr "其他文件(&O)"
 
 #: winefile.rc:149
 msgid "Show Hidden/&System Files"
-msgstr ""
+msgstr "显示隐藏文件/系统文件(&S)"
 
 #: winefile.rc:160
 msgid "&File Name:"
@@ -13076,11 +13027,11 @@ msgstr "文件名(&F)："
 
 #: winefile.rc:162
 msgid "Full &Path:"
-msgstr ""
+msgstr "完整路径(&P)："
 
 #: winefile.rc:164
 msgid "Last Change:"
-msgstr ""
+msgstr "最后更改："
 
 #: winefile.rc:168
 msgid "Cop&yright:"
@@ -13092,11 +13043,11 @@ msgstr "大小:"
 
 #: winefile.rc:174
 msgid "H&idden"
-msgstr ""
+msgstr "隐藏(&I)"
 
 #: winefile.rc:175
 msgid "&Archive"
-msgstr ""
+msgstr "存档(&A)"
 
 #: winefile.rc:176
 msgid "&System"
@@ -13113,74 +13064,74 @@ msgstr "版本信息"
 #: winefile.rc:194
 msgctxt "accelerator Fullscreen"
 msgid "S"
-msgstr ""
+msgstr "S"
 
 #: winefile.rc:87
 msgid "Applying font settings"
-msgstr ""
+msgstr "应用字体设置"
 
 #: winefile.rc:88
 msgid "Error while selecting new font."
-msgstr ""
+msgstr "选取新字体时发生错误。"
 
 #: winefile.rc:93
 msgid "Wine File Manager"
-msgstr ""
+msgstr "Wine 文件管理器"
 
 #: winefile.rc:95
 msgid "root fs"
-msgstr ""
+msgstr "root fs"
 
 #: winefile.rc:96
 msgid "unixfs"
-msgstr ""
+msgstr "unixfs"
 
 #: winefile.rc:98
 msgid "Shell"
-msgstr ""
+msgstr "Shell"
 
 #: winefile.rc:99 winhlp32.rc:107 winhlp32.rc:82
 msgid "Not yet implemented"
 msgstr "尚未实现"
 
 #: winefile.rc:106
-msgid "CDate"
+msgid "Creation date"
 msgstr "创建日期"
 
 #: winefile.rc:107
-msgid "ADate"
+msgid "Access date"
 msgstr "访问日期"
 
 #: winefile.rc:108
-msgid "MDate"
+msgid "Modification date"
 msgstr "修改日期"
 
 #: winefile.rc:109
 msgid "Index/Inode"
-msgstr ""
+msgstr "索引/Inode"
 
 #: winefile.rc:114
 msgid "%1 of %2 free"
-msgstr ""
+msgstr "%2 中剩余 %1"
 
 #: winefile.rc:115
 msgctxt "unit kilobyte"
 msgid "kB"
-msgstr ""
+msgstr "kB"
 
 #: winefile.rc:116
 msgctxt "unit megabyte"
 msgid "MB"
-msgstr ""
+msgstr "MB"
 
 #: winefile.rc:117
 msgctxt "unit gigabyte"
 msgid "GB"
-msgstr ""
+msgstr "GB"
 
 #: winemine.rc:34
 msgid "&Game"
-msgstr ""
+msgstr "游戏(&G)"
 
 #: winemine.rc:35
 msgid "&New\tF2"
@@ -13188,7 +13139,7 @@ msgstr "新游戏(&N)\tF2"
 
 #: winemine.rc:37
 msgid "Question &Marks"
-msgstr ""
+msgstr "问号(&M)"
 
 #: winemine.rc:39
 msgid "&Beginner"
@@ -13363,22 +13314,16 @@ msgid "Help topics: "
 msgstr "帮助主题： "
 
 #: wmic.rc:25
-#, fuzzy
-#| msgid "Operation not supported.\n"
 msgid "Error: Command line not supported\n"
-msgstr "不支持此操作。\n"
+msgstr "错误：不支持此命令行\n"
 
 #: wmic.rc:26
-#, fuzzy
-#| msgid "Property set not found.\n"
 msgid "Error: Alias not found\n"
-msgstr "找不到属性集。\n"
+msgstr "错误：找不到该别名\n"
 
 #: wmic.rc:27
-#, fuzzy
-#| msgid "Invalid query syntax.\n"
 msgid "Error: Invalid query\n"
-msgstr "请求语法无效。\n"
+msgstr "错误：无效查询\n"
 
 #: wordpad.rc:28
 msgid "&New...\tCtrl+N"
@@ -13555,37 +13500,37 @@ msgstr "工具栏"
 #: wordpad.rc:273
 msgctxt "accelerator Align Left"
 msgid "L"
-msgstr ""
+msgstr "L"
 
 #: wordpad.rc:274
 msgctxt "accelerator Align Center"
 msgid "E"
-msgstr ""
+msgstr "E"
 
 #: wordpad.rc:275
 msgctxt "accelerator Align Right"
 msgid "R"
-msgstr ""
+msgstr "R"
 
 #: wordpad.rc:282
 msgctxt "accelerator Redo"
 msgid "Y"
-msgstr ""
+msgstr "Y"
 
 #: wordpad.rc:283
 msgctxt "accelerator Bold"
 msgid "B"
-msgstr ""
+msgstr "B"
 
 #: wordpad.rc:284
 msgctxt "accelerator Italic"
 msgid "I"
-msgstr ""
+msgstr "I"
 
 #: wordpad.rc:285
 msgctxt "accelerator Underline"
 msgid "U"
-msgstr ""
+msgstr "U"
 
 #: wordpad.rc:136
 msgid "All documents (*.*)"
@@ -13742,23 +13687,23 @@ msgstr "启动写字板失败"
 
 #: xcopy.rc:27
 msgid "Invalid number of parameters - Use xcopy /? for help\n"
-msgstr ""
+msgstr "无效参数个数 - 使用 xcopy /? 获取帮助\n"
 
 #: xcopy.rc:28
 msgid "Invalid parameter '%1' - Use xcopy /? for help\n"
-msgstr ""
+msgstr "无效参数 ‘%1’ - 使用 xcopy /? 获取帮助\n"
 
 #: xcopy.rc:29
 msgid "Press <Enter> to begin copying\n"
-msgstr ""
+msgstr "请按 <Enter> 开始复制\n"
 
 #: xcopy.rc:30
 msgid "%1!d! file(s) would be copied\n"
-msgstr ""
+msgstr "%1!d! 个文件将会被复制\n"
 
 #: xcopy.rc:31
 msgid "%1!d! file(s) copied\n"
-msgstr ""
+msgstr "已复制 %1!d! 个文件\n"
 
 #: xcopy.rc:34
 msgid ""
@@ -13766,14 +13711,17 @@ msgid ""
 "on the target?\n"
 "(F - File, D - Directory)\n"
 msgstr ""
+"%1 是一个在目标路径上的\n"
+"文件名还是目录？\n"
+"(F - 文件，D - 目录)\n"
 
 #: xcopy.rc:35
 msgid "%1? (Yes|No)\n"
-msgstr ""
+msgstr "%1？(是(Y)|否(N))\n"
 
 #: xcopy.rc:36
 msgid "Overwrite %1? (Yes|No|All)\n"
-msgstr ""
+msgstr "是否覆盖 %1？(是(Y)|否(N)|全部(A))\n"
 
 #: xcopy.rc:37
 msgid "Copying of '%1' to '%2' failed with r/c %3!d!\n"
@@ -13781,17 +13729,17 @@ msgstr ""
 
 #: xcopy.rc:39
 msgid "Failed during reading of '%1'\n"
-msgstr ""
+msgstr "读取‘%1’失败\n"
 
 #: xcopy.rc:43
 msgctxt "File key"
 msgid "F"
-msgstr ""
+msgstr "F"
 
 #: xcopy.rc:44
 msgctxt "Directory key"
 msgid "D"
-msgstr ""
+msgstr "D"
 
 #: xcopy.rc:77
 msgid ""

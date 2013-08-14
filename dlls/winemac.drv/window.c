@@ -42,6 +42,8 @@ static CRITICAL_SECTION win_data_section = { &critsect_debug, -1, 0, 0, 0, 0 };
 
 static CFMutableDictionaryRef win_datas;
 
+DWORD activate_on_focus_time;
+
 
 void CDECL macdrv_SetFocus(HWND hwnd);
 
@@ -91,7 +93,6 @@ static inline BOOL can_activate_window(HWND hwnd)
 
     if (!(style & WS_VISIBLE)) return FALSE;
     if ((style & (WS_POPUP|WS_CHILD)) == WS_CHILD) return FALSE;
-    if (style & WS_MINIMIZE) return FALSE;
     if (GetWindowLongW(hwnd, GWL_EXSTYLE) & WS_EX_NOACTIVATE) return FALSE;
     if (hwnd == GetDesktopWindow()) return FALSE;
     if (GetWindowRect(hwnd, &rect) && IsRectEmpty(&rect)) return FALSE;
@@ -245,7 +246,7 @@ static struct macdrv_win_data *alloc_win_data(HWND hwnd)
  *
  * Lock and return the data structure associated with a window.
  */
-static struct macdrv_win_data *get_win_data(HWND hwnd)
+struct macdrv_win_data *get_win_data(HWND hwnd)
 {
     struct macdrv_win_data *data;
 
@@ -263,7 +264,7 @@ static struct macdrv_win_data *get_win_data(HWND hwnd)
  *
  * Release the data returned by get_win_data.
  */
-static void release_win_data(struct macdrv_win_data *data)
+void release_win_data(struct macdrv_win_data *data)
 {
     if (data) LeaveCriticalSection(&win_data_section);
 }
@@ -274,7 +275,7 @@ static void release_win_data(struct macdrv_win_data *data)
  *
  * Return the Mac window associated with the full area of a window
  */
-static macdrv_window macdrv_get_cocoa_window(HWND hwnd, BOOL require_on_screen)
+macdrv_window macdrv_get_cocoa_window(HWND hwnd, BOOL require_on_screen)
 {
     struct macdrv_win_data *data = get_win_data(hwnd);
     macdrv_window ret = NULL;
@@ -533,6 +534,8 @@ static void destroy_cocoa_window(struct macdrv_win_data *data)
     data->color_key = CLR_INVALID;
     if (data->surface) window_surface_release(data->surface);
     data->surface = NULL;
+    if (data->unminimized_surface) window_surface_release(data->unminimized_surface);
+    data->unminimized_surface = NULL;
 }
 
 
@@ -584,6 +587,7 @@ static void show_window(struct macdrv_win_data *data)
     HWND next = NULL;
     macdrv_window prev_window = NULL;
     macdrv_window next_window = NULL;
+    BOOL activate = FALSE;
 
     /* find window that this one must be after */
     prev = GetWindow(data->hwnd, GW_HWNDPREV);
@@ -602,12 +606,16 @@ static void show_window(struct macdrv_win_data *data)
     TRACE("win %p/%p below %p/%p above %p/%p\n",
           data->hwnd, data->cocoa_window, prev, prev_window, next, next_window);
 
-    data->on_screen = macdrv_order_cocoa_window(data->cocoa_window, prev_window, next_window);
+    if (!prev_window)
+        activate = activate_on_focus_time && (GetTickCount() - activate_on_focus_time < 2000);
+    data->on_screen = macdrv_order_cocoa_window(data->cocoa_window, prev_window, next_window, activate);
     if (data->on_screen)
     {
         HWND hwndFocus = GetFocus();
         if (hwndFocus && (data->hwnd == hwndFocus || IsChild(data->hwnd, hwndFocus)))
             macdrv_SetFocus(hwndFocus);
+        if (activate)
+            activate_on_focus_time = 0;
     }
 }
 
@@ -826,6 +834,7 @@ void CDECL macdrv_DestroyWindow(HWND hwnd)
 
     if (!(data = get_win_data(hwnd))) return;
 
+    if (data->gl_view) macdrv_dispose_view(data->gl_view);
     destroy_cocoa_window(data);
 
     CFDictionaryRemoveValue(win_datas, hwnd);
@@ -854,8 +863,10 @@ void CDECL macdrv_SetFocus(HWND hwnd)
 
     if (data->cocoa_window && data->on_screen)
     {
+        BOOL activate = activate_on_focus_time && (GetTickCount() - activate_on_focus_time < 2000);
         /* Set Mac focus */
-        macdrv_give_cocoa_window_focus(data->cocoa_window);
+        macdrv_give_cocoa_window_focus(data->cocoa_window, activate);
+        activate_on_focus_time = 0;
     }
 
     release_win_data(data);
@@ -913,6 +924,8 @@ void CDECL macdrv_SetParent(HWND hwnd, HWND parent, HWND old_parent)
     else  /* new top level window */
         create_cocoa_window(data);
     release_win_data(data);
+
+    set_gl_view_parent(hwnd, parent);
 }
 
 
@@ -954,7 +967,7 @@ void CDECL macdrv_SetWindowStyle(HWND hwnd, INT offset, STYLESTRUCT *style)
 {
     struct macdrv_win_data *data;
 
-    TRACE("%p, %d, %p\n", hwnd, offset, style);
+    TRACE("hwnd %p offset %d styleOld 0x%08x styleNew 0x%08x\n", hwnd, offset, style->styleOld, style->styleNew);
 
     if (hwnd == GetDesktopWindow()) return;
     if (!(data = get_win_data(hwnd))) return;
@@ -968,6 +981,7 @@ void CDECL macdrv_SetWindowStyle(HWND hwnd, INT offset, STYLESTRUCT *style)
         if (offset == GWL_EXSTYLE && (changed & WS_EX_LAYERED)) /* changing WS_EX_LAYERED resets attributes */
         {
             data->layered = FALSE;
+            data->ulw_layered = FALSE;
             sync_window_opacity(data, 0, 0, FALSE, 0);
             if (data->surface) set_surface_use_alpha(data->surface, FALSE);
         }
@@ -1089,6 +1103,7 @@ BOOL CDECL macdrv_UpdateLayeredWindow(HWND hwnd, const UPDATELAYEREDWINDOWINFO *
     if (!(data = get_win_data(hwnd))) return FALSE;
 
     data->layered = TRUE;
+    data->ulw_layered = TRUE;
 
     rect = *window_rect;
     OffsetRect(&rect, -window_rect->left, -window_rect->top);
@@ -1096,10 +1111,15 @@ BOOL CDECL macdrv_UpdateLayeredWindow(HWND hwnd, const UPDATELAYEREDWINDOWINFO *
     surface = data->surface;
     if (!surface || memcmp(&surface->rect, &rect, sizeof(RECT)))
     {
-        data->surface = create_surface(data->cocoa_window, &rect, TRUE);
+        data->surface = create_surface(data->cocoa_window, &rect, NULL, TRUE);
         set_window_surface(data->cocoa_window, data->surface);
         if (surface) window_surface_release(surface);
         surface = data->surface;
+        if (data->unminimized_surface)
+        {
+            window_surface_release(data->unminimized_surface);
+            data->unminimized_surface = NULL;
+        }
     }
     else set_surface_use_alpha(surface, TRUE);
 
@@ -1221,6 +1241,11 @@ LRESULT CDECL macdrv_WindowMessage(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         }
         SendMessageW(hwnd, WM_DISPLAYCHANGE, wp, lp);
         return 0;
+    case WM_MACDRV_ACTIVATE_ON_FOLLOWING_FOCUS:
+        activate_on_focus_time = GetTickCount();
+        if (!activate_on_focus_time) activate_on_focus_time = 1;
+        TRACE("WM_MACDRV_ACTIVATE_ON_FOLLOWING_FOCUS time %u\n", activate_on_focus_time);
+        return 0;
     }
 
     FIXME("unrecognized window msg %x hwnd %p wp %lx lp %lx\n", msg, hwnd, wp, lp);
@@ -1268,6 +1293,7 @@ void CDECL macdrv_WindowPosChanging(HWND hwnd, HWND insert_after, UINT swp_flags
     /* create the window surface if necessary */
     if (!data->cocoa_window) goto done;
     if (swp_flags & SWP_HIDEWINDOW) goto done;
+    if (data->ulw_layered) goto done;
 
     if (*surface) window_surface_release(*surface);
     *surface = NULL;
@@ -1278,6 +1304,7 @@ void CDECL macdrv_WindowPosChanging(HWND hwnd, HWND insert_after, UINT swp_flags
         if (!memcmp(&data->surface->rect, &surface_rect, sizeof(surface_rect)))
         {
             /* existing surface is good enough */
+            surface_clip_to_visible_rect(data->surface, visible_rect);
             window_surface_add_ref(data->surface);
             *surface = data->surface;
             goto done;
@@ -1285,7 +1312,7 @@ void CDECL macdrv_WindowPosChanging(HWND hwnd, HWND insert_after, UINT swp_flags
     }
     else if (!(swp_flags & SWP_SHOWWINDOW) && !(style & WS_VISIBLE)) goto done;
 
-    *surface = create_surface(data->cocoa_window, &surface_rect, FALSE);
+    *surface = create_surface(data->cocoa_window, &surface_rect, data->surface, FALSE);
 
 done:
     release_win_data(data);
@@ -1315,11 +1342,29 @@ void CDECL macdrv_WindowPosChanged(HWND hwnd, HWND insert_after, UINT swp_flags,
     data->window_rect = *window_rect;
     data->whole_rect  = *visible_rect;
     data->client_rect = *client_rect;
-    if (surface)
-        window_surface_add_ref(surface);
-    set_window_surface(data->cocoa_window, surface);
-    if (data->surface) window_surface_release(data->surface);
-    data->surface = surface;
+    if (!data->ulw_layered)
+    {
+        if (surface) window_surface_add_ref(surface);
+        if (new_style & WS_MINIMIZE)
+        {
+            if (!data->unminimized_surface && data->surface)
+            {
+                data->unminimized_surface = data->surface;
+                window_surface_add_ref(data->unminimized_surface);
+            }
+        }
+        else
+        {
+            set_window_surface(data->cocoa_window, surface);
+            if (data->unminimized_surface)
+            {
+                window_surface_release(data->unminimized_surface);
+                data->unminimized_surface = NULL;
+            }
+        }
+        if (data->surface) window_surface_release(data->surface);
+        data->surface = surface;
+    }
 
     TRACE("win %p/%p window %s whole %s client %s style %08x flags %08x surface %p\n",
            hwnd, data->cocoa_window, wine_dbgstr_rect(window_rect),
@@ -1359,6 +1404,8 @@ void CDECL macdrv_WindowPosChanged(HWND hwnd, HWND insert_after, UINT swp_flags,
             if (!(data = get_win_data(hwnd))) return;
         }
     }
+
+    sync_gl_view(data);
 
     if (!data->cocoa_window) goto done;
 
@@ -1459,7 +1506,7 @@ void macdrv_window_frame_changed(HWND hwnd, CGRect frame)
 
     if (!hwnd) return;
     if (!(data = get_win_data(hwnd))) return;
-    if (!data->on_screen)
+    if (!data->on_screen || data->minimized)
     {
         release_win_data(data);
         return;
@@ -1506,14 +1553,15 @@ void macdrv_window_frame_changed(HWND hwnd, CGRect frame)
  */
 void macdrv_window_got_focus(HWND hwnd, const macdrv_event *event)
 {
+    LONG style = GetWindowLongW(hwnd, GWL_STYLE);
+
     if (!hwnd) return;
 
     TRACE("win %p/%p serial %lu enabled %d visible %d style %08x focus %p active %p fg %p\n",
           hwnd, event->window, event->window_got_focus.serial, IsWindowEnabled(hwnd),
-          IsWindowVisible(hwnd), GetWindowLongW(hwnd, GWL_STYLE), GetFocus(),
-          GetActiveWindow(), GetForegroundWindow());
+          IsWindowVisible(hwnd), style, GetFocus(), GetActiveWindow(), GetForegroundWindow());
 
-    if (can_activate_window(hwnd))
+    if (can_activate_window(hwnd) && !(style & WS_MINIMIZE))
     {
         /* simulate a mouse click on the caption to find out
          * whether the window wants to be activated */
@@ -1545,7 +1593,11 @@ void macdrv_window_lost_focus(HWND hwnd, const macdrv_event *event)
     TRACE("win %p/%p fg %p\n", hwnd, event->window, GetForegroundWindow());
 
     if (hwnd == GetForegroundWindow())
+    {
         SendMessageW(hwnd, WM_CANCELMODE, 0, 0);
+        if (hwnd == GetForegroundWindow())
+            SetForegroundWindow(GetDesktopWindow());
+    }
 }
 
 
@@ -1626,4 +1678,171 @@ void macdrv_window_did_unminimize(HWND hwnd)
 
 done:
     release_win_data(data);
+}
+
+
+struct quit_info {
+    HWND               *wins;
+    UINT                capacity;
+    UINT                count;
+    UINT                done;
+    DWORD               flags;
+    BOOL                result;
+    BOOL                replied;
+};
+
+
+static BOOL CALLBACK get_process_windows(HWND hwnd, LPARAM lp)
+{
+    struct quit_info *qi = (struct quit_info*)lp;
+    DWORD pid;
+
+    GetWindowThreadProcessId(hwnd, &pid);
+    if (pid == GetCurrentProcessId())
+    {
+        if (qi->count >= qi->capacity)
+        {
+            UINT new_cap = qi->capacity * 2;
+            HWND *new_wins = HeapReAlloc(GetProcessHeap(), 0, qi->wins,
+                                         new_cap * sizeof(*qi->wins));
+            if (!new_wins) return FALSE;
+            qi->wins = new_wins;
+            qi->capacity = new_cap;
+        }
+
+        qi->wins[qi->count++] = hwnd;
+    }
+
+    return TRUE;
+}
+
+
+static void CALLBACK quit_callback(HWND hwnd, UINT msg, ULONG_PTR data, LRESULT result)
+{
+    struct quit_info *qi = (struct quit_info*)data;
+
+    qi->done++;
+
+    if (msg == WM_QUERYENDSESSION)
+    {
+        TRACE("got WM_QUERYENDSESSION result %ld from win %p (%u of %u done)\n", result,
+              hwnd, qi->done, qi->count);
+
+        if (!result && qi->result)
+        {
+            qi->result = FALSE;
+
+            /* On the first FALSE from WM_QUERYENDSESSION, we already know the
+               ultimate reply.  Might as well tell Cocoa now. */
+            if (!qi->replied)
+            {
+                qi->replied = TRUE;
+                TRACE("giving quit reply %d\n", qi->result);
+                macdrv_quit_reply(qi->result);
+            }
+        }
+
+        if (qi->done >= qi->count)
+        {
+            UINT i;
+
+            qi->done = 0;
+            for (i = 0; i < qi->count; i++)
+            {
+                TRACE("sending WM_ENDSESSION to win %p result %d flags 0x%08x\n", qi->wins[i],
+                      qi->result, qi->flags);
+                if (!SendMessageCallbackW(qi->wins[i], WM_ENDSESSION, qi->result, qi->flags,
+                                          quit_callback, (ULONG_PTR)qi))
+                {
+                    WARN("failed to send WM_ENDSESSION to win %p; error 0x%08x\n",
+                         qi->wins[i], GetLastError());
+                    quit_callback(qi->wins[i], WM_ENDSESSION, (ULONG_PTR)qi, 0);
+                }
+            }
+        }
+    }
+    else /* WM_ENDSESSION */
+    {
+        TRACE("finished WM_ENDSESSION for win %p (%u of %u done)\n", hwnd, qi->done, qi->count);
+
+        if (qi->done >= qi->count)
+        {
+            if (!qi->replied)
+            {
+                TRACE("giving quit reply %d\n", qi->result);
+                macdrv_quit_reply(qi->result);
+            }
+
+            TRACE("%sterminating process\n", qi->result ? "" : "not ");
+            if (qi->result)
+                TerminateProcess(GetCurrentProcess(), 0);
+
+            HeapFree(GetProcessHeap(), 0, qi->wins);
+            HeapFree(GetProcessHeap(), 0, qi);
+        }
+    }
+}
+
+
+/***********************************************************************
+ *              macdrv_app_quit_requested
+ *
+ * Handler for APP_QUIT_REQUESTED events.
+ */
+void macdrv_app_quit_requested(const macdrv_event *event)
+{
+    struct quit_info *qi;
+    UINT i;
+
+    TRACE("reason %d\n", event->app_quit_requested.reason);
+
+    qi = HeapAlloc(GetProcessHeap(), 0, sizeof(*qi));
+    if (!qi)
+        goto fail;
+
+    qi->capacity = 32;
+    qi->wins = HeapAlloc(GetProcessHeap(), 0, qi->capacity * sizeof(*qi->wins));
+    qi->count = qi->done = 0;
+
+    if (!qi->wins || !EnumWindows(get_process_windows, (LPARAM)qi))
+        goto fail;
+
+    switch (event->app_quit_requested.reason)
+    {
+        case QUIT_REASON_LOGOUT:
+        default:
+            qi->flags = ENDSESSION_LOGOFF;
+            break;
+        case QUIT_REASON_RESTART:
+        case QUIT_REASON_SHUTDOWN:
+            qi->flags = 0;
+            break;
+    }
+
+    qi->result = TRUE;
+    qi->replied = FALSE;
+
+    for (i = 0; i < qi->count; i++)
+    {
+        TRACE("sending WM_QUERYENDSESSION to win %p\n", qi->wins[i]);
+        if (!SendMessageCallbackW(qi->wins[i], WM_QUERYENDSESSION, 0, qi->flags,
+                                  quit_callback, (ULONG_PTR)qi))
+        {
+            WARN("failed to send WM_QUERYENDSESSION to win %p; error 0x%08x; assuming refusal\n",
+                 qi->wins[i], GetLastError());
+            quit_callback(qi->wins[i], WM_QUERYENDSESSION, (ULONG_PTR)qi, FALSE);
+        }
+    }
+
+    /* quit_callback() will clean up qi */
+    return;
+
+fail:
+    WARN("failed to allocate window list\n");
+    if (qi)
+    {
+        HeapFree(GetProcessHeap(), 0, qi->wins);
+        HeapFree(GetProcessHeap(), 0, qi);
+    }
+    macdrv_quit_reply(FALSE);
 }

@@ -1127,8 +1127,6 @@ static void test_depth_blit(void)
     ok(SUCCEEDED(hr), "Failed to enable z testing, hr %#x.\n", hr);
     hr = IDirect3DDevice3_SetRenderState(device, D3DRENDERSTATE_ZFUNC, D3DCMP_LESSEQUAL);
     ok(SUCCEEDED(hr), "Failed to set the z function, hr %#x.\n", hr);
-    hr = IDirect3DDevice3_SetRenderState(device, D3DRENDERSTATE_LIGHTING, FALSE);
-    ok(SUCCEEDED(hr), "Failed to disable lighting, hr %#x.\n", hr);
 
     U1(d3drect).x1 = U2(d3drect).y1 = 0;
     U3(d3drect).x2 = ddsd_existing.dwWidth; U4(d3drect).y2 = ddsd_existing.dwHeight;
@@ -2220,6 +2218,14 @@ static void test_window_style(void)
     GetClientRect(window, &r);
     todo_wine ok(!EqualRect(&r, &fullscreen_rect), "Client rect and window rect are equal.\n");
 
+    hr = IDirectDraw4_SetCooperativeLevel(ddraw, window, DDSCL_NORMAL);
+    ok(SUCCEEDED(hr), "SetCooperativeLevel failed, hr %#x.\n", hr);
+
+    tmp = GetWindowLongA(window, GWL_STYLE);
+    todo_wine ok(tmp == style, "Expected window style %#x, got %#x.\n", style, tmp);
+    tmp = GetWindowLongA(window, GWL_EXSTYLE);
+    todo_wine ok(tmp == exstyle, "Expected window extended style %#x, got %#x.\n", exstyle, tmp);
+
     ref = IDirectDraw4_Release(ddraw);
     ok(ref == 0, "The ddraw object was not properly freed: refcount %u.\n", ref);
 
@@ -2253,7 +2259,7 @@ static void test_redundant_mode_set(void)
 
     hr = IDirectDraw4_SetDisplayMode(ddraw, surface_desc.dwWidth, surface_desc.dwHeight,
             U1(U4(surface_desc).ddpfPixelFormat).dwRGBBitCount, 0, 0);
-    ok(SUCCEEDED(hr), "SetDipslayMode failed, hr %#x.\n", hr);
+    ok(SUCCEEDED(hr), "SetDisplayMode failed, hr %#x.\n", hr);
 
     GetWindowRect(window, &r);
     r.right /= 2;
@@ -2266,7 +2272,7 @@ static void test_redundant_mode_set(void)
 
     hr = IDirectDraw4_SetDisplayMode(ddraw, surface_desc.dwWidth, surface_desc.dwHeight,
             U1(U4(surface_desc).ddpfPixelFormat).dwRGBBitCount, 0, 0);
-    ok(SUCCEEDED(hr), "SetDipslayMode failed, hr %#x.\n", hr);
+    ok(SUCCEEDED(hr), "SetDisplayMode failed, hr %#x.\n", hr);
 
     GetWindowRect(window, &s);
     ok(EqualRect(&r, &s), "Expected {%d, %d, %d, %d}, got {%d, %d, %d, %d}.\n",
@@ -2279,7 +2285,7 @@ static void test_redundant_mode_set(void)
     DestroyWindow(window);
 }
 
-static SIZE screen_size;
+static SIZE screen_size, screen_size2;
 
 static LRESULT CALLBACK mode_set_proc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam)
 {
@@ -2292,6 +2298,17 @@ static LRESULT CALLBACK mode_set_proc(HWND hwnd, UINT message, WPARAM wparam, LP
     return test_proc(hwnd, message, wparam, lparam);
 }
 
+static LRESULT CALLBACK mode_set_proc2(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam)
+{
+    if (message == WM_SIZE)
+    {
+        screen_size2.cx = GetSystemMetrics(SM_CXSCREEN);
+        screen_size2.cy = GetSystemMetrics(SM_CYSCREEN);
+    }
+
+    return test_proc(hwnd, message, wparam, lparam);
+}
+
 static void test_coop_level_mode_set(void)
 {
     IDirectDrawSurface4 *primary;
@@ -2299,7 +2316,7 @@ static void test_coop_level_mode_set(void)
     IDirectDraw4 *ddraw;
     DDSURFACEDESC2 ddsd;
     WNDCLASSA wc = {0};
-    HWND window;
+    HWND window, window2;
     HRESULT hr;
     ULONG ref;
 
@@ -2327,8 +2344,13 @@ static void test_coop_level_mode_set(void)
     wc.lpfnWndProc = mode_set_proc;
     wc.lpszClassName = "ddraw_test_wndproc_wc";
     ok(RegisterClassA(&wc), "Failed to register window class.\n");
+    wc.lpfnWndProc = mode_set_proc2;
+    wc.lpszClassName = "ddraw_test_wndproc_wc2";
+    ok(RegisterClassA(&wc), "Failed to register window class.\n");
 
     window = CreateWindowA("ddraw_test_wndproc_wc", "ddraw_test", WS_OVERLAPPEDWINDOW,
+            0, 0, 100, 100, 0, 0, 0, 0);
+    window2 = CreateWindowA("ddraw_test_wndproc_wc2", "ddraw_test", WS_OVERLAPPEDWINDOW,
             0, 0, 100, 100, 0, 0, 0, 0);
 
     SetRect(&fullscreen_rect, 0, 0, GetSystemMetrics(SM_CXSCREEN), GetSystemMetrics(SM_CYSCREEN));
@@ -2366,7 +2388,7 @@ static void test_coop_level_mode_set(void)
     screen_size.cy = 0;
 
     hr = IDirectDraw4_SetDisplayMode(ddraw, 640, 480, 32, 0, 0);
-    ok(SUCCEEDED(hr), "SetDipslayMode failed, hr %#x.\n", hr);
+    ok(SUCCEEDED(hr), "SetDisplayMode failed, hr %#x.\n", hr);
 
     ok(!*expect_messages, "Expected message %#x, but didn't receive it.\n", *expect_messages);
     expect_messages = NULL;
@@ -2491,7 +2513,7 @@ static void test_coop_level_mode_set(void)
     screen_size.cy = 0;
 
     hr = IDirectDraw4_SetDisplayMode(ddraw, 640, 480, 32, 0, 0);
-    ok(SUCCEEDED(hr), "SetDipslayMode failed, hr %#x.\n", hr);
+    ok(SUCCEEDED(hr), "SetDisplayMode failed, hr %#x.\n", hr);
 
     ok(!*expect_messages, "Expected message %#x, but didn't receive it.\n", *expect_messages);
     expect_messages = NULL;
@@ -2615,7 +2637,7 @@ static void test_coop_level_mode_set(void)
     screen_size.cy = 0;
 
     hr = IDirectDraw4_SetDisplayMode(ddraw, 640, 480, 32, 0, 0);
-    ok(SUCCEEDED(hr), "SetDipslayMode failed, hr %#x.\n", hr);
+    ok(SUCCEEDED(hr), "SetDisplayMode failed, hr %#x.\n", hr);
 
     ok(!*expect_messages, "Expected message %#x, but didn't receive it.\n", *expect_messages);
     expect_messages = NULL;
@@ -2697,17 +2719,132 @@ static void test_coop_level_mode_set(void)
             fullscreen_rect.left, fullscreen_rect.top, fullscreen_rect.right, fullscreen_rect.bottom,
             r.left, r.top, r.right, r.bottom);
 
-    ref = IDirectDraw4_Release(ddraw);
-    ok(ref == 0, "The ddraw object was not properly freed: refcount %u.\n", ref);
+    /* Changing the coop level from EXCLUSIVE to NORMAL restores the screen resolution */
+    hr = IDirectDraw4_SetCooperativeLevel(ddraw, window, DDSCL_EXCLUSIVE | DDSCL_FULLSCREEN);
+    ok(SUCCEEDED(hr), "SetCooperativeLevel failed, hr %#x.\n", hr);
+    hr = IDirectDraw4_SetDisplayMode(ddraw, 640, 480, 32, 0, 0);
+    ok(SUCCEEDED(hr), "SetDisplayMode failed, hr %#x.\n", hr);
+
+    expect_messages = exclusive_messages;
+    screen_size.cx = 0;
+    screen_size.cy = 0;
+
+    hr = IDirectDraw4_SetCooperativeLevel(ddraw, window, DDSCL_NORMAL);
+    ok(SUCCEEDED(hr), "SetCooperativeLevel failed, hr %#x.\n", hr);
+
+    ok(!*expect_messages, "Expected message %#x, but didn't receive it.\n", *expect_messages);
+    expect_messages = NULL;
+    ok(screen_size.cx == fullscreen_rect.right && screen_size.cy == fullscreen_rect.bottom,
+            "Expected screen size %ux%u, got %ux%u.\n",
+            fullscreen_rect.right, fullscreen_rect.bottom, screen_size.cx, screen_size.cy);
 
     GetWindowRect(window, &r);
     ok(EqualRect(&r, &fullscreen_rect), "Expected {%d, %d, %d, %d}, got {%d, %d, %d, %d}.\n",
             fullscreen_rect.left, fullscreen_rect.top, fullscreen_rect.right, fullscreen_rect.bottom,
             r.left, r.top, r.right, r.bottom);
 
+    memset(&ddsd, 0, sizeof(ddsd));
+    ddsd.dwSize = sizeof(ddsd);
+    ddsd.dwFlags = DDSD_CAPS;
+    ddsd.ddsCaps.dwCaps = DDSCAPS_PRIMARYSURFACE;
+
+    hr = IDirectDraw4_CreateSurface(ddraw, &ddsd, &primary, NULL);
+    ok(SUCCEEDED(hr), "Failed to create surface, hr %#x.\n",hr);
+    hr = IDirectDrawSurface_GetSurfaceDesc(primary, &ddsd);
+    ok(SUCCEEDED(hr), "Failed to get surface desc, hr %#x.\n", hr);
+    ok(ddsd.dwWidth == fullscreen_rect.right - fullscreen_rect.left, "Expected surface width %u, got %u.\n",
+            fullscreen_rect.right - fullscreen_rect.left, ddsd.dwWidth);
+    ok(ddsd.dwHeight == fullscreen_rect.bottom - fullscreen_rect.top, "Expected surface height %u, got %u.\n",
+            fullscreen_rect.bottom - fullscreen_rect.top, ddsd.dwHeight);
+    IDirectDrawSurface_Release(primary);
+
+    /* The screen restore is a property of DDSCL_EXCLUSIVE  */
+    hr = IDirectDraw4_SetCooperativeLevel(ddraw, window, DDSCL_NORMAL | DDSCL_FULLSCREEN);
+    ok(SUCCEEDED(hr), "SetCooperativeLevel failed, hr %#x.\n", hr);
+    hr = IDirectDraw4_SetDisplayMode(ddraw, 640, 480, 32, 0, 0);
+    ok(SUCCEEDED(hr), "SetDisplayMode failed, hr %#x.\n", hr);
+
+    hr = IDirectDraw4_SetCooperativeLevel(ddraw, window, DDSCL_NORMAL);
+    ok(SUCCEEDED(hr), "SetCooperativeLevel failed, hr %#x.\n", hr);
+
+    memset(&ddsd, 0, sizeof(ddsd));
+    ddsd.dwSize = sizeof(ddsd);
+    ddsd.dwFlags = DDSD_CAPS;
+    ddsd.ddsCaps.dwCaps = DDSCAPS_PRIMARYSURFACE;
+
+    hr = IDirectDraw4_CreateSurface(ddraw, &ddsd, &primary, NULL);
+    ok(SUCCEEDED(hr), "Failed to create surface, hr %#x.\n",hr);
+    hr = IDirectDrawSurface_GetSurfaceDesc(primary, &ddsd);
+    ok(SUCCEEDED(hr), "Failed to get surface desc, hr %#x.\n", hr);
+    ok(ddsd.dwWidth == s.right - s.left, "Expected surface width %u, got %u.\n",
+            s.right - s.left, ddsd.dwWidth);
+    ok(ddsd.dwHeight == s.bottom - s.top, "Expected surface height %u, got %u.\n",
+            s.bottom - s.top, ddsd.dwHeight);
+    IDirectDrawSurface_Release(primary);
+
+    hr = IDirectDraw_RestoreDisplayMode(ddraw);
+    ok(SUCCEEDED(hr), "RestoreDisplayMode failed, hr %#x.\n", hr);
+
+    /* If the window is changed at the same time, messages are sent to the new window. */
+    hr = IDirectDraw4_SetCooperativeLevel(ddraw, window, DDSCL_EXCLUSIVE | DDSCL_FULLSCREEN);
+    ok(SUCCEEDED(hr), "SetCooperativeLevel failed, hr %#x.\n", hr);
+    hr = IDirectDraw4_SetDisplayMode(ddraw, 640, 480, 32, 0, 0);
+    ok(SUCCEEDED(hr), "SetDisplayMode failed, hr %#x.\n", hr);
+
+    expect_messages = exclusive_messages;
+    screen_size.cx = 0;
+    screen_size.cy = 0;
+    screen_size2.cx = 0;
+    screen_size2.cy = 0;
+
+    hr = IDirectDraw4_SetCooperativeLevel(ddraw, window2, DDSCL_NORMAL);
+    ok(SUCCEEDED(hr), "SetCooperativeLevel failed, hr %#x.\n", hr);
+
+    ok(!*expect_messages, "Expected message %#x, but didn't receive it.\n", *expect_messages);
+    expect_messages = NULL;
+    ok(!screen_size.cx && !screen_size.cy, "Got unxpected screen size %ux%u.\n",
+            screen_size.cx, screen_size.cy);
+    ok(screen_size2.cx == fullscreen_rect.right && screen_size2.cy == fullscreen_rect.bottom,
+            "Expected screen size 2 %ux%u, got %ux%u.\n",
+            fullscreen_rect.right, fullscreen_rect.bottom, screen_size2.cx, screen_size2.cy);
+
+    GetWindowRect(window, &r);
+    ok(EqualRect(&r, &s), "Expected {%d, %d, %d, %d}, got {%d, %d, %d, %d}.\n",
+            s.left, s.top, s.right, s.bottom,
+            r.left, r.top, r.right, r.bottom);
+    GetWindowRect(window2, &r);
+    ok(EqualRect(&r, &fullscreen_rect), "Expected {%d, %d, %d, %d}, got {%d, %d, %d, %d}.\n",
+            fullscreen_rect.left, fullscreen_rect.top, fullscreen_rect.right, fullscreen_rect.bottom,
+            r.left, r.top, r.right, r.bottom);
+
+    memset(&ddsd, 0, sizeof(ddsd));
+    ddsd.dwSize = sizeof(ddsd);
+    ddsd.dwFlags = DDSD_CAPS;
+    ddsd.ddsCaps.dwCaps = DDSCAPS_PRIMARYSURFACE;
+
+    hr = IDirectDraw4_CreateSurface(ddraw, &ddsd, &primary, NULL);
+    ok(SUCCEEDED(hr), "Failed to create surface, hr %#x.\n",hr);
+    hr = IDirectDrawSurface_GetSurfaceDesc(primary, &ddsd);
+    ok(SUCCEEDED(hr), "Failed to get surface desc, hr %#x.\n", hr);
+    ok(ddsd.dwWidth == fullscreen_rect.right - fullscreen_rect.left, "Expected surface width %u, got %u.\n",
+            fullscreen_rect.right - fullscreen_rect.left, ddsd.dwWidth);
+    ok(ddsd.dwHeight == fullscreen_rect.bottom - fullscreen_rect.top, "Expected surface height %u, got %u.\n",
+            fullscreen_rect.bottom - fullscreen_rect.top, ddsd.dwHeight);
+    IDirectDrawSurface_Release(primary);
+
+    ref = IDirectDraw4_Release(ddraw);
+    ok(ref == 0, "The ddraw object was not properly freed: refcount %u.\n", ref);
+
+    GetWindowRect(window, &r);
+    ok(EqualRect(&r, &s), "Expected {%d, %d, %d, %d}, got {%d, %d, %d, %d}.\n",
+            s.left, s.top, s.right, s.bottom,
+            r.left, r.top, r.right, r.bottom);
+
     expect_messages = NULL;
     DestroyWindow(window);
+    DestroyWindow(window2);
     UnregisterClassA("ddraw_test_wndproc_wc", GetModuleHandleA(NULL));
+    UnregisterClassA("ddraw_test_wndproc_wc2", GetModuleHandleA(NULL));
 }
 
 static void test_coop_level_mode_set_multi(void)
@@ -2733,7 +2870,7 @@ static void test_coop_level_mode_set_multi(void)
     /* With just a single ddraw object, the display mode is restored on
      * release. */
     hr = IDirectDraw4_SetDisplayMode(ddraw1, 800, 600, 32, 0, 0);
-    ok(SUCCEEDED(hr), "SetDipslayMode failed, hr %#x.\n", hr);
+    ok(SUCCEEDED(hr), "SetDisplayMode failed, hr %#x.\n", hr);
     w = GetSystemMetrics(SM_CXSCREEN);
     ok(w == 800, "Got unexpected screen width %u.\n", w);
     h = GetSystemMetrics(SM_CYSCREEN);
@@ -2750,7 +2887,7 @@ static void test_coop_level_mode_set_multi(void)
      * the initial mode, before the first SetDisplayMode() call. */
     ddraw1 = create_ddraw();
     hr = IDirectDraw4_SetDisplayMode(ddraw1, 800, 600, 32, 0, 0);
-    ok(SUCCEEDED(hr), "SetDipslayMode failed, hr %#x.\n", hr);
+    ok(SUCCEEDED(hr), "SetDisplayMode failed, hr %#x.\n", hr);
     w = GetSystemMetrics(SM_CXSCREEN);
     ok(w == 800, "Got unexpected screen width %u.\n", w);
     h = GetSystemMetrics(SM_CYSCREEN);
@@ -2758,7 +2895,7 @@ static void test_coop_level_mode_set_multi(void)
 
     ddraw2 = create_ddraw();
     hr = IDirectDraw4_SetDisplayMode(ddraw2, 640, 480, 32, 0, 0);
-    ok(SUCCEEDED(hr), "SetDipslayMode failed, hr %#x.\n", hr);
+    ok(SUCCEEDED(hr), "SetDisplayMode failed, hr %#x.\n", hr);
     w = GetSystemMetrics(SM_CXSCREEN);
     ok(w == 640, "Got unexpected screen width %u.\n", w);
     h = GetSystemMetrics(SM_CYSCREEN);
@@ -2781,7 +2918,7 @@ static void test_coop_level_mode_set_multi(void)
     /* Regardless of release ordering. */
     ddraw1 = create_ddraw();
     hr = IDirectDraw4_SetDisplayMode(ddraw1, 800, 600, 32, 0, 0);
-    ok(SUCCEEDED(hr), "SetDipslayMode failed, hr %#x.\n", hr);
+    ok(SUCCEEDED(hr), "SetDisplayMode failed, hr %#x.\n", hr);
     w = GetSystemMetrics(SM_CXSCREEN);
     ok(w == 800, "Got unexpected screen width %u.\n", w);
     h = GetSystemMetrics(SM_CYSCREEN);
@@ -2789,7 +2926,7 @@ static void test_coop_level_mode_set_multi(void)
 
     ddraw2 = create_ddraw();
     hr = IDirectDraw4_SetDisplayMode(ddraw2, 640, 480, 32, 0, 0);
-    ok(SUCCEEDED(hr), "SetDipslayMode failed, hr %#x.\n", hr);
+    ok(SUCCEEDED(hr), "SetDisplayMode failed, hr %#x.\n", hr);
     w = GetSystemMetrics(SM_CXSCREEN);
     ok(w == 640, "Got unexpected screen width %u.\n", w);
     h = GetSystemMetrics(SM_CYSCREEN);
@@ -2813,7 +2950,7 @@ static void test_coop_level_mode_set_multi(void)
     ddraw1 = create_ddraw();
     ddraw2 = create_ddraw();
     hr = IDirectDraw4_SetDisplayMode(ddraw2, 640, 480, 32, 0, 0);
-    ok(SUCCEEDED(hr), "SetDipslayMode failed, hr %#x.\n", hr);
+    ok(SUCCEEDED(hr), "SetDisplayMode failed, hr %#x.\n", hr);
     w = GetSystemMetrics(SM_CXSCREEN);
     ok(w == 640, "Got unexpected screen width %u.\n", w);
     h = GetSystemMetrics(SM_CYSCREEN);
@@ -2837,7 +2974,7 @@ static void test_coop_level_mode_set_multi(void)
      * restoring the display mode. */
     ddraw1 = create_ddraw();
     hr = IDirectDraw4_SetDisplayMode(ddraw1, 800, 600, 32, 0, 0);
-    ok(SUCCEEDED(hr), "SetDipslayMode failed, hr %#x.\n", hr);
+    ok(SUCCEEDED(hr), "SetDisplayMode failed, hr %#x.\n", hr);
     w = GetSystemMetrics(SM_CXSCREEN);
     ok(w == 800, "Got unexpected screen width %u.\n", w);
     h = GetSystemMetrics(SM_CYSCREEN);
@@ -2845,7 +2982,7 @@ static void test_coop_level_mode_set_multi(void)
 
     ddraw2 = create_ddraw();
     hr = IDirectDraw4_SetDisplayMode(ddraw2, 640, 480, 32, 0, 0);
-    ok(SUCCEEDED(hr), "SetDipslayMode failed, hr %#x.\n", hr);
+    ok(SUCCEEDED(hr), "SetDisplayMode failed, hr %#x.\n", hr);
     w = GetSystemMetrics(SM_CXSCREEN);
     ok(w == 640, "Got unexpected screen width %u.\n", w);
     h = GetSystemMetrics(SM_CYSCREEN);
@@ -2871,7 +3008,7 @@ static void test_coop_level_mode_set_multi(void)
     /* Exclusive mode blocks mode setting on other ddraw objects in general. */
     ddraw1 = create_ddraw();
     hr = IDirectDraw4_SetDisplayMode(ddraw1, 800, 600, 32, 0, 0);
-    ok(SUCCEEDED(hr), "SetDipslayMode failed, hr %#x.\n", hr);
+    ok(SUCCEEDED(hr), "SetDisplayMode failed, hr %#x.\n", hr);
     w = GetSystemMetrics(SM_CXSCREEN);
     ok(w == 800, "Got unexpected screen width %u.\n", w);
     h = GetSystemMetrics(SM_CYSCREEN);
@@ -3104,8 +3241,6 @@ static void test_draw_strided(void)
     hr = IDirect3DViewport3_Clear2(viewport, 1, &clear_rect, D3DCLEAR_TARGET, 0x00000000, 0.0f, 0);
     ok(SUCCEEDED(hr), "Failed to clear the viewport, hr %#x.\n", hr);
 
-    hr = IDirect3DDevice3_SetRenderState(device, D3DRENDERSTATE_LIGHTING, FALSE);
-    ok(SUCCEEDED(hr), "Failed to disable lighting, hr %#x.\n", hr);
     hr = IDirect3DDevice3_BeginScene(device);
     ok(SUCCEEDED(hr), "Failed to begin scene, hr %#x.\n", hr);
 
@@ -3173,6 +3308,379 @@ static void test_clear_rect_count(void)
     DestroyWindow(window);
 }
 
+static BOOL test_mode_restored(IDirectDraw4 *ddraw, HWND window)
+{
+    DDSURFACEDESC2 ddsd1, ddsd2;
+    HRESULT hr;
+
+    memset(&ddsd1, 0, sizeof(ddsd1));
+    ddsd1.dwSize = sizeof(ddsd1);
+    hr = IDirectDraw4_GetDisplayMode(ddraw, &ddsd1);
+    ok(SUCCEEDED(hr), "GetDisplayMode failed, hr %#x.\n", hr);
+
+    hr = IDirectDraw4_SetCooperativeLevel(ddraw, window, DDSCL_EXCLUSIVE | DDSCL_FULLSCREEN);
+    ok(SUCCEEDED(hr), "SetCooperativeLevel failed, hr %#x.\n", hr);
+    hr = IDirectDraw4_SetDisplayMode(ddraw, 640, 480, 32, 0, 0);
+    ok(SUCCEEDED(hr), "SetDisplayMode failed, hr %#x.\n", hr);
+    hr = IDirectDraw4_SetCooperativeLevel(ddraw, window, DDSCL_NORMAL);
+    ok(SUCCEEDED(hr), "SetCooperativeLevel failed, hr %#x.\n", hr);
+
+    memset(&ddsd2, 0, sizeof(ddsd2));
+    ddsd2.dwSize = sizeof(ddsd2);
+    hr = IDirectDraw4_GetDisplayMode(ddraw, &ddsd2);
+    ok(SUCCEEDED(hr), "GetDisplayMode failed, hr %#x.\n", hr);
+    hr = IDirectDraw4_RestoreDisplayMode(ddraw);
+    ok(SUCCEEDED(hr), "RestoreDisplayMode failed, hr %#x.\n", hr);
+
+    return ddsd1.dwWidth == ddsd2.dwWidth && ddsd1.dwHeight == ddsd2.dwHeight;
+}
+
+static void test_coop_level_versions(void)
+{
+    HWND window;
+    IDirectDraw *ddraw;
+    HRESULT hr;
+    BOOL restored;
+    IDirectDrawSurface *surface;
+    IDirectDraw4 *ddraw4;
+    DDSURFACEDESC ddsd;
+
+    window = CreateWindowA("static", "ddraw_test1", WS_OVERLAPPEDWINDOW,
+            0, 0, 640, 480, 0, 0, 0, 0);
+
+    if (!(ddraw4 = create_ddraw()))
+        goto done;
+    /* Newly created ddraw objects restore the mode on ddraw2+::SetCooperativeLevel(NORMAL) */
+    restored = test_mode_restored(ddraw4, window);
+    ok(restored, "Display mode not restored in new ddraw object\n");
+
+    /* A failing ddraw1::SetCooperativeLevel call does not have an effect */
+    hr = IDirectDraw4_QueryInterface(ddraw4, &IID_IDirectDraw, (void **)&ddraw);
+    ok(SUCCEEDED(hr), "QueryInterface failed, hr %#x.\n", hr);
+
+    hr = IDirectDraw_SetCooperativeLevel(ddraw, NULL, DDSCL_FULLSCREEN | DDSCL_EXCLUSIVE);
+    ok(FAILED(hr), "SetCooperativeLevel returned %#x, expected failure.\n", hr);
+    restored = test_mode_restored(ddraw4, window);
+    ok(restored, "Display mode not restored after bad ddraw1::SetCooperativeLevel call\n");
+
+    /* A successful one does */
+    hr = IDirectDraw_SetCooperativeLevel(ddraw, NULL, DDSCL_NORMAL);
+    ok(SUCCEEDED(hr), "SetCooperativeLevel failed, hr %#x.\n", hr);
+    restored = test_mode_restored(ddraw4, window);
+    ok(!restored, "Display mode restored after good ddraw1::SetCooperativeLevel call\n");
+
+    IDirectDraw_Release(ddraw);
+    IDirectDraw4_Release(ddraw4);
+
+    if (!(ddraw4 = create_ddraw()))
+        goto done;
+    hr = IDirectDraw4_QueryInterface(ddraw4, &IID_IDirectDraw, (void **)&ddraw);
+    ok(SUCCEEDED(hr), "QueryInterface failed, hr %#x.\n", hr);
+
+    hr = IDirectDraw_SetCooperativeLevel(ddraw, window, DDSCL_SETFOCUSWINDOW);
+    ok(SUCCEEDED(hr), "SetCooperativeLevel failed, hr %#x.\n", hr);
+    restored = test_mode_restored(ddraw4, window);
+    ok(!restored, "Display mode restored after ddraw1::SetCooperativeLevel(SETFOCUSWINDOW) call\n");
+
+    IDirectDraw_Release(ddraw);
+    IDirectDraw4_Release(ddraw4);
+
+    /* A failing call does not restore the ddraw2+ behavior */
+    if (!(ddraw4 = create_ddraw()))
+        goto done;
+    hr = IDirectDraw4_QueryInterface(ddraw4, &IID_IDirectDraw, (void **)&ddraw);
+    ok(SUCCEEDED(hr), "QueryInterface failed, hr %#x.\n", hr);
+
+    hr = IDirectDraw_SetCooperativeLevel(ddraw, NULL, DDSCL_NORMAL);
+    ok(SUCCEEDED(hr), "SetCooperativeLevel failed, hr %#x.\n", hr);
+    hr = IDirectDraw_SetCooperativeLevel(ddraw, NULL, DDSCL_FULLSCREEN | DDSCL_EXCLUSIVE);
+    ok(FAILED(hr), "SetCooperativeLevel returned %#x, expected failure.\n", hr);
+    restored = test_mode_restored(ddraw4, window);
+    ok(!restored, "Display mode restored after good-bad ddraw1::SetCooperativeLevel() call sequence\n");
+
+    IDirectDraw_Release(ddraw);
+    IDirectDraw4_Release(ddraw4);
+
+    /* Neither does a sequence of successful calls with the new interface */
+    if (!(ddraw4 = create_ddraw()))
+        goto done;
+    hr = IDirectDraw4_QueryInterface(ddraw4, &IID_IDirectDraw, (void **)&ddraw);
+    ok(SUCCEEDED(hr), "QueryInterface failed, hr %#x.\n", hr);
+
+    hr = IDirectDraw_SetCooperativeLevel(ddraw, NULL, DDSCL_NORMAL);
+    ok(SUCCEEDED(hr), "SetCooperativeLevel failed, hr %#x.\n", hr);
+    hr = IDirectDraw4_SetCooperativeLevel(ddraw4, window, DDSCL_FULLSCREEN | DDSCL_EXCLUSIVE);
+    ok(SUCCEEDED(hr), "SetCooperativeLevel failed, hr %#x.\n", hr);
+    hr = IDirectDraw4_SetCooperativeLevel(ddraw4, window, DDSCL_NORMAL);
+    ok(SUCCEEDED(hr), "SetCooperativeLevel failed, hr %#x.\n", hr);
+
+    restored = test_mode_restored(ddraw4, window);
+    ok(!restored, "Display mode restored after ddraw1-ddraw4 SetCooperativeLevel() call sequence\n");
+    IDirectDraw_Release(ddraw);
+    IDirectDraw4_Release(ddraw4);
+
+    /* ddraw1::CreateSurface does not triger the ddraw1 behavior */
+    if (!(ddraw4 = create_ddraw()))
+        goto done;
+    hr = IDirectDraw4_QueryInterface(ddraw4, &IID_IDirectDraw, (void **)&ddraw);
+    ok(SUCCEEDED(hr), "QueryInterface failed, hr %#x.\n", hr);
+
+    hr = IDirectDraw4_SetCooperativeLevel(ddraw4, window, DDSCL_NORMAL);
+    ok(SUCCEEDED(hr), "SetCooperativeLevel failed, hr %#x.\n", hr);
+
+    memset(&ddsd, 0, sizeof(ddsd));
+    ddsd.dwSize = sizeof(ddsd);
+    ddsd.dwFlags = DDSD_WIDTH | DDSD_HEIGHT | DDSD_CAPS;
+    ddsd.ddsCaps.dwCaps = DDSCAPS_OFFSCREENPLAIN;
+    ddsd.dwWidth = ddsd.dwHeight = 8;
+    hr = IDirectDraw_CreateSurface(ddraw, &ddsd, &surface, NULL);
+    ok(SUCCEEDED(hr), "CreateSurface failed, hr %#x.\n", hr);
+    IDirectDrawSurface_Release(surface);
+    restored = test_mode_restored(ddraw4, window);
+    ok(restored, "Display mode not restored after ddraw1::CreateSurface() call\n");
+
+    IDirectDraw_Release(ddraw);
+    IDirectDraw4_Release(ddraw4);
+
+done:
+    DestroyWindow(window);
+}
+
+static void test_lighting_interface_versions(void)
+{
+    static D3DRECT clear_rect = {{0}, {0}, {640}, {480}};
+    IDirect3DMaterial3 *emissive;
+    IDirect3DViewport3 *viewport;
+    IDirect3DDevice3 *device;
+    IDirectDrawSurface4 *rt;
+    IDirect3D3 *d3d;
+    D3DCOLOR color;
+    HWND window;
+    HRESULT hr;
+    D3DMATERIALHANDLE mat_handle;
+    D3DMATERIAL mat_desc;
+    DWORD rs;
+    unsigned int i;
+    ULONG ref;
+    static D3DVERTEX quad[] =
+    {
+        {{-1.0f}, { 1.0f}, {0.0f}, {1.0f}, {0.0f}, {0.0f}},
+        {{ 1.0f}, { 1.0f}, {0.0f}, {1.0f}, {0.0f}, {0.0f}},
+        {{-1.0f}, {-1.0f}, {0.0f}, {1.0f}, {0.0f}, {0.0f}},
+        {{ 1.0f}, {-1.0f}, {0.0f}, {1.0f}, {0.0f}, {0.0f}},
+    };
+
+#define FVF_COLORVERTEX (D3DFVF_XYZ | D3DFVF_NORMAL | D3DFVF_DIFFUSE | D3DFVF_SPECULAR)
+    static struct
+    {
+        struct vec3 position;
+        struct vec3 normal;
+        DWORD diffuse, specular;
+    }
+    quad2[] =
+    {
+        {{-1.0f,  1.0f, 0.0f}, {1.0f, 0.0f, 0.0f}, 0xffff0000, 0xff808080},
+        {{ 1.0f,  1.0f, 0.0f}, {1.0f, 0.0f, 0.0f}, 0xffff0000, 0xff808080},
+        {{-1.0f, -1.0f, 0.0f}, {1.0f, 0.0f, 0.0f}, 0xffff0000, 0xff808080},
+        {{ 1.0f, -1.0f, 0.0f}, {1.0f, 0.0f, 0.0f}, 0xffff0000, 0xff808080},
+    };
+
+    static D3DLVERTEX lquad[] =
+    {
+        {{-1.0f}, { 1.0f}, {0.0f}, 0, {0xffff0000}, {0xff808080}},
+        {{ 1.0f}, { 1.0f}, {0.0f}, 0, {0xffff0000}, {0xff808080}},
+        {{-1.0f}, {-1.0f}, {0.0f}, 0, {0xffff0000}, {0xff808080}},
+        {{ 1.0f}, {-1.0f}, {0.0f}, 0, {0xffff0000}, {0xff808080}},
+    };
+
+#define FVF_LVERTEX2 (D3DFVF_LVERTEX & ~D3DFVF_RESERVED1)
+    static struct
+    {
+        struct vec3 position;
+        DWORD diffuse, specular;
+        struct vec2 texcoord;
+    }
+    lquad2[] =
+    {
+        {{-1.0f,  1.0f, 0.0f}, 0xffff0000, 0xff808080},
+        {{ 1.0f,  1.0f, 0.0f}, 0xffff0000, 0xff808080},
+        {{-1.0f, -1.0f, 0.0f}, 0xffff0000, 0xff808080},
+        {{ 1.0f, -1.0f, 0.0f}, 0xffff0000, 0xff808080},
+    };
+
+    static D3DTLVERTEX tlquad[] =
+    {
+        {{   0.0f}, { 480.0f}, {0.0f}, {1.0f}, {0xff0000ff}, {0xff808080}},
+        {{   0.0f}, {   0.0f}, {0.0f}, {1.0f}, {0xff0000ff}, {0xff808080}},
+        {{ 640.0f}, { 480.0f}, {0.0f}, {1.0f}, {0xff0000ff}, {0xff808080}},
+        {{ 640.0f}, {   0.0f}, {0.0f}, {1.0f}, {0xff0000ff}, {0xff808080}},
+    };
+
+#define FVF_TLVERTEX2 (D3DFVF_XYZRHW | D3DFVF_NORMAL | D3DFVF_DIFFUSE | D3DFVF_SPECULAR)
+    static struct
+    {
+        struct vec4 position;
+        struct vec3 normal;
+        DWORD diffuse, specular;
+    }
+    tlquad2[] =
+    {
+        {{   0.0f,  480.0f, 0.0f, 1.0f}, {1.0f, 0.0f, 0.0f}, 0xff0000ff, 0xff808080},
+        {{   0.0f,    0.0f, 0.0f, 1.0f}, {1.0f, 0.0f, 0.0f}, 0xff0000ff, 0xff808080},
+        {{ 640.0f,  480.0f, 0.0f, 1.0f}, {1.0f, 0.0f, 0.0f}, 0xff0000ff, 0xff808080},
+        {{ 640.0f,    0.0f, 0.0f, 1.0f}, {1.0f, 0.0f, 0.0f}, 0xff0000ff, 0xff808080},
+    };
+
+    static const struct
+    {
+        DWORD vertextype;
+        void *data;
+        DWORD d3drs_lighting, d3drs_specular;
+        DWORD draw_flags;
+        D3DCOLOR color;
+    }
+    tests[] =
+    {
+        /* Lighting is enabled when all of these conditions are met:
+         * 1) No pretransformed position(D3DFVF_XYZRHW)
+         * 2) Normals are available (D3DFVF_NORMAL)
+         * 3) D3DDP_DONOTLIGHT is not set.
+         *
+         * D3DRENDERSTATE_LIGHTING is ignored, it is not defined
+         * in this d3d version */
+
+        /* 0 */
+        { D3DFVF_VERTEX,    quad,       FALSE,  FALSE,  0,                  0x0000ff00},
+        { D3DFVF_VERTEX,    quad,       TRUE,   FALSE,  0,                  0x0000ff00},
+        { D3DFVF_VERTEX,    quad,       FALSE,  FALSE,  D3DDP_DONOTLIGHT,   0x00ffffff},
+        { D3DFVF_VERTEX,    quad,       TRUE,   FALSE,  D3DDP_DONOTLIGHT,   0x00ffffff},
+        { D3DFVF_VERTEX,    quad,       FALSE,  TRUE,   0,                  0x0000ff00},
+        { D3DFVF_VERTEX,    quad,       TRUE,   TRUE,   0,                  0x0000ff00},
+        { D3DFVF_VERTEX,    quad,       FALSE,  TRUE,   D3DDP_DONOTLIGHT,   0x00ffffff},
+        { D3DFVF_VERTEX,    quad,       TRUE,   TRUE,   D3DDP_DONOTLIGHT,   0x00ffffff},
+
+        /* 8 */
+        { FVF_COLORVERTEX,  quad2,      FALSE,  FALSE,  0,                  0x0000ff00},
+        { FVF_COLORVERTEX,  quad2,      TRUE,   FALSE,  0,                  0x0000ff00},
+        { FVF_COLORVERTEX,  quad2,      FALSE,  FALSE,  D3DDP_DONOTLIGHT,   0x00ff0000},
+        { FVF_COLORVERTEX,  quad2,      TRUE,   FALSE,  D3DDP_DONOTLIGHT,   0x00ff0000},
+        /* The specular color in the vertex is ignored because
+         * D3DRENDERSTATE_COLORVERTEX is not enabled */
+        { FVF_COLORVERTEX,  quad2,      FALSE,  TRUE,   0,                  0x0000ff00},
+        { FVF_COLORVERTEX,  quad2,      TRUE,   TRUE,   0,                  0x0000ff00},
+        { FVF_COLORVERTEX,  quad2,      FALSE,  TRUE,   D3DDP_DONOTLIGHT,   0x00ff8080},
+        { FVF_COLORVERTEX,  quad2,      TRUE,   TRUE,   D3DDP_DONOTLIGHT,   0x00ff8080},
+
+        /* 16 */
+        { D3DFVF_LVERTEX,   lquad,      FALSE,  FALSE,  0,                  0x00ff0000},
+        { D3DFVF_LVERTEX,   lquad,      TRUE,   FALSE,  0,                  0x00ff0000},
+        { D3DFVF_LVERTEX,   lquad,      FALSE,  FALSE,  D3DDP_DONOTLIGHT,   0x00ff0000},
+        { D3DFVF_LVERTEX,   lquad,      TRUE,   FALSE,  D3DDP_DONOTLIGHT,   0x00ff0000},
+        { D3DFVF_LVERTEX,   lquad,      FALSE,  TRUE,   0,                  0x00ff8080},
+        { D3DFVF_LVERTEX,   lquad,      TRUE,   TRUE,   0,                  0x00ff8080},
+        { D3DFVF_LVERTEX,   lquad,      FALSE,  TRUE,   D3DDP_DONOTLIGHT,   0x00ff8080},
+        { D3DFVF_LVERTEX,   lquad,      TRUE,   TRUE,   D3DDP_DONOTLIGHT,   0x00ff8080},
+
+        /* 24 */
+        { FVF_LVERTEX2,     lquad2,     FALSE,  FALSE,  0,                  0x00ff0000},
+        { FVF_LVERTEX2,     lquad2,     TRUE,   FALSE,  0,                  0x00ff0000},
+        { FVF_LVERTEX2,     lquad2,     FALSE,  FALSE,  D3DDP_DONOTLIGHT,   0x00ff0000},
+        { FVF_LVERTEX2,     lquad2,     TRUE,   FALSE,  D3DDP_DONOTLIGHT,   0x00ff0000},
+        { FVF_LVERTEX2,     lquad2,     FALSE,  TRUE,   0,                  0x00ff8080},
+        { FVF_LVERTEX2,     lquad2,     TRUE,   TRUE,   0,                  0x00ff8080},
+        { FVF_LVERTEX2,     lquad2,     FALSE,  TRUE,   D3DDP_DONOTLIGHT,   0x00ff8080},
+        { FVF_LVERTEX2,     lquad2,     TRUE,   TRUE,   D3DDP_DONOTLIGHT,   0x00ff8080},
+
+        /* 32 */
+        { D3DFVF_TLVERTEX,  tlquad,     FALSE,  FALSE,  0,                  0x000000ff},
+        { D3DFVF_TLVERTEX,  tlquad,     TRUE,   FALSE,  0,                  0x000000ff},
+        { D3DFVF_TLVERTEX,  tlquad,     FALSE,  FALSE,  D3DDP_DONOTLIGHT,   0x000000ff},
+        { D3DFVF_TLVERTEX,  tlquad,     TRUE,   FALSE,  D3DDP_DONOTLIGHT,   0x000000ff},
+        { D3DFVF_TLVERTEX,  tlquad,     FALSE,  TRUE,   0,                  0x008080ff},
+        { D3DFVF_TLVERTEX,  tlquad,     TRUE,   TRUE,   0,                  0x008080ff},
+        { D3DFVF_TLVERTEX,  tlquad,     FALSE,  TRUE,   D3DDP_DONOTLIGHT,   0x008080ff},
+        { D3DFVF_TLVERTEX,  tlquad,     TRUE,   TRUE,   D3DDP_DONOTLIGHT,   0x008080ff},
+
+        /* 40 */
+        { FVF_TLVERTEX2,    tlquad2,    FALSE,  FALSE,  0,                  0x000000ff},
+        { FVF_TLVERTEX2,    tlquad2,    TRUE,   FALSE,  0,                  0x000000ff},
+        { FVF_TLVERTEX2,    tlquad2,    FALSE,  FALSE,  D3DDP_DONOTLIGHT,   0x000000ff},
+        { FVF_TLVERTEX2,    tlquad2,    TRUE,   FALSE,  D3DDP_DONOTLIGHT,   0x000000ff},
+        { FVF_TLVERTEX2,    tlquad2,    FALSE,  TRUE,   0,                  0x008080ff},
+        { FVF_TLVERTEX2,    tlquad2,    TRUE,   TRUE,   0,                  0x008080ff},
+        { FVF_TLVERTEX2,    tlquad2,    FALSE,  TRUE,   D3DDP_DONOTLIGHT,   0x008080ff},
+        { FVF_TLVERTEX2,    tlquad2,    TRUE,   TRUE,   D3DDP_DONOTLIGHT,   0x008080ff},
+    };
+
+    window = CreateWindowA("static", "ddraw_test", WS_OVERLAPPEDWINDOW,
+            0, 0, 640, 480, 0, 0, 0, 0);
+
+    if (!(device = create_device(window, DDSCL_NORMAL)))
+    {
+        skip("Failed to create D3D device, skipping test.\n");
+        DestroyWindow(window);
+        return;
+    }
+    hr = IDirect3DDevice3_GetDirect3D(device, &d3d);
+    ok(SUCCEEDED(hr), "Failed to get IDirect3D3 interface, hr %#x.\n", hr);
+
+    hr = IDirect3DDevice3_GetRenderTarget(device, &rt);
+    ok(SUCCEEDED(hr), "Failed to get render target, hr %#x.\n", hr);
+
+    viewport = create_viewport(device, 0, 0, 640, 480);
+    hr = IDirect3DDevice3_SetCurrentViewport(device, viewport);
+    ok(SUCCEEDED(hr), "Failed to set current viewport, hr %#x.\n", hr);
+
+    memset(&mat_desc, 0, sizeof(mat_desc));
+    mat_desc.dwSize = sizeof(mat_desc);
+    U2(U3(mat_desc).dcvEmissive).g = 1.0f;
+    hr = IDirect3D3_CreateMaterial(d3d, &emissive, NULL);
+    ok(SUCCEEDED(hr), "Failed to create material, hr %#x.\n", hr);
+    hr = IDirect3DMaterial3_SetMaterial(emissive, &mat_desc);
+    ok(SUCCEEDED(hr), "Failed to set material, hr %#x.\n", hr);
+    hr = IDirect3DMaterial3_GetHandle(emissive, device, &mat_handle);
+    ok(SUCCEEDED(hr), "Failed to get material handle, hr %#x.\n", hr);
+    hr = IDirect3DDevice3_SetLightState(device, D3DLIGHTSTATE_MATERIAL, mat_handle);
+    ok(SUCCEEDED(hr), "Failed to set material state, hr %#x.\n", hr);
+    hr = IDirect3DDevice3_SetRenderState(device, D3DRENDERSTATE_ZENABLE, D3DZB_FALSE);
+    ok(SUCCEEDED(hr), "Failed to disable z test, hr %#x.\n", hr);
+
+    hr = IDirect3DDevice3_GetRenderState(device, D3DRENDERSTATE_SPECULARENABLE, &rs);
+    ok(SUCCEEDED(hr), "Failed to get specularenable render state, hr %#x.\n", hr);
+    ok(rs == FALSE, "Initial D3DRENDERSTATE_SPECULARENABLE is %#x, expected FALSE.\n", rs);
+
+    for (i = 0; i < sizeof(tests) / sizeof(*tests); i++)
+    {
+        hr = IDirect3DViewport3_Clear2(viewport, 1, &clear_rect, D3DCLEAR_TARGET, 0xff202020, 0.0f, 0);
+        ok(SUCCEEDED(hr), "Failed to clear viewport, hr %#x.\n", hr);
+
+        hr = IDirect3DDevice3_SetRenderState(device, D3DRENDERSTATE_LIGHTING, tests[i].d3drs_lighting);
+        ok(SUCCEEDED(hr), "Failed to set lighting render state, hr %#x.\n", hr);
+        hr = IDirect3DDevice3_SetRenderState(device, D3DRENDERSTATE_SPECULARENABLE,
+                tests[i].d3drs_specular);
+        ok(SUCCEEDED(hr), "Failed to set specularenable render state, hr %#x.\n", hr);
+
+        hr = IDirect3DDevice3_BeginScene(device);
+        ok(SUCCEEDED(hr), "Failed to begin scene, hr %#x.\n", hr);
+        hr = IDirect3DDevice2_DrawPrimitive(device, D3DPT_TRIANGLESTRIP,
+                tests[i].vertextype, tests[i].data, 4, tests[i].draw_flags | D3DDP_WAIT);
+        hr = IDirect3DDevice3_EndScene(device);
+        ok(SUCCEEDED(hr), "Failed to end scene, hr %#x.\n", hr);
+
+        color = get_surface_color(rt, 320, 240);
+        ok(compare_color(color, tests[i].color, 1),
+                "Got unexpected color 0x%08x, expected 0x%08x, test %u.\n",
+                color, tests[i].color, i);
+    }
+
+    IDirect3DMaterial3_Release(emissive);
+    IDirectDrawSurface4_Release(rt);
+    ref = IDirect3DDevice3_Release(device);
+    ok(ref == 0, "Device not properly released, refcount %u.\n", ref);
+    ref = IDirect3D3_Release(d3d);
+    ok(ref == 0, "D3d not properly released, refcount %u.\n", ref);
+}
+
 START_TEST(ddraw4)
 {
     test_process_vertices();
@@ -3200,4 +3708,6 @@ START_TEST(ddraw4)
     test_coop_level_multi_window();
     test_draw_strided();
     test_clear_rect_count();
+    test_coop_level_versions();
+    test_lighting_interface_versions();
 }

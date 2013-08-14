@@ -1277,7 +1277,12 @@ fpos_int* __thiscall basic_streambuf_char_seekoff(basic_streambuf_char *this,
 
 /* ?pubseekoff@?$basic_streambuf@DU?$char_traits@D@std@@@std@@QAE?AV?$fpos@H@2@JHH@Z */
 /* ?pubseekoff@?$basic_streambuf@DU?$char_traits@D@std@@@std@@QEAA?AV?$fpos@H@2@_JHH@Z */
-static fpos_int* basic_streambuf_char_pubseekoff(basic_streambuf_char *this,
+/* ?pubseekoff@?$basic_streambuf@DU?$char_traits@D@std@@@std@@QAE?AV?$fpos@H@2@JFF@Z */
+/* ?pubseekoff@?$basic_streambuf@DU?$char_traits@D@std@@@std@@QEAA?AV?$fpos@H@2@_JFF@Z */
+/* ?pubseekoff@?$basic_streambuf@DU?$char_traits@D@std@@@std@@QAE?AV?$fpos@H@2@JW4seekdir@ios_base@2@H@Z */
+/* ?pubseekoff@?$basic_streambuf@DU?$char_traits@D@std@@@std@@QEAA?AV?$fpos@H@2@_JW4seekdir@ios_base@2@H@Z */
+DEFINE_THISCALL_WRAPPER(basic_streambuf_char_pubseekoff, 20)
+fpos_int* __thiscall basic_streambuf_char_pubseekoff(basic_streambuf_char *this,
         fpos_int *ret, streamoff off, int way, int mode)
 {
     TRACE("(%p %ld %d %d)\n", this, off, way, mode);
@@ -2006,7 +2011,12 @@ fpos_int* __thiscall basic_streambuf_wchar_seekoff(basic_streambuf_wchar *this,
 /* ?pubseekoff@?$basic_streambuf@_WU?$char_traits@_W@std@@@std@@QEAA?AV?$fpos@H@2@_JHH@Z */
 /* ?pubseekoff@?$basic_streambuf@GU?$char_traits@G@std@@@std@@QAE?AV?$fpos@H@2@JHH@Z */
 /* ?pubseekoff@?$basic_streambuf@GU?$char_traits@G@std@@@std@@QEAA?AV?$fpos@H@2@_JHH@Z */
-static fpos_int* basic_streambuf_wchar_pubseekoff(basic_streambuf_wchar *this,
+/* ?pubseekoff@?$basic_streambuf@GU?$char_traits@G@std@@@std@@QAE?AV?$fpos@H@2@JFF@Z */
+/* ?pubseekoff@?$basic_streambuf@GU?$char_traits@G@std@@@std@@QEAA?AV?$fpos@H@2@_JFF@Z */
+/* ?pubseekoff@?$basic_streambuf@GU?$char_traits@G@std@@@std@@QAE?AV?$fpos@H@2@JW4seekdir@ios_base@2@H@Z */
+/* ?pubseekoff@?$basic_streambuf@GU?$char_traits@G@std@@@std@@QEAA?AV?$fpos@H@2@_JW4seekdir@ioos_base@2@H@Z */
+DEFINE_THISCALL_WRAPPER(basic_streambuf_wchar_pubseekoff, 20)
+fpos_int* __thiscall basic_streambuf_wchar_pubseekoff(basic_streambuf_wchar *this,
         fpos_int *ret, streamoff off, int way, int mode)
 {
     TRACE("(%p %ld %d %d)\n", this, off, way, mode);
@@ -2286,15 +2296,6 @@ streamsize __thiscall basic_streambuf_wchar_sputn(basic_streambuf_wchar *this, c
     return call_basic_streambuf_wchar_xsputn(this, ptr, count);
 }
 
-/* ?getloc@?$basic_streambuf@_WU?$char_traits@_W@std@@@std@@QAE?AVlocale@2@XZ */
-/* ?getloc@?$basic_streambuf@_WU?$char_traits@_W@std@@@std@@QEAA?AVlocale@2@XZ */
-DEFINE_THISCALL_WRAPPER(basic_streambuf_wchar_getloc, 8)
-locale* __thiscall basic_streambuf_wchar_getloc(basic_streambuf_wchar *this, locale *ret)
-{
-    TRACE("(%p %p)\n", this, ret);
-    return locale_copy_ctor(ret, &this->loc);
-}
-
 /* ?_Stinit@?1??_Init@?$basic_filebuf@DU?$char_traits@D@std@@@std@@IAEXPAU_iobuf@@W4_Initfl@23@@Z@4HA */
 /* ?_Stinit@?1??_Init@?$basic_filebuf@DU?$char_traits@D@std@@@std@@IEAAXPEAU_iobuf@@W4_Initfl@23@@Z@4HA */
 int basic_filebuf_char__Init__Stinit = 0;
@@ -2456,7 +2457,7 @@ static FILE* _Fiopen_wchar(const wchar_t *name, int mode, int prot)
     };
 
     int real_mode = mode & ~(OPENMODE_ate|OPENMODE__Nocreate|OPENMODE__Noreplace|OPENMODE_binary);
-    int mode_idx;
+    unsigned int mode_idx;
     FILE *f = NULL;
 
     TRACE("(%s %d %d)\n", debugstr_w(name), mode, prot);

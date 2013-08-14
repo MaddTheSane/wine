@@ -534,7 +534,8 @@ static BOOL create_icon_pixmaps( HDC hdc, const ICONINFO *icon, Pixmap *icon_ret
     XVisualInfo vis = default_visual;
     struct gdi_image_bits bits;
     Pixmap color_pixmap = 0, mask_pixmap = 0;
-    int i, lines;
+    int lines;
+    unsigned int i;
 
     bits.ptr = NULL;
     bits.free = NULL;
@@ -1384,16 +1385,17 @@ Window create_client_window( struct x11drv_win_data *data, const XVisualInfo *vi
     attr.win_gravity = NorthWestGravity;
     attr.backing_store = NotUseful;
     attr.event_mask = ExposureMask;
+    attr.border_pixel = 0;
 
     data->client_window = XCreateWindow( data->display, data->whole_window, x, y, cx, cy,
                                          0, default_visual.depth, InputOutput, visual->visual,
                                          CWBitGravity | CWWinGravity | CWBackingStore |
-                                         CWColormap | CWEventMask, &attr );
+                                         CWColormap | CWEventMask | CWBorderPixel, &attr );
     if (!data->client_window) return 0;
 
     XSaveContext( data->display, data->client_window, winContext, (char *)data->hwnd );
     XMapWindow( data->display, data->client_window );
-    XFlush( data->display );
+    XSync( data->display, False );
     return data->client_window;
 }
 
@@ -2016,6 +2018,41 @@ void CDECL X11DRV_ReleaseDC( HWND hwnd, HDC hdc )
 }
 
 
+/*************************************************************************
+ *		ScrollDC   (X11DRV.@)
+ */
+BOOL CDECL X11DRV_ScrollDC( HDC hdc, INT dx, INT dy, HRGN update )
+{
+    RECT rect;
+    BOOL ret;
+    HRGN expose_rgn = 0;
+
+    GetClipBox( hdc, &rect );
+
+    if (update)
+    {
+        INT code = X11DRV_START_EXPOSURES;
+        ExtEscape( hdc, X11DRV_ESCAPE, sizeof(code), (LPSTR)&code, 0, NULL );
+
+        ret = BitBlt( hdc, rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top,
+                      hdc, rect.left - dx, rect.top - dy, SRCCOPY );
+
+        code = X11DRV_END_EXPOSURES;
+        ExtEscape( hdc, X11DRV_ESCAPE, sizeof(code), (LPSTR)&code,
+                   sizeof(expose_rgn), (LPSTR)&expose_rgn );
+        if (expose_rgn)
+        {
+            CombineRgn( update, update, expose_rgn, RGN_OR );
+            DeleteObject( expose_rgn );
+        }
+    }
+    else ret = BitBlt( hdc, rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top,
+                       hdc, rect.left - dx, rect.top - dy, SRCCOPY );
+
+    return ret;
+}
+
+
 /***********************************************************************
  *		SetCapture  (X11DRV.@)
  */
@@ -2131,6 +2168,7 @@ void CDECL X11DRV_WindowPosChanging( HWND hwnd, HWND insert_after, UINT swp_flag
 
     if (data->embedded) goto done;
     if (data->whole_window == root_window) goto done;
+    if (data->client_window) goto done;
     if (!client_side_graphics && !layered) goto done;
 
     surface_rect = get_surface_rect( visible_rect );

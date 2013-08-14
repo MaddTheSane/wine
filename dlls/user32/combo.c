@@ -1043,18 +1043,24 @@ static void CBDropDown( LPHEADCOMBO lphc )
       }
    }
 
+   r.left = rect.left;
+   r.top = rect.bottom;
+   r.right = r.left + lphc->droppedRect.right - lphc->droppedRect.left;
+   r.bottom = r.top + nDroppedHeight;
+
    /*If height of dropped rectangle gets beyond a screen size it should go up, otherwise down.*/
    monitor = MonitorFromRect( &rect, MONITOR_DEFAULTTOPRIMARY );
    mon_info.cbSize = sizeof(mon_info);
    GetMonitorInfoW( monitor, &mon_info );
 
-   if( (rect.bottom + nDroppedHeight) >= mon_info.rcWork.bottom )
-      rect.bottom = rect.top - nDroppedHeight;
+   if (r.bottom > mon_info.rcWork.bottom)
+   {
+       r.top = max( rect.top - nDroppedHeight, mon_info.rcWork.top );
+       r.bottom = min( r.top + nDroppedHeight, mon_info.rcWork.bottom );
+   }
 
-   SetWindowPos( lphc->hWndLBox, HWND_TOP, rect.left, rect.bottom,
-		 lphc->droppedRect.right - lphc->droppedRect.left,
-		 nDroppedHeight,
-		 SWP_NOACTIVATE | SWP_SHOWWINDOW);
+   SetWindowPos( lphc->hWndLBox, HWND_TOP, r.left, r.top, r.right - r.left, r.bottom - r.top,
+                 SWP_NOACTIVATE | SWP_SHOWWINDOW );
 
 
    if( !(lphc->wState & CBF_NOREDRAW) )
@@ -1507,7 +1513,7 @@ static void CBResetPos(
 /***********************************************************************
  *           COMBO_Size
  */
-static void COMBO_Size( LPHEADCOMBO lphc, LPARAM lParam )
+static void COMBO_Size( LPHEADCOMBO lphc )
 {
   /*
    * Those controls are always the same height. So we have to make sure
@@ -1515,8 +1521,12 @@ static void COMBO_Size( LPHEADCOMBO lphc, LPARAM lParam )
    */
   if( CB_GETTYPE(lphc) != CBS_SIMPLE )
   {
-    int newComboHeight;
+    int newComboHeight, curComboHeight, curComboWidth;
+    RECT rc;
 
+    GetWindowRect(lphc->self, &rc);
+    curComboHeight = rc.bottom - rc.top;
+    curComboWidth = rc.right - rc.left;
     newComboHeight = CBGetTextAreaHeight(lphc->self, lphc) + 2*COMBO_YBORDERSIZE();
 
     /*
@@ -1527,18 +1537,18 @@ static void COMBO_Size( LPHEADCOMBO lphc, LPARAM lParam )
      * the actual control, for example, to do the layout of a dialog that is
      * resized, the height of the dropdown is not changed.
      */
-    if( HIWORD(lParam) > newComboHeight )
+    if( curComboHeight > newComboHeight )
     {
       TRACE("oldComboHeight=%d, newComboHeight=%d, oldDropBottom=%d, oldDropTop=%d\n",
-            HIWORD(lParam), newComboHeight, lphc->droppedRect.bottom,
+            curComboHeight, newComboHeight, lphc->droppedRect.bottom,
             lphc->droppedRect.top);
-      lphc->droppedRect.bottom = lphc->droppedRect.top + HIWORD(lParam) - newComboHeight;
+      lphc->droppedRect.bottom = lphc->droppedRect.top + curComboHeight - newComboHeight;
     }
     /*
      * Restore original height
      */
-    if( HIWORD(lParam) != newComboHeight )
-      SetWindowPos(lphc->self, 0, 0, 0, LOWORD(lParam), newComboHeight,
+    if( curComboHeight != newComboHeight )
+      SetWindowPos(lphc->self, 0, 0, 0, curComboWidth, newComboHeight,
             SWP_NOZORDER|SWP_NOMOVE|SWP_NOACTIVATE|SWP_NOREDRAW);
   }
 
@@ -1862,7 +1872,7 @@ LRESULT ComboWndProc_common( HWND hwnd, UINT message, WPARAM wParam, LPARAM lPar
 	}
 	case WM_SIZE:
 	        if( lphc->hWndLBox &&
-		  !(lphc->wState & CBF_NORESIZE) ) COMBO_Size( lphc, lParam );
+		  !(lphc->wState & CBF_NORESIZE) ) COMBO_Size( lphc );
 		return  TRUE;
 	case WM_SETFONT:
 		COMBO_Font( lphc, (HFONT)wParam, (BOOL)lParam );

@@ -3571,12 +3571,18 @@ static void test_events(int useMessages)
         goto end;
     }
 
+    ret = set_blocking(src, TRUE);
+    ok(!ret, "set_blocking failed, error %d\n", WSAGetLastError());
+
     src2 = socket(AF_INET, SOCK_STREAM, 0);
     if (src2 == INVALID_SOCKET)
     {
         ok(0, "creating socket pair failed (%d), skipping test\n", GetLastError());
         goto end;
     }
+
+    ret = set_blocking(src2, TRUE);
+    ok(!ret, "set_blocking failed, error %d\n", WSAGetLastError());
 
     len = sizeof(BOOL);
     if (getsockopt(src, SOL_SOCKET, SO_OOBINLINE, (void *)&bret, &len) == SOCKET_ERROR)
@@ -3618,12 +3624,18 @@ static void test_events(int useMessages)
             goto end;
         }
 
+        ok(set_blocking(src, TRUE) == SOCKET_ERROR, "set_blocking should failed!\n");
+        ok(WSAGetLastError() == WSAEINVAL, "expect WSAEINVAL, returned %x\n", WSAGetLastError());
+
         ret = WSAAsyncSelect(src2, hWnd, WM_SOCKET, FD_CONNECT | FD_READ | FD_OOB | FD_WRITE | FD_CLOSE);
         if (ret)
         {
             ok(0, "WSAAsyncSelect failed, error %d\n", ret);
             goto end;
         }
+
+        ok(set_blocking(src2, TRUE) == SOCKET_ERROR, "set_blocking should failed!\n");
+        ok(WSAGetLastError() == WSAEINVAL, "expect WSAEINVAL, returned %x\n", WSAGetLastError());
     }
     else
     {
@@ -3650,12 +3662,18 @@ static void test_events(int useMessages)
             goto end;
         }
 
+        ok(set_blocking(src, TRUE) == SOCKET_ERROR, "set_blocking should failed!\n");
+        ok(WSAGetLastError() == WSAEINVAL, "expect WSAEINVAL, returned %x\n", WSAGetLastError());
+
         ret = WSAEventSelect(src2, hEvent2, FD_CONNECT | FD_READ | FD_OOB | FD_WRITE | FD_CLOSE);
         if (ret)
         {
             ok(0, "WSAEventSelect failed, error %d\n", ret);
             goto end;
         }
+
+        ok(set_blocking(src2, TRUE) == SOCKET_ERROR, "set_blocking should failed!\n");
+        ok(WSAGetLastError() == WSAEINVAL, "expect WSAEINVAL, returned %x\n", WSAGetLastError());
     }
 
     server = socket(AF_INET, SOCK_STREAM, 0);
@@ -3988,6 +4006,51 @@ static void test_events(int useMessages)
     ok(ret == 1, "Sending to half-closed socket failed %d err %d\n", ret, GetLastError());
     ok_event_seq(src2, hEvent2, empty_seq, NULL, 0);
 
+    if (useMessages)
+    {
+        ret = WSAAsyncSelect(src, hWnd, WM_SOCKET, 0);
+        if (ret)
+        {
+            ok(0, "WSAAsyncSelect failed, error %d\n", ret);
+            goto end;
+        }
+
+        ret = set_blocking(src, TRUE);
+        ok(!ret, "set_blocking failed, error %d\n", WSAGetLastError());
+
+        ret = WSAAsyncSelect(src2, hWnd, WM_SOCKET, 0);
+        if (ret)
+        {
+            ok(0, "WSAAsyncSelect failed, error %d\n", ret);
+            goto end;
+        }
+
+        ret = set_blocking(src2, TRUE);
+        ok(!ret, "set_blocking failed, error %d\n", WSAGetLastError());
+    }
+    else
+    {
+        ret = WSAEventSelect(src, hEvent2, 0);
+        if (ret)
+        {
+            ok(0, "WSAAsyncSelect failed, error %d\n", ret);
+            goto end;
+        }
+
+        ret = set_blocking(src, TRUE);
+        ok(!ret, "set_blocking failed, error %d\n", WSAGetLastError());
+
+        ret = WSAEventSelect(src2, hEvent2, 0);
+        if (ret)
+        {
+            ok(0, "WSAAsyncSelect failed, error %d\n", ret);
+            goto end;
+        }
+
+        ret = set_blocking(src2, TRUE);
+        ok(!ret, "set_blocking failed, error %d\n", WSAGetLastError());
+    }
+
 end:
     if (src != INVALID_SOCKET)
     {
@@ -4176,6 +4239,8 @@ static void test_WSARecv(void)
     todo_wine ok(!bret && (GetLastError() == ERROR_NETNAME_DELETED || broken(GetLastError() == ERROR_IO_INCOMPLETE) /* win9x */),
         "Did not get disconnect event: %d, error %d\n", bret, GetLastError());
     ok(bytesReturned == 0, "Bytes received is %d\n", bytesReturned);
+    closesocket(dest);
+    dest = INVALID_SOCKET;
 
     src = WSASocketW(AF_INET, SOCK_STREAM, IPPROTO_TCP, NULL, 0, 0);
     ok(src != INVALID_SOCKET, "failed to create socket %d\n", WSAGetLastError());
@@ -5403,6 +5468,8 @@ static void test_completion_port(void)
     ok(iret == SOCKET_ERROR, "WSARecv returned %d\n", iret);
     ok(GetLastError() == ERROR_IO_PENDING, "Last error was %d\n", GetLastError());
 
+    Sleep(100);
+
     closesocket(src);
     src = INVALID_SOCKET;
 
@@ -5458,6 +5525,9 @@ static void test_completion_port(void)
 
     closesocket(src);
     src = INVALID_SOCKET;
+
+    Sleep(100);
+
     num_bytes = 0xdeadbeef;
     SetLastError(0xdeadbeef);
 
@@ -5882,6 +5952,8 @@ static void test_completion_port(void)
     iret = send(connector, buf, 1, 0);
     ok(iret == 1, "could not send 1 byte: send %d errno %d\n", iret, WSAGetLastError());
 
+    Sleep(100);
+
     closesocket(dest);
     dest = INVALID_SOCKET;
 
@@ -5957,12 +6029,15 @@ static void test_completion_port(void)
 
     bret = GetQueuedCompletionStatus(io_port, &num_bytes, &key, &olp, 100);
     ok(bret == FALSE, "failed to get completion status %u\n", bret);
-    todo_wine ok((GetLastError() == ERROR_NETNAME_DELETED) || (GetLastError() == ERROR_CONNECTION_ABORTED), "Last error was %d\n", GetLastError());
+    todo_wine ok(GetLastError() == ERROR_NETNAME_DELETED ||
+                 GetLastError() == ERROR_OPERATION_ABORTED ||
+                 GetLastError() == ERROR_CONNECTION_ABORTED, "Last error was %d\n", GetLastError());
     ok(key == 125, "Key is %lu\n", key);
     ok(num_bytes == 0, "Number of bytes transferred is %u\n", num_bytes);
     ok(olp == &ov, "Overlapped structure is at %p\n", olp);
-    todo_wine ok(olp && ((olp->Internal == (ULONG)STATUS_LOCAL_DISCONNECT)
-                      || (olp->Internal == (ULONG)STATUS_CONNECTION_ABORTED)), "Internal status is %lx\n", olp ? olp->Internal : 0);
+    todo_wine ok(olp && (olp->Internal == (ULONG)STATUS_LOCAL_DISCONNECT ||
+                         olp->Internal == (ULONG)STATUS_CANCELLED ||
+                         olp->Internal == (ULONG)STATUS_CONNECTION_ABORTED), "Internal status is %lx\n", olp ? olp->Internal : 0);
 
     SetLastError(0xdeadbeef);
     key = 0xdeadbeef;

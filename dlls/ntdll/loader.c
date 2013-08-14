@@ -2180,7 +2180,7 @@ IMAGE_BASE_RELOCATION * WINAPI LdrProcessRelocationBlock( void *page, UINT count
         {
             DWORD inst = *(INT_PTR *)((char *)page + offset);
             DWORD imm16 = ((inst << 1) & 0x0800) + ((inst << 12) & 0xf000) +
-                          ((inst >> 20) & 0x0700) + ((inst >> 16) & 0x000f);
+                          ((inst >> 20) & 0x0700) + ((inst >> 16) & 0x00ff);
 
             if ((inst & 0x8000fbf0) != 0x0000f240)
                 ERR("wrong Thumb2 instruction %08x, expected MOVW\n", inst);
@@ -2191,13 +2191,13 @@ IMAGE_BASE_RELOCATION * WINAPI LdrProcessRelocationBlock( void *page, UINT count
             *(INT_PTR *)((char *)page + offset) = (inst & 0x8f00fbf0) + ((imm16 >> 1) & 0x0400) +
                                                   ((imm16 >> 12) & 0x000f) +
                                                   ((imm16 << 20) & 0x70000000) +
-                                                  ((imm16 << 16) & 0x0f0000);
+                                                  ((imm16 << 16) & 0xff0000);
 
             if (delta > 0xffff)
             {
                 inst = *(INT_PTR *)((char *)page + offset + 4);
                 imm16 = ((inst << 1) & 0x0800) + ((inst << 12) & 0xf000) +
-                        ((inst >> 20) & 0x0700) + ((inst >> 16) & 0x000f);
+                        ((inst >> 20) & 0x0700) + ((inst >> 16) & 0x00ff);
 
                 if ((inst & 0x8000fbf0) != 0x0000f2c0)
                     ERR("wrong Thumb2 instruction %08x, expected MOVT\n", inst);
@@ -2209,7 +2209,7 @@ IMAGE_BASE_RELOCATION * WINAPI LdrProcessRelocationBlock( void *page, UINT count
                                                           ((imm16 >> 1) & 0x0400) +
                                                           ((imm16 >> 12) & 0x000f) +
                                                           ((imm16 << 20) & 0x70000000) +
-                                                          ((imm16 << 16) & 0x0f0000);
+                                                          ((imm16 << 16) & 0xff0000);
             }
         }
             break;
@@ -2703,7 +2703,6 @@ void WINAPI LdrInitializeThunk( void *kernel_start, ULONG_PTR unknown2,
     WINE_MODREF *wm;
     LPCWSTR load_path;
     PEB *peb = NtCurrentTeb()->Peb;
-    IMAGE_NT_HEADERS *nt = RtlImageNtHeader( peb->ImageBaseAddress );
 
     if (main_exe_file) NtClose( main_exe_file );  /* at this point the main module is created */
 
@@ -2721,6 +2720,7 @@ void WINAPI LdrInitializeThunk( void *kernel_start, ULONG_PTR unknown2,
     if (!peb->ProcessParameters->WindowTitle.Buffer)
         peb->ProcessParameters->WindowTitle = wm->ldr.FullDllName;
     version_init( wm->ldr.FullDllName.Buffer );
+    virtual_set_large_address_space();
 
     LdrQueryImageFileExecutionOptions( &peb->ProcessParameters->ImagePathName, globalflagW,
                                        REG_DWORD, &peb->NtGlobalFlag, sizeof(peb->NtGlobalFlag), NULL );
@@ -2742,7 +2742,7 @@ void WINAPI LdrInitializeThunk( void *kernel_start, ULONG_PTR unknown2,
     status = wine_call_on_stack( attach_process_dlls, wm, NtCurrentTeb()->Tib.StackBase );
     if (status != STATUS_SUCCESS) goto error;
 
-    virtual_release_address_space( nt->FileHeader.Characteristics & IMAGE_FILE_LARGE_ADDRESS_AWARE );
+    virtual_release_address_space();
     virtual_clear_thread_stack();
     wine_switch_to_stack( start_process, kernel_start, NtCurrentTeb()->Tib.StackBase );
 

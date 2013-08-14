@@ -5,13 +5,14 @@ msgstr ""
 "Project-Id-Version: Wine\n"
 "Report-Msgid-Bugs-To: http://bugs.winehq.org\n"
 "POT-Creation-Date: N/A\n"
-"PO-Revision-Date: 2013-01-17 20:12+0900\n"
+"PO-Revision-Date: 2013-07-03 23:54+0900\n"
 "Last-Translator: Akihiro Sagawa <sagawa.aki@gmail.com>\n"
-"Language-Team: none\n"
+"Language-Team: 日本語 <>\n"
 "Language: Japanese\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
 
 #: appwiz.rc:55
 msgid "Install/Uninstall"
@@ -950,7 +951,7 @@ msgstr "白"
 
 #: comdlg32.rc:52
 msgid "Unreadable Entry"
-msgstr ""
+msgstr "読み込めない値"
 
 #: comdlg32.rc:54
 msgid ""
@@ -1273,7 +1274,7 @@ msgstr "次回更新場所"
 
 #: crypt32.rc:42
 msgid "Yes or No Trust"
-msgstr ""
+msgstr "信頼する(はい または いいえ)"
 
 #: crypt32.rc:43
 msgid "Email Address"
@@ -1313,7 +1314,7 @@ msgstr "S/MIME機能"
 
 #: crypt32.rc:52
 msgid "Prefer Signed Data"
-msgstr ""
+msgstr "署名済みデータを優先"
 
 #: crypt32.rc:53 cryptdlg.rc:31
 msgctxt "Certification Practice Statement"
@@ -1322,7 +1323,7 @@ msgstr "CPS"
 
 #: crypt32.rc:54 cryptdlg.rc:32
 msgid "User Notice"
-msgstr ""
+msgstr "使用者への通知"
 
 #: crypt32.rc:55
 msgid "On-line Certificate Status Protocol"
@@ -1430,143 +1431,143 @@ msgstr "シリアル番号"
 
 #: crypt32.rc:81
 msgid "CA Version"
-msgstr ""
+msgstr "CA バージョン"
 
 #: crypt32.rc:82
 msgid "Cross CA Version"
-msgstr ""
+msgstr "クロス CA バージョン"
 
 #: crypt32.rc:83
 msgid "Serialized Signature Serial Number"
-msgstr ""
+msgstr "整序された署名の順番"
 
 #: crypt32.rc:84
 msgid "Principal Name"
-msgstr ""
+msgstr "主要名称"
 
 #: crypt32.rc:85
 msgid "Windows Product Update"
-msgstr ""
+msgstr "Windows 製品のアップデート"
 
 #: crypt32.rc:86
 msgid "Enrollment Name Value Pair"
-msgstr ""
+msgstr "登録名と値の対"
 
 #: crypt32.rc:87
 msgid "OS Version"
-msgstr ""
+msgstr "OSのバージョン"
 
 #: crypt32.rc:88
 msgid "Enrollment CSP"
-msgstr ""
+msgstr "登録CSP"
 
 #: crypt32.rc:89
 msgid "CRL Number"
-msgstr ""
+msgstr "CRL ナンバー"
 
 #: crypt32.rc:90
 msgid "Delta CRL Indicator"
-msgstr ""
+msgstr "デルタ CRL インディケータ"
 
 #: crypt32.rc:91
 msgid "Issuing Distribution Point"
-msgstr ""
+msgstr "公開配布ポイント"
 
 #: crypt32.rc:92
 msgid "Freshest CRL"
-msgstr ""
+msgstr "最新のCRL"
 
 #: crypt32.rc:93
 msgid "Name Constraints"
-msgstr ""
+msgstr "名前の制約"
 
 #: crypt32.rc:94
 msgid "Policy Mappings"
-msgstr ""
+msgstr "ポリシーの表示"
 
 #: crypt32.rc:95
 msgid "Policy Constraints"
-msgstr ""
+msgstr "ポリシーの制約"
 
 #: crypt32.rc:96
 msgid "Cross-Certificate Distribution Points"
-msgstr ""
+msgstr "複数の署名の配布ポイント"
 
 #: crypt32.rc:97
 msgid "Application Policies"
-msgstr ""
+msgstr "アプリケーションのポリシー"
 
 #: crypt32.rc:98
 msgid "Application Policy Mappings"
-msgstr ""
+msgstr "アプリケーションのポリシーの表示"
 
 #: crypt32.rc:99
 msgid "Application Policy Constraints"
-msgstr ""
+msgstr "アプリケーションのポリシーの制約"
 
 #: crypt32.rc:100
 msgid "CMC Data"
-msgstr ""
+msgstr "CMC データ"
 
 #: crypt32.rc:101
 msgid "CMC Response"
-msgstr ""
+msgstr "CMC レスポンス"
 
 #: crypt32.rc:102
 msgid "Unsigned CMC Request"
-msgstr ""
+msgstr "非署名CMCの要求"
 
 #: crypt32.rc:103
 msgid "CMC Status Info"
-msgstr ""
+msgstr "CMC ステータス 情報"
 
 #: crypt32.rc:104
 msgid "CMC Extensions"
-msgstr ""
+msgstr "CMC 拡張"
 
 #: crypt32.rc:105
 msgid "CMC Attributes"
-msgstr ""
+msgstr "CMC 属性"
 
 #: crypt32.rc:106
 msgid "PKCS 7 Data"
-msgstr ""
+msgstr "PKCS 7 データ"
 
 #: crypt32.rc:107
 msgid "PKCS 7 Signed"
-msgstr ""
+msgstr "署名付きのPKCS 7"
 
 #: crypt32.rc:108
 msgid "PKCS 7 Enveloped"
-msgstr ""
+msgstr "保護されたPKCS 7"
 
 #: crypt32.rc:109
 msgid "PKCS 7 Signed Enveloped"
-msgstr ""
+msgstr "保護された署名付きのPKCS 7"
 
 #: crypt32.rc:110
 msgid "PKCS 7 Digested"
-msgstr ""
+msgstr "ダイジェストのPKCS 7"
 
 #: crypt32.rc:111
 msgid "PKCS 7 Encrypted"
-msgstr ""
+msgstr "暗号化されたPKCS 7"
 
 #: crypt32.rc:112
 msgid "Previous CA Certificate Hash"
-msgstr ""
+msgstr "以前のCA 署名のハッシュ"
 
 #: crypt32.rc:113
 msgid "Virtual Base CRL Number"
-msgstr ""
+msgstr "仮想CRLナンバー"
 
 #: crypt32.rc:114
 msgid "Next CRL Publish"
-msgstr ""
+msgstr "次のCRL 公開"
 
 #: crypt32.rc:115
 msgid "CA Encryption Certificate"
-msgstr ""
+msgstr "CA 暗号証明書"
 
 #: crypt32.rc:116 cryptui.rc:145
 msgid "Key Recovery Agent"
@@ -1574,15 +1575,15 @@ msgstr "キー回復エージェント"
 
 #: crypt32.rc:117
 msgid "Certificate Template Information"
-msgstr ""
+msgstr "証明書テンプレート情報"
 
 #: crypt32.rc:118
 msgid "Enterprise Root OID"
-msgstr ""
+msgstr "エンタープライズ ルート OID"
 
 #: crypt32.rc:119
 msgid "Dummy Signer"
-msgstr ""
+msgstr "ダミーの署名"
 
 #: crypt32.rc:120
 msgid "Encrypted Private Key"
@@ -1594,7 +1595,7 @@ msgstr "公開された CRL の場所"
 
 #: crypt32.rc:122
 msgid "Enforce Certificate Chain Policy"
-msgstr ""
+msgstr "証明書チェーンのポリシーを適用"
 
 #: crypt32.rc:123
 msgid "Transaction Id"
@@ -1847,7 +1848,7 @@ msgstr "CA"
 
 #: crypt32.rc:193
 msgid "End Entity"
-msgstr ""
+msgstr "終了値"
 
 #: crypt32.rc:194
 msgid "Path Length Constraint="
@@ -2037,15 +2038,15 @@ msgstr "ポリシー識別子: "
 
 #: cryptdlg.rc:29
 msgid "Policy Qualifier Info"
-msgstr ""
+msgstr "ポリシーの修飾子 情報"
 
 #: cryptdlg.rc:30
 msgid "Policy Qualifier Id="
-msgstr ""
+msgstr "ポリシーの修飾子 Id="
 
 #: cryptdlg.rc:33
 msgid "Qualifier"
-msgstr ""
+msgstr "修飾子"
 
 #: cryptdlg.rc:34
 msgid "Notice Reference"
@@ -2211,7 +2212,7 @@ msgstr "Cryptographic Message Syntax Standard/PKCS #7 メッセージ (*.p7b)"
 
 #: cryptui.rc:298
 msgid "Personal Information Exchange/PKCS #12 (*.pfx; *.p12)"
-msgstr ""
+msgstr "個人情報交換ファイル/PKCS #12 (*.pfx; *.p12)"
 
 #: cryptui.rc:300 cryptui.rc:78 cryptui.rc:159
 msgid "Microsoft Serialized Certificate Store (*.sst)"
@@ -2353,15 +2354,15 @@ msgstr "形式を選択してください:"
 
 #: cryptui.rc:405
 msgid "&DER-encoded X.509 (*.cer)"
-msgstr "&DER符号化された X.509 (*.cer)"
+msgstr "DER符号化された X.509(&D) (*.cer)"
 
 #: cryptui.rc:407
 msgid "Ba&se64-encoded X.509 (*.cer):"
-msgstr "Ba&se64符号化された X.509 (*.cer):"
+msgstr "Base64で符号化された X.509(&S) (*.cer):"
 
 #: cryptui.rc:409
 msgid "&Cryptographic Message Syntax Standard/PKCS #7 Message (*.p7b)"
-msgstr "&Cryptographic Message Syntax Standard/PKCS #7 メッセージ (*.p7b)"
+msgstr "暗号メッセージ構文/PKCS #7 メッセージ(&C) (*.p7b)"
 
 #: cryptui.rc:411
 msgid "&Include all certificates in the certification path if possible"
@@ -2369,7 +2370,7 @@ msgstr "可能ならば証明パス中のすべての証明書を含める(&I)"
 
 #: cryptui.rc:413
 msgid "&Personal Information Exchange/PKCS #12 (*.pfx)"
-msgstr ""
+msgstr "個人情報交換ファイル(&P)/PKCS #12 (*.pfx)"
 
 #: cryptui.rc:415
 msgid "Incl&ude all certificates in the certification path if possible"
@@ -2549,7 +2550,7 @@ msgstr "OID を 1.2.3.4 形式で入力してください"
 
 #: cryptui.rc:65
 msgid "The OID you entered already exists."
-msgstr "入力した OID はすでに存在します"
+msgstr "入力した OID はすでに存在します。"
 
 #: cryptui.rc:67
 msgid "Please select a certificate store."
@@ -2587,7 +2588,7 @@ msgstr "X.509 証明書 (*.cer; *.crt)"
 
 #: cryptui.rc:75
 msgid "Personal Information Exchange (*.pfx; *.p12)"
-msgstr ""
+msgstr "個人情報交換ファイル (*.pfx; *.p12)"
 
 #: cryptui.rc:76 cryptui.rc:155
 msgid "Certificate Revocation List (*.crl)"
@@ -2647,7 +2648,7 @@ msgstr "CMS/PKCS #7 メッセージ"
 
 #: cryptui.rc:94
 msgid "Personal Information Exchange"
-msgstr ""
+msgstr "個人情報変換ファイル"
 
 #: cryptui.rc:96
 msgid "The import was successful."
@@ -2861,7 +2862,7 @@ msgstr "CMS/PKCS #7 メッセージ (*.p7b)"
 
 #: cryptui.rc:158
 msgid "Personal Information Exchange (*.pfx)"
-msgstr ""
+msgstr "個人情報変換ファイル (*.pfx)"
 
 #: cryptui.rc:160
 msgid "File Format"
@@ -6340,7 +6341,7 @@ msgid "No more bindings.\n"
 msgstr "これ以上のバインディングはありません。\n"
 
 #: winerror.mc:3446
-msgid "Can't logon with interdomain trust account.\n"
+msgid "Can't logon with inter-domain trust account.\n"
 msgstr "ドメイン間信頼アカウントではログオンできません。\n"
 
 #: winerror.mc:3451
@@ -7324,7 +7325,7 @@ msgstr "ボー レート"
 
 #: serialui.rc:30
 msgid "Parity"
-msgstr "パリティ"
+msgstr "パリティ(等価性)"
 
 #: serialui.rc:32
 msgid "Flow Control"
@@ -7910,48 +7911,48 @@ msgstr "プログラム"
 
 #: shell32.rc:201
 msgid "My Documents"
-msgstr ""
+msgstr "My Documents"
 
 #: shell32.rc:202
 msgid "Favorites"
-msgstr ""
+msgstr "Favorites"
 
 #: shell32.rc:203
 msgid "StartUp"
-msgstr ""
+msgstr "StartUp"
 
 #: shell32.rc:204
 msgid "Start Menu"
-msgstr ""
+msgstr "Start Menu"
 
 #: shell32.rc:205
 msgid "My Music"
-msgstr ""
+msgstr "My Music"
 
 #: shell32.rc:206
 msgid "My Videos"
-msgstr ""
+msgstr "My Videos"
 
 #: shell32.rc:207
 msgctxt "directory"
 msgid "Desktop"
-msgstr ""
+msgstr "Desktop"
 
 #: shell32.rc:208
 msgid "NetHood"
-msgstr ""
+msgstr "NetHood"
 
 #: shell32.rc:209
 msgid "Templates"
-msgstr ""
+msgstr "Templates"
 
 #: shell32.rc:210
 msgid "PrintHood"
-msgstr ""
+msgstr "PrintHood"
 
 #: shell32.rc:211 winhlp32.rc:45
 msgid "History"
-msgstr ""
+msgstr "History"
 
 #: shell32.rc:212
 msgid "Program Files"
@@ -7959,7 +7960,7 @@ msgstr "Program Files"
 
 #: shell32.rc:214
 msgid "My Pictures"
-msgstr ""
+msgstr "My Pictures"
 
 #: shell32.rc:215
 msgid "Common Files"
@@ -7967,23 +7968,23 @@ msgstr "Common Files"
 
 #: shell32.rc:216 shell32.rc:147 shell32.rc:232
 msgid "Documents"
-msgstr ""
+msgstr "Documents"
 
 #: shell32.rc:217
 msgid "Administrative Tools"
-msgstr ""
+msgstr "Administrative Tools"
 
 #: shell32.rc:218
 msgid "Music"
-msgstr ""
+msgstr "Music"
 
 #: shell32.rc:219
 msgid "Pictures"
-msgstr ""
+msgstr "Pictures"
 
 #: shell32.rc:220
 msgid "Videos"
-msgstr ""
+msgstr "Videos"
 
 #: shell32.rc:213
 msgid "Program Files (x86)"
@@ -7991,19 +7992,19 @@ msgstr "Program Files (x86)"
 
 #: shell32.rc:221
 msgid "Contacts"
-msgstr ""
+msgstr "Contacs"
 
 #: shell32.rc:222 winefile.rc:110
 msgid "Links"
-msgstr ""
+msgstr "Links"
 
 #: shell32.rc:223
 msgid "Slide Shows"
-msgstr ""
+msgstr "Slide Shows"
 
 #: shell32.rc:224
 msgid "Playlists"
-msgstr ""
+msgstr "Playlists"
 
 #: shell32.rc:148 taskmgr.rc:326
 msgid "Status"
@@ -8019,35 +8020,35 @@ msgstr "機種名"
 
 #: shell32.rc:225
 msgid "Sample Music"
-msgstr ""
+msgstr "Sample Music"
 
 #: shell32.rc:226
 msgid "Sample Pictures"
-msgstr ""
+msgstr "Sample Pictures"
 
 #: shell32.rc:227
 msgid "Sample Playlists"
-msgstr ""
+msgstr "Sample Playlists"
 
 #: shell32.rc:228
 msgid "Sample Videos"
-msgstr ""
+msgstr "Sample Videos"
 
 #: shell32.rc:229
 msgid "Saved Games"
-msgstr ""
+msgstr "Saved Games"
 
 #: shell32.rc:230
 msgid "Searches"
-msgstr ""
+msgstr "Searches"
 
 #: shell32.rc:231
 msgid "Users"
-msgstr ""
+msgstr "Users"
 
 #: shell32.rc:233
 msgid "Downloads"
-msgstr ""
+msgstr "Downloads"
 
 #: shell32.rc:166
 msgid "Unable to create new Folder: Permission denied."
@@ -8226,7 +8227,7 @@ msgstr "エラー"
 
 #: shlwapi.rc:40
 msgid "Don't show me th&is message again"
-msgstr "今後はこのメッセージを表示しない(&i)"
+msgstr "今後はこのメッセージを表示しない(&I)"
 
 #: shlwapi.rc:27
 msgid "%d bytes"
@@ -8351,7 +8352,7 @@ msgstr "ウィンドウの一覧(&M)..."
 
 #: wineps.rc:28
 msgid "Paper Si&ze:"
-msgstr "用紙サイズ(&z):"
+msgstr "用紙サイズ(&Z):"
 
 #: wineps.rc:36
 msgid "Duplex:"
@@ -9243,7 +9244,7 @@ msgstr "紹介の取り扱い中にループです"
 msgid "Referral hop limit exceeded"
 msgstr "紹介のホップ数が限界を超えました"
 
-#: attrib.rc:27 cmd.rc:325
+#: attrib.rc:27 cmd.rc:322
 msgid ""
 "Not Yet Implemented\n"
 "\n"
@@ -9251,7 +9252,7 @@ msgstr ""
 "まだ実装されていません\n"
 "\n"
 
-#: attrib.rc:28 cmd.rc:328
+#: attrib.rc:28 cmd.rc:325
 msgid "%1: File Not Found\n"
 msgstr "%1: ファイルが見つかりません\n"
 
@@ -9411,24 +9412,18 @@ msgstr ""
 msgid "ERASE <filename> deletes a file or set of files.\n"
 msgstr "ERASE <ファイル名> はファイルやファイル群を削除します。\n"
 
-#: cmd.rc:69
+#: cmd.rc:66
 msgid ""
 "The FOR command is used to execute a command for each of a set of files.\n"
 "\n"
 "Syntax: FOR %variable IN (set) DO command\n"
-"\n"
-"The requirement to double the % sign when using FOR in a batch file does\n"
-"not exist in wine's cmd.\n"
 msgstr ""
 "FOR コマンドはそれぞれのファイルに対してコマンドを実行する\n"
 "場合に使用します。\n"
 "\n"
 "構文: FOR %変数 IN (セット) DO コマンド\n"
-"\n"
-"cmd内に存在しないバッチファイル中でFORを使用する場合は%記号\n"
-"を二重にする必要があります。\n"
 
-#: cmd.rc:81
+#: cmd.rc:78
 msgid ""
 "The GOTO command transfers execution to another statement within a\n"
 "batch file.\n"
@@ -9452,7 +9447,7 @@ msgstr ""
 "\n"
 "GOTO は対話モードで使用された場合は意味を持ちません。\n"
 
-#: cmd.rc:84
+#: cmd.rc:81
 msgid ""
 "HELP <command> shows brief help details on a topic.\n"
 "HELP without an argument shows all CMD built-in commands.\n"
@@ -9460,7 +9455,7 @@ msgstr ""
 "HELP <コマンド> はトピックに対する簡潔なヘルプの詳細を表示します。\n"
 "引数なしの HELP はすべての CMD 内蔵コマンドを表示します。\n"
 
-#: cmd.rc:94
+#: cmd.rc:91
 msgid ""
 "IF is used to conditionally execute a command.\n"
 "\n"
@@ -9480,7 +9475,7 @@ msgstr ""
 "2番目の形式において、文字列1と文字列2はダブルクオートで囲われ\n"
 "ていなければなりません。大文字と小文字は区別されません。\n"
 
-#: cmd.rc:100
+#: cmd.rc:97
 msgid ""
 "LABEL is used to set a disk volume label.\n"
 "\n"
@@ -9494,15 +9489,15 @@ msgstr ""
 "コマンドを実行すると指定したドライブの新しいボリューム名を要求します。\n"
 "ディスクのボリューム ラベルは VOL コマンドで表示できます。\n"
 
-#: cmd.rc:103
+#: cmd.rc:100
 msgid "MD <name> is the short version of MKDIR. It creates a subdirectory.\n"
 msgstr "MD <名前> は MKDIR の短縮版です。サブディレクトリを作成します。\n"
 
-#: cmd.rc:104
+#: cmd.rc:101
 msgid "MKDIR <name> creates a subdirectory.\n"
 msgstr "MKDIR <名前> はサブディレクトリを作成します。\n"
 
-#: cmd.rc:111
+#: cmd.rc:108
 msgid ""
 "MOVE relocates a file or directory to a new point within the file system.\n"
 "\n"
@@ -9520,7 +9515,7 @@ msgstr ""
 "\n"
 "MOVE では移動元と移動先のドライブ レターが異なる場合、移動は失敗します。\n"
 
-#: cmd.rc:122
+#: cmd.rc:119
 msgid ""
 "PATH displays or changes the cmd search path.\n"
 "\n"
@@ -9542,7 +9537,7 @@ msgstr ""
 "例えば：\n"
 "PATH %PATH%;c:\\temp\n"
 
-#: cmd.rc:128
+#: cmd.rc:125
 msgid ""
 "PAUSE displays a message on the screen asking the user to press a key.\n"
 "\n"
@@ -9554,7 +9549,7 @@ msgstr ""
 "これは主にバッチ ファイル中で実行されたコマンドの結果がスクロールする前\n"
 "にユーザが読めるようにしたい場合に有用です。\n"
 
-#: cmd.rc:149
+#: cmd.rc:146
 msgid ""
 "PROMPT sets the command-line prompt.\n"
 "\n"
@@ -9596,7 +9591,7 @@ msgstr ""
 "プロンプトはPROMPT環境変数を編集することでも変更できます。\n"
 "したがって、'SET PROMPT=文字列'と'PROMPT 文字列'の効果は同じです。\n"
 
-#: cmd.rc:153
+#: cmd.rc:150
 msgid ""
 "A command line beginning with REM (followed by a space) performs no\n"
 "action, and can therefore be used as a comment in a batch file.\n"
@@ -9604,24 +9599,24 @@ msgstr ""
 "REM(と直後のスペース)で始まるコマンドは実行されません。\n"
 "したがって、バッチファイル中のコメントとして使用できます。\n"
 
-#: cmd.rc:156
+#: cmd.rc:153
 msgid "REN <filename> is the short version of RENAME. It renames a file.\n"
 msgstr "REN <ファイル名> は RENAME の短縮版です。ファイルを変名します。\n"
 
-#: cmd.rc:157
+#: cmd.rc:154
 msgid "RENAME <filename> renames a file.\n"
 msgstr "RENAME <ファイル名> はファイルを変名します。\n"
 
-#: cmd.rc:159
+#: cmd.rc:156
 msgid "RD <dir> is the short version of RMDIR. It deletes a subdirectory.\n"
 msgstr ""
 "RD <ディレクトリ> は RMDIR の短縮版です。サブディレクトリを削除します。\n"
 
-#: cmd.rc:160
+#: cmd.rc:157
 msgid "RMDIR <dir> deletes a subdirectory.\n"
 msgstr "RMDIR <ディレクトリ> はサブディレクトリを削除します。\n"
 
-#: cmd.rc:204
+#: cmd.rc:201
 msgid ""
 "SET displays or changes the cmd environment variables.\n"
 "\n"
@@ -9657,7 +9652,7 @@ msgstr ""
 "れています。cmd内からOSの環境変数を変更することができないこと\n"
 "に注意して下さい。\n"
 
-#: cmd.rc:209
+#: cmd.rc:206
 msgid ""
 "SHIFT is used in a batch file to remove one parameter from the head of\n"
 "the list, so parameter 2 becomes parameter 1 and so on. It has no effect\n"
@@ -9667,7 +9662,7 @@ msgstr ""
 "に使用します。つまり、パラメータ2がパラメータ1になります。コマンドライン\n"
 "から呼ばれたときには何も起こりません。\n"
 
-#: cmd.rc:186 start.rc:50
+#: cmd.rc:183 start.rc:50
 msgid ""
 "Start a program, or open a document in the program normally used for files "
 "with that suffix.\n"
@@ -9704,7 +9699,7 @@ msgstr ""
 "\n"
 "オプション:\n"
 "\"タイトル\"   子ウィンドウのタイトルを指定します。\n"
-"/d directory プログラムを指定したディレクトリで開始します。 \n"
+"/d directory プログラムを指定したディレクトリで開始します。\n"
 "/b           プログラムで新しいコンソールを作成しません。\n"
 "/i           初期の環境変数でプログラムを開始します。\n"
 "/min         最小化状態でプログラムを開始します。\n"
@@ -9724,15 +9719,15 @@ msgstr ""
 "/ProgIDOpen  文書を指定した progID を用いて開きます。\n"
 "/?           このヘルプを表示し、終了します。\n"
 
-#: cmd.rc:211
+#: cmd.rc:208
 msgid "TIME sets or shows the current system time.\n"
 msgstr "TIME は現在の時刻を設定または表示します。\n"
 
-#: cmd.rc:213
+#: cmd.rc:210
 msgid "TITLE <string> sets the window title for the cmd window.\n"
 msgstr "TITLE <文字列> は cmd ウィンドウのウィンドウ タイトルを設定します。\n"
 
-#: cmd.rc:217
+#: cmd.rc:214
 msgid ""
 "TYPE <filename> copies <filename> to the console device (or elsewhere\n"
 "if redirected). No check is made that the file is readable text.\n"
@@ -9741,7 +9736,7 @@ msgstr ""
 "された所)にコピーします。ファイルが可読なテキスト ファイルかどうかチェック\n"
 "されません。\n"
 
-#: cmd.rc:226
+#: cmd.rc:223
 msgid ""
 "VERIFY is used to set, clear or test the verify flag. Valid forms are:\n"
 "\n"
@@ -9760,15 +9755,15 @@ msgstr ""
 "\n"
 "Wine環境では照合フラグは意味を持ちません。\n"
 
-#: cmd.rc:229
+#: cmd.rc:226
 msgid "VER displays the version of cmd you are running.\n"
 msgstr "VER は動作しているcmdのバージョンを表示します。\n"
 
-#: cmd.rc:231
+#: cmd.rc:228
 msgid "VOL shows the volume label of a disk device.\n"
 msgstr "VOL はディスク デバイスのボリューム ラベルを表示します。\n"
 
-#: cmd.rc:235
+#: cmd.rc:232
 msgid ""
 "ENDLOCAL ends localization of environment changes in a batch file\n"
 "which were introduced by a preceding SETLOCAL.\n"
@@ -9776,7 +9771,7 @@ msgstr ""
 "ENDLOCAL は先行する SETLOCAL によって開始されたバッチ ファイルでの環境\n"
 "変更の局所化を終了します。\n"
 
-#: cmd.rc:243
+#: cmd.rc:240
 msgid ""
 "SETLOCAL starts localization of environment changes in a batch file.\n"
 "\n"
@@ -9791,7 +9786,7 @@ msgstr ""
 "ENDLOCAL が現れる(または、ファイルの終端に到達するかのいずれか早いほう)\n"
 "まで保持されます。終了時点で以前の環境設定が復元されます。\n"
 
-#: cmd.rc:246
+#: cmd.rc:243
 msgid ""
 "PUSHD <directoryname> saves the current directory onto a\n"
 "stack, and then changes the current directory to the supplied one.\n"
@@ -9799,13 +9794,13 @@ msgstr ""
 "PUSHD <ディレクトリ名> はカレント ディレクトリをスタック上に保存し、カ\n"
 "レント ディレクトリを指定されたディレクトリに変更します。\n"
 
-#: cmd.rc:248
+#: cmd.rc:245
 msgid "POPD changes current directory to the last one saved with PUSHD.\n"
 msgstr ""
 "POPD は PUSHD で最後に保存されたディレクトリにカレント ディレクトリを変更しま"
 "す。\n"
 
-#: cmd.rc:256
+#: cmd.rc:253
 msgid ""
 "ASSOC shows or modifies file extension associations.\n"
 "\n"
@@ -9825,7 +9820,7 @@ msgstr ""
 "ファイル タイプを等号のあとに指定しない場合は現在の関連付けがあれば削除しま"
 "す。\n"
 
-#: cmd.rc:267
+#: cmd.rc:264
 msgid ""
 "FTYPE shows or modifies open commands associated with file types.\n"
 "\n"
@@ -9850,11 +9845,11 @@ msgstr ""
 "等号のあとに何もオープン コマンドを指定しない場合は、指定したファイル タイプ"
 "に対するコマンド文字列を削除します。\n"
 
-#: cmd.rc:269
+#: cmd.rc:266
 msgid "MORE displays output of files or piped input in pages.\n"
 msgstr "MORE はファイルの出力やパイプ化された入力を表示します。\n"
 
-#: cmd.rc:273
+#: cmd.rc:270
 msgid ""
 "CHOICE displays a text and waits, until the User\n"
 "presses an allowed Key from a selectable list.\n"
@@ -9864,7 +9859,7 @@ msgstr ""
 "すまで待機します。\n"
 "CHOICE は主にバッチ ファイルでメニュー選択を構築するために使われます。\n"
 
-#: cmd.rc:277
+#: cmd.rc:274
 msgid ""
 "EXIT terminates the current command session and returns\n"
 "to the operating system or shell from which you invoked cmd.\n"
@@ -9872,7 +9867,7 @@ msgstr ""
 "EXIT は現在のコマンドセッションを終了してcmdを呼び出したOSまたはシェルに戻し"
 "ます。\n"
 
-#: cmd.rc:315
+#: cmd.rc:312
 msgid ""
 "CMD built-in commands are:\n"
 "ASSOC\t\tShow or modify file extension associations\n"
@@ -9953,110 +9948,110 @@ msgstr ""
 "上記のコマンドに関する詳細を表示するには HELP <コマンド名> と入力して下さ"
 "い。\n"
 
-#: cmd.rc:317
+#: cmd.rc:314
 msgid "Are you sure?"
 msgstr "よろしいですか?"
 
-#: cmd.rc:318 xcopy.rc:40
+#: cmd.rc:315 xcopy.rc:40
 msgctxt "Yes key"
 msgid "Y"
 msgstr "Y"
 
-#: cmd.rc:319 xcopy.rc:41
+#: cmd.rc:316 xcopy.rc:41
 msgctxt "No key"
 msgid "N"
 msgstr "N"
 
-#: cmd.rc:320
+#: cmd.rc:317
 msgid "File association missing for extension %1\n"
 msgstr "拡張子 %1 に対するファイル関連付けがありません\n"
 
-#: cmd.rc:321
+#: cmd.rc:318
 msgid "No open command associated with file type '%1'\n"
 msgstr "ファイル タイプ '%1' に関連付けられた開くコマンドがありません\n"
 
-#: cmd.rc:322
+#: cmd.rc:319
 msgid "Overwrite %1?"
 msgstr "上書き %1?"
 
-#: cmd.rc:323
+#: cmd.rc:320
 msgid "More..."
 msgstr "続く..."
 
-#: cmd.rc:324
+#: cmd.rc:321
 msgid "Line in Batch processing possibly truncated. Using:\n"
 msgstr "バッチ処理の行が切り落とされた可能性があります。対象行:\n"
 
-#: cmd.rc:326
+#: cmd.rc:323
 msgid "Argument missing\n"
 msgstr "引数がありません\n"
 
-#: cmd.rc:327
+#: cmd.rc:324
 msgid "Syntax error\n"
 msgstr "構文エラー\n"
 
-#: cmd.rc:329
+#: cmd.rc:326
 msgid "No help available for %1\n"
 msgstr "%1 に対するヘルプはありません\n"
 
-#: cmd.rc:330
+#: cmd.rc:327
 msgid "Target to GOTO not found\n"
 msgstr "GOTO の対象が見つかりません\n"
 
-#: cmd.rc:331
+#: cmd.rc:328
 msgid "Current Date is %1\n"
 msgstr "現在の日付は %1\n"
 
-#: cmd.rc:332
+#: cmd.rc:329
 msgid "Current Time is %1\n"
 msgstr "現在の時刻は %1\n"
 
-#: cmd.rc:333
+#: cmd.rc:330
 msgid "Enter new date: "
 msgstr "新しい日付を入力してください: "
 
-#: cmd.rc:334
+#: cmd.rc:331
 msgid "Enter new time: "
 msgstr "新しい時刻を入力してください: "
 
-#: cmd.rc:335
+#: cmd.rc:332
 msgid "Environment variable %1 not defined\n"
 msgstr "環境変数 %1 は定義されていません\n"
 
-#: cmd.rc:336 xcopy.rc:38
+#: cmd.rc:333 xcopy.rc:38
 msgid "Failed to open '%1'\n"
 msgstr "'%1' を開けません\n"
 
-#: cmd.rc:337
+#: cmd.rc:334
 msgid "Cannot call batch label outside of a batch script\n"
 msgstr "バッチ スクリプトの外からバッチ ラベルを呼び出すことはできません\n"
 
-#: cmd.rc:338 xcopy.rc:42
+#: cmd.rc:335 xcopy.rc:42
 msgctxt "All key"
 msgid "A"
 msgstr "A"
 
-#: cmd.rc:339
+#: cmd.rc:336
 msgid "Delete %1?"
 msgstr "削除 %1?"
 
-#: cmd.rc:340
+#: cmd.rc:337
 msgid "Echo is %1\n"
 msgstr "Echo は %1\n"
 
-#: cmd.rc:341
+#: cmd.rc:338
 msgid "Verify is %1\n"
 msgstr "Verify は %1\n"
 
-#: cmd.rc:342
+#: cmd.rc:339
 msgid "Verify must be ON or OFF\n"
 msgstr "Verify は ON か OFF で指定してください\n"
 
-#: cmd.rc:343
+#: cmd.rc:340
 msgid "Parameter error\n"
 msgstr "パラメータ エラー\n"
 
-#: cmd.rc:344
+#: cmd.rc:341
 msgid ""
 "Volume Serial Number is %1!04x!-%2!04x!\n"
 "\n"
@@ -10064,72 +10059,72 @@ msgstr ""
 "ボリューム シリアル番号は %1!04x!-%2!04x!\n"
 "\n"
 
-#: cmd.rc:345
+#: cmd.rc:342
 msgid "Volume label (11 characters, <Enter> for none)?"
 msgstr "ボリューム ラベル(半角11文字、<Enter>で無指定)?"
 
-#: cmd.rc:346
+#: cmd.rc:343
 msgid "PATH not found\n"
 msgstr "PATH が見つかりません\n"
 
-#: cmd.rc:347
+#: cmd.rc:344
 msgid "Press any key to continue... "
 msgstr "続けるには何かキーを押して下さい... "
 
-#: cmd.rc:348
+#: cmd.rc:345
 msgid "Wine Command Prompt"
 msgstr "Wine コマンド プロンプト"
 
-#: cmd.rc:349
+#: cmd.rc:346
 msgid "Wine CMD Version %1!S!\n"
-msgstr ""
+msgstr "Wine CMD バージョン %1!S!\n"
 
-#: cmd.rc:350
+#: cmd.rc:347
 msgid "More? "
 msgstr "続行? "
 
-#: cmd.rc:351
+#: cmd.rc:348
 msgid "The input line is too long.\n"
 msgstr "入力行が長すぎます。\n"
 
-#: cmd.rc:352
+#: cmd.rc:349
 msgid "Volume in drive %1!c! is %2\n"
 msgstr "ドライブ %1!c! のボリューム ラベルは %2 です\n"
 
-#: cmd.rc:353
+#: cmd.rc:350
 msgid "Volume in drive %1!c! has no label.\n"
 msgstr "ドライブ %1!c! のボリューム ラベルがありません。\n"
 
-#: cmd.rc:354
+#: cmd.rc:351
 msgid " (Yes|No)"
 msgstr " (Yes|No)"
 
-#: cmd.rc:355
+#: cmd.rc:352
 msgid " (Yes|No|All)"
 msgstr " (Yes|No|All)"
 
-#: cmd.rc:356
+#: cmd.rc:353
 msgid ""
 "Can't recognize '%1' as an internal or external command, or batch script.\n"
 msgstr "%1 を内部または外部コマンド、バッチ スクリプトとして認識できません。\n"
 
-#: cmd.rc:357
+#: cmd.rc:354
 msgid "Division by zero error.\n"
 msgstr "0 による除算エラー。\n"
 
-#: cmd.rc:358
+#: cmd.rc:355
 msgid "Expected an operand.\n"
 msgstr "被演算子がありません。\n"
 
-#: cmd.rc:359
+#: cmd.rc:356
 msgid "Expected an operator.\n"
 msgstr "演算子がありません。\n"
 
-#: cmd.rc:360
+#: cmd.rc:357
 msgid "Mismatch in parentheses.\n"
 msgstr "括弧が対応していません。\n"
 
-#: cmd.rc:361
+#: cmd.rc:358
 msgid ""
 "Badly formed number - must be one of decimal (12),\n"
 " hexadecimal (0x34) or octal (056).\n"
@@ -10368,7 +10363,7 @@ msgstr "アクティブな接続"
 
 #: netstat.rc:28
 msgid "Proto"
-msgstr ""
+msgstr "合意"
 
 #: netstat.rc:29
 msgid "Local Address"
@@ -10420,77 +10415,59 @@ msgstr "不明なプロトコル"
 
 #: netstat.rc:41
 msgid "TCP Statistics for IPv4"
-msgstr ""
+msgstr "TCP 統計値 (IPv4)"
 
 #: netstat.rc:42
-#, fuzzy
-#| msgid "Active Connections"
 msgid "Active Opens"
-msgstr "アクティブな接続"
+msgstr "能動的な開始"
 
 #: netstat.rc:43
 msgid "Passive Opens"
-msgstr ""
+msgstr "受動的な開始"
 
 #: netstat.rc:44
-#, fuzzy
-#| msgid "Active Connections"
 msgid "Failed Connection Attempts"
-msgstr "アクティブな接続"
+msgstr "失敗した接続の試行"
 
 #: netstat.rc:45
-#, fuzzy
-#| msgid "Active Connections"
 msgid "Reset Connections"
-msgstr "アクティブな接続"
+msgstr "リセットされた接続"
 
 #: netstat.rc:46
-#, fuzzy
-#| msgid "Active Connections"
 msgid "Current Connections"
-msgstr "アクティブな接続"
+msgstr "現在の接続"
 
 #: netstat.rc:47
-#, fuzzy
-#| msgid "Segment locked.\n"
 msgid "Segments Received"
-msgstr "セグメントはロックされています。\n"
+msgstr "受信セグメント"
 
 #: netstat.rc:48
-#, fuzzy
-#| msgid "Segment locked.\n"
 msgid "Segments Sent"
-msgstr "セグメントはロックされています。\n"
+msgstr "送信セグメント"
 
 #: netstat.rc:49
 msgid "Segments Retransmitted"
-msgstr ""
+msgstr "再送信セグメント"
 
 #: netstat.rc:50
 msgid "UDP Statistics for IPv4"
-msgstr ""
+msgstr "UDP 統計値 (IPv4)"
 
 #: netstat.rc:51
-#, fuzzy
-#| msgid "Segment locked.\n"
 msgid "Datagrams Received"
-msgstr "セグメントはロックされています。\n"
+msgstr "受信データグラム"
 
 #: netstat.rc:52
-#, fuzzy
-#| msgid "Local Port"
 msgid "No Ports"
-msgstr "ローカル ポート"
+msgstr "ポートなし"
 
 #: netstat.rc:53
-#, fuzzy
-#| msgid "Decoding Error"
 msgid "Receive Errors"
-msgstr "デコード エラー"
+msgstr "受信エラー"
 
 #: netstat.rc:54
 msgid "Datagrams Sent"
-msgstr ""
+msgstr "送信データグラム"
 
 #: notepad.rc:27
 msgid "&New\tCtrl+N"
@@ -11028,15 +11005,15 @@ msgstr "インターフェイス"
 
 #: oleview.rc:138
 msgid "Registry"
-msgstr ""
+msgstr "レジストリ"
 
 #: oleview.rc:139
 msgid "Implementation"
-msgstr ""
+msgstr "実装"
 
 #: oleview.rc:140
 msgid "Activation"
-msgstr ""
+msgstr "発動"
 
 #: oleview.rc:142
 msgid "CoGetClassObject failed."
@@ -11380,7 +11357,7 @@ msgstr "検索(&F)...\tCtrl+F"
 
 #: regedit.rc:61
 msgid "Find Ne&xt\tF3"
-msgstr "次の検索候補(&x)\tF3"
+msgstr "次の検索候補(&X)\tF3"
 
 #: regedit.rc:65
 msgid "Status &Bar"
@@ -12560,7 +12537,7 @@ msgstr ""
 
 #: view.rc:33
 msgid "&Pan"
-msgstr "パン(&P)"
+msgstr "移動(&P)"
 
 #: view.rc:35
 msgid "&Scale to Window"
@@ -13319,7 +13296,7 @@ msgstr "それぞれの文字は %1!u! ピクセルの幅、%2!u! ピクセル�
 
 #: wineconsole.rc:35
 msgid "This is a test"
-msgstr "これはテスト"
+msgstr "これはテストです。"
 
 #: wineconsole.rc:41
 msgid "wineconsole: Couldn't parse event id\n"
@@ -13639,20 +13616,20 @@ msgid "Not yet implemented"
 msgstr "未実装"
 
 #: winefile.rc:106
-msgid "CDate"
+msgid "Creation date"
 msgstr "作成日"
 
 #: winefile.rc:107
-msgid "ADate"
+msgid "Access date"
 msgstr "アクセス日"
 
 #: winefile.rc:108
-msgid "MDate"
+msgid "Modification date"
 msgstr "変更日"
 
 #: winefile.rc:109
 msgid "Index/Inode"
-msgstr ""
+msgstr "索引・Inode"
 
 #: winefile.rc:114
 msgid "%1 of %2 free"

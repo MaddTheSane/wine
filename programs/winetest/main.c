@@ -313,8 +313,6 @@ static void print_version (void)
     static const char platform[] = "i386";
 #elif defined(__x86_64__)
     static const char platform[] = "x86_64";
-#elif defined(__sparc__)
-    static const char platform[] = "sparc";
 #elif defined(__powerpc__)
     static const char platform[] = "powerpc";
 #elif defined(__arm__)
@@ -1074,7 +1072,7 @@ run_tests (char *logname, char *outdir)
     }
     report (R_DELTA, 0, "Running: Done");
 
-    report (R_STATUS, "Cleaning up");
+    report (R_STATUS, "Cleaning up - %u failures", failures);
     CloseHandle( logfile );
     logfile = 0;
     if (!outdir)
@@ -1355,7 +1353,7 @@ int main( int argc, char *argv[] )
                 if (!send_file (logname) && !DeleteFileA(logname))
                     report (R_WARNING, "Can't remove logfile: %u", GetLastError());
         } else run_tests (logname, outdir);
-        report (R_STATUS, "Finished");
+        report (R_STATUS, "Finished - %u failures", failures);
     }
     if (poweroff)
     {

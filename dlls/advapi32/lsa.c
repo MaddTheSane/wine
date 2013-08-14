@@ -371,6 +371,7 @@ NTSTATUS WINAPI LsaLookupNames2( LSA_HANDLE policy, ULONG flags, ULONG count,
 {
     ULONG i, sid_size_total = 0, domain_size_max = 0, size, domainname_size_total = 0;
     ULONG sid_size, domain_size, mapped;
+    LSA_UNICODE_STRING domain;
     BOOL handled = FALSE;
     char *domain_data;
     SID_NAME_USE use;
@@ -405,7 +406,7 @@ NTSTATUS WINAPI LsaLookupNames2( LSA_HANDLE policy, ULONG flags, ULONG count,
 
     /* use maximum domain count */
     if (!(*domains = heap_alloc(sizeof(LSA_REFERENCED_DOMAIN_LIST) + sizeof(LSA_TRUST_INFORMATION)*count +
-                                sid_size_total + domainname_size_total)))
+                                sid_size_total + domainname_size_total*sizeof(WCHAR))))
     {
         heap_free(*sids);
         return STATUS_NO_MEMORY;
@@ -414,13 +415,11 @@ NTSTATUS WINAPI LsaLookupNames2( LSA_HANDLE policy, ULONG flags, ULONG count,
     (*domains)->Domains = (LSA_TRUST_INFORMATION*)((char*)*domains + sizeof(LSA_REFERENCED_DOMAIN_LIST));
     domain_data = (char*)(*domains)->Domains + sizeof(LSA_TRUST_INFORMATION)*count;
 
+    domain.Buffer = heap_alloc(domain_size_max*sizeof(WCHAR));
     for (i = 0; i < count; i++)
     {
-        LSA_UNICODE_STRING domain;
-
         domain.Length = domain_size_max*sizeof(WCHAR);
         domain.MaximumLength = domain_size_max*sizeof(WCHAR);
-        domain.Buffer = heap_alloc(domain.Length);
 
         (*sids)[i].Use = SidTypeUnknown;
         (*sids)[i].DomainIndex = -1;
@@ -440,12 +439,12 @@ NTSTATUS WINAPI LsaLookupNames2( LSA_HANDLE policy, ULONG flags, ULONG count,
             if (domain_size)
             {
                 domain.Length = domain_size * sizeof(WCHAR);
+                domain.MaximumLength = (domain_size + 1) * sizeof(WCHAR);
                 (*sids)[i].DomainIndex = lsa_reflist_add_domain(*domains, &domain, &domain_data);
             }
         }
-
-        heap_free(domain.Buffer);
     }
+    heap_free(domain.Buffer);
 
     if (mapped == count) return STATUS_SUCCESS;
     if (mapped > 0 && mapped < count) return STATUS_SOME_NOT_MAPPED;

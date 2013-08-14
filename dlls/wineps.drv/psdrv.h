@@ -485,6 +485,7 @@ extern void PSDRV_ResetClip( PHYSDEV dev ) DECLSPEC_HIDDEN;
 extern BOOL PSDRV_CopyColor(PSCOLOR *col1, PSCOLOR *col2) DECLSPEC_HIDDEN;
 extern void PSDRV_CreateColor( PHYSDEV dev, PSCOLOR *pscolor,
 		     COLORREF wincolor ) DECLSPEC_HIDDEN;
+extern PSRGB rgb_to_grayscale_scale( void ) DECLSPEC_HIDDEN;
 extern char PSDRV_UnicodeToANSI(int u) DECLSPEC_HIDDEN;
 
 extern INT PSDRV_WriteHeader( PHYSDEV dev, LPCWSTR title ) DECLSPEC_HIDDEN;
@@ -520,7 +521,7 @@ extern BOOL PSDRV_WriteRotate(PHYSDEV dev, float ang) DECLSPEC_HIDDEN;
 extern BOOL PSDRV_WriteIndexColorSpaceBegin(PHYSDEV dev, int size) DECLSPEC_HIDDEN;
 extern BOOL PSDRV_WriteIndexColorSpaceEnd(PHYSDEV dev) DECLSPEC_HIDDEN;
 extern BOOL PSDRV_WriteRGBQUAD(PHYSDEV dev, const RGBQUAD *rgb, int number) DECLSPEC_HIDDEN;
-extern BOOL PSDRV_WriteImage(PHYSDEV dev, WORD depth, INT xDst, INT yDst,
+extern BOOL PSDRV_WriteImage(PHYSDEV dev, WORD depth, BOOL grayscale, INT xDst, INT yDst,
 			     INT widthDst, INT heightDst, INT widthSrc,
 			     INT heightSrc, BOOL mask, BOOL top_down) DECLSPEC_HIDDEN;
 extern BOOL PSDRV_WriteBytes(PHYSDEV dev, const BYTE *bytes, DWORD number) DECLSPEC_HIDDEN;

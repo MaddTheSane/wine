@@ -329,6 +329,17 @@ static void test_D3DXCheckTextureRequirements(IDirect3DDevice9 *device)
     ok(hr == D3D_OK, "D3DXCheckTextureRequirements returned %#x, expected %#x\n", hr, D3D_OK);
     ok(format == expected, "Returned format %u, expected %u\n", format, expected);
 
+    if(SUCCEEDED(IDirect3D9_CheckDeviceFormat(d3d, params.AdapterOrdinal, params.DeviceType,
+                                              mode.Format, 0, D3DRTYPE_TEXTURE, D3DFMT_P8)))
+        expected = D3DFMT_P8;
+    else
+        expected = D3DFMT_A8R8G8B8;
+
+    format = D3DFMT_P8;
+    hr = D3DXCheckTextureRequirements(device, NULL, NULL, NULL, 0, &format, D3DPOOL_DEFAULT);
+    ok(hr == D3D_OK, "D3DXCheckTextureRequirements returned %#x, expected %#x\n", hr, D3D_OK);
+    ok(format == expected, "Returned format %u, expected %u\n", format, expected);
+
     IDirect3D9_Release(d3d);
 }
 
@@ -728,11 +739,10 @@ static void test_D3DXCreateTexture(IDirect3DDevice9 *device)
     }
 
     /* D3DXCreateTextureFromResource */
-    todo_wine {
-        hr = D3DXCreateTextureFromResourceA(device, NULL, MAKEINTRESOURCEA(IDB_BITMAP_1x1), &texture);
-        ok(hr == D3D_OK, "D3DXCreateTextureFromResource returned %#x, expected %#x\n", hr, D3D_OK);
-        if (SUCCEEDED(hr)) IDirect3DTexture9_Release(texture);
-    }
+    hr = D3DXCreateTextureFromResourceA(device, NULL, MAKEINTRESOURCEA(IDB_BITMAP_1x1), &texture);
+    ok(hr == D3D_OK, "D3DXCreateTextureFromResource returned %#x, expected %#x\n", hr, D3D_OK);
+    if (SUCCEEDED(hr)) IDirect3DTexture9_Release(texture);
+
     hr = D3DXCreateTextureFromResourceA(device, NULL, MAKEINTRESOURCEA(IDD_BITMAPDATA_1x1), &texture);
     ok(hr == D3D_OK, "D3DXCreateTextureFromResource returned %#x, expected %#x\n", hr, D3D_OK);
     if (SUCCEEDED(hr)) IDirect3DTexture9_Release(texture);

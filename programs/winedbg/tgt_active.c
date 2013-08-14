@@ -684,8 +684,6 @@ static void output_system_info(void)
     static const char platform[] = "i386";
 #elif defined(__x86_64__)
     static const char platform[] = "x86_64";
-#elif defined(__sparc__)
-    static const char platform[] = "sparc";
 #elif defined(__powerpc__)
     static const char platform[] = "powerpc";
 #elif defined(__arm__)
@@ -948,7 +946,8 @@ static BOOL tgt_process_active_close_process(struct dbg_process* pcs, BOOL kill)
             ContinueDebugEvent(dbg_curr_pid, dbg_curr_tid, DBG_CONTINUE);
         }
     }
-    else
+
+    if (!kill)
     {
         if (!DebugActiveProcessStop(pcs->pid)) return FALSE;
     }

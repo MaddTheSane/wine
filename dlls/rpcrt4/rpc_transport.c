@@ -2066,7 +2066,7 @@ static RPC_STATUS rpcrt4_http_internet_connect(RpcConnection_http *httpc)
     LPWSTR password = NULL;
     LPWSTR servername = NULL;
     const WCHAR *option;
-    INTERNET_PORT port = INTERNET_INVALID_PORT_NUMBER; /* use default port */
+    INTERNET_PORT port;
 
     if (httpc->common.QOS &&
         (httpc->common.QOS->qos->AdditionalSecurityInfoType == RPC_C_AUTHN_INFO_TYPE_HTTP))
@@ -2162,6 +2162,11 @@ static RPC_STATUS rpcrt4_http_internet_connect(RpcConnection_http *httpc)
         }
         MultiByteToWideChar(CP_ACP, 0, httpc->common.NetworkAddr, -1, servername, strlen(httpc->common.NetworkAddr) + 1);
     }
+
+    port = (httpc->common.QOS &&
+            (httpc->common.QOS->qos->AdditionalSecurityInfoType == RPC_C_AUTHN_INFO_TYPE_HTTP) &&
+            (httpc->common.QOS->qos->u.HttpCredentials->Flags & RPC_C_HTTP_FLAG_USE_SSL)) ?
+            INTERNET_DEFAULT_HTTPS_PORT : INTERNET_DEFAULT_HTTP_PORT;
 
     httpc->session = InternetConnectW(httpc->app_info, servername, port, user, password,
                                       INTERNET_SERVICE_HTTP, 0, 0);
@@ -2324,9 +2329,22 @@ static RPC_STATUS rpcrt4_http_prepare_out_pipe(HINTERNET out_request,
     if (status != RPC_S_OK) return status;
     TRACE("received (%d) from first prepare header\n", field1);
 
-    status = rpcrt4_http_read_http_packet(out_request, &pkt_from_server,
-                                          &data_from_server);
-    if (status != RPC_S_OK) return status;
+    for (;;)
+    {
+        status = rpcrt4_http_read_http_packet(out_request, &pkt_from_server,
+                                              &data_from_server);
+        if (status != RPC_S_OK) return status;
+        if (pkt_from_server.http.flags != 0x0001) break;
+
+        TRACE("http idle packet, waiting for real packet\n");
+        HeapFree(GetProcessHeap(), 0, data_from_server);
+        if (pkt_from_server.http.num_data_items != 0)
+        {
+            ERR("HTTP idle packet should have no data items instead of %d\n",
+                pkt_from_server.http.num_data_items);
+            return RPC_S_PROTOCOL_ERROR;
+        }
+    }
     status = RPCRT4_ParseHttpPrepareHeader2(&pkt_from_server, data_from_server,
                                             &field1, flow_control_increment,
                                             &field3);
@@ -2346,6 +2364,7 @@ static RPC_STATUS rpcrt4_ncacn_http_open(RpcConnection* Connection)
     static const WCHAR wszColon[] = {':',0};
     static const WCHAR wszAcceptType[] = {'a','p','p','l','i','c','a','t','i','o','n','/','r','p','c',0};
     LPCWSTR wszAcceptTypes[] = { wszAcceptType, NULL };
+    DWORD flags;
     WCHAR *url;
     RPC_STATUS status;
     BOOL secure;
@@ -2385,20 +2404,19 @@ static RPC_STATUS rpcrt4_ncacn_http_open(RpcConnection* Connection)
              (httpc->common.QOS->qos->AdditionalSecurityInfoType == RPC_C_AUTHN_INFO_TYPE_HTTP) &&
              (httpc->common.QOS->qos->u.HttpCredentials->Flags & RPC_C_HTTP_FLAG_USE_SSL);
 
-    httpc->in_request = HttpOpenRequestW(httpc->session, wszVerbIn, url, NULL, NULL,
-                                         wszAcceptTypes,
-                                         (secure ? INTERNET_FLAG_SECURE : 0)|INTERNET_FLAG_KEEP_CONNECTION|INTERNET_FLAG_PRAGMA_NOCACHE,
-                                         (DWORD_PTR)httpc->async_data);
+    flags = INTERNET_FLAG_KEEP_CONNECTION | INTERNET_FLAG_PRAGMA_NOCACHE | INTERNET_FLAG_NO_CACHE_WRITE;
+    if (secure) flags |= INTERNET_FLAG_SECURE;
+
+    httpc->in_request = HttpOpenRequestW(httpc->session, wszVerbIn, url, NULL, NULL, wszAcceptTypes,
+                                         flags, (DWORD_PTR)httpc->async_data);
     if (!httpc->in_request)
     {
         ERR("HttpOpenRequestW failed with error %d\n", GetLastError());
         HeapFree(GetProcessHeap(), 0, url);
         return RPC_S_SERVER_UNAVAILABLE;
     }
-    httpc->out_request = HttpOpenRequestW(httpc->session, wszVerbOut, url, NULL, NULL,
-                                          wszAcceptTypes,
-                                          (secure ? INTERNET_FLAG_SECURE : 0)|INTERNET_FLAG_KEEP_CONNECTION|INTERNET_FLAG_PRAGMA_NOCACHE,
-                                          (DWORD_PTR)httpc->async_data);
+    httpc->out_request = HttpOpenRequestW(httpc->session, wszVerbOut, url, NULL, NULL, wszAcceptTypes,
+                                          flags, (DWORD_PTR)httpc->async_data);
     HeapFree(GetProcessHeap(), 0, url);
     if (!httpc->out_request)
     {
@@ -3104,7 +3122,7 @@ RPC_STATUS WINAPI RpcProtseqVectorFreeA(RPC_PROTSEQ_VECTORA **protseqs)
 
   if (*protseqs)
   {
-    int i;
+    unsigned int i;
     for (i = 0; i < (*protseqs)->Count; i++)
       HeapFree(GetProcessHeap(), 0, (*protseqs)->Protseq[i]);
     HeapFree(GetProcessHeap(), 0, *protseqs);
@@ -3122,7 +3140,7 @@ RPC_STATUS WINAPI RpcProtseqVectorFreeW(RPC_PROTSEQ_VECTORW **protseqs)
 
   if (*protseqs)
   {
-    int i;
+    unsigned int i;
     for (i = 0; i < (*protseqs)->Count; i++)
       HeapFree(GetProcessHeap(), 0, (*protseqs)->Protseq[i]);
     HeapFree(GetProcessHeap(), 0, *protseqs);
@@ -3137,7 +3155,7 @@ RPC_STATUS WINAPI RpcProtseqVectorFreeW(RPC_PROTSEQ_VECTORW **protseqs)
 RPC_STATUS WINAPI RpcNetworkInqProtseqsW( RPC_PROTSEQ_VECTORW** protseqs )
 {
   RPC_PROTSEQ_VECTORW *pvector;
-  int i = 0;
+  unsigned int i;
   RPC_STATUS status = RPC_S_OUT_OF_MEMORY;
 
   TRACE("(%p)\n", protseqs);
@@ -3170,7 +3188,7 @@ end:
 RPC_STATUS WINAPI RpcNetworkInqProtseqsA(RPC_PROTSEQ_VECTORA** protseqs)
 {
   RPC_PROTSEQ_VECTORA *pvector;
-  int i = 0;
+  unsigned int i;
   RPC_STATUS status = RPC_S_OUT_OF_MEMORY;
 
   TRACE("(%p)\n", protseqs);

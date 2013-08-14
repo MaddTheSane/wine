@@ -33,7 +33,6 @@
 #include <stdlib.h>
 
 #ifdef __APPLE__
-# include <CoreFoundation/CFBundle.h>
 # include <CoreFoundation/CFLocale.h>
 # include <CoreFoundation/CFString.h>
 #endif
@@ -2980,7 +2979,7 @@ INT WINAPI CompareStringA(LCID lcid, DWORD flags,
     WCHAR *buf1W = NtCurrentTeb()->StaticUnicodeBuffer;
     WCHAR *buf2W = buf1W + 130;
     LPWSTR str1W, str2W;
-    INT len1W, len2W, ret;
+    INT len1W = 0, len2W = 0, ret;
     UINT locale_cp = CP_ACP;
 
     if (!str1 || !str2)
@@ -2995,7 +2994,7 @@ INT WINAPI CompareStringA(LCID lcid, DWORD flags,
 
     if (len1)
     {
-        len1W = MultiByteToWideChar(locale_cp, 0, str1, len1, buf1W, 130);
+        if (len1 <= 130) len1W = MultiByteToWideChar(locale_cp, 0, str1, len1, buf1W, 130);
         if (len1W)
             str1W = buf1W;
         else
@@ -3018,7 +3017,7 @@ INT WINAPI CompareStringA(LCID lcid, DWORD flags,
 
     if (len2)
     {
-        len2W = MultiByteToWideChar(locale_cp, 0, str2, len2, buf2W, 130);
+        if (len2 <= 130) len2W = MultiByteToWideChar(locale_cp, 0, str2, len2, buf2W, 130);
         if (len2W)
             str2W = buf2W;
         else
@@ -3197,16 +3196,16 @@ void LOCALE_Init(void)
 
     if (user_locale_country_ref)
     {
-        user_locale_string_ref = CFStringCreateWithFormat(NULL, NULL, CFSTR("%@_%@.UTF-8"),
+        user_locale_string_ref = CFStringCreateWithFormat(NULL, NULL, CFSTR("%@_%@"),
             user_locale_lang_ref, user_locale_country_ref);
     }
     else
     {
-        user_locale_string_ref = CFStringCreateWithFormat(NULL, NULL, CFSTR("%@.UTF-8"),
-            user_locale_lang_ref);
+        user_locale_string_ref = CFStringCreateCopy(NULL, user_locale_lang_ref);
     }
 
     CFStringGetCString( user_locale_string_ref, user_locale, sizeof(user_locale), kCFStringEncodingUTF8 );
+    strcat(user_locale, ".UTF-8");
 
     unix_cp = CP_UTF8;  /* default to utf-8 even if we don't get a valid locale */
     setenv( "LANG", user_locale, 0 );
@@ -3225,12 +3224,13 @@ void LOCALE_Init(void)
         /* Retrieve the preferred language as chosen in System Preferences. */
         /* If language is a less specific variant of locale (e.g. 'en' vs. 'en_US'),
            leave things be. */
-        CFArrayRef all_locales = CFLocaleCopyAvailableLocaleIdentifiers();
-        CFArrayRef preferred_locales = CFBundleCopyLocalizationsForPreferences( all_locales, NULL );
+        CFArrayRef preferred_langs = CFLocaleCopyPreferredLanguages();
+        CFStringRef canonical_lang_string_ref = CFLocaleCreateCanonicalLanguageIdentifierFromString(NULL, user_locale_string_ref);
         CFStringRef user_language_string_ref;
-        if (preferred_locales && CFArrayGetCount( preferred_locales ) &&
-            (user_language_string_ref = CFArrayGetValueAtIndex( preferred_locales, 0 )) &&
-            !CFEqual(user_language_string_ref, user_locale_lang_ref))
+        if (preferred_langs && canonical_lang_string_ref && CFArrayGetCount( preferred_langs ) &&
+            (user_language_string_ref = CFArrayGetValueAtIndex( preferred_langs, 0 )) &&
+            !CFEqual(user_language_string_ref, user_locale_lang_ref) &&
+            !CFEqual(user_language_string_ref, canonical_lang_string_ref))
         {
             struct locale_name locale_name;
             WCHAR buffer[128];
@@ -3238,11 +3238,12 @@ void LOCALE_Init(void)
             strcpynAtoW( buffer, user_locale, sizeof(buffer)/sizeof(WCHAR) );
             parse_locale_name( buffer, &locale_name );
             lcid_LC_MESSAGES = locale_name.lcid;
-            TRACE( "setting lcid_LC_MESSAGES to '%s'\n", user_locale );
+            TRACE( "setting lcid_LC_MESSAGES to '%s' %04x\n", user_locale, lcid_LC_MESSAGES );
         }
-        CFRelease( all_locales );
-        if (preferred_locales)
-            CFRelease( preferred_locales );
+        if (preferred_langs)
+            CFRelease( preferred_langs );
+        if (canonical_lang_string_ref)
+            CFRelease( canonical_lang_string_ref );
     }
 
     CFRelease( user_locale_ref );
@@ -4480,8 +4481,8 @@ INT WINAPI IdnToUnicode(DWORD dwFlags, LPCWSTR lpASCIICharStr, INT cchASCIIChar,
             return 0;
         }
 
-        if((dwFlags&IDN_USE_STD3_ASCII_RULES) && (lpUnicodeCharStr[label_start]=='-' ||
-                    lpUnicodeCharStr[label_end-1]=='-')) {
+        if((dwFlags&IDN_USE_STD3_ASCII_RULES) && (lpASCIICharStr[label_start]=='-' ||
+                    lpASCIICharStr[label_end-1]=='-')) {
             SetLastError(ERROR_INVALID_NAME);
             return 0;
         }
@@ -4494,7 +4495,7 @@ INT WINAPI IdnToUnicode(DWORD dwFlags, LPCWSTR lpASCIICharStr, INT cchASCIIChar,
                 tolowerW(lpASCIICharStr[label_start])!='x' ||
                 tolowerW(lpASCIICharStr[label_start+1])!='n' ||
                 lpASCIICharStr[label_start+2]!='-' || lpASCIICharStr[label_start+3]!='-') {
-            if(label_end < cchUnicodeChar)
+            if(label_end < cchASCIIChar)
                 label_end++;
 
             if(!lpUnicodeCharStr) {

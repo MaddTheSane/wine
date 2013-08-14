@@ -619,8 +619,27 @@ static HRESULT WINAPI Authenticate_Authenticate(IAuthenticate *iface,
     HWND *hwnd, LPWSTR *username, LPWSTR *password)
 {
     BindStatusCallback *This = impl_from_IAuthenticate(iface);
-    FIXME("(%p)->(%p %p %p)\n", This, hwnd, username, password);
-    return E_NOTIMPL;
+    httprequest *request = This->request;
+
+    TRACE("(%p)->(%p %p %p)\n", This, hwnd, username, password);
+
+    if (request->user && *request->user)
+    {
+        if (hwnd) *hwnd = NULL;
+        *username = CoTaskMemAlloc(SysStringByteLen(request->user)+sizeof(WCHAR));
+        *password = CoTaskMemAlloc(SysStringByteLen(request->password)+sizeof(WCHAR));
+        if (!*username || !*password)
+        {
+            CoTaskMemFree(*username);
+            CoTaskMemFree(*password);
+            return E_OUTOFMEMORY;
+        }
+
+        memcpy(*username, request->user, SysStringByteLen(request->user)+sizeof(WCHAR));
+        memcpy(*password, request->password, SysStringByteLen(request->password)+sizeof(WCHAR));
+    }
+
+    return S_OK;
 }
 
 static const IAuthenticateVtbl AuthenticateVtbl = {
@@ -703,7 +722,7 @@ static HRESULT BindStatusCallback_create(httprequest* This, BindStatusCallback *
                 heap_free(bsc);
                 return hr;
             }
-            if ((hr = SafeArrayGetUBound(sa, 1, &size) != S_OK))
+            if ((hr = SafeArrayGetUBound(sa, 1, &size)) != S_OK)
             {
                 SafeArrayUnaccessData(sa);
                 heap_free(bsc);
@@ -717,26 +736,30 @@ static HRESULT BindStatusCallback_create(httprequest* This, BindStatusCallback *
             /* fall through */
         case VT_EMPTY:
         case VT_ERROR:
+        case VT_NULL:
             ptr = NULL;
             size = 0;
             break;
         }
 
-        bsc->body = GlobalAlloc(GMEM_FIXED, size);
-        if (!bsc->body)
+        if (size)
         {
-            if (V_VT(body) == VT_BSTR)
-                heap_free(ptr);
-            else if (V_VT(body) == (VT_ARRAY|VT_UI1))
-                SafeArrayUnaccessData(sa);
+            bsc->body = GlobalAlloc(GMEM_FIXED, size);
+            if (!bsc->body)
+            {
+                if (V_VT(body) == VT_BSTR)
+                    heap_free(ptr);
+                else if (V_VT(body) == (VT_ARRAY|VT_UI1))
+                    SafeArrayUnaccessData(sa);
 
-            heap_free(bsc);
-            return E_OUTOFMEMORY;
+                heap_free(bsc);
+                return E_OUTOFMEMORY;
+            }
+
+            send_data = GlobalLock(bsc->body);
+            memcpy(send_data, ptr, size);
+            GlobalUnlock(bsc->body);
         }
-
-        send_data = GlobalLock(bsc->body);
-        memcpy(send_data, ptr, size);
-        GlobalUnlock(bsc->body);
 
         if (V_VT(body) == VT_BSTR)
             heap_free(ptr);
@@ -882,12 +905,6 @@ static HRESULT httprequest_open(httprequest *This, BSTR method, BSTR url,
         return hr;
     }
 
-    This->uri = uri;
-
-    VariantInit(&is_async);
-    hr = VariantChangeType(&is_async, &async, 0, VT_BOOL);
-    This->async = hr == S_OK && V_BOOL(&is_async);
-
     VariantInit(&str);
     hr = VariantChangeType(&str, &user, 0, VT_BSTR);
     if (hr == S_OK)
@@ -897,6 +914,38 @@ static HRESULT httprequest_open(httprequest *This, BSTR method, BSTR url,
     hr = VariantChangeType(&str, &password, 0, VT_BSTR);
     if (hr == S_OK)
         This->password = V_BSTR(&str);
+
+    /* add authentication info */
+    if (This->user && *This->user)
+    {
+        IUriBuilder *builder;
+
+        hr = CreateIUriBuilder(uri, 0, 0, &builder);
+        if (hr == S_OK)
+        {
+            IUri *full_uri;
+
+            IUriBuilder_SetUserName(builder, This->user);
+            IUriBuilder_SetPassword(builder, This->password);
+            hr = IUriBuilder_CreateUri(builder, -1, 0, 0, &full_uri);
+            if (hr == S_OK)
+            {
+                IUri_Release(uri);
+                uri = full_uri;
+            }
+            else
+                WARN("failed to create modified uri, 0x%08x\n", hr);
+            IUriBuilder_Release(builder);
+        }
+        else
+            WARN("IUriBuilder creation failed, 0x%08x\n", hr);
+    }
+
+    This->uri = uri;
+
+    VariantInit(&is_async);
+    hr = VariantChangeType(&is_async, &async, 0, VT_BOOL);
+    This->async = hr == S_OK && V_BOOL(&is_async);
 
     httprequest_setreadystate(This, READYSTATE_LOADING);
 
@@ -948,7 +997,8 @@ static HRESULT httprequest_getResponseHeader(httprequest *This, BSTR header, BST
 {
     struct httpheader *entry;
 
-    if (!header || !value) return E_INVALIDARG;
+    if (!header) return E_INVALIDARG;
+    if (!value) return E_POINTER;
 
     if (This->raw_respheaders && list_empty(&This->respheaders))
     {
@@ -982,7 +1032,7 @@ static HRESULT httprequest_getResponseHeader(httprequest *This, BSTR header, BST
 
 static HRESULT httprequest_getAllResponseHeaders(httprequest *This, BSTR *respheaders)
 {
-    if (!respheaders) return E_INVALIDARG;
+    if (!respheaders) return E_POINTER;
 
     *respheaders = SysAllocString(This->raw_respheaders);
 
@@ -1015,17 +1065,16 @@ static HRESULT httprequest_abort(httprequest *This)
 
 static HRESULT httprequest_get_status(httprequest *This, LONG *status)
 {
-    if (!status) return E_INVALIDARG;
-    if (This->state != READYSTATE_COMPLETE) return E_FAIL;
+    if (!status) return E_POINTER;
 
     *status = This->status;
 
-    return S_OK;
+    return This->state == READYSTATE_COMPLETE ? S_OK : E_FAIL;
 }
 
 static HRESULT httprequest_get_statusText(httprequest *This, BSTR *status)
 {
-    if (!status) return E_INVALIDARG;
+    if (!status) return E_POINTER;
     if (This->state != READYSTATE_COMPLETE) return E_FAIL;
 
     *status = SysAllocString(This->status_text);
@@ -1038,7 +1087,7 @@ static HRESULT httprequest_get_responseText(httprequest *This, BSTR *body)
     HGLOBAL hglobal;
     HRESULT hr;
 
-    if (!body) return E_INVALIDARG;
+    if (!body) return E_POINTER;
     if (This->state != READYSTATE_COMPLETE) return E_FAIL;
 
     hr = GetHGlobalFromStream(This->bsc->stream, &hglobal);
@@ -1184,7 +1233,7 @@ static HRESULT httprequest_get_responseStream(httprequest *This, VARIANT *body)
 
 static HRESULT httprequest_get_readyState(httprequest *This, LONG *state)
 {
-    if (!state) return E_INVALIDARG;
+    if (!state) return E_POINTER;
 
     *state = This->state;
     return S_OK;

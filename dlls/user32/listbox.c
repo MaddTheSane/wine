@@ -27,8 +27,6 @@
  * If you discover missing features, or bugs, please note them below.
  *
  * TODO:
- *    - GetListBoxInfo()
- *    - LB_GETLISTBOXINFO
  *    - LBS_NODATA
  */
 
@@ -1767,6 +1765,8 @@ static LRESULT LISTBOX_SetCount( LB_DESCR *descr, INT count )
             if ((ret = LISTBOX_RemoveItem( descr, (descr->nb_items - 1) )) < 0)
                 return ret;
     }
+
+    InvalidateRect( descr->self, NULL, TRUE );
     return LB_OKAY;
 }
 
@@ -2953,8 +2953,7 @@ LRESULT ListBoxWndProc_common( HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam
         return LB_OKAY;
 
     case LB_GETLISTBOXINFO:
-        FIXME("LB_GETLISTBOXINFO: stub!\n");
-        return 0;
+        return descr->page_size;
 
     case WM_DESTROY:
         return LISTBOX_Destroy( descr );
@@ -3146,4 +3145,10 @@ LRESULT ListBoxWndProc_common( HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam
 
     return unicode ? DefWindowProcW( hwnd, msg, wParam, lParam ) :
                      DefWindowProcA( hwnd, msg, wParam, lParam );
+}
+
+DWORD WINAPI GetListBoxInfo(HWND hwnd)
+{
+    TRACE("%p\n", hwnd);
+    return SendMessageW(hwnd, LB_GETLISTBOXINFO, 0, 0);
 }

@@ -56,6 +56,27 @@ typedef enum
     XmlReadInState_MiscEnd
 } XmlReaderInternalState;
 
+/* This state denotes where parsing was interrupted by input problem.
+   Reader resumes parsing using this information. */
+typedef enum
+{
+    XmlReadResumeState_Initial,
+    XmlReadResumeState_PITarget,
+    XmlReadResumeState_PIBody,
+    XmlReadResumeState_CDATA,
+    XmlReadResumeState_Comment,
+    XmlReadResumeState_STag
+} XmlReaderResumeState;
+
+/* saved pointer index to resume from particular input position */
+typedef enum
+{
+    XmlReadResume_Name,  /* PITarget, name for NCName, prefix for QName */
+    XmlReadResume_Local, /* local for QName */
+    XmlReadResume_Body,  /* PI body, comment text, CDATA text */
+    XmlReadResume_Last
+} XmlReaderResume;
+
 typedef enum
 {
     StringValue_LocalName,
@@ -116,14 +137,23 @@ typedef struct
 
 static const struct IUnknownVtbl xmlreaderinputvtbl;
 
+/* Structure to hold parsed string of specific length.
+
+   Reader stores node value as 'start' pointer, on request
+   a null-terminated version of it is allocated.
+
+   To init a strval variable use reader_init_strval(),
+   to set strval as a reader value use reader_set_strval().
+ */
 typedef struct
 {
-    WCHAR *str;
-    UINT len;
+    WCHAR *start; /* input position where value starts */
+    UINT len;     /* length in WCHARs, altered after ReadValueChunk */
+    WCHAR *str;   /* allocated null-terminated string */
 } strval;
 
 static WCHAR emptyW[] = {0};
-static const strval strval_empty = {emptyW, 0};
+static const strval strval_empty = {emptyW, 0, emptyW};
 
 struct attribute
 {
@@ -146,6 +176,7 @@ typedef struct
     IMalloc *imalloc;
     XmlReadState state;
     XmlReaderInternalState instate;
+    XmlReaderResumeState resumestate;
     XmlNodeType nodetype;
     DtdProcessing dtdmode;
     UINT line, pos;           /* reader position in XML stream */
@@ -155,7 +186,7 @@ typedef struct
     struct list elements;
     strval strvalues[StringValue_Last];
     UINT depth;
-    WCHAR *save;
+    WCHAR *resume[XmlReadResume_Last]; /* pointers used to resume reader */
 } xmlreader;
 
 struct input_buffer
@@ -295,6 +326,12 @@ static void reader_free_strvalued(xmlreader *reader, strval *v)
     }
 }
 
+static inline void reader_init_strvalue(WCHAR *str, UINT len, strval *v)
+{
+    v->start = v->str = str;
+    v->len = len;
+}
+
 static void reader_free_strvalue(xmlreader *reader, XmlReaderStringValue type)
 {
     reader_free_strvalued(reader, &reader->strvalues[type]);
@@ -342,12 +379,18 @@ static HRESULT reader_push_element(xmlreader *reader, strval *qname)
     if (!elem) return E_OUTOFMEMORY;
 
     hr = reader_strvaldup(reader, qname, &elem->qname);
-    if (FAILED(hr)) return hr;
+    if (FAILED(hr)) {
+        reader_free(reader, elem);
+        return hr;
+    }
 
     if (!list_empty(&reader->elements))
     {
         hr = reader_inc_depth(reader);
-        if (FAILED(hr)) return hr;
+        if (FAILED(hr)) {
+             reader_free(reader, elem);
+             return hr;
+        }
     }
 
     list_add_head(&reader->elements, &elem->entry);
@@ -376,6 +419,7 @@ static void reader_set_strvalue(xmlreader *reader, XmlReaderStringValue type, co
     if (!value)
     {
         v->str = NULL;
+        v->start = NULL;
         v->len = 0;
         return;
     }
@@ -384,10 +428,20 @@ static void reader_set_strvalue(xmlreader *reader, XmlReaderStringValue type, co
         *v = *value;
     else
     {
-        v->str = reader_alloc(reader, (value->len + 1)*sizeof(WCHAR));
-        memcpy(v->str, value->str, value->len*sizeof(WCHAR));
-        v->str[value->len] = 0;
-        v->len = value->len;
+        if (type == StringValue_Value)
+        {
+            /* defer allocation for value string */
+            v->str = NULL;
+            v->start = value->start;
+            v->len = value->len;
+        }
+        else
+        {
+            v->str = reader_alloc(reader, (value->len + 1)*sizeof(WCHAR));
+            memcpy(v->str, value->start, value->len*sizeof(WCHAR));
+            v->str[value->len] = 0;
+            v->len = value->len;
+        }
     }
 }
 
@@ -588,7 +642,12 @@ static HRESULT readerinput_detectencoding(xmlreaderinput *readerinput, xml_encod
 
     *enc = XmlEncoding_Unknown;
 
-    if (buffer->written <= 3) return MX_E_INPUTEND;
+    if (buffer->written <= 3)
+    {
+        HRESULT hr = readerinput_growraw(readerinput);
+        if (FAILED(hr)) return hr;
+        if (buffer->written <= 3) return MX_E_INPUTEND;
+    }
 
     /* try start symbols if we have enough data to do that, input buffer should contain
        first chunk already */
@@ -820,8 +879,7 @@ static HRESULT reader_parse_versionnum(xmlreader *reader, strval *val)
 
     if (ptr2 == ptr) return WC_E_DIGIT;
     TRACE("version=%s\n", debugstr_wn(start, ptr-start));
-    val->str = start;
-    val->len = ptr-start;
+    reader_init_strvalue(start, ptr-start, val);
     reader_skipn(reader, ptr-ptr2);
     return S_OK;
 }
@@ -848,8 +906,7 @@ static HRESULT reader_parse_versioninfo(xmlreader *reader)
     if (!reader_skipspaces(reader)) return WC_E_WHITESPACE;
 
     if (reader_cmp(reader, versionW)) return WC_E_XMLDECL;
-    name.str = reader_get_cur(reader);
-    name.len = 7;
+    reader_init_strvalue(reader_get_cur(reader), 7, &name);
     /* skip 'version' */
     reader_skipn(reader, 7);
 
@@ -959,8 +1016,7 @@ static HRESULT reader_parse_sddecl(xmlreader *reader)
     if (!reader_skipspaces(reader)) return WC_E_WHITESPACE;
 
     if (reader_cmp(reader, standaloneW)) return S_FALSE;
-    name.str = reader_get_cur(reader);
-    name.len = 10;
+    reader_init_strvalue(reader_get_cur(reader), 10, &name);
     /* skip 'standalone' */
     reader_skipn(reader, 10);
 
@@ -980,7 +1036,7 @@ static HRESULT reader_parse_sddecl(xmlreader *reader)
     reader_skipn(reader, reader_cmp(reader, yesW) ? 2 : 3);
     ptr = reader_get_cur(reader);
     TRACE("standalone=%s\n", debugstr_wn(start, ptr-start));
-    val.str = start;
+    val.str = val.start = start;
     val.len = ptr-start;
 
     if (reader_cmp(reader, quoteW) && reader_cmp(reader, dblquoteW))
@@ -1031,9 +1087,9 @@ static HRESULT reader_parse_comment(xmlreader *reader)
 {
     WCHAR *start, *ptr;
 
-    if (reader->save)
+    if (reader->resume[XmlReadResume_Body])
     {
-        start = reader->save;
+        start = reader->resume[XmlReadResume_Body];
         ptr = reader_get_cur(reader);
     }
     else
@@ -1043,7 +1099,8 @@ static HRESULT reader_parse_comment(xmlreader *reader)
         reader_shrink(reader);
         ptr = start = reader_get_cur(reader);
         reader->nodetype = XmlNodeType_Comment;
-        reader->save = start;
+        reader->resume[XmlReadResume_Body] = start;
+        reader->resumestate = XmlReadResumeState_Comment;
         reader_set_strvalue(reader, StringValue_LocalName, NULL);
         reader_set_strvalue(reader, StringValue_QualifiedName, NULL);
         reader_set_strvalue(reader, StringValue_Value, NULL);
@@ -1059,15 +1116,17 @@ static HRESULT reader_parse_comment(xmlreader *reader)
             {
                 if (ptr[2] == '>')
                 {
-                    strval value = { start, ptr-start };
+                    strval value;
 
                     TRACE("%s\n", debugstr_wn(start, ptr-start));
                     /* skip '-->' */
                     reader_skipn(reader, 3);
+                    reader_init_strvalue(start, ptr-start, &value);
                     reader_set_strvalue(reader, StringValue_LocalName, &strval_empty);
                     reader_set_strvalue(reader, StringValue_QualifiedName, &strval_empty);
                     reader_set_strvalue(reader, StringValue_Value, &value);
-                    reader->save = NULL;
+                    reader->resume[XmlReadResume_Body] = NULL;
+                    reader->resumestate = XmlReadResumeState_Initial;
                     return S_OK;
                 }
                 else
@@ -1166,10 +1225,18 @@ static inline int is_namechar(WCHAR ch)
    [5]  Name     ::= NameStartChar (NameChar)* */
 static HRESULT reader_parse_name(xmlreader *reader, strval *name)
 {
-    WCHAR *ptr, *start = reader_get_cur(reader);
+    WCHAR *ptr, *start;
 
-    ptr = start;
-    if (!is_namestartchar(*ptr)) return WC_E_NAMECHARACTER;
+    if (reader->resume[XmlReadResume_Name])
+    {
+        start = reader->resume[XmlReadResume_Name];
+        ptr = reader_get_cur(reader);
+    }
+    else
+    {
+        ptr = start = reader_get_cur(reader);
+        if (!is_namestartchar(*ptr)) return WC_E_NAMECHARACTER;
+    }
 
     while (is_namechar(*ptr))
     {
@@ -1177,9 +1244,16 @@ static HRESULT reader_parse_name(xmlreader *reader, strval *name)
         ptr = reader_get_cur(reader);
     }
 
+    if (is_reader_pending(reader))
+    {
+        reader->resume[XmlReadResume_Name] = start;
+        return E_PENDING;
+    }
+    else
+        reader->resume[XmlReadResume_Name] = NULL;
+
     TRACE("name %s:%d\n", debugstr_wn(start, ptr-start), (int)(ptr-start));
-    name->str = start;
-    name->len = ptr-start;
+    reader_init_strvalue(start, ptr-start, name);
 
     return S_OK;
 }
@@ -1190,10 +1264,10 @@ static HRESULT reader_parse_pitarget(xmlreader *reader, strval *target)
     static const WCHAR xmlW[] = {'x','m','l'};
     strval name;
     HRESULT hr;
-    int i;
+    UINT i;
 
     hr = reader_parse_name(reader, &name);
-    if (FAILED(hr)) return WC_E_PI;
+    if (FAILED(hr)) return is_reader_pending(reader) ? E_PENDING : WC_E_PI;
 
     /* now that we got name check for illegal content */
     if (name.len == 3 && !strncmpiW(name.str, xmlW, 3))
@@ -1216,12 +1290,23 @@ static HRESULT reader_parse_pi(xmlreader *reader)
     strval target;
     HRESULT hr;
 
-    /* skip '<?' */
-    reader_skipn(reader, 2);
-    reader_shrink(reader);
-
-    hr = reader_parse_pitarget(reader, &target);
-    if (FAILED(hr)) return hr;
+    switch (reader->resumestate)
+    {
+    case XmlReadResumeState_Initial:
+        /* skip '<?' */
+        reader_skipn(reader, 2);
+        reader_shrink(reader);
+        reader->resumestate = XmlReadResumeState_PITarget;
+    case XmlReadResumeState_PITarget:
+        hr = reader_parse_pitarget(reader, &target);
+        if (FAILED(hr)) return hr;
+        reader_set_strvalue(reader, StringValue_LocalName, &target);
+        reader_set_strvalue(reader, StringValue_QualifiedName, &target);
+        reader_set_strvalue(reader, StringValue_Value, &strval_empty);
+        reader->resumestate = XmlReadResumeState_PIBody;
+    default:
+        ;
+    }
 
     ptr = reader_get_cur(reader);
     /* exit earlier if there's no content */
@@ -1230,17 +1315,23 @@ static HRESULT reader_parse_pi(xmlreader *reader)
         /* skip '?>' */
         reader_skipn(reader, 2);
         reader->nodetype = XmlNodeType_ProcessingInstruction;
-        reader_set_strvalue(reader, StringValue_LocalName, &target);
-        reader_set_strvalue(reader, StringValue_QualifiedName, &target);
-        reader_set_strvalue(reader, StringValue_Value, &strval_empty);
+        reader->resumestate = XmlReadResumeState_Initial;
         return S_OK;
     }
 
-    /* now at least a single space char should be there */
-    if (!is_wchar_space(*ptr)) return WC_E_WHITESPACE;
-    reader_skipspaces(reader);
-
-    ptr = start = reader_get_cur(reader);
+    if (!reader->resume[XmlReadResume_Body])
+    {
+        /* now at least a single space char should be there */
+        if (!is_wchar_space(*ptr)) return WC_E_WHITESPACE;
+        reader_skipspaces(reader);
+        ptr = start = reader_get_cur(reader);
+        reader->resume[XmlReadResume_Body] = start;
+    }
+    else
+    {
+        start = reader->resume[XmlReadResume_Body];
+        ptr = reader_get_cur(reader);
+    }
 
     while (*ptr)
     {
@@ -1248,14 +1339,15 @@ static HRESULT reader_parse_pi(xmlreader *reader)
         {
             if (ptr[1] == '>')
             {
-                strval value = { start, ptr-start };
+                strval value;
 
                 TRACE("%s\n", debugstr_wn(start, ptr-start));
                 /* skip '?>' */
                 reader_skipn(reader, 2);
                 reader->nodetype = XmlNodeType_ProcessingInstruction;
-                reader_set_strvalue(reader, StringValue_LocalName, &target);
-                reader_set_strvalue(reader, StringValue_QualifiedName, &target);
+                reader->resumestate = XmlReadResumeState_Initial;
+                reader->resume[XmlReadResume_Body] = NULL;
+                reader_init_strvalue(start, ptr-start, &value);
                 reader_set_strvalue(reader, StringValue_Value, &value);
                 return S_OK;
             }
@@ -1299,14 +1391,22 @@ static HRESULT reader_parse_misc(xmlreader *reader)
 {
     HRESULT hr = S_FALSE;
 
-    if (is_reader_pending(reader))
+    if (reader->resumestate != XmlReadResumeState_Initial)
     {
         hr = reader_more(reader);
         if (FAILED(hr)) return hr;
 
         /* finish current node */
-        if (reader->nodetype == XmlNodeType_Comment)
+        switch (reader->resumestate)
+        {
+        case XmlReadResumeState_PITarget:
+        case XmlReadResumeState_PIBody:
+            return reader_parse_pi(reader);
+        case XmlReadResumeState_Comment:
             return reader_parse_comment(reader);
+        default:
+            ERR("unknown resume state %d\n", reader->resumestate);
+        }
     }
 
     while (1)
@@ -1370,8 +1470,7 @@ static HRESULT reader_parse_pub_literal(xmlreader *reader, strval *literal)
         cur = reader_get_cur(reader);
     }
 
-    literal->str = start;
-    literal->len = cur-start;
+    reader_init_strvalue(start, cur-start, literal);
     TRACE("%s\n", debugstr_wn(start, cur-start));
     return S_OK;
 }
@@ -1401,8 +1500,7 @@ static HRESULT reader_parse_externalid(xmlreader *reader)
             hr = reader_parse_pub_literal(reader, &pub);
             if (FAILED(hr)) return hr;
 
-            name.str = publicW;
-            name.len = strlenW(publicW);
+            reader_init_strvalue(publicW, strlenW(publicW), &name);
             return reader_add_attr(reader, &name, &pub);
         }
     }
@@ -1418,8 +1516,7 @@ static HRESULT reader_parse_externalid(xmlreader *reader)
         hr = reader_parse_sys_literal(reader, &sys);
         if (FAILED(hr)) return hr;
 
-        name.str = systemW;
-        name.len = strlenW(systemW);
+        reader_init_strvalue(systemW, strlenW(systemW), &name);
         return reader_add_attr(reader, &name, &sys);
     }
 
@@ -1472,17 +1569,20 @@ static HRESULT reader_parse_dtd(xmlreader *reader)
     return S_OK;
 }
 
-/* [7 NS]  QName ::= PrefixedName | UnprefixedName
-   [8 NS]  PrefixedName ::= Prefix ':' LocalPart
-   [9 NS]  UnprefixedName ::= LocalPart
-   [10 NS] Prefix ::= NCName
-   [11 NS] LocalPart ::= NCName */
-static HRESULT reader_parse_qname(xmlreader *reader, strval *prefix, strval *local, strval *qname)
+/* [11 NS] LocalPart ::= NCName */
+static HRESULT reader_parse_local(xmlreader *reader, strval *local)
 {
-    WCHAR *ptr, *start = reader_get_cur(reader);
+    WCHAR *ptr, *start;
 
-    ptr = start;
-    if (!is_ncnamechar(*ptr)) return NC_E_QNAMECHARACTER;
+    if (reader->resume[XmlReadResume_Local])
+    {
+        start = reader->resume[XmlReadResume_Local];
+        ptr = reader_get_cur(reader);
+    }
+    else
+    {
+        ptr = start = reader_get_cur(reader);
+    }
 
     while (is_ncnamechar(*ptr))
     {
@@ -1490,38 +1590,91 @@ static HRESULT reader_parse_qname(xmlreader *reader, strval *prefix, strval *loc
         ptr = reader_get_cur(reader);
     }
 
-    /* got a qualified name */
-    if (*ptr == ':')
+    if (is_reader_pending(reader))
     {
-        prefix->str = start;
-        prefix->len = ptr-start;
+         reader->resume[XmlReadResume_Local] = start;
+         return E_PENDING;
+    }
+    else
+         reader->resume[XmlReadResume_Local] = NULL;
 
-        reader_skipn(reader, 1);
-        start = ptr = reader_get_cur(reader);
+    reader_init_strvalue(start, ptr-start, local);
 
+    return S_OK;
+}
+
+/* [7 NS]  QName ::= PrefixedName | UnprefixedName
+   [8 NS]  PrefixedName ::= Prefix ':' LocalPart
+   [9 NS]  UnprefixedName ::= LocalPart
+   [10 NS] Prefix ::= NCName */
+static HRESULT reader_parse_qname(xmlreader *reader, strval *prefix, strval *local, strval *qname)
+{
+    WCHAR *ptr, *start;
+    HRESULT hr;
+
+    if (reader->resume[XmlReadResume_Name])
+    {
+        start = reader->resume[XmlReadResume_Name];
+        ptr = reader_get_cur(reader);
+    }
+    else
+    {
+        ptr = start = reader_get_cur(reader);
+        reader->resume[XmlReadResume_Name] = start;
+        if (!is_ncnamechar(*ptr)) return NC_E_QNAMECHARACTER;
+    }
+
+    if (reader->resume[XmlReadResume_Local])
+    {
+        hr = reader_parse_local(reader, local);
+        if (FAILED(hr)) return hr;
+
+        reader_init_strvalue(reader->resume[XmlReadResume_Name],
+                             local->start - reader->resume[XmlReadResume_Name] - 1,
+                             prefix);
+    }
+    else
+    {
+        /* skip prefix part */
         while (is_ncnamechar(*ptr))
         {
             reader_skipn(reader, 1);
             ptr = reader_get_cur(reader);
         }
-    }
-    else
-    {
-        prefix->str = NULL;
-        prefix->len = 0;
+
+        if (is_reader_pending(reader)) return E_PENDING;
+
+        /* got a qualified name */
+        if (*ptr == ':')
+        {
+            reader_init_strvalue(start, ptr-start, prefix);
+
+            /* skip ':' */
+            reader_skipn(reader, 1);
+            hr = reader_parse_local(reader, local);
+            if (FAILED(hr)) return hr;
+        }
+        else
+        {
+            reader_init_strvalue(reader->resume[XmlReadResume_Name], ptr-reader->resume[XmlReadResume_Name], local);
+            reader_init_strvalue(NULL, 0, prefix);
+        }
     }
 
-    local->str = start;
-    local->len = ptr-start;
+    reader_init_strvalue(start, ptr-start, local);
 
     if (prefix->len)
-        TRACE("qname %s:%s\n", debugstr_wn(prefix->str, prefix->len), debugstr_wn(local->str, local->len));
+        TRACE("qname %s:%s\n", debugstr_wn(prefix->start, prefix->len), debugstr_wn(local->start, local->len));
     else
-        TRACE("ncname %s\n", debugstr_wn(local->str, local->len));
+        TRACE("ncname %s\n", debugstr_wn(local->start, local->len));
 
-    qname->str = prefix->str ? prefix->str : local->str;
-    /* count ':' too */
-    qname->len = (prefix->len ? prefix->len + 1 : 0) + local->len;
+    reader_init_strvalue(prefix->start ? prefix->start : local->start,
+                        /* count ':' too */
+                        (prefix->len ? prefix->len + 1 : 0) + local->len,
+                         qname);
+
+    reader->resume[XmlReadResume_Name] = NULL;
+    reader->resume[XmlReadResume_Local] = NULL;
 
     return S_OK;
 }
@@ -1532,9 +1685,6 @@ static HRESULT reader_parse_stag(xmlreader *reader, strval *prefix, strval *loca
 {
     static const WCHAR endW[] = {'/','>',0};
     HRESULT hr;
-
-    /* skip '<' */
-    reader_skipn(reader, 1);
 
     hr = reader_parse_qname(reader, prefix, local, qname);
     if (FAILED(hr)) return hr;
@@ -1564,32 +1714,47 @@ static HRESULT reader_parse_stag(xmlreader *reader, strval *prefix, strval *loca
 /* [39] element ::= EmptyElemTag | STag content ETag */
 static HRESULT reader_parse_element(xmlreader *reader)
 {
-    strval qname, prefix, local;
     HRESULT hr;
-    int empty;
 
-    /* check if we are really on element */
-    if (reader_cmp(reader, ltW)) return S_FALSE;
-    reader_shrink(reader);
+    switch (reader->resumestate)
+    {
+    case XmlReadResumeState_Initial:
+        /* check if we are really on element */
+        if (reader_cmp(reader, ltW)) return S_FALSE;
 
-    /* this handles empty elements too */
-    empty = 0;
-    hr = reader_parse_stag(reader, &prefix, &local, &qname, &empty);
-    if (FAILED(hr)) return hr;
+        /* skip '<' */
+        reader_skipn(reader, 1);
 
-    /* FIXME: need to check for defined namespace to reject invalid prefix,
-       currently reject all prefixes */
-    if (prefix.len) return NC_E_UNDECLAREDPREFIX;
+        reader_shrink(reader);
+        reader->resumestate = XmlReadResumeState_STag;
+    case XmlReadResumeState_STag:
+    {
+        strval qname, prefix, local;
+        int empty = 0;
 
-    /* if we got empty element and stack is empty go straight to Misc */
-    if (empty && list_empty(&reader->elements))
-        reader->instate = XmlReadInState_MiscEnd;
-    else
-        reader->instate = XmlReadInState_Content;
+        /* this handles empty elements too */
+        hr = reader_parse_stag(reader, &prefix, &local, &qname, &empty);
+        if (FAILED(hr)) return hr;
 
-    reader->nodetype = XmlNodeType_Element;
-    reader_set_strvalue(reader, StringValue_LocalName, &local);
-    reader_set_strvalue(reader, StringValue_QualifiedName, &qname);
+        /* FIXME: need to check for defined namespace to reject invalid prefix,
+           currently reject all prefixes */
+        if (prefix.len) return NC_E_UNDECLAREDPREFIX;
+
+        /* if we got empty element and stack is empty go straight to Misc */
+        if (empty && list_empty(&reader->elements))
+            reader->instate = XmlReadInState_MiscEnd;
+        else
+            reader->instate = XmlReadInState_Content;
+
+        reader->nodetype = XmlNodeType_Element;
+        reader->resumestate = XmlReadResumeState_Initial;
+        reader_set_strvalue(reader, StringValue_LocalName, &local);
+        reader_set_strvalue(reader, StringValue_QualifiedName, &qname);
+        break;
+    }
+    default:
+        hr = E_FAIL;
+    }
 
     return hr;
 }
@@ -1634,8 +1799,58 @@ static HRESULT reader_parse_endtag(xmlreader *reader)
    [21] CDEnd ::= ']]>' */
 static HRESULT reader_parse_cdata(xmlreader *reader)
 {
-    FIXME("CDATA sections are not supported\n");
-    return E_NOTIMPL;
+    WCHAR *start, *ptr;
+
+    if (reader->resume[XmlReadResume_Body])
+    {
+        start = reader->resume[XmlReadResume_Body];
+        ptr = reader_get_cur(reader);
+    }
+    else
+    {
+        /* skip markup '<![CDATA[' */
+        reader_skipn(reader, 9);
+        reader_shrink(reader);
+        ptr = start = reader_get_cur(reader);
+        reader->nodetype = XmlNodeType_CDATA;
+        reader->resume[XmlReadResume_Body] = start;
+        reader->resumestate = XmlReadResumeState_CDATA;
+        reader_set_strvalue(reader, StringValue_LocalName, NULL);
+        reader_set_strvalue(reader, StringValue_QualifiedName, NULL);
+        reader_set_strvalue(reader, StringValue_Value, NULL);
+    }
+
+    while (*ptr)
+    {
+        if (*ptr == ']' && *(ptr+1) == ']' && *(ptr+2) == '>')
+        {
+            strval value;
+
+            TRACE("%s\n", debugstr_wn(start, ptr-start));
+            /* skip ']]>' */
+            reader_skipn(reader, 3);
+            reader_init_strvalue(start, ptr-start, &value);
+            reader_set_strvalue(reader, StringValue_LocalName, &strval_empty);
+            reader_set_strvalue(reader, StringValue_QualifiedName, &strval_empty);
+            reader_set_strvalue(reader, StringValue_Value, &value);
+            reader->resume[XmlReadResume_Body] = NULL;
+            reader->resumestate = XmlReadResumeState_Initial;
+            return S_OK;
+        }
+        else
+        {
+            /* Value normalization is not fully implemented, rules are:
+
+               - single '\r' -> '\n';
+               - sequence '\r\n' -> '\n', in this case value length changes;
+            */
+            if (*ptr == '\r') *ptr = '\n';
+            reader_skipn(reader, 1);
+            ptr++;
+        }
+    }
+
+    return S_OK;
 }
 
 /* [66] CharRef ::= '&#' [0-9]+ ';' | '&#x' [0-9a-fA-F]+ ';'
@@ -1660,6 +1875,22 @@ static HRESULT reader_parse_content(xmlreader *reader)
     static const WCHAR cdstartW[] = {'<','!','[','C','D','A','T','A','[',0};
     static const WCHAR etagW[] = {'<','/',0};
     static const WCHAR ampW[] = {'&',0};
+
+    if (reader->resumestate != XmlReadResumeState_Initial)
+    {
+        switch (reader->resumestate)
+        {
+        case XmlReadResumeState_CDATA:
+            return reader_parse_cdata(reader);
+        case XmlReadResumeState_Comment:
+            return reader_parse_comment(reader);
+        case XmlReadResumeState_PIBody:
+        case XmlReadResumeState_PITarget:
+            return reader_parse_pi(reader);
+        default:
+            ERR("unknown resume state %d\n", reader->resumestate);
+        }
+    }
 
     reader_shrink(reader);
 
@@ -1832,7 +2063,8 @@ static HRESULT WINAPI xmlreader_SetInput(IXmlReader* iface, IUnknown *input)
     This->line = This->pos = 0;
     reader_clear_elements(This);
     This->depth = 0;
-    This->save = NULL;
+    This->resumestate = XmlReadResumeState_Initial;
+    memset(This->resume, 0, sizeof(This->resume));
 
     /* just reset current input */
     if (!input)
@@ -2024,7 +2256,7 @@ static HRESULT WINAPI xmlreader_GetLocalName(IXmlReader* iface, LPCWSTR *name, U
 
     TRACE("(%p)->(%p %p)\n", This, name, len);
     *name = This->strvalues[StringValue_LocalName].str;
-    *len  = This->strvalues[StringValue_LocalName].len;
+    if (len) *len = This->strvalues[StringValue_LocalName].len;
     return S_OK;
 }
 
@@ -2036,14 +2268,16 @@ static HRESULT WINAPI xmlreader_GetPrefix(IXmlReader* iface,
     return E_NOTIMPL;
 }
 
-static HRESULT WINAPI xmlreader_GetValue(IXmlReader* iface, LPCWSTR *value, UINT *len)
+static HRESULT WINAPI xmlreader_GetValue(IXmlReader* iface, const WCHAR **value, UINT *len)
 {
-    xmlreader *This = impl_from_IXmlReader(iface);
+    xmlreader *reader = impl_from_IXmlReader(iface);
+    strval *val = &reader->strvalues[StringValue_Value];
 
-    TRACE("(%p)->(%p %p)\n", This, value, len);
+    TRACE("(%p)->(%p %p)\n", reader, value, len);
 
-    if ((This->nodetype == XmlNodeType_Comment && !This->strvalues[StringValue_Value].str) ||
-        is_reader_pending(This))
+    *value = NULL;
+
+    if ((reader->nodetype == XmlNodeType_Comment && !val->str) || is_reader_pending(reader))
     {
         XmlNodeType type;
         HRESULT hr;
@@ -2052,21 +2286,43 @@ static HRESULT WINAPI xmlreader_GetValue(IXmlReader* iface, LPCWSTR *value, UINT
         if (FAILED(hr)) return hr;
 
         /* return if still pending, partially read values are not reported */
-        if (is_reader_pending(This)) return E_PENDING;
+        if (is_reader_pending(reader)) return E_PENDING;
     }
 
-    *value = This->strvalues[StringValue_Value].str;
-    if (len) *len = This->strvalues[StringValue_Value].len;
+    if (!val->str)
+    {
+        val->str = reader_alloc(reader, (val->len+1)*sizeof(WCHAR));
+        if (!val->str) return E_OUTOFMEMORY;
+        memcpy(val->str, val->start, val->len*sizeof(WCHAR));
+        val->str[val->len] = 0;
+    }
+
+    *value = val->str;
+    if (len) *len = val->len;
     return S_OK;
 }
 
-static HRESULT WINAPI xmlreader_ReadValueChunk(IXmlReader* iface,
-                                               WCHAR *buffer,
-                                               UINT   chunk_size,
-                                               UINT  *read)
+static HRESULT WINAPI xmlreader_ReadValueChunk(IXmlReader* iface, WCHAR *buffer, UINT chunk_size, UINT *read)
 {
-    FIXME("(%p %p %u %p): stub\n", iface, buffer, chunk_size, read);
-    return E_NOTIMPL;
+    xmlreader *reader = impl_from_IXmlReader(iface);
+    strval *val = &reader->strvalues[StringValue_Value];
+    UINT len;
+
+    TRACE("(%p)->(%p %u %p)\n", reader, buffer, chunk_size, read);
+
+    /* Value is already allocated, chunked reads are not possible. */
+    if (val->str) return S_FALSE;
+
+    if (val->len)
+    {
+        len = min(chunk_size, val->len);
+        memcpy(buffer, val->start, len);
+        val->start += len;
+        val->len -= len;
+        if (read) *read = len;
+    }
+
+    return S_OK;
 }
 
 static HRESULT WINAPI xmlreader_GetBaseUri(IXmlReader* iface,
@@ -2255,6 +2511,7 @@ HRESULT WINAPI CreateXmlReader(REFIID riid, void **obj, IMalloc *imalloc)
     reader->input = NULL;
     reader->state = XmlReadState_Closed;
     reader->instate = XmlReadInState_Initial;
+    reader->resumestate = XmlReadResumeState_Initial;
     reader->dtdmode = DtdProcessing_Prohibit;
     reader->line  = reader->pos = 0;
     reader->imalloc = imalloc;
@@ -2265,7 +2522,7 @@ HRESULT WINAPI CreateXmlReader(REFIID riid, void **obj, IMalloc *imalloc)
     reader->attr = NULL;
     list_init(&reader->elements);
     reader->depth = 0;
-    reader->save = NULL;
+    memset(reader->resume, 0, sizeof(reader->resume));
 
     for (i = 0; i < StringValue_Last; i++)
         reader->strvalues[i] = strval_empty;

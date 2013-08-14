@@ -74,10 +74,6 @@
 WINE_DEFAULT_DEBUG_CHANNEL(midi);
 
 #ifdef SNDCTL_SEQ_NRMIDIS
-#define HAVE_OSS_MIDI
-#endif
-
-#ifdef HAVE_OSS_MIDI
 
 typedef struct {
     int			state;                  /* -1 disabled, 0 is no recording started, 1 in recording, bit 2 set if in sys exclusive recording */
@@ -563,9 +559,9 @@ static void midReceiveChar(WORD wDevID, unsigned char value, DWORD dwTime)
 	}
 	if (sbfb && lpMidiHdr != NULL) {
 	    lpMidiHdr = MidiInDev[wDevID].lpQueueHdr;
+	    MidiInDev[wDevID].lpQueueHdr = lpMidiHdr->lpNext;
 	    lpMidiHdr->dwFlags &= ~MHDR_INQUEUE;
 	    lpMidiHdr->dwFlags |= MHDR_DONE;
-	    MidiInDev[wDevID].lpQueueHdr = lpMidiHdr->lpNext;
 	    MIDI_NotifyClient(wDevID, MIM_LONGDATA, (DWORD_PTR)lpMidiHdr, dwTime);
 	}
 	LeaveCriticalSection(&crit_sect);
@@ -906,12 +902,11 @@ static DWORD midReset(WORD wDevID)
 
     EnterCriticalSection(&crit_sect);
     while (MidiInDev[wDevID].lpQueueHdr) {
-	MidiInDev[wDevID].lpQueueHdr->dwFlags &= ~MHDR_INQUEUE;
-	MidiInDev[wDevID].lpQueueHdr->dwFlags |= MHDR_DONE;
-	/* FIXME: when called from 16 bit, lpQueueHdr needs to be a segmented ptr */
-	MIDI_NotifyClient(wDevID, MIM_LONGDATA,
-			  (DWORD_PTR)MidiInDev[wDevID].lpQueueHdr, dwTime);
-	MidiInDev[wDevID].lpQueueHdr = MidiInDev[wDevID].lpQueueHdr->lpNext;
+	LPMIDIHDR lpMidiHdr = MidiInDev[wDevID].lpQueueHdr;
+	MidiInDev[wDevID].lpQueueHdr = lpMidiHdr->lpNext;
+	lpMidiHdr->dwFlags &= ~MHDR_INQUEUE;
+	lpMidiHdr->dwFlags |= MHDR_DONE;
+	MIDI_NotifyClient(wDevID, MIM_LONGDATA, (DWORD_PTR)lpMidiHdr, dwTime);
     }
     LeaveCriticalSection(&crit_sect);
 
@@ -1101,10 +1096,6 @@ static DWORD modOpen(WORD wDevID, LPMIDIOPENDESC lpDesc, DWORD dwFlags)
     if ((dwFlags & ~CALLBACK_TYPEMASK) != 0) {
 	WARN("bad dwFlags\n");
 	return MMSYSERR_INVALFLAG;
-    }
-    if (!MidiOutDev[wDevID].bEnabled) {
-	TRACE("disabled wDevID\n");
-	return MMSYSERR_NOTENABLED;
     }
 
     MidiOutDev[wDevID].lpExtra = 0;
@@ -1445,7 +1436,6 @@ static DWORD modData(WORD wDevID, DWORD dwParam)
 		switch (evt & 0x0F) {
 		case 0x00:	/* System Exclusive, don't do it on modData,
 				 * should require modLongData*/
-		case 0x01:	/* Undefined */
 		case 0x04:	/* Undefined. */
 		case 0x05:	/* Undefined. */
 		case 0x07:	/* End of Exclusive. */
@@ -1470,6 +1460,7 @@ static DWORD modData(WORD wDevID, DWORD dwParam)
 		    SEQ_MIDIOUT(dev, 0x01);
 		    SEQ_MIDIOUT(dev, 0xf7);
 		    break;
+		case 0x01:	/* MTC Quarter frame */
 		case 0x03:	/* Song Select. */
 		    SEQ_MIDIOUT(dev, evt);
 		    SEQ_MIDIOUT(dev, d1);
@@ -1647,7 +1638,7 @@ static DWORD modReset(WORD wDevID)
     return MMSYSERR_NOERROR;
 }
 
-#endif /* HAVE_OSS_MIDI */
+#endif /* SNDCTL_SEQ_NRMIDIS */
 
 /*======================================================================*
  *                  	    MIDI entry points 				*
@@ -1662,7 +1653,7 @@ DWORD WINAPI OSS_midMessage(UINT wDevID, UINT wMsg, DWORD_PTR dwUser,
     TRACE("(%04X, %04X, %08lX, %08lX, %08lX);\n",
 	  wDevID, wMsg, dwUser, dwParam1, dwParam2);
     switch (wMsg) {
-#ifdef HAVE_OSS_MIDI
+#ifdef SNDCTL_SEQ_NRMIDIS
     case DRVM_INIT:
         return OSS_MidiInit();
     case DRVM_EXIT:
@@ -1712,7 +1703,7 @@ DWORD WINAPI OSS_modMessage(UINT wDevID, UINT wMsg, DWORD_PTR dwUser,
 	  wDevID, wMsg, dwUser, dwParam1, dwParam2);
 
     switch (wMsg) {
-#ifdef HAVE_OSS_MIDI
+#ifdef SNDCTL_SEQ_NRMIDIS
     case DRVM_INIT:
         return OSS_MidiInit();
     case DRVM_EXIT:

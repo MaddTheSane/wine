@@ -26,7 +26,7 @@
 
 static HMODULE d3drm_handle = 0;
 
-static HRESULT (WINAPI * pDirect3DRMCreate)(LPDIRECT3DRM* ppDirect3DRM);
+static HRESULT (WINAPI * pDirect3DRMCreate)(IDirect3DRM **d3drm);
 
 #define CHECK_REFCOUNT(obj,rc) \
     { \
@@ -225,9 +225,9 @@ static char data_frame_mesh_materials[] =
 static void test_MeshBuilder(void)
 {
     HRESULT hr;
-    LPDIRECT3DRM pD3DRM;
-    LPDIRECT3DRMMESHBUILDER pMeshBuilder;
-    LPDIRECT3DRMMESH mesh;
+    IDirect3DRM *d3drm;
+    IDirect3DRMMeshBuilder *pMeshBuilder;
+    IDirect3DRMMesh *mesh;
     D3DRMLOADMEMORY info;
     int val;
     DWORD val1, val2, val3;
@@ -240,10 +240,10 @@ static void test_MeshBuilder(void)
     D3DCOLOR color;
     CHAR cname[64] = {0};
 
-    hr = pDirect3DRMCreate(&pD3DRM);
+    hr = pDirect3DRMCreate(&d3drm);
     ok(hr == D3DRM_OK, "Cannot get IDirect3DRM interface (hr = %x)\n", hr);
 
-    hr = IDirect3DRM_CreateMeshBuilder(pD3DRM, &pMeshBuilder);
+    hr = IDirect3DRM_CreateMeshBuilder(d3drm, &pMeshBuilder);
     ok(hr == D3DRM_OK, "Cannot get IDirect3DRMMeshBuilder interface (hr = %x)\n", hr);
 
     hr = IDirect3DRMMeshBuilder_GetClassName(pMeshBuilder, NULL, cname);
@@ -366,7 +366,7 @@ static void test_MeshBuilder(void)
 
     IDirect3DRMMeshBuilder_Release(pMeshBuilder);
 
-    hr = IDirect3DRM_CreateMeshBuilder(pD3DRM, &pMeshBuilder);
+    hr = IDirect3DRM_CreateMeshBuilder(d3drm, &pMeshBuilder);
     ok(hr == D3DRM_OK, "Cannot get IDirect3DRMMeshBuilder interface (hr = %x)\n", hr);
 
     /* No group in mesh when mesh builder is not loaded */
@@ -450,8 +450,8 @@ static void test_MeshBuilder(void)
         DWORD nb_groups;
         unsigned nb_vertices, nb_faces, nb_face_vertices;
         DWORD data_size;
-        LPDIRECT3DRMMATERIAL material = (LPDIRECT3DRMMATERIAL)0xdeadbeef;
-        LPDIRECT3DRMTEXTURE texture = (LPDIRECT3DRMTEXTURE)0xdeadbeef;
+        IDirect3DRMMaterial *material = (IDirect3DRMMaterial *)0xdeadbeef;
+        IDirect3DRMTexture *texture = (IDirect3DRMTexture *)0xdeadbeef;
         D3DVALUE values[3];
 
         nb_groups = IDirect3DRMMesh_GetGroupCount(mesh);
@@ -520,15 +520,15 @@ static void test_MeshBuilder(void)
 
     IDirect3DRMMeshBuilder_Release(pMeshBuilder);
 
-    IDirect3DRM_Release(pD3DRM);
+    IDirect3DRM_Release(d3drm);
 }
 
 static void test_MeshBuilder3(void)
 {
     HRESULT hr;
-    LPDIRECT3DRM pD3DRM;
-    LPDIRECT3DRM3 pD3DRM3;
-    LPDIRECT3DRMMESHBUILDER3 pMeshBuilder3;
+    IDirect3DRM *d3drm;
+    IDirect3DRM3 *d3drm3;
+    IDirect3DRMMeshBuilder3 *pMeshBuilder3;
     D3DRMLOADMEMORY info;
     int val;
     DWORD val1;
@@ -536,18 +536,17 @@ static void test_MeshBuilder3(void)
     DWORD size;
     CHAR cname[64] = {0};
 
-    hr = pDirect3DRMCreate(&pD3DRM);
+    hr = pDirect3DRMCreate(&d3drm);
     ok(hr == D3DRM_OK, "Cannot get IDirect3DRM interface (hr = %x)\n", hr);
 
-    hr = IDirect3DRM_QueryInterface(pD3DRM, &IID_IDirect3DRM3, (LPVOID*)&pD3DRM3);
-    if (FAILED(hr))
+    if (FAILED(hr = IDirect3DRM_QueryInterface(d3drm, &IID_IDirect3DRM3, (void **)&d3drm3)))
     {
         win_skip("Cannot get IDirect3DRM3 interface (hr = %x), skipping tests\n", hr);
-        IDirect3DRM_Release(pD3DRM);
+        IDirect3DRM_Release(d3drm);
         return;
     }
 
-    hr = IDirect3DRM3_CreateMeshBuilder(pD3DRM3, &pMeshBuilder3);
+    hr = IDirect3DRM3_CreateMeshBuilder(d3drm3, &pMeshBuilder3);
     ok(hr == D3DRM_OK, "Cannot get IDirect3DRMMeshBuilder3 interface (hr = %x)\n", hr);
 
     hr = IDirect3DRMMeshBuilder3_GetClassName(pMeshBuilder3, NULL, cname);
@@ -631,66 +630,303 @@ static void test_MeshBuilder3(void)
     ok(valv == 3.21f, "Wrong coordinate %f (must be 3.21)\n", valv);
 
     IDirect3DRMMeshBuilder3_Release(pMeshBuilder3);
-    IDirect3DRM3_Release(pD3DRM3);
-    IDirect3DRM_Release(pD3DRM);
+    IDirect3DRM3_Release(d3drm3);
+    IDirect3DRM_Release(d3drm);
 }
 
 static void test_Mesh(void)
 {
     HRESULT hr;
-    LPDIRECT3DRM pD3DRM;
-    LPDIRECT3DRMMESH pMesh;
+    IDirect3DRM *d3drm;
+    IDirect3DRMMesh *mesh;
     DWORD size;
     CHAR cname[64] = {0};
 
-    hr = pDirect3DRMCreate(&pD3DRM);
+    hr = pDirect3DRMCreate(&d3drm);
     ok(hr == D3DRM_OK, "Cannot get IDirect3DRM interface (hr = %x)\n", hr);
 
-    hr = IDirect3DRM_CreateMesh(pD3DRM, &pMesh);
+    hr = IDirect3DRM_CreateMesh(d3drm, &mesh);
     ok(hr == D3DRM_OK, "Cannot get IDirect3DRMMesh interface (hr = %x)\n", hr);
 
-    hr = IDirect3DRMMesh_GetClassName(pMesh, NULL, cname);
+    hr = IDirect3DRMMesh_GetClassName(mesh, NULL, cname);
     ok(hr == E_INVALIDARG, "GetClassName failed with %x\n", hr);
-    hr = IDirect3DRMMesh_GetClassName(pMesh, NULL, NULL);
+    hr = IDirect3DRMMesh_GetClassName(mesh, NULL, NULL);
     ok(hr == E_INVALIDARG, "GetClassName failed with %x\n", hr);
     size = 1;
-    hr = IDirect3DRMMesh_GetClassName(pMesh, &size, cname);
+    hr = IDirect3DRMMesh_GetClassName(mesh, &size, cname);
     ok(hr == E_INVALIDARG, "GetClassName failed with %x\n", hr);
     size = sizeof(cname);
-    hr = IDirect3DRMMesh_GetClassName(pMesh, &size, cname);
+    hr = IDirect3DRMMesh_GetClassName(mesh, &size, cname);
     ok(hr == D3DRM_OK, "Cannot get classname (hr = %x)\n", hr);
     ok(size == sizeof("Mesh"), "wrong size: %u\n", size);
     ok(!strcmp(cname, "Mesh"), "Expected cname to be \"Mesh\", but got \"%s\"\n", cname);
 
-    IDirect3DRMMesh_Release(pMesh);
+    IDirect3DRMMesh_Release(mesh);
 
-    IDirect3DRM_Release(pD3DRM);
+    IDirect3DRM_Release(d3drm);
+}
+
+static void test_Face(void)
+{
+    HRESULT hr;
+    IDirect3DRM *d3drm;
+    IDirect3DRM2 *d3drm2;
+    IDirect3DRM3 *d3drm3;
+    IDirect3DRMMeshBuilder2 *MeshBuilder2;
+    IDirect3DRMMeshBuilder3 *MeshBuilder3;
+    IDirect3DRMFace *face1;
+    IDirect3DRMFace2 *face2;
+    IDirect3DRMFaceArray *array1;
+    D3DRMLOADMEMORY info;
+    D3DVECTOR v1[4], n1[4], v2[4], n2[4];
+    DWORD count;
+    CHAR cname[64] = {0};
+    int icount;
+
+    hr = pDirect3DRMCreate(&d3drm);
+    ok(hr == D3DRM_OK, "Cannot get IDirect3DRM interface (hr = %x)\n", hr);
+
+    hr = IDirect3DRM_CreateFace(d3drm, &face1);
+    ok(hr == D3DRM_OK, "Cannot get IDirect3DRMFace interface (hr = %x)\n", hr);
+    if (FAILED(hr))
+    {
+        skip("Cannot get IDirect3DRMFace interface (hr = %x), skipping tests\n", hr);
+        IDirect3DRM_Release(d3drm);
+        return;
+    }
+
+    hr = IDirect3DRMFace_GetClassName(face1, NULL, cname);
+    ok(hr == E_INVALIDARG, "GetClassName failed with %x\n", hr);
+    hr = IDirect3DRMFace_GetClassName(face1, NULL, NULL);
+    ok(hr == E_INVALIDARG, "GetClassName failed with %x\n", hr);
+    count = 1;
+    hr = IDirect3DRMFace_GetClassName(face1, &count, cname);
+    ok(hr == E_INVALIDARG, "GetClassName failed with %x\n", hr);
+    count = sizeof(cname);
+    hr = IDirect3DRMFace_GetClassName(face1, &count, cname);
+    ok(hr == D3DRM_OK, "Cannot get classname (hr = %x)\n", hr);
+    ok(count == sizeof("Face"), "wrong size: %u\n", count);
+    ok(!strcmp(cname, "Face"), "Expected cname to be \"Face\", but got \"%s\"\n", cname);
+
+    icount = IDirect3DRMFace_GetVertexCount(face1);
+    ok(!icount, "wrong VertexCount: %i\n", icount);
+
+    IDirect3DRMFace_Release(face1);
+
+    if (FAILED(hr = IDirect3DRM_QueryInterface(d3drm, &IID_IDirect3DRM2, (void **)&d3drm2)))
+    {
+        win_skip("Cannot get IDirect3DRM2 interface (hr = %x), skipping tests\n", hr);
+        IDirect3DRM_Release(d3drm);
+        return;
+    }
+
+    hr = IDirect3DRM2_CreateMeshBuilder(d3drm2, &MeshBuilder2);
+    ok(hr == D3DRM_OK, "Cannot get IDirect3DRMMeshBuilder2 interface (hr = %x)\n", hr);
+
+    icount = IDirect3DRMMeshBuilder2_GetFaceCount(MeshBuilder2);
+    ok(!icount, "wrong FaceCount: %i\n", icount);
+
+    array1 = NULL;
+    hr = IDirect3DRMMeshBuilder2_GetFaces(MeshBuilder2, &array1);
+    todo_wine
+    ok(hr == D3DRM_OK, "Cannot get FaceArray (hr = %x)\n", hr);
+
+    hr = IDirect3DRMMeshBuilder2_CreateFace(MeshBuilder2, &face1);
+    ok(hr == D3DRM_OK, "Cannot get IDirect3DRMFace interface (hr = %x)\n", hr);
+
+    icount = IDirect3DRMMeshBuilder2_GetFaceCount(MeshBuilder2);
+    todo_wine
+    ok(icount == 1, "wrong FaceCount: %i\n", icount);
+
+    array1 = NULL;
+    hr = IDirect3DRMMeshBuilder2_GetFaces(MeshBuilder2, &array1);
+    todo_wine
+    ok(hr == D3DRM_OK, "Cannot get FaceArray (hr = %x)\n", hr);
+    todo_wine
+    ok(array1 != NULL, "pArray = %p\n", array1);
+    if (array1)
+    {
+        IDirect3DRMFace *face;
+        count = IDirect3DRMFaceArray_GetSize(array1);
+        ok(count == 1, "count = %u\n", count);
+        hr = IDirect3DRMFaceArray_GetElement(array1, 0, &face);
+        ok(hr == D3DRM_OK, "Cannot get face (hr = %x)\n", hr);
+        IDirect3DRMFace_Release(face);
+        IDirect3DRMFaceArray_Release(array1);
+    }
+
+    icount = IDirect3DRMFace_GetVertexCount(face1);
+    ok(!icount, "wrong VertexCount: %i\n", icount);
+
+    IDirect3DRMFace_Release(face1);
+    IDirect3DRMMeshBuilder2_Release(MeshBuilder2);
+
+    if (FAILED(hr = IDirect3DRM_QueryInterface(d3drm, &IID_IDirect3DRM3, (void **)&d3drm3)))
+    {
+        win_skip("Cannot get IDirect3DRM3 interface (hr = %x), skipping tests\n", hr);
+        IDirect3DRM_Release(d3drm);
+        return;
+    }
+
+    hr = IDirect3DRM3_CreateMeshBuilder(d3drm3, &MeshBuilder3);
+    ok(hr == D3DRM_OK, "Cannot get IDirect3DRMMeshBuilder3 interface (hr = %x)\n", hr);
+
+    icount = IDirect3DRMMeshBuilder3_GetFaceCount(MeshBuilder3);
+    ok(!icount, "wrong FaceCount: %i\n", icount);
+
+    hr = IDirect3DRMMeshBuilder3_CreateFace(MeshBuilder3, &face2);
+    ok(hr == D3DRM_OK, "Cannot get IDirect3DRMFace2 interface (hr = %x)\n", hr);
+
+    hr = IDirect3DRMFace2_GetClassName(face2, NULL, cname);
+    ok(hr == E_INVALIDARG, "GetClassName failed with %x\n", hr);
+    hr = IDirect3DRMFace2_GetClassName(face2, NULL, NULL);
+    ok(hr == E_INVALIDARG, "GetClassName failed with %x\n", hr);
+    count = 1;
+    hr = IDirect3DRMFace2_GetClassName(face2, &count, cname);
+    ok(hr == E_INVALIDARG, "GetClassName failed with %x\n", hr);
+    count = sizeof(cname);
+    hr = IDirect3DRMFace2_GetClassName(face2, &count, cname);
+    ok(hr == D3DRM_OK, "Cannot get classname (hr = %x)\n", hr);
+    ok(count == sizeof("Face"), "wrong size: %u\n", count);
+    ok(!strcmp(cname, "Face"), "Expected cname to be \"Face\", but got \"%s\"\n", cname);
+
+    icount = IDirect3DRMMeshBuilder3_GetFaceCount(MeshBuilder3);
+    todo_wine
+    ok(icount == 1, "wrong FaceCount: %i\n", icount);
+
+    array1 = NULL;
+    hr = IDirect3DRMMeshBuilder3_GetFaces(MeshBuilder3, &array1);
+    todo_wine
+    ok(hr == D3DRM_OK, "Cannot get FaceArray (hr = %x)\n", hr);
+    todo_wine
+    ok(array1 != NULL, "pArray = %p\n", array1);
+    if (array1)
+    {
+        IDirect3DRMFace *face;
+        count = IDirect3DRMFaceArray_GetSize(array1);
+        ok(count == 1, "count = %u\n", count);
+        hr = IDirect3DRMFaceArray_GetElement(array1, 0, &face);
+        ok(hr == D3DRM_OK, "Cannot get face (hr = %x)\n", hr);
+        IDirect3DRMFace_Release(face);
+        IDirect3DRMFaceArray_Release(array1);
+    }
+
+    icount = IDirect3DRMFace2_GetVertexCount(face2);
+    ok(!icount, "wrong VertexCount: %i\n", icount);
+
+    info.lpMemory = data_ok;
+    info.dSize = strlen(data_ok);
+    hr = IDirect3DRMMeshBuilder3_Load(MeshBuilder3, &info, NULL, D3DRMLOAD_FROMMEMORY, NULL, NULL);
+    ok(hr == D3DRM_OK, "Cannot load mesh data (hr = %x)\n", hr);
+
+    icount = IDirect3DRMMeshBuilder3_GetVertexCount(MeshBuilder3);
+    ok(icount == 4, "Wrong number of vertices %d (must be 4)\n", icount);
+
+    icount = IDirect3DRMMeshBuilder3_GetNormalCount(MeshBuilder3);
+    ok(icount == 4, "Wrong number of normals %d (must be 4)\n", icount);
+
+    icount = IDirect3DRMMeshBuilder3_GetFaceCount(MeshBuilder3);
+    todo_wine
+    ok(icount == 4, "Wrong number of faces %d (must be 4)\n", icount);
+
+    count = 4;
+    hr = IDirect3DRMMeshBuilder3_GetVertices(MeshBuilder3, 0, &count, v1);
+    ok(hr == D3DRM_OK, "Cannot get vertices information (hr = %x)\n", hr);
+    ok(count == 4, "Wrong number of vertices %d (must be 4)\n", count);
+
+    hr = IDirect3DRMMeshBuilder3_GetNormals(MeshBuilder3, 0, &count, n1);
+    ok(hr == D3DRM_OK, "Cannot get normals information (hr = %x)\n", hr);
+    ok(count == 4, "Wrong number of normals %d (must be 4)\n", count);
+
+    array1 = NULL;
+    hr = IDirect3DRMMeshBuilder3_GetFaces(MeshBuilder3, &array1);
+    todo_wine
+    ok(hr == D3DRM_OK, "Cannot get FaceArray (hr = %x)\n", hr);
+    todo_wine
+    ok(array1 != NULL, "pArray = %p\n", array1);
+    if (array1)
+    {
+        IDirect3DRMFace *face;
+        count = IDirect3DRMFaceArray_GetSize(array1);
+        ok(count == 4, "count = %u\n", count);
+        hr = IDirect3DRMFaceArray_GetElement(array1, 1, &face);
+        ok(hr == D3DRM_OK, "Cannot get face (hr = %x)\n", hr);
+        IDirect3DRMFace_GetVertices(face, &count, v2, n2);
+        ok(hr == D3DRM_OK, "Cannot get vertices information (hr = %x)\n", hr);
+        ok(count == 3, "Wrong number of vertices %d (must be 3)\n", count);
+        ok(U1(v2[0]).x == U1(v1[0]).x, "Wrong component v2[0].x = %f (expected %f)\n",
+           U1(v2[0]).x, U1(v1[0]).x);
+        ok(U2(v2[0]).y == U2(v1[0]).y, "Wrong component v2[0].y = %f (expected %f)\n",
+           U2(v2[0]).y, U2(v1[0]).y);
+        ok(U3(v2[0]).z == U3(v1[0]).z, "Wrong component v2[0].z = %f (expected %f)\n",
+           U3(v2[0]).z, U3(v1[0]).z);
+        ok(U1(v2[1]).x == U1(v1[1]).x, "Wrong component v2[1].x = %f (expected %f)\n",
+           U1(v2[1]).x, U1(v1[1]).x);
+        ok(U2(v2[1]).y == U2(v1[1]).y, "Wrong component v2[1].y = %f (expected %f)\n",
+           U2(v2[1]).y, U2(v1[1]).y);
+        ok(U3(v2[1]).z == U3(v1[1]).z, "Wrong component v2[1].z = %f (expected %f)\n",
+           U3(v2[1]).z, U3(v1[1]).z);
+        ok(U1(v2[2]).x == U1(v1[2]).x, "Wrong component v2[2].x = %f (expected %f)\n",
+           U1(v2[2]).x, U1(v1[2]).x);
+        ok(U2(v2[2]).y == U2(v1[2]).y, "Wrong component v2[2].y = %f (expected %f)\n",
+           U2(v2[2]).y, U2(v1[2]).y);
+        ok(U3(v2[2]).z == U3(v1[2]).z, "Wrong component v2[2].z = %f (expected %f)\n",
+           U3(v2[2]).z, U3(v1[2]).z);
+
+        ok(U1(n2[0]).x == U1(n1[0]).x, "Wrong component n2[0].x = %f (expected %f)\n",
+           U1(n2[0]).x, U1(n1[0]).x);
+        ok(U2(n2[0]).y == U2(n1[0]).y, "Wrong component n2[0].y = %f (expected %f)\n",
+           U2(n2[0]).y, U2(n1[0]).y);
+        ok(U3(n2[0]).z == U3(n1[0]).z, "Wrong component n2[0].z = %f (expected %f)\n",
+           U3(n2[0]).z, U3(n1[0]).z);
+        ok(U1(n2[1]).x == U1(n1[1]).x, "Wrong component n2[1].x = %f (expected %f)\n",
+           U1(n2[1]).x, U1(n1[1]).x);
+        ok(U2(n2[1]).y == U2(n1[1]).y, "Wrong component n2[1].y = %f (expected %f)\n",
+           U2(n2[1]).y, U2(n1[1]).y);
+        ok(U3(n2[1]).z == U3(n1[1]).z, "Wrong component n2[1].z = %f (expected %f)\n",
+           U3(n2[1]).z, U3(n1[1]).z);
+        ok(U1(n2[2]).x == U1(n1[2]).x, "Wrong component n2[2].x = %f (expected %f)\n",
+           U1(n2[2]).x, U1(n1[2]).x);
+        ok(U2(n2[2]).y == U2(n1[2]).y, "Wrong component n2[2].y = %f (expected %f)\n",
+           U2(n2[2]).y, U2(n1[2]).y);
+        ok(U3(n2[2]).z == U3(n1[2]).z, "Wrong component n2[2].z = %f (expected %f)\n",
+           U3(n2[2]).z, U3(n1[2]).z);
+
+        IDirect3DRMFace_Release(face);
+        IDirect3DRMFaceArray_Release(array1);
+    }
+
+    IDirect3DRMFace2_Release(face2);
+    IDirect3DRMMeshBuilder3_Release(MeshBuilder3);
+    IDirect3DRM3_Release(d3drm3);
+    IDirect3DRM2_Release(d3drm2);
+    IDirect3DRM_Release(d3drm);
 }
 
 static void test_Frame(void)
 {
     HRESULT hr;
-    LPDIRECT3DRM pD3DRM;
-    LPDIRECT3DRMFRAME pFrameC;
-    LPDIRECT3DRMFRAME pFrameP1;
-    LPDIRECT3DRMFRAME pFrameP2;
-    LPDIRECT3DRMFRAME pFrameTmp;
-    LPDIRECT3DRMFRAMEARRAY pArray;
-    LPDIRECT3DRMMESHBUILDER pMeshBuilder;
-    LPDIRECT3DRMVISUAL pVisual1;
-    LPDIRECT3DRMVISUAL pVisualTmp;
-    LPDIRECT3DRMVISUALARRAY pVisualArray;
-    LPDIRECT3DRMLIGHT pLight1;
-    LPDIRECT3DRMLIGHT pLightTmp;
+    IDirect3DRM *d3drm;
+    IDirect3DRMFrame *pFrameC;
+    IDirect3DRMFrame *pFrameP1;
+    IDirect3DRMFrame *pFrameP2;
+    IDirect3DRMFrame *pFrameTmp;
+    IDirect3DRMFrameArray *frame_array;
+    IDirect3DRMMeshBuilder *mesh_builder;
+    IDirect3DRMVisual *visual1;
+    IDirect3DRMVisual *visual_tmp;
+    IDirect3DRMVisualArray *visual_array;
+    IDirect3DRMLight *light1;
+    IDirect3DRMLight *light_tmp;
     LPDIRECT3DRMLIGHTARRAY pLightArray;
     D3DCOLOR color;
     DWORD count;
     CHAR cname[64] = {0};
 
-    hr = pDirect3DRMCreate(&pD3DRM);
+    hr = pDirect3DRMCreate(&d3drm);
     ok(hr == D3DRM_OK, "Cannot get IDirect3DRM interface (hr = %x)\n", hr);
 
-    hr = IDirect3DRM_CreateFrame(pD3DRM, NULL, &pFrameC);
+    hr = IDirect3DRM_CreateFrame(d3drm, NULL, &pFrameC);
     ok(hr == D3DRM_OK, "Cannot get IDirect3DRMFrame interface (hr = %x)\n", hr);
     CHECK_REFCOUNT(pFrameC, 1);
 
@@ -715,21 +951,21 @@ static void test_Frame(void)
     ok(pFrameTmp == NULL, "pFrameTmp = %p\n", pFrameTmp);
     CHECK_REFCOUNT(pFrameC, 1);
 
-    pArray = NULL;
-    hr = IDirect3DRMFrame_GetChildren(pFrameC, &pArray);
+    frame_array = NULL;
+    hr = IDirect3DRMFrame_GetChildren(pFrameC, &frame_array);
     ok(hr == D3DRM_OK, "Cannot get children (hr = %x)\n", hr);
-    ok(pArray != NULL, "pArray = %p\n", pArray);
-    if (pArray)
+    ok(!!frame_array, "frame_array = %p\n", frame_array);
+    if (frame_array)
     {
-        count = IDirect3DRMFrameArray_GetSize(pArray);
+        count = IDirect3DRMFrameArray_GetSize(frame_array);
         ok(count == 0, "count = %u\n", count);
-        hr = IDirect3DRMFrameArray_GetElement(pArray, 0, &pFrameTmp);
+        hr = IDirect3DRMFrameArray_GetElement(frame_array, 0, &pFrameTmp);
         ok(hr == D3DRMERR_BADVALUE, "Should have returned D3DRMERR_BADVALUE (hr = %x)\n", hr);
         ok(pFrameTmp == NULL, "pFrameTmp = %p\n", pFrameTmp);
-        IDirect3DRMFrameArray_Release(pArray);
+        IDirect3DRMFrameArray_Release(frame_array);
     }
 
-    hr = IDirect3DRM_CreateFrame(pD3DRM, NULL, &pFrameP1);
+    hr = IDirect3DRM_CreateFrame(d3drm, NULL, &pFrameP1);
     ok(hr == D3DRM_OK, "Cannot get IDirect3DRMFrame interface (hr = %x)\n", hr);
 
     /* GetParent with NULL pointer */
@@ -757,17 +993,17 @@ static void test_Frame(void)
     CHECK_REFCOUNT(pFrameP1, 1);
     CHECK_REFCOUNT(pFrameC, 2);
 
-    pArray = NULL;
-    hr = IDirect3DRMFrame_GetChildren(pFrameP1, &pArray);
+    frame_array = NULL;
+    hr = IDirect3DRMFrame_GetChildren(pFrameP1, &frame_array);
     ok(hr == D3DRM_OK, "Cannot get children (hr = %x)\n", hr);
     /* In some older version of d3drm, creating IDirect3DRMFrameArray object with GetChildren does not increment refcount of children frames */
     ok((get_refcount((IUnknown*)pFrameC) == 3) || broken(get_refcount((IUnknown*)pFrameC) == 2),
             "Invalid refcount. Expected 3 (or 2) got %d\n", get_refcount((IUnknown*)pFrameC));
-    if (pArray)
+    if (frame_array)
     {
-        count = IDirect3DRMFrameArray_GetSize(pArray);
+        count = IDirect3DRMFrameArray_GetSize(frame_array);
         ok(count == 1, "count = %u\n", count);
-        hr = IDirect3DRMFrameArray_GetElement(pArray, 0, &pFrameTmp);
+        hr = IDirect3DRMFrameArray_GetElement(frame_array, 0, &pFrameTmp);
         ok(hr == D3DRM_OK, "Cannot get element (hr = %x)\n", hr);
         ok(pFrameTmp == pFrameC, "pFrameTmp = %p\n", pFrameTmp);
         ok((get_refcount((IUnknown*)pFrameC) == 4) || broken(get_refcount((IUnknown*)pFrameC) == 3),
@@ -775,7 +1011,7 @@ static void test_Frame(void)
         IDirect3DRMFrame_Release(pFrameTmp);
         ok((get_refcount((IUnknown*)pFrameC) == 3) || broken(get_refcount((IUnknown*)pFrameC) == 2),
                 "Invalid refcount. Expected 3 (or 2) got %d\n", get_refcount((IUnknown*)pFrameC));
-        IDirect3DRMFrameArray_Release(pArray);
+        IDirect3DRMFrameArray_Release(frame_array);
         CHECK_REFCOUNT(pFrameC, 2);
     }
 
@@ -786,39 +1022,39 @@ static void test_Frame(void)
     CHECK_REFCOUNT(pFrameP1, 2);
 
     /* Add child to second parent */
-    hr = IDirect3DRM_CreateFrame(pD3DRM, NULL, &pFrameP2);
+    hr = IDirect3DRM_CreateFrame(d3drm, NULL, &pFrameP2);
     ok(hr == D3DRM_OK, "Cannot get IDirect3DRMFrame interface (hr = %x)\n", hr);
 
     hr = IDirect3DRMFrame_AddChild(pFrameP2, pFrameC);
     ok(hr == D3DRM_OK, "Cannot add child frame (hr = %x)\n", hr);
     CHECK_REFCOUNT(pFrameC, 2);
 
-    pArray = NULL;
-    hr = IDirect3DRMFrame_GetChildren(pFrameP2, &pArray);
+    frame_array = NULL;
+    hr = IDirect3DRMFrame_GetChildren(pFrameP2, &frame_array);
     ok(hr == D3DRM_OK, "Cannot get children (hr = %x)\n", hr);
-    if (pArray)
+    if (frame_array)
     {
-        count = IDirect3DRMFrameArray_GetSize(pArray);
+        count = IDirect3DRMFrameArray_GetSize(frame_array);
         ok(count == 1, "count = %u\n", count);
-        hr = IDirect3DRMFrameArray_GetElement(pArray, 0, &pFrameTmp);
+        hr = IDirect3DRMFrameArray_GetElement(frame_array, 0, &pFrameTmp);
         ok(hr == D3DRM_OK, "Cannot get element (hr = %x)\n", hr);
         ok(pFrameTmp == pFrameC, "pFrameTmp = %p\n", pFrameTmp);
         IDirect3DRMFrame_Release(pFrameTmp);
-        IDirect3DRMFrameArray_Release(pArray);
+        IDirect3DRMFrameArray_Release(frame_array);
     }
 
-    pArray = NULL;
-    hr = IDirect3DRMFrame_GetChildren(pFrameP1, &pArray);
+    frame_array = NULL;
+    hr = IDirect3DRMFrame_GetChildren(pFrameP1, &frame_array);
     ok(hr == D3DRM_OK, "Cannot get children (hr = %x)\n", hr);
-    if (pArray)
+    if (frame_array)
     {
-        count = IDirect3DRMFrameArray_GetSize(pArray);
+        count = IDirect3DRMFrameArray_GetSize(frame_array);
         ok(count == 0, "count = %u\n", count);
         pFrameTmp = (void*)0xdeadbeef;
-        hr = IDirect3DRMFrameArray_GetElement(pArray, 0, &pFrameTmp);
+        hr = IDirect3DRMFrameArray_GetElement(frame_array, 0, &pFrameTmp);
         ok(hr == D3DRMERR_BADVALUE, "Should have returned D3DRMERR_BADVALUE (hr = %x)\n", hr);
         ok(pFrameTmp == NULL, "pFrameTmp = %p\n", pFrameTmp);
-        IDirect3DRMFrameArray_Release(pArray);
+        IDirect3DRMFrameArray_Release(frame_array);
     }
 
     pFrameTmp = (void*)0xdeadbeef;
@@ -833,18 +1069,18 @@ static void test_Frame(void)
     ok(hr == D3DRM_OK, "Cannot add child frame (hr = %x)\n", hr);
     CHECK_REFCOUNT(pFrameC, 2);
 
-    pArray = NULL;
-    hr = IDirect3DRMFrame_GetChildren(pFrameP2, &pArray);
+    frame_array = NULL;
+    hr = IDirect3DRMFrame_GetChildren(pFrameP2, &frame_array);
     ok(hr == D3DRM_OK, "Cannot get children (hr = %x)\n", hr);
-    if (pArray)
+    if (frame_array)
     {
-        count = IDirect3DRMFrameArray_GetSize(pArray);
+        count = IDirect3DRMFrameArray_GetSize(frame_array);
         ok(count == 1, "count = %u\n", count);
-        hr = IDirect3DRMFrameArray_GetElement(pArray, 0, &pFrameTmp);
+        hr = IDirect3DRMFrameArray_GetElement(frame_array, 0, &pFrameTmp);
         ok(hr == D3DRM_OK, "Cannot get element (hr = %x)\n", hr);
         ok(pFrameTmp == pFrameC, "pFrameTmp = %p\n", pFrameTmp);
         IDirect3DRMFrame_Release(pFrameTmp);
-        IDirect3DRMFrameArray_Release(pArray);
+        IDirect3DRMFrameArray_Release(frame_array);
     }
 
     /* Delete child */
@@ -852,18 +1088,18 @@ static void test_Frame(void)
     ok(hr == D3DRM_OK, "Cannot delete child frame (hr = %x)\n", hr);
     CHECK_REFCOUNT(pFrameC, 1);
 
-    pArray = NULL;
-    hr = IDirect3DRMFrame_GetChildren(pFrameP2, &pArray);
+    frame_array = NULL;
+    hr = IDirect3DRMFrame_GetChildren(pFrameP2, &frame_array);
     ok(hr == D3DRM_OK, "Cannot get children (hr = %x)\n", hr);
-    if (pArray)
+    if (frame_array)
     {
-        count = IDirect3DRMFrameArray_GetSize(pArray);
+        count = IDirect3DRMFrameArray_GetSize(frame_array);
         ok(count == 0, "count = %u\n", count);
         pFrameTmp = (void*)0xdeadbeef;
-        hr = IDirect3DRMFrameArray_GetElement(pArray, 0, &pFrameTmp);
+        hr = IDirect3DRMFrameArray_GetElement(frame_array, 0, &pFrameTmp);
         ok(hr == D3DRMERR_BADVALUE, "Should have returned D3DRMERR_BADVALUE (hr = %x)\n", hr);
         ok(pFrameTmp == NULL, "pFrameTmp = %p\n", pFrameTmp);
-        IDirect3DRMFrameArray_Release(pArray);
+        IDirect3DRMFrameArray_Release(frame_array);
     }
 
     pFrameTmp = (void*)0xdeadbeef;
@@ -880,22 +1116,22 @@ static void test_Frame(void)
     ok(hr == D3DRM_OK, "Cannot add child frame (hr = %x)\n", hr);
     CHECK_REFCOUNT(pFrameP1, 3);
 
-    pArray = NULL;
-    hr = IDirect3DRMFrame_GetChildren(pFrameP2, &pArray);
+    frame_array = NULL;
+    hr = IDirect3DRMFrame_GetChildren(pFrameP2, &frame_array);
     ok(hr == D3DRM_OK, "Cannot get children (hr = %x)\n", hr);
-    if (pArray)
+    if (frame_array)
     {
-        count = IDirect3DRMFrameArray_GetSize(pArray);
+        count = IDirect3DRMFrameArray_GetSize(frame_array);
         ok(count == 2, "count = %u\n", count);
-        hr = IDirect3DRMFrameArray_GetElement(pArray, 0, &pFrameTmp);
+        hr = IDirect3DRMFrameArray_GetElement(frame_array, 0, &pFrameTmp);
         ok(hr == D3DRM_OK, "Cannot get element (hr = %x)\n", hr);
         ok(pFrameTmp == pFrameC, "pFrameTmp = %p\n", pFrameTmp);
         IDirect3DRMFrame_Release(pFrameTmp);
-        hr = IDirect3DRMFrameArray_GetElement(pArray, 1, &pFrameTmp);
+        hr = IDirect3DRMFrameArray_GetElement(frame_array, 1, &pFrameTmp);
         ok(hr == D3DRM_OK, "Cannot get element (hr = %x)\n", hr);
         ok(pFrameTmp == pFrameP1, "pFrameTmp = %p\n", pFrameTmp);
         IDirect3DRMFrame_Release(pFrameTmp);
-        IDirect3DRMFrameArray_Release(pArray);
+        IDirect3DRMFrameArray_Release(frame_array);
     }
 
     /* [Add/Delete]Visual with NULL pointer */
@@ -908,35 +1144,35 @@ static void test_Frame(void)
     CHECK_REFCOUNT(pFrameP1, 3);
 
     /* Create Visual */
-    hr = IDirect3DRM_CreateMeshBuilder(pD3DRM, &pMeshBuilder);
+    hr = IDirect3DRM_CreateMeshBuilder(d3drm, &mesh_builder);
     ok(hr == D3DRM_OK, "Cannot get IDirect3DRMMeshBuilder interface (hr = %x)\n", hr);
-    pVisual1 = (LPDIRECT3DRMVISUAL)pMeshBuilder;
+    visual1 = (IDirect3DRMVisual *)mesh_builder;
 
     /* Add Visual to first parent */
-    hr = IDirect3DRMFrame_AddVisual(pFrameP1, pVisual1);
+    hr = IDirect3DRMFrame_AddVisual(pFrameP1, visual1);
     ok(hr == D3DRM_OK, "Cannot add visual (hr = %x)\n", hr);
     CHECK_REFCOUNT(pFrameP1, 3);
-    CHECK_REFCOUNT(pVisual1, 2);
+    CHECK_REFCOUNT(visual1, 2);
 
-    pVisualArray = NULL;
-    hr = IDirect3DRMFrame_GetVisuals(pFrameP1, &pVisualArray);
+    visual_array = NULL;
+    hr = IDirect3DRMFrame_GetVisuals(pFrameP1, &visual_array);
     ok(hr == D3DRM_OK, "Cannot get visuals (hr = %x)\n", hr);
-    if (pVisualArray)
+    if (visual_array)
     {
-        count = IDirect3DRMVisualArray_GetSize(pVisualArray);
+        count = IDirect3DRMVisualArray_GetSize(visual_array);
         ok(count == 1, "count = %u\n", count);
-        hr = IDirect3DRMVisualArray_GetElement(pVisualArray, 0, &pVisualTmp);
+        hr = IDirect3DRMVisualArray_GetElement(visual_array, 0, &visual_tmp);
         ok(hr == D3DRM_OK, "Cannot get element (hr = %x)\n", hr);
-        ok(pVisualTmp == pVisual1, "pVisualTmp = %p\n", pVisualTmp);
-        IDirect3DRMVisual_Release(pVisualTmp);
-        IDirect3DRMVisualArray_Release(pVisualArray);
+        ok(visual_tmp == visual1, "visual_tmp = %p\n", visual_tmp);
+        IDirect3DRMVisual_Release(visual_tmp);
+        IDirect3DRMVisualArray_Release(visual_array);
     }
 
     /* Delete Visual */
-    hr = IDirect3DRMFrame_DeleteVisual(pFrameP1, pVisual1);
+    hr = IDirect3DRMFrame_DeleteVisual(pFrameP1, visual1);
     ok(hr == D3DRM_OK, "Cannot delete visual (hr = %x)\n", hr);
     CHECK_REFCOUNT(pFrameP1, 3);
-    IDirect3DRMMeshBuilder_Release(pMeshBuilder);
+    IDirect3DRMMeshBuilder_Release(mesh_builder);
 
     /* [Add/Delete]Light with NULL pointer */
     hr = IDirect3DRMFrame_AddLight(pFrameP1, NULL);
@@ -948,14 +1184,14 @@ static void test_Frame(void)
     CHECK_REFCOUNT(pFrameP1, 3);
 
     /* Create Light */
-    hr = IDirect3DRM_CreateLightRGB(pD3DRM, D3DRMLIGHT_SPOT, 0.1, 0.2, 0.3, &pLight1);
+    hr = IDirect3DRM_CreateLightRGB(d3drm, D3DRMLIGHT_SPOT, 0.1, 0.2, 0.3, &light1);
     ok(hr == D3DRM_OK, "Cannot get IDirect3DRMLight interface (hr = %x)\n", hr);
 
     /* Add Light to first parent */
-    hr = IDirect3DRMFrame_AddLight(pFrameP1, pLight1);
+    hr = IDirect3DRMFrame_AddLight(pFrameP1, light1);
     ok(hr == D3DRM_OK, "Cannot add light (hr = %x)\n", hr);
     CHECK_REFCOUNT(pFrameP1, 3);
-    CHECK_REFCOUNT(pLight1, 2);
+    CHECK_REFCOUNT(light1, 2);
 
     pLightArray = NULL;
     hr = IDirect3DRMFrame_GetLights(pFrameP1, &pLightArray);
@@ -964,18 +1200,18 @@ static void test_Frame(void)
     {
         count = IDirect3DRMLightArray_GetSize(pLightArray);
         ok(count == 1, "count = %u\n", count);
-        hr = IDirect3DRMLightArray_GetElement(pLightArray, 0, &pLightTmp);
+        hr = IDirect3DRMLightArray_GetElement(pLightArray, 0, &light_tmp);
         ok(hr == D3DRM_OK, "Cannot get element (hr = %x)\n", hr);
-        ok(pLightTmp == pLight1, "pLightTmp = %p\n", pLightTmp);
-        IDirect3DRMLight_Release(pLightTmp);
+        ok(light_tmp == light1, "light_tmp = %p\n", light_tmp);
+        IDirect3DRMLight_Release(light_tmp);
         IDirect3DRMLightArray_Release(pLightArray);
     }
 
     /* Delete Light */
-    hr = IDirect3DRMFrame_DeleteLight(pFrameP1, pLight1);
+    hr = IDirect3DRMFrame_DeleteLight(pFrameP1, light1);
     ok(hr == D3DRM_OK, "Cannot delete light (hr = %x)\n", hr);
     CHECK_REFCOUNT(pFrameP1, 3);
-    IDirect3DRMLight_Release(pLight1);
+    IDirect3DRMLight_Release(light1);
 
     /* Test SceneBackground on first parent */
     color = IDirect3DRMFrame_GetSceneBackground(pFrameP1);
@@ -999,17 +1235,17 @@ static void test_Frame(void)
     IDirect3DRMFrame_Release(pFrameC);
     IDirect3DRMFrame_Release(pFrameP1);
 
-    IDirect3DRM_Release(pD3DRM);
+    IDirect3DRM_Release(d3drm);
 }
 
 static void test_Viewport(void)
 {
     IDirectDrawClipper *pClipper;
     HRESULT hr;
-    LPDIRECT3DRM pD3DRM;
-    LPDIRECT3DRMDEVICE pDevice;
-    LPDIRECT3DRMFRAME pFrame;
-    LPDIRECT3DRMVIEWPORT pViewport;
+    IDirect3DRM *d3drm;
+    IDirect3DRMDevice *device;
+    IDirect3DRMFrame *frame;
+    IDirect3DRMViewport *viewport;
     GUID driver;
     HWND window;
     RECT rc;
@@ -1019,7 +1255,7 @@ static void test_Viewport(void)
     window = CreateWindowA("static", "d3drm_test", WS_OVERLAPPEDWINDOW, 0, 0, 300, 200, 0, 0, 0, 0);
     GetClientRect(window, &rc);
 
-    hr = pDirect3DRMCreate(&pD3DRM);
+    hr = pDirect3DRMCreate(&d3drm);
     ok(hr == D3DRM_OK, "Cannot get IDirect3DRM interface (hr = %x)\n", hr);
 
     hr = DirectDrawCreateClipper(0, &pClipper, NULL);
@@ -1029,178 +1265,177 @@ static void test_Viewport(void)
     ok(hr == DD_OK, "Cannot set HWnd to Clipper (hr = %x)\n", hr);
 
     memcpy(&driver, &IID_IDirect3DRGBDevice, sizeof(GUID));
-    hr = IDirect3DRM3_CreateDeviceFromClipper(pD3DRM, pClipper, &driver, rc.right, rc.bottom, &pDevice);
+    hr = IDirect3DRM3_CreateDeviceFromClipper(d3drm, pClipper, &driver, rc.right, rc.bottom, &device);
     ok(hr == D3DRM_OK, "Cannot get IDirect3DRMDevice interface (hr = %x)\n", hr);
 
-    hr = IDirect3DRM_CreateFrame(pD3DRM, NULL, &pFrame);
+    hr = IDirect3DRM_CreateFrame(d3drm, NULL, &frame);
     ok(hr == D3DRM_OK, "Cannot get IDirect3DRMFrame interface (hr = %x)\n", hr);
 
-    hr = IDirect3DRM_CreateViewport(pD3DRM, pDevice, pFrame, rc.left, rc.top, rc.right, rc.bottom, &pViewport);
+    hr = IDirect3DRM_CreateViewport(d3drm, device, frame, rc.left, rc.top, rc.right, rc.bottom, &viewport);
     ok(hr == D3DRM_OK, "Cannot get IDirect3DRMViewport interface (hr = %x)\n", hr);
 
-    hr = IDirect3DRMViewport_GetClassName(pViewport, NULL, cname);
+    hr = IDirect3DRMViewport_GetClassName(viewport, NULL, cname);
     ok(hr == E_INVALIDARG, "GetClassName failed with %x\n", hr);
-    hr = IDirect3DRMViewport_GetClassName(pViewport, NULL, NULL);
+    hr = IDirect3DRMViewport_GetClassName(viewport, NULL, NULL);
     ok(hr == E_INVALIDARG, "GetClassName failed with %x\n", hr);
     size = 1;
-    hr = IDirect3DRMViewport_GetClassName(pViewport, &size, cname);
+    hr = IDirect3DRMViewport_GetClassName(viewport, &size, cname);
     ok(hr == E_INVALIDARG, "GetClassName failed with %x\n", hr);
     size = sizeof(cname);
-    hr = IDirect3DRMViewport_GetClassName(pViewport, &size, cname);
+    hr = IDirect3DRMViewport_GetClassName(viewport, &size, cname);
     ok(hr == D3DRM_OK, "Cannot get classname (hr = %x)\n", hr);
     ok(size == sizeof("Viewport"), "wrong size: %u\n", size);
     ok(!strcmp(cname, "Viewport"), "Expected cname to be \"Viewport\", but got \"%s\"\n", cname);
 
-    IDirect3DRMViewport_Release(pViewport);
-    IDirect3DRMFrame_Release(pFrame);
-    IDirect3DRMDevice_Release(pDevice);
+    IDirect3DRMViewport_Release(viewport);
+    IDirect3DRMFrame_Release(frame);
+    IDirect3DRMDevice_Release(device);
     IDirectDrawClipper_Release(pClipper);
 
-    IDirect3DRM_Release(pD3DRM);
+    IDirect3DRM_Release(d3drm);
     DestroyWindow(window);
 }
 
 static void test_Light(void)
 {
     HRESULT hr;
-    LPDIRECT3DRM pD3DRM;
-    LPDIRECT3DRMLIGHT pLight;
+    IDirect3DRM *d3drm;
+    IDirect3DRMLight *light;
     D3DRMLIGHTTYPE type;
     D3DCOLOR color;
     DWORD size;
     CHAR cname[64] = {0};
 
-    hr = pDirect3DRMCreate(&pD3DRM);
+    hr = pDirect3DRMCreate(&d3drm);
     ok(hr == D3DRM_OK, "Cannot get IDirect3DRM interface (hr = %x)\n", hr);
 
-    hr = IDirect3DRM_CreateLightRGB(pD3DRM, D3DRMLIGHT_SPOT, 0.5, 0.5, 0.5, &pLight);
+    hr = IDirect3DRM_CreateLightRGB(d3drm, D3DRMLIGHT_SPOT, 0.5, 0.5, 0.5, &light);
     ok(hr == D3DRM_OK, "Cannot get IDirect3DRMLight interface (hr = %x)\n", hr);
 
-    hr = IDirect3DRMLight_GetClassName(pLight, NULL, cname);
+    hr = IDirect3DRMLight_GetClassName(light, NULL, cname);
     ok(hr == E_INVALIDARG, "GetClassName failed with %x\n", hr);
-    hr = IDirect3DRMLight_GetClassName(pLight, NULL, NULL);
+    hr = IDirect3DRMLight_GetClassName(light, NULL, NULL);
     ok(hr == E_INVALIDARG, "GetClassName failed with %x\n", hr);
     size = 1;
-    hr = IDirect3DRMLight_GetClassName(pLight, &size, cname);
+    hr = IDirect3DRMLight_GetClassName(light, &size, cname);
     ok(hr == E_INVALIDARG, "GetClassName failed with %x\n", hr);
     size = sizeof(cname);
-    hr = IDirect3DRMLight_GetClassName(pLight, &size, cname);
+    hr = IDirect3DRMLight_GetClassName(light, &size, cname);
     ok(hr == D3DRM_OK, "Cannot get classname (hr = %x)\n", hr);
     ok(size == sizeof("Light"), "wrong size: %u\n", size);
     ok(!strcmp(cname, "Light"), "Expected cname to be \"Light\", but got \"%s\"\n", cname);
 
-    type = IDirect3DRMLight_GetType(pLight);
+    type = IDirect3DRMLight_GetType(light);
     ok(type == D3DRMLIGHT_SPOT, "wrong type (%u)\n", type);
 
-    color = IDirect3DRMLight_GetColor(pLight);
+    color = IDirect3DRMLight_GetColor(light);
     ok(color == 0xff7f7f7f, "wrong color (%x)\n", color);
 
-    hr = IDirect3DRMLight_SetType(pLight, D3DRMLIGHT_POINT);
+    hr = IDirect3DRMLight_SetType(light, D3DRMLIGHT_POINT);
     ok(hr == D3DRM_OK, "Cannot set type (hr = %x)\n", hr);
-    type = IDirect3DRMLight_GetType(pLight);
+    type = IDirect3DRMLight_GetType(light);
     ok(type == D3DRMLIGHT_POINT, "wrong type (%u)\n", type);
 
-    hr = IDirect3DRMLight_SetColor(pLight, 0xff180587);
+    hr = IDirect3DRMLight_SetColor(light, 0xff180587);
     ok(hr == D3DRM_OK, "Cannot set color (hr = %x)\n", hr);
-    color = IDirect3DRMLight_GetColor(pLight);
+    color = IDirect3DRMLight_GetColor(light);
     ok(color == 0xff180587, "wrong color (%x)\n", color);
 
-    hr = IDirect3DRMLight_SetColorRGB(pLight, 0.5, 0.5, 0.5);
+    hr = IDirect3DRMLight_SetColorRGB(light, 0.5, 0.5, 0.5);
     ok(hr == D3DRM_OK, "Cannot set color (hr = %x)\n", hr);
-    color = IDirect3DRMLight_GetColor(pLight);
+    color = IDirect3DRMLight_GetColor(light);
     ok(color == 0xff7f7f7f, "wrong color (%x)\n", color);
 
-    IDirect3DRMLight_Release(pLight);
+    IDirect3DRMLight_Release(light);
 
-    IDirect3DRM_Release(pD3DRM);
+    IDirect3DRM_Release(d3drm);
 }
 
 static void test_Material2(void)
 {
     HRESULT hr;
-    LPDIRECT3DRM pD3DRM;
-    LPDIRECT3DRM3 pD3DRM3;
-    LPDIRECT3DRMMATERIAL2 pMaterial2;
+    IDirect3DRM *d3drm;
+    IDirect3DRM3 *d3drm3;
+    IDirect3DRMMaterial2 *material2;
     D3DVALUE r, g, b;
     DWORD size;
     CHAR cname[64] = {0};
 
-    hr = pDirect3DRMCreate(&pD3DRM);
+    hr = pDirect3DRMCreate(&d3drm);
     ok(hr == D3DRM_OK, "Cannot get IDirect3DRM interface (hr = %x)\n", hr);
 
-    hr = IDirect3DRM_QueryInterface(pD3DRM, &IID_IDirect3DRM3, (LPVOID*)&pD3DRM3);
-    if (FAILED(hr))
+    if (FAILED(hr = IDirect3DRM_QueryInterface(d3drm, &IID_IDirect3DRM3, (void **)&d3drm3)))
     {
         win_skip("Cannot get IDirect3DRM3 interface (hr = %x), skipping tests\n", hr);
-        IDirect3DRM_Release(pD3DRM);
+        IDirect3DRM_Release(d3drm);
         return;
     }
 
-    hr = IDirect3DRM3_CreateMaterial(pD3DRM3, 18.5f, &pMaterial2);
+    hr = IDirect3DRM3_CreateMaterial(d3drm3, 18.5f, &material2);
     ok(hr == D3DRM_OK, "Cannot get IDirect3DRMMaterial2 interface (hr = %x)\n", hr);
 
-    hr = IDirect3DRMMaterial2_GetClassName(pMaterial2, NULL, cname);
+    hr = IDirect3DRMMaterial2_GetClassName(material2, NULL, cname);
     ok(hr == E_INVALIDARG, "GetClassName failed with %x\n", hr);
-    hr = IDirect3DRMMaterial2_GetClassName(pMaterial2, NULL, NULL);
+    hr = IDirect3DRMMaterial2_GetClassName(material2, NULL, NULL);
     ok(hr == E_INVALIDARG, "GetClassName failed with %x\n", hr);
     size = 1;
-    hr = IDirect3DRMMaterial2_GetClassName(pMaterial2, &size, cname);
+    hr = IDirect3DRMMaterial2_GetClassName(material2, &size, cname);
     ok(hr == E_INVALIDARG, "GetClassName failed with %x\n", hr);
     size = sizeof(cname);
-    hr = IDirect3DRMMaterial2_GetClassName(pMaterial2, &size, cname);
+    hr = IDirect3DRMMaterial2_GetClassName(material2, &size, cname);
     ok(hr == D3DRM_OK, "Cannot get classname (hr = %x)\n", hr);
     ok(size == sizeof("Material"), "wrong size: %u\n", size);
     ok(!strcmp(cname, "Material"), "Expected cname to be \"Material\", but got \"%s\"\n", cname);
 
-    r = IDirect3DRMMaterial2_GetPower(pMaterial2);
+    r = IDirect3DRMMaterial2_GetPower(material2);
     ok(r == 18.5f, "wrong power (%f)\n", r);
 
-    hr = IDirect3DRMMaterial2_GetEmissive(pMaterial2, &r, &g, &b);
+    hr = IDirect3DRMMaterial2_GetEmissive(material2, &r, &g, &b);
     ok(hr == D3DRM_OK, "Cannot get emissive (hr = %x)\n", hr);
     ok(r == 0.0f && g == 0.0f && b == 0.0f, "wrong emissive r=%f g=%f b=%f, expected r=0.0 g=0.0 b=0.0\n", r, g, b);
 
-    hr = IDirect3DRMMaterial2_GetSpecular(pMaterial2, &r, &g, &b);
+    hr = IDirect3DRMMaterial2_GetSpecular(material2, &r, &g, &b);
     ok(hr == D3DRM_OK, "Cannot get emissive (hr = %x)\n", hr);
     ok(r == 1.0f && g == 1.0f && b == 1.0f, "wrong specular r=%f g=%f b=%f, expected r=1.0 g=1.0 b=1.0\n", r, g, b);
 
-    hr = IDirect3DRMMaterial2_GetAmbient(pMaterial2, &r, &g, &b);
+    hr = IDirect3DRMMaterial2_GetAmbient(material2, &r, &g, &b);
     ok(hr == D3DRM_OK, "Cannot get emissive (hr = %x)\n", hr);
     ok(r == 0.0f && g == 0.0f && b == 0.0f, "wrong ambient r=%f g=%f b=%f, expected r=0.0 g=0.0 b=0.0\n", r, g, b);
 
-    hr = IDirect3DRMMaterial2_SetPower(pMaterial2, 5.87f);
+    hr = IDirect3DRMMaterial2_SetPower(material2, 5.87f);
     ok(hr == D3DRM_OK, "Cannot set power (hr = %x)\n", hr);
-    r = IDirect3DRMMaterial2_GetPower(pMaterial2);
+    r = IDirect3DRMMaterial2_GetPower(material2);
     ok(r == 5.87f, "wrong power (%f)\n", r);
 
-    hr = IDirect3DRMMaterial2_SetEmissive(pMaterial2, 0.5f, 0.5f, 0.5f);
+    hr = IDirect3DRMMaterial2_SetEmissive(material2, 0.5f, 0.5f, 0.5f);
     ok(hr == D3DRM_OK, "Cannot set emissive (hr = %x)\n", hr);
-    hr = IDirect3DRMMaterial2_GetEmissive(pMaterial2, &r, &g, &b);
+    hr = IDirect3DRMMaterial2_GetEmissive(material2, &r, &g, &b);
     ok(hr == D3DRM_OK, "Cannot get emissive (hr = %x)\n", hr);
     ok(r == 0.5f && g == 0.5f && b == 0.5f, "wrong emissive r=%f g=%f b=%f, expected r=0.5 g=0.5 b=0.5\n", r, g, b);
 
-    hr = IDirect3DRMMaterial2_SetSpecular(pMaterial2, 0.6f, 0.6f, 0.6f);
+    hr = IDirect3DRMMaterial2_SetSpecular(material2, 0.6f, 0.6f, 0.6f);
     ok(hr == D3DRM_OK, "Cannot set specular (hr = %x)\n", hr);
-    hr = IDirect3DRMMaterial2_GetSpecular(pMaterial2, &r, &g, &b);
+    hr = IDirect3DRMMaterial2_GetSpecular(material2, &r, &g, &b);
     ok(hr == D3DRM_OK, "Cannot get specular (hr = %x)\n", hr);
     ok(r == 0.6f && g == 0.6f && b == 0.6f, "wrong specular r=%f g=%f b=%f, expected r=0.6 g=0.6 b=0.6\n", r, g, b);
 
-    hr = IDirect3DRMMaterial2_SetAmbient(pMaterial2, 0.7f, 0.7f, 0.7f);
+    hr = IDirect3DRMMaterial2_SetAmbient(material2, 0.7f, 0.7f, 0.7f);
     ok(hr == D3DRM_OK, "Cannot set ambient (hr = %x)\n", hr);
-    hr = IDirect3DRMMaterial2_GetAmbient(pMaterial2, &r, &g, &b);
+    hr = IDirect3DRMMaterial2_GetAmbient(material2, &r, &g, &b);
     ok(hr == D3DRM_OK, "Cannot get ambient (hr = %x)\n", hr);
     ok(r == 0.7f && g == 0.7f && b == 0.7f, "wrong ambient r=%f g=%f b=%f, expected r=0.7 g=0.7 b=0.7\n", r, g, b);
 
-    IDirect3DRMMaterial2_Release(pMaterial2);
+    IDirect3DRMMaterial2_Release(material2);
 
-    IDirect3DRM3_Release(pD3DRM3);
-    IDirect3DRM_Release(pD3DRM);
+    IDirect3DRM3_Release(d3drm3);
+    IDirect3DRM_Release(d3drm);
 }
 
 static void test_Texture(void)
 {
     HRESULT hr;
-    LPDIRECT3DRM pD3DRM;
-    LPDIRECT3DRMTEXTURE pTexture;
+    IDirect3DRM *d3drm;
+    IDirect3DRMTexture *texture;
     D3DRMIMAGE initimg = {
         2, 2, 1, 1, 32,
         TRUE, 2 * sizeof(DWORD), NULL, NULL,
@@ -1210,37 +1445,37 @@ static void test_Texture(void)
     DWORD size;
     CHAR cname[64] = {0};
 
-    hr = pDirect3DRMCreate(&pD3DRM);
+    hr = pDirect3DRMCreate(&d3drm);
     ok(hr == D3DRM_OK, "Cannot get IDirect3DRM interface (hr = %x)\n", hr);
 
     initimg.buffer1 = &pixel;
-    hr = IDirect3DRM_CreateTexture(pD3DRM, &initimg, &pTexture);
+    hr = IDirect3DRM_CreateTexture(d3drm, &initimg, &texture);
     ok(hr == D3DRM_OK, "Cannot get IDirect3DRMTexture interface (hr = %x)\n", hr);
 
-    hr = IDirect3DRMTexture_GetClassName(pTexture, NULL, cname);
+    hr = IDirect3DRMTexture_GetClassName(texture, NULL, cname);
     ok(hr == E_INVALIDARG, "GetClassName failed with %x\n", hr);
-    hr = IDirect3DRMTexture_GetClassName(pTexture, NULL, NULL);
+    hr = IDirect3DRMTexture_GetClassName(texture, NULL, NULL);
     ok(hr == E_INVALIDARG, "GetClassName failed with %x\n", hr);
     size = 1;
-    hr = IDirect3DRMTexture_GetClassName(pTexture, &size, cname);
+    hr = IDirect3DRMTexture_GetClassName(texture, &size, cname);
     ok(hr == E_INVALIDARG, "GetClassName failed with %x\n", hr);
     size = sizeof(cname);
-    hr = IDirect3DRMTexture_GetClassName(pTexture, &size, cname);
+    hr = IDirect3DRMTexture_GetClassName(texture, &size, cname);
     ok(hr == D3DRM_OK, "Cannot get classname (hr = %x)\n", hr);
     ok(size == sizeof("Texture"), "wrong size: %u\n", size);
     ok(!strcmp(cname, "Texture"), "Expected cname to be \"Texture\", but got \"%s\"\n", cname);
 
-    IDirect3DRMTexture_Release(pTexture);
+    IDirect3DRMTexture_Release(texture);
 
-    IDirect3DRM_Release(pD3DRM);
+    IDirect3DRM_Release(d3drm);
 }
 
 static void test_Device(void)
 {
     IDirectDrawClipper *pClipper;
     HRESULT hr;
-    LPDIRECT3DRM pD3DRM;
-    LPDIRECT3DRMDEVICE pDevice;
+    IDirect3DRM *d3drm;
+    IDirect3DRMDevice *device;
     LPDIRECT3DRMWINDEVICE pWinDevice;
     GUID driver;
     HWND window;
@@ -1251,7 +1486,7 @@ static void test_Device(void)
     window = CreateWindowA("static", "d3drm_test", WS_OVERLAPPEDWINDOW, 0, 0, 300, 200, 0, 0, 0, 0);
     GetClientRect(window, &rc);
 
-    hr = pDirect3DRMCreate(&pD3DRM);
+    hr = pDirect3DRMCreate(&d3drm);
     ok(hr == D3DRM_OK, "Cannot get IDirect3DRM interface (hr = %x)\n", hr);
 
     hr = DirectDrawCreateClipper(0, &pClipper, NULL);
@@ -1261,24 +1496,24 @@ static void test_Device(void)
     ok(hr == DD_OK, "Cannot set HWnd to Clipper (hr = %x)\n", hr);
 
     memcpy(&driver, &IID_IDirect3DRGBDevice, sizeof(GUID));
-    hr = IDirect3DRM3_CreateDeviceFromClipper(pD3DRM, pClipper, &driver, rc.right, rc.bottom, &pDevice);
+    hr = IDirect3DRM3_CreateDeviceFromClipper(d3drm, pClipper, &driver, rc.right, rc.bottom, &device);
     ok(hr == D3DRM_OK, "Cannot get IDirect3DRMDevice interface (hr = %x)\n", hr);
 
-    hr = IDirect3DRMDevice_GetClassName(pDevice, NULL, cname);
+    hr = IDirect3DRMDevice_GetClassName(device, NULL, cname);
     ok(hr == E_INVALIDARG, "GetClassName failed with %x\n", hr);
-    hr = IDirect3DRMDevice_GetClassName(pDevice, NULL, NULL);
+    hr = IDirect3DRMDevice_GetClassName(device, NULL, NULL);
     ok(hr == E_INVALIDARG, "GetClassName failed with %x\n", hr);
     size = 1;
-    hr = IDirect3DRMDevice_GetClassName(pDevice, &size, cname);
+    hr = IDirect3DRMDevice_GetClassName(device, &size, cname);
     ok(hr == E_INVALIDARG, "GetClassName failed with %x\n", hr);
     size = sizeof(cname);
-    hr = IDirect3DRMDevice_GetClassName(pDevice, &size, cname);
+    hr = IDirect3DRMDevice_GetClassName(device, &size, cname);
     ok(hr == D3DRM_OK, "Cannot get classname (hr = %x)\n", hr);
     ok(size == sizeof("Device"), "wrong size: %u\n", size);
     ok(!strcmp(cname, "Device"), "Expected cname to be \"Device\", but got \"%s\"\n", cname);
 
     /* WinDevice */
-    hr = IDirect3DRMDevice_QueryInterface(pDevice, &IID_IDirect3DRMWinDevice, (LPVOID*)&pWinDevice);
+    hr = IDirect3DRMDevice_QueryInterface(device, &IID_IDirect3DRMWinDevice, (LPVOID*)&pWinDevice);
     if (FAILED(hr))
     {
         win_skip("Cannot get IDirect3DRMWinDevice interface (hr = %x), skipping tests\n", hr);
@@ -1301,18 +1536,18 @@ static void test_Device(void)
     IDirect3DRMWinDevice_Release(pWinDevice);
 
 cleanup:
-    IDirect3DRMDevice_Release(pDevice);
+    IDirect3DRMDevice_Release(device);
     IDirectDrawClipper_Release(pClipper);
 
-    IDirect3DRM_Release(pD3DRM);
+    IDirect3DRM_Release(d3drm);
     DestroyWindow(window);
 }
 
 static void test_frame_transform(void)
 {
     HRESULT hr;
-    LPDIRECT3DRM d3drm;
-    LPDIRECT3DRMFRAME frame;
+    IDirect3DRM *d3drm;
+    IDirect3DRMFrame *frame;
     D3DRMMATRIX4D matrix;
 
     hr = pDirect3DRMCreate(&d3drm);
@@ -1337,7 +1572,7 @@ static const GUID* refiids[] =
     &IID_IDirect3DRMMaterial /* Not taken into account and not notified */
 };
 
-static void __cdecl object_load_callback(LPDIRECT3DRMOBJECT object, REFIID objectguid, LPVOID arg)
+static void __cdecl object_load_callback(IDirect3DRMObject *object, REFIID objectguid, LPVOID arg)
 {
     ok(object != NULL, "Arg 1 should not be null\n");
     ok(IsEqualGUID(objectguid, refiids[nb_objects]), "Arg 2 is incorrect\n");
@@ -1348,20 +1583,21 @@ static void __cdecl object_load_callback(LPDIRECT3DRMOBJECT object, REFIID objec
 static void test_d3drm_load(void)
 {
     HRESULT hr;
-    LPDIRECT3DRM pD3DRM;
+    IDirect3DRM *d3drm;
     D3DRMLOADMEMORY info;
     const GUID* req_refiids[] = { &IID_IDirect3DRMMeshBuilder, &IID_IDirect3DRMFrame, &IID_IDirect3DRMMaterial };
 
-    hr = pDirect3DRMCreate(&pD3DRM);
+    hr = pDirect3DRMCreate(&d3drm);
     ok(hr == D3DRM_OK, "Cannot get IDirect3DRM interface (hr = %x)\n", hr);
 
     info.lpMemory = data_d3drm_load;
     info.dSize = strlen(data_d3drm_load);
-    hr = IDirect3DRM_Load(pD3DRM, &info, NULL, (GUID**)req_refiids, 3, D3DRMLOAD_FROMMEMORY, object_load_callback, (LPVOID)0xdeadbeef, NULL, NULL, NULL);
+    hr = IDirect3DRM_Load(d3drm, &info, NULL, (GUID **)req_refiids, 3, D3DRMLOAD_FROMMEMORY,
+            object_load_callback, (void *)0xdeadbeef, NULL, NULL, NULL);
     ok(hr == D3DRM_OK, "Cannot load data (hr = %x)\n", hr);
     ok(nb_objects == 3, "Should have loaded 3 objects (got %d)\n", nb_objects);
 
-    IDirect3DRM_Release(pD3DRM);
+    IDirect3DRM_Release(d3drm);
 }
 
 IDirect3DRMMeshBuilder *mesh_builder = NULL;
@@ -1497,6 +1733,7 @@ START_TEST(d3drm)
     test_MeshBuilder();
     test_MeshBuilder3();
     test_Mesh();
+    test_Face();
     test_Frame();
     test_Device();
     test_Viewport();
