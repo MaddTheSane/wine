@@ -49,7 +49,6 @@ typedef struct
     LONG ref;
 
     IShellFolder* parent;
-    UINT verb_offset;
 
     /* item menu data */
     LPITEMIDLIST  pidl;  /* root pidl */
@@ -138,8 +137,6 @@ static HRESULT WINAPI ItemMenu_QueryContextMenu(
 
     TRACE("(%p)->(%p %d 0x%x 0x%x 0x%x )\n", This, hmenu, indexMenu, idCmdFirst, idCmdLast, uFlags);
 
-    This->verb_offset = idCmdFirst;
-
     if(!(CMF_DEFAULTONLY & uFlags) && This->cidl > 0)
     {
         HMENU hmenures = LoadMenuW(shell32_hInstance, MAKEINTRESOURCEW(MENU_SHV_FILE));
@@ -160,10 +157,10 @@ static HRESULT WINAPI ItemMenu_QueryContextMenu(
             mi.dwTypeData = str;
             mi.cch = 255;
             GetMenuItemInfoW(hmenu, FCIDM_SHVIEW_EXPLORE, MF_BYCOMMAND, &mi);
-            RemoveMenu(hmenu, FCIDM_SHVIEW_EXPLORE, MF_BYCOMMAND);
+            RemoveMenu(hmenu, FCIDM_SHVIEW_EXPLORE + idCmdFirst, MF_BYCOMMAND);
 
             mi.cbSize = sizeof(mi);
-            mi.fMask = MIIM_ID | MIIM_TYPE | MIIM_STATE;
+            mi.fMask = MIIM_ID | MIIM_TYPE | MIIM_STATE | MIIM_STRING;
             mi.dwTypeData = str;
             mi.fState = MFS_ENABLED;
             mi.wID = FCIDM_SHVIEW_EXPLORE;
@@ -419,7 +416,7 @@ static HRESULT WINAPI ItemMenu_InvokeCommand(
 
     if (HIWORD(lpcmi->lpVerb) == 0)
     {
-        switch(LOWORD(lpcmi->lpVerb - This->verb_offset))
+        switch(LOWORD(lpcmi->lpVerb))
         {
         case FCIDM_SHVIEW_EXPLORE:
             TRACE("Verb FCIDM_SHVIEW_EXPLORE\n");
@@ -466,7 +463,7 @@ static HRESULT WINAPI ItemMenu_InvokeCommand(
             DoOpenProperties(This, lpcmi->hwnd);
             break;
         default:
-            FIXME("Unhandled Verb %xl\n",LOWORD(lpcmi->lpVerb)-This->verb_offset);
+            FIXME("Unhandled Verb %xl\n",LOWORD(lpcmi->lpVerb));
             return E_INVALIDARG;
         }
     }
@@ -506,8 +503,36 @@ static HRESULT WINAPI ItemMenu_GetCommandString(
 	    break;
 
 	  case GCS_VERBA:
-	    switch(idCommand-This->verb_offset)
+	    switch(idCommand)
 	    {
+            case FCIDM_SHVIEW_OPEN:
+                strcpy(lpszName, "open");
+                hr = S_OK;
+                break;
+            case FCIDM_SHVIEW_EXPLORE:
+                strcpy(lpszName, "explore");
+                hr = S_OK;
+                break;
+            case FCIDM_SHVIEW_CUT:
+                strcpy(lpszName, "cut");
+                hr = S_OK;
+                break;
+            case FCIDM_SHVIEW_COPY:
+                strcpy(lpszName, "copy");
+                hr = S_OK;
+                break;
+            case FCIDM_SHVIEW_CREATELINK:
+                strcpy(lpszName, "link");
+                hr = S_OK;
+                break;
+            case FCIDM_SHVIEW_DELETE:
+                strcpy(lpszName, "delete");
+                hr = S_OK;
+                break;
+            case FCIDM_SHVIEW_PROPERTIES:
+                strcpy(lpszName, "properties");
+                hr = S_OK;
+                break;
 	    case FCIDM_SHVIEW_RENAME:
 	        strcpy(lpszName, "rename");
 	        hr = S_OK;
@@ -518,8 +543,36 @@ static HRESULT WINAPI ItemMenu_GetCommandString(
 	     /* NT 4.0 with IE 3.0x or no IE will always call This with GCS_VERBW. In This
 	     case, you need to do the lstrcpyW to the pointer passed.*/
 	  case GCS_VERBW:
-	    switch(idCommand-This->verb_offset)
+	    switch(idCommand)
 	    {
+            case FCIDM_SHVIEW_OPEN:
+                MultiByteToWideChar(CP_ACP, 0, "open", -1, (LPWSTR)lpszName, uMaxNameLen);
+                hr = S_OK;
+                break;
+            case FCIDM_SHVIEW_EXPLORE:
+                MultiByteToWideChar(CP_ACP, 0, "explore", -1, (LPWSTR)lpszName, uMaxNameLen);
+                hr = S_OK;
+                break;
+            case FCIDM_SHVIEW_CUT:
+                MultiByteToWideChar(CP_ACP, 0, "cut", -1, (LPWSTR)lpszName, uMaxNameLen);
+                hr = S_OK;
+                break;
+            case FCIDM_SHVIEW_COPY:
+                MultiByteToWideChar(CP_ACP, 0, "copy", -1, (LPWSTR)lpszName, uMaxNameLen);
+                hr = S_OK;
+                break;
+            case FCIDM_SHVIEW_CREATELINK:
+                MultiByteToWideChar(CP_ACP, 0, "link", -1, (LPWSTR)lpszName, uMaxNameLen);
+                hr = S_OK;
+                break;
+            case FCIDM_SHVIEW_DELETE:
+                MultiByteToWideChar(CP_ACP, 0, "delete", -1, (LPWSTR)lpszName, uMaxNameLen);
+                hr = S_OK;
+                break;
+            case FCIDM_SHVIEW_PROPERTIES:
+                MultiByteToWideChar(CP_ACP, 0, "properties", -1, (LPWSTR)lpszName, uMaxNameLen);
+                hr = S_OK;
+                break;
 	    case FCIDM_SHVIEW_RENAME:
                 MultiByteToWideChar( CP_ACP, 0, "rename", -1, (LPWSTR)lpszName, uMaxNameLen );
 	        hr = S_OK;
@@ -581,7 +634,6 @@ HRESULT ItemMenu_Constructor(IShellFolder *parent, LPCITEMIDLIST pidl, const LPC
 
     This->IContextMenu3_iface.lpVtbl = &ItemContextMenuVtbl;
     This->ref = 1;
-    This->verb_offset = 0;
     This->parent = parent;
     if (parent) IShellFolder_AddRef(parent);
 
@@ -617,8 +669,6 @@ static HRESULT WINAPI BackgroundMenu_QueryContextMenu(
 
     TRACE("(%p)->(hmenu=%p indexmenu=%x cmdfirst=%x cmdlast=%x flags=%x )\n",
           This, hMenu, indexMenu, idCmdFirst, idCmdLast, uFlags);
-
-    This->verb_offset = idCmdFirst;
 
     hMyMenu = LoadMenuA(shell32_hInstance, "MENU_002");
     if (uFlags & CMF_DEFAULTONLY)
@@ -804,7 +854,7 @@ static HRESULT WINAPI BackgroundMenu_InvokeCommand(
     }
     else
     {
-        switch (LOWORD(lpcmi->lpVerb) - This->verb_offset)
+        switch (LOWORD(lpcmi->lpVerb))
         {
 	    case FCIDM_SHVIEW_REFRESH:
 	        if (view) IShellView_Refresh(view);
@@ -893,7 +943,6 @@ HRESULT BackgroundMenu_Constructor(IShellFolder *parent, BOOL desktop, REFIID ri
     This->IContextMenu3_iface.lpVtbl = &BackgroundContextMenuVtbl;
     This->ref = 1;
     This->parent = parent;
-    This->verb_offset = 0;
 
     This->pidl = NULL;
     This->apidl = NULL;

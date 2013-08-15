@@ -94,19 +94,20 @@ struct assembly_identity
     BOOL                  optional;
 };
 
-struct wndclass_header
+struct strsection_header
 {
     DWORD magic;
-    DWORD unk1[4];
+    ULONG size;
+    DWORD unk1[3];
     ULONG count;
     ULONG index_offset;
     DWORD unk2[4];
 };
 
-struct wndclass_index
+struct string_index
 {
-    ULONG hash;        /* original class name hash */
-    ULONG name_offset; /* original class name offset */
+    ULONG hash;        /* key string hash */
+    ULONG name_offset;
     ULONG name_len;
     ULONG data_offset; /* redirect data offset */
     ULONG data_len;
@@ -123,8 +124,24 @@ struct wndclass_redirect_data
     ULONG module_offset;/* container name offset */
 };
 
+struct dllredirect_data
+{
+    ULONG size;
+    ULONG unk;
+    DWORD res[3];
+};
+
 /*
-   Window class redirection section is a plain buffer with following format:
+
+   Sections structure.
+
+   Sections are accessible by string or guid key, that defines two types of sections.
+   All sections of each type have same magic value and header structure, index
+   data could be of two possible types too. So every string based section uses
+   the same index format, same applies to guid sections - they share same guid index
+   format.
+
+   - window class redirection section is a plain buffer with following format:
 
    <section header>
    <index[]>
@@ -133,16 +150,25 @@ struct wndclass_redirect_data
                 <versioned name>
                 <module name>
 
-   Header is fixed length structure - struct wndclass_header,
+   Header is fixed length structure - struct strsection_header,
    contains redirected classes count;
 
    Index is an array of fixed length index records, each record is
-   struct wndclass_index.
+   struct string_index.
 
    All strings in data itself are WCHAR, null terminated, 4-bytes aligned.
 
    Versioned name offset is relative to redirect data structure (struct wndclass_redirect_data),
    others are relative to section itself.
+
+   - dll redirect section format:
+
+   <section header>
+   <index[]>
+   <data[]> --- <dll name>
+                <data>
+
+   This section doesn't seem to carry any payload data except dll names.
 */
 
 struct entity
@@ -167,6 +193,7 @@ struct entity
         struct
         {
             WCHAR *name;
+            BOOL   versioned;
         } class;
         struct
         {
@@ -217,7 +244,8 @@ struct assembly
 
 enum context_sections
 {
-    WINDOWCLASS_SECTION = 1
+    WINDOWCLASS_SECTION = 1,
+    DLLREDIRECT_SECTION = 2
 };
 
 typedef struct _ACTIVATION_CONTEXT
@@ -231,7 +259,8 @@ typedef struct _ACTIVATION_CONTEXT
     unsigned int        allocated_assemblies;
     /* section data */
     DWORD               sections;
-    struct wndclass_header *wndclass_section;
+    struct strsection_header *wndclass_section;
+    struct strsection_header *dllredirect_section;
 } ACTIVATION_CONTEXT;
 
 struct actctx_loader
@@ -279,6 +308,9 @@ static const WCHAR tlbidW[] = {'t','l','b','i','d',0};
 static const WCHAR typeW[] = {'t','y','p','e',0};
 static const WCHAR versionW[] = {'v','e','r','s','i','o','n',0};
 static const WCHAR xmlnsW[] = {'x','m','l','n','s',0};
+static const WCHAR versionedW[] = {'v','e','r','s','i','o','n','e','d',0};
+static const WCHAR yesW[] = {'y','e','s',0};
+static const WCHAR noW[] = {'n','o',0};
 
 static const WCHAR xmlW[] = {'?','x','m','l',0};
 static const WCHAR manifestv1W[] = {'u','r','n',':','s','c','h','e','m','a','s','-','m','i','c','r','o','s','o','f','t','-','c','o','m',':','a','s','m','.','v','1',0};
@@ -700,6 +732,7 @@ static void actctx_release( ACTIVATION_CONTEXT *actctx )
         RtlFreeHeap( GetProcessHeap(), 0, actctx->config.info );
         RtlFreeHeap( GetProcessHeap(), 0, actctx->appdir.info );
         RtlFreeHeap( GetProcessHeap(), 0, actctx->assemblies );
+        RtlFreeHeap( GetProcessHeap(), 0, actctx->dllredirect_section );
         RtlFreeHeap( GetProcessHeap(), 0, actctx->wndclass_section );
         actctx->magic = 0;
         RtlFreeHeap( GetProcessHeap(), 0, actctx );
@@ -1093,15 +1126,30 @@ static int get_assembly_version(struct assembly *assembly, WCHAR *ret)
 
 static BOOL parse_window_class_elem(xmlbuf_t* xmlbuf, struct dll_redirect* dll, struct actctx_loader* acl)
 {
-    xmlstr_t    elem, content;
-    BOOL        end = FALSE, ret = TRUE;
+    xmlstr_t elem, content, attr_name, attr_value;
+    BOOL end = FALSE, ret = TRUE, error;
     struct entity*      entity;
 
     if (!(entity = add_entity(&dll->entities, ACTIVATION_CONTEXT_SECTION_WINDOW_CLASS_REDIRECTION)))
         return FALSE;
 
-    if (!parse_expect_no_attr(xmlbuf, &end)) return FALSE;
-    if (end) return FALSE;
+    entity->u.class.versioned = TRUE;
+    while (next_xml_attr(xmlbuf, &attr_name, &attr_value, &error, &end))
+    {
+        if (xmlstr_cmp(&attr_name, versionedW))
+        {
+            if (xmlstr_cmpi(&attr_value, noW))
+                entity->u.class.versioned = FALSE;
+            else if (!xmlstr_cmpi(&attr_value, yesW))
+               return FALSE;
+        }
+        else
+        {
+            WARN("unknown attr %s=%s\n", debugstr_xmlstr(&attr_name), debugstr_xmlstr(&attr_value));
+        }
+    }
+
+    if (error || end) return end;
 
     if (!parse_text_content(xmlbuf, &content)) return FALSE;
 
@@ -1318,7 +1366,6 @@ static BOOL parse_dependency_elem(xmlbuf_t* xmlbuf, struct actctx_loader* acl)
     {
         if (xmlstr_cmp(&attr_name, optionalW))
         {
-            static const WCHAR yesW[] = {'y','e','s',0};
             optional = xmlstr_cmpi( &attr_value, yesW );
             TRACE("optional=%s\n", debugstr_xmlstr(&attr_value));
         }
@@ -1397,6 +1444,9 @@ static BOOL parse_file_elem(xmlbuf_t* xmlbuf, struct assembly* assembly, struct 
     }
 
     if (error || !dll->name) return FALSE;
+
+    acl->actctx->sections |= DLLREDIRECT_SECTION;
+
     if (end) return TRUE;
 
     while (ret && (ret = next_xml_elem(xmlbuf, &elem)))
@@ -2190,26 +2240,43 @@ static NTSTATUS find_query_actctx( HANDLE *handle, DWORD flags, ULONG class )
     return status;
 }
 
-static NTSTATUS fill_keyed_data(PACTCTX_SECTION_KEYED_DATA data, PVOID v1, PVOID v2, unsigned int i)
+static NTSTATUS build_dllredirect_section(ACTIVATION_CONTEXT* actctx, struct strsection_header **section)
 {
-    data->ulDataFormatVersion = 1;
-    data->lpData = v1;
-    data->ulLength = 20; /* FIXME */
-    data->lpSectionGlobalData = NULL; /* FIXME */
-    data->ulSectionGlobalDataLength = 0; /* FIXME */
-    data->lpSectionBase = v2;
-    data->ulSectionTotalLength = 0; /* FIXME */
-    data->hActCtx = NULL;
-    if (data->cbSize >= offsetof(ACTCTX_SECTION_KEYED_DATA, ulAssemblyRosterIndex) + sizeof(ULONG))
-        data->ulAssemblyRosterIndex = i + 1;
+    unsigned int i, j, total_len = 0, dll_count = 0;
+    struct strsection_header *header;
+    struct dllredirect_data *data;
+    struct string_index *index;
+    ULONG name_offset;
 
-    return STATUS_SUCCESS;
-}
+    /* compute section length */
+    for (i = 0; i < actctx->num_assemblies; i++)
+    {
+        struct assembly *assembly = &actctx->assemblies[i];
+        for (j = 0; j < assembly->num_dlls; j++)
+        {
+            struct dll_redirect *dll = &assembly->dlls[j];
 
-static NTSTATUS find_dll_redirection(ACTIVATION_CONTEXT* actctx, const UNICODE_STRING *section_name,
-                                     PACTCTX_SECTION_KEYED_DATA data)
-{
-    unsigned int i, j, snlen = section_name->Length / sizeof(WCHAR);
+            /* each entry needs index, data and string data */
+            total_len += sizeof(*index);
+            total_len += sizeof(*data);
+            total_len += aligned_string_len((strlenW(dll->name)+1)*sizeof(WCHAR));
+        }
+
+        dll_count += assembly->num_dlls;
+    }
+
+    total_len += sizeof(*header);
+
+    header = RtlAllocateHeap(GetProcessHeap(), 0, total_len);
+    if (!header) return STATUS_NO_MEMORY;
+
+    memset(header, 0, sizeof(*header));
+    header->magic = SECTION_MAGIC;
+    header->size  = sizeof(*header);
+    header->count = dll_count;
+    header->index_offset = sizeof(*header);
+    index = (struct string_index*)((BYTE*)header + header->index_offset);
+    name_offset = header->index_offset + header->count*sizeof(*index);
 
     for (i = 0; i < actctx->num_assemblies; i++)
     {
@@ -2217,34 +2284,132 @@ static NTSTATUS find_dll_redirection(ACTIVATION_CONTEXT* actctx, const UNICODE_S
         for (j = 0; j < assembly->num_dlls; j++)
         {
             struct dll_redirect *dll = &assembly->dlls[j];
-            if (!strncmpiW(section_name->Buffer, dll->name, snlen) && !dll->name[snlen])
-                return fill_keyed_data(data, dll, assembly, i);
+            UNICODE_STRING str;
+            WCHAR *ptrW;
+
+            /* setup new index entry */
+            str.Buffer = dll->name;
+            str.Length = strlenW(dll->name)*sizeof(WCHAR);
+            str.MaximumLength = str.Length + sizeof(WCHAR);
+            /* hash original class name */
+            RtlHashUnicodeString(&str, TRUE, HASH_STRING_ALGORITHM_X65599, &index->hash);
+
+            index->name_offset = name_offset;
+            index->name_len = str.Length;
+            index->data_offset = index->name_offset + aligned_string_len(str.MaximumLength);
+            index->data_len = sizeof(*data);
+            index->rosterindex = i + 1;
+
+            /* setup data */
+            data = (struct dllredirect_data*)((BYTE*)header + index->data_offset);
+            data->size = sizeof(*data);
+            data->unk = 2; /* FIXME: seems to be constant */
+            memset(data->res, 0, sizeof(data->res));
+
+            /* dll name */
+            ptrW = (WCHAR*)((BYTE*)header + index->name_offset);
+            memcpy(ptrW, dll->name, index->name_len);
+            ptrW[index->name_len/sizeof(WCHAR)] = 0;
+
+            name_offset += sizeof(*data) + aligned_string_len(str.MaximumLength);
+
+            index++;
         }
     }
-    return STATUS_SXS_KEY_NOT_FOUND;
+
+    *section = header;
+
+    return STATUS_SUCCESS;
 }
 
-static inline struct wndclass_index *get_wndclass_first_index(ACTIVATION_CONTEXT *actctx)
+static struct string_index *find_string_index(const struct strsection_header *section, const UNICODE_STRING *name)
 {
-    return (struct wndclass_index*)((BYTE*)actctx->wndclass_section + actctx->wndclass_section->index_offset);
+    struct string_index *iter, *index = NULL;
+    ULONG hash = 0, i;
+
+    RtlHashUnicodeString(name, TRUE, HASH_STRING_ALGORITHM_X65599, &hash);
+    iter = (struct string_index*)((BYTE*)section + section->index_offset);
+
+    for (i = 0; i < section->count; i++)
+    {
+        if (iter->hash == hash)
+        {
+            const WCHAR *nameW = (WCHAR*)((BYTE*)section + iter->name_offset);
+
+            if (!strcmpW(nameW, name->Buffer))
+            {
+                index = iter;
+                break;
+            }
+            else
+                WARN("hash collision 0x%08x, %s, %s\n", hash, debugstr_us(name), debugstr_w(nameW));
+        }
+        iter++;
+    }
+
+    return index;
 }
 
-static inline struct wndclass_redirect_data *get_wndclass_data(ACTIVATION_CONTEXT *ctxt, struct wndclass_index *index)
+static inline struct dllredirect_data *get_dllredirect_data(ACTIVATION_CONTEXT *ctxt, struct string_index *index)
+{
+    return (struct dllredirect_data*)((BYTE*)ctxt->dllredirect_section + index->data_offset);
+}
+
+static NTSTATUS find_dll_redirection(ACTIVATION_CONTEXT* actctx, const UNICODE_STRING *name,
+                                     PACTCTX_SECTION_KEYED_DATA data)
+{
+    struct dllredirect_data *dll;
+    struct string_index *index;
+
+    if (!(actctx->sections & DLLREDIRECT_SECTION)) return STATUS_SXS_KEY_NOT_FOUND;
+
+    if (!actctx->dllredirect_section)
+    {
+        struct strsection_header *section;
+
+        NTSTATUS status = build_dllredirect_section(actctx, &section);
+        if (status) return status;
+
+        if (interlocked_cmpxchg_ptr((void**)&actctx->dllredirect_section, section, NULL))
+            RtlFreeHeap(GetProcessHeap(), 0, section);
+    }
+
+    index = find_string_index(actctx->dllredirect_section, name);
+    if (!index) return STATUS_SXS_KEY_NOT_FOUND;
+
+    dll = get_dllredirect_data(actctx, index);
+
+    data->ulDataFormatVersion = 1;
+    data->lpData = dll;
+    data->ulLength = dll->size;
+    data->lpSectionGlobalData = NULL;
+    data->ulSectionGlobalDataLength = 0;
+    data->lpSectionBase = actctx->dllredirect_section;
+    data->ulSectionTotalLength = RtlSizeHeap( GetProcessHeap(), 0, actctx->dllredirect_section );
+    data->hActCtx = NULL;
+
+    if (data->cbSize >= FIELD_OFFSET(ACTCTX_SECTION_KEYED_DATA, ulAssemblyRosterIndex) + sizeof(ULONG))
+        data->ulAssemblyRosterIndex = index->rosterindex;
+
+    return STATUS_SUCCESS;
+}
+
+static inline struct string_index *get_wndclass_first_index(ACTIVATION_CONTEXT *actctx)
+{
+    return (struct string_index*)((BYTE*)actctx->wndclass_section + actctx->wndclass_section->index_offset);
+}
+
+static inline struct wndclass_redirect_data *get_wndclass_data(ACTIVATION_CONTEXT *ctxt, struct string_index *index)
 {
     return (struct wndclass_redirect_data*)((BYTE*)ctxt->wndclass_section + index->data_offset);
 }
 
-static inline ULONG get_assembly_rosterindex(ACTIVATION_CONTEXT *actctx, const struct assembly* assembly)
-{
-    return (assembly - actctx->assemblies) + 1;
-}
-
-static NTSTATUS build_wndclass_section(ACTIVATION_CONTEXT* actctx, struct wndclass_header **section)
+static NTSTATUS build_wndclass_section(ACTIVATION_CONTEXT* actctx, struct strsection_header **section)
 {
     unsigned int i, j, k, total_len = 0, class_count = 0;
     struct wndclass_redirect_data *data;
-    struct wndclass_header *header;
-    struct wndclass_index *index;
+    struct strsection_header *header;
+    struct string_index *index;
     ULONG name_offset;
 
     /* compute section length */
@@ -2259,16 +2424,19 @@ static NTSTATUS build_wndclass_section(ACTIVATION_CONTEXT* actctx, struct wndcla
                 struct entity *entity = &dll->entities.base[k];
                 if (entity->kind == ACTIVATION_CONTEXT_SECTION_WINDOW_CLASS_REDIRECTION)
                 {
-                    int class_len = strlenW(entity->u.class.name);
+                    int class_len = strlenW(entity->u.class.name) + 1;
                     int len;
 
                     /* each class entry needs index, data and string data */
-                    total_len += sizeof(struct wndclass_index);
-                    total_len += sizeof(struct wndclass_redirect_data);
+                    total_len += sizeof(*index);
+                    total_len += sizeof(*data);
                     /* original name is stored separately */
-                    total_len += aligned_string_len((class_len+1)*sizeof(WCHAR));
+                    total_len += aligned_string_len(class_len*sizeof(WCHAR));
                     /* versioned name and module name are stored one after another */
-                    len  = get_assembly_version(assembly, NULL) + class_len + 2 /* null terminator and '!' separator */;
+                    if (entity->u.class.versioned)
+                        len = get_assembly_version(assembly, NULL) + class_len + 1 /* '!' separator */;
+                    else
+                        len = class_len;
                     len += strlenW(dll->name) + 1;
                     total_len += aligned_string_len(len*sizeof(WCHAR));
 
@@ -2285,9 +2453,10 @@ static NTSTATUS build_wndclass_section(ACTIVATION_CONTEXT* actctx, struct wndcla
 
     memset(header, 0, sizeof(*header));
     header->magic = SECTION_MAGIC;
+    header->size  = sizeof(*header);
     header->count = class_count;
     header->index_offset = sizeof(*header);
-    index = (struct wndclass_index*)((BYTE*)header + header->index_offset);
+    index = (struct string_index*)((BYTE*)header + header->index_offset);
     name_offset = header->index_offset + header->count*sizeof(*index);
 
     for (i = 0; i < actctx->num_assemblies; i++)
@@ -2314,14 +2483,17 @@ static NTSTATUS build_wndclass_section(ACTIVATION_CONTEXT* actctx, struct wndcla
                     RtlHashUnicodeString(&str, TRUE, HASH_STRING_ALGORITHM_X65599, &index->hash);
 
                     /* include '!' separator too */
-                    versioned_len = (get_assembly_version(assembly, NULL) + 1)*sizeof(WCHAR) + str.Length;
+                    if (entity->u.class.versioned)
+                        versioned_len = (get_assembly_version(assembly, NULL) + 1)*sizeof(WCHAR) + str.Length;
+                    else
+                        versioned_len = str.Length;
                     module_len = strlenW(dll->name)*sizeof(WCHAR);
 
                     index->name_offset = name_offset;
                     index->name_len = str.Length;
                     index->data_offset = index->name_offset + aligned_string_len(str.MaximumLength);
                     index->data_len = sizeof(*data) + versioned_len + module_len + 2*sizeof(WCHAR) /* two nulls */;
-                    index->rosterindex = get_assembly_rosterindex(actctx, assembly);
+                    index->rosterindex = i + 1;
 
                     /* setup data */
                     data = (struct wndclass_redirect_data*)((BYTE*)header + index->data_offset);
@@ -2344,9 +2516,17 @@ static NTSTATUS build_wndclass_section(ACTIVATION_CONTEXT* actctx, struct wndcla
 
                     /* versioned name */
                     ptrW = (WCHAR*)((BYTE*)data + data->name_offset);
-                    get_assembly_version(assembly, ptrW);
-                    strcatW(ptrW, exclW);
-                    strcatW(ptrW, entity->u.class.name);
+                    if (entity->u.class.versioned)
+                    {
+                        get_assembly_version(assembly, ptrW);
+                        strcatW(ptrW, exclW);
+                        strcatW(ptrW, entity->u.class.name);
+                    }
+                    else
+                    {
+                        memcpy(ptrW, entity->u.class.name, index->name_len);
+                        ptrW[index->name_len/sizeof(WCHAR)] = 0;
+                    }
 
                     name_offset += sizeof(*data);
                     name_offset += aligned_string_len(str.MaximumLength) + aligned_string_len(versioned_len + module_len + 2*sizeof(WCHAR));
@@ -2365,7 +2545,7 @@ static NTSTATUS build_wndclass_section(ACTIVATION_CONTEXT* actctx, struct wndcla
 static NTSTATUS find_window_class(ACTIVATION_CONTEXT* actctx, const UNICODE_STRING *name,
                                   PACTCTX_SECTION_KEYED_DATA data)
 {
-    struct wndclass_index *iter, *index = NULL;
+    struct string_index *iter, *index = NULL;
     struct wndclass_redirect_data *class;
     ULONG hash;
     int i;
@@ -2374,7 +2554,7 @@ static NTSTATUS find_window_class(ACTIVATION_CONTEXT* actctx, const UNICODE_STRI
 
     if (!actctx->wndclass_section)
     {
-        struct wndclass_header *section;
+        struct strsection_header *section;
 
         NTSTATUS status = build_wndclass_section(actctx, &section);
         if (status) return status;

@@ -548,10 +548,8 @@ HRESULT WINAPI RegisterTypeLib(
     if (FAILED(ITypeLib_GetLibAttr(ptlib, &attr)))
         return E_FAIL;
 
-#ifdef _WIN64
-    if (attr->syskind != SYS_WIN64) return TYPE_E_BADMODULEKIND;
-#else
-    if (attr->syskind != SYS_WIN32 && attr->syskind != SYS_WIN16) return TYPE_E_BADMODULEKIND;
+#ifndef _WIN64
+    if (attr->syskind == SYS_WIN64) return TYPE_E_BADMODULEKIND;
 #endif
 
     get_typelib_key( &attr->guid, attr->wMajorVerNum, attr->wMinorVerNum, keyName );
@@ -2539,10 +2537,18 @@ static ITypeInfoImpl * MSFT_DoTypeInfo(
     ptiRet->lcid=pLibInfo->set_lcid;   /* FIXME: correct? */
     ptiRet->lpstrSchema=NULL;              /* reserved */
     ptiRet->cbSizeInstance=tiBase.size;
+#ifdef _WIN64
+    if(pLibInfo->syskind == SYS_WIN32)
+        ptiRet->cbSizeInstance=sizeof(void*);
+#endif
     ptiRet->typekind=tiBase.typekind & 0xF;
     ptiRet->cFuncs=LOWORD(tiBase.cElement);
     ptiRet->cVars=HIWORD(tiBase.cElement);
     ptiRet->cbAlignment=(tiBase.typekind >> 11 )& 0x1F; /* there are more flags there */
+#ifdef _WIN64
+    if(pLibInfo->syskind == SYS_WIN32)
+        ptiRet->cbAlignment = 8;
+#endif
     ptiRet->wTypeFlags=tiBase.flags;
     ptiRet->wMajorVerNum=LOWORD(tiBase.version);
     ptiRet->wMinorVerNum=HIWORD(tiBase.version);
@@ -8486,7 +8492,7 @@ static HRESULT WINAPI ICreateTypeLib2_fnCreateTypeInfo(ICreateTypeLib2 *iface,
     case TKIND_INTERFACE:
     case TKIND_DISPATCH:
     case TKIND_COCLASS:
-        info->cbSizeInstance = 4;
+        info->cbSizeInstance = This->ptr_size;
         break;
     case TKIND_RECORD:
     case TKIND_UNION:
@@ -9692,7 +9698,7 @@ static HRESULT WINAPI ICreateTypeLib2_fnSaveAllChanges(ICreateTypeLib2 *iface)
     file.header.magic2 = 0x00010002;
     file.header.lcid = This->set_lcid ? This->set_lcid : MAKELANGID(LANG_ENGLISH, SUBLANG_ENGLISH_US);
     file.header.lcid2 = This->set_lcid;
-    file.header.varflags = 0x41; /* TODO?? */
+    file.header.varflags = 0x40 | This->syskind;
     if (This->HelpFile)
         file.header.varflags |= 0x10;
     if (This->HelpStringDll)
@@ -10200,6 +10206,12 @@ static HRESULT WINAPI ICreateTypeInfo2_fnAddFuncDesc(ICreateTypeInfo2 *iface,
     if (funcDesc->invkind & (INVOKE_PROPERTYPUT | INVOKE_PROPERTYPUTREF) &&
             !funcDesc->cParams)
         return TYPE_E_INCONSISTENTPROPFUNCS;
+
+#ifdef _WIN64
+    if(This->pTypeLib->syskind == SYS_WIN64 &&
+            funcDesc->oVft % 8 != 0)
+        return E_INVALIDARG;
+#endif
 
     memset(&tmp_func_desc, 0, sizeof(tmp_func_desc));
     TLBFuncDesc_Constructor(&tmp_func_desc);
