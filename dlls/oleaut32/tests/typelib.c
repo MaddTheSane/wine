@@ -3813,7 +3813,7 @@ static void test_create_typelib_lcid(LCID lcid)
     HRESULT hr;
     ICreateTypeLib2 *tl;
     HANDLE file;
-    DWORD msft_header[5]; /* five is enough for now */
+    DWORD msft_header[7];
     DWORD read;
 
     GetTempFileNameA( ".", "tlb", 0, filename );
@@ -3823,6 +3823,9 @@ static void test_create_typelib_lcid(LCID lcid)
     ok(hr == S_OK, "got %08x\n", hr);
 
     hr = ICreateTypeLib2_SetLcid(tl, lcid);
+    ok(hr == S_OK, "got %08x\n", hr);
+
+    hr = ICreateTypeLib2_SetVersion(tl, 3, 4);
     ok(hr == S_OK, "got %08x\n", hr);
 
     hr = ICreateTypeLib2_SaveAllChanges(tl);
@@ -3842,6 +3845,7 @@ static void test_create_typelib_lcid(LCID lcid)
     ok(msft_header[2] == 0xffffffff, "got %08x\n", msft_header[2]);
     ok(msft_header[3] == (lcid ? lcid : 0x409), "got %08x (lcid %08x)\n", msft_header[3], lcid);
     ok(msft_header[4] == lcid, "got %08x (lcid %08x)\n", msft_header[4], lcid);
+    ok(msft_header[6] == 0x00040003, "got %08x\n", msft_header[6]);
 
     DeleteFileA(filename);
 }
@@ -4028,6 +4032,7 @@ static void test_SetVarHelpContext(void)
     ok(hr == TYPE_E_ELEMENTNOTFOUND, "got %08x\n", hr);
 
     memset(&desc, 0, sizeof(desc));
+    desc.memid = MEMBERID_NIL;
     desc.elemdescVar.tdesc.vt = VT_INT;
     desc.varkind = VAR_CONST;
 
@@ -4063,6 +4068,7 @@ static void test_SetVarHelpContext(void)
 
     hr = ITypeInfo_GetVarDesc(ti, 0, &pdesc);
     ok(hr == S_OK, "got %08x\n", hr);
+    ok(pdesc->memid == 0x40000000, "got wrong memid: %x\n", pdesc->memid);
     ok(pdesc->elemdescVar.tdesc.vt == VT_INT, "got wrong vardesc type: %u\n", pdesc->elemdescVar.tdesc.vt);
     ok(pdesc->varkind == VAR_CONST, "got wrong varkind: %u\n", pdesc->varkind);
     ok(V_VT(U(pdesc)->lpvarValue) == VT_INT, "got wrong value type: %u\n", V_VT(U(pdesc)->lpvarValue));
@@ -4187,6 +4193,7 @@ static void test_SetVarDocString(void)
     ok(hr == E_INVALIDARG, "got %08x\n", hr);
 
     memset(&desc, 0, sizeof(desc));
+    desc.memid = MEMBERID_NIL;
     desc.elemdescVar.tdesc.vt = VT_INT;
     desc.varkind = VAR_CONST;
 
@@ -4225,6 +4232,7 @@ static void test_SetVarDocString(void)
 
     hr = ITypeInfo_GetVarDesc(ti, 0, &pdesc);
     ok(hr == S_OK, "got %08x\n", hr);
+    ok(pdesc->memid == 0x40000000, "got wrong memid: %x\n", pdesc->memid);
     ok(pdesc->elemdescVar.tdesc.vt == VT_INT, "got wrong vardesc type: %u\n", pdesc->elemdescVar.tdesc.vt);
     ok(pdesc->varkind == VAR_CONST, "got wrong varkind: %u\n", pdesc->varkind);
     ok(V_VT(U(pdesc)->lpvarValue) == VT_INT, "got wrong value type: %u\n", V_VT(U(pdesc)->lpvarValue));

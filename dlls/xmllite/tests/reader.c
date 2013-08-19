@@ -1048,18 +1048,16 @@ static void test_read_dtd(void)
     str = NULL;
     hr = IXmlReader_GetLocalName(reader, &str, &len);
     ok(hr == S_OK, "got 0x%08x\n", hr);
-todo_wine {
     ok(len == lstrlenW(sysW), "got %u\n", len);
     ok(!lstrcmpW(str, sysW), "got %s\n", wine_dbgstr_w(str));
-}
+
     len = 0;
     str = NULL;
     hr = IXmlReader_GetValue(reader, &str, &len);
     ok(hr == S_OK, "got 0x%08x\n", hr);
-todo_wine {
     ok(len == lstrlenW(sysvalW), "got %u\n", len);
     ok(!lstrcmpW(str, sysvalW), "got %s\n", wine_dbgstr_w(str));
-}
+
     hr = IXmlReader_MoveToElement(reader);
     ok(hr == S_OK, "got 0x%08x\n", hr);
 
@@ -1067,9 +1065,10 @@ todo_wine {
     str = NULL;
     hr = IXmlReader_GetLocalName(reader, &str, &len);
     ok(hr == S_OK, "got 0x%08x\n", hr);
+todo_wine {
     ok(len == lstrlenW(dtdnameW), "got %u\n", len);
     ok(!lstrcmpW(str, dtdnameW), "got %s\n", wine_dbgstr_w(str));
-
+}
     len = 0;
     str = NULL;
     hr = IXmlReader_GetQualifiedName(reader, &str, &len);
@@ -1572,6 +1571,16 @@ static struct test_entry attributes_tests[] = {
     { "<a attr1=\'a\"ttrvalue\'/>", "attr1", "a\"ttrvalue", S_OK },
     { "<a attr1=\' \'/>", "attr1", " ", S_OK },
     { "<a attr1=\" \"/>", "attr1", " ", S_OK },
+    { "<a attr1=\"\r\n \r \n \t\n\r\"/>", "attr1", "         ", S_OK },
+    { "<a attr1=\" val \"/>", "attr1", " val ", S_OK },
+    { "<a attr1=\"\r\n\tval\n\"/>", "attr1", "  val ", S_OK },
+    { "<a attr1=\"val&#32;\"/>", "attr1", "val ", S_OK },
+    { "<a attr1=\"val&#x20;\"/>", "attr1", "val ", S_OK },
+    { "<a attr1=\"val&#xfffe;\"/>", NULL, NULL, WC_E_XMLCHARACTER },
+    { "<a attr1=\"val &#a;\"/>", NULL, NULL, WC_E_DIGIT, WC_E_SEMICOLON },
+    { "<a attr1=\"val &#12a;\"/>", NULL, NULL, WC_E_SEMICOLON },
+    { "<a attr1=\"val &#x12g;\"/>", NULL, NULL, WC_E_SEMICOLON },
+    { "<a attr1=\"val &#xg;\"/>", NULL, NULL, WC_E_HEXDIGIT, WC_E_SEMICOLON },
     { "<a attr1=attrvalue/>", NULL, NULL, WC_E_QUOTE },
     { "<a attr1=\"attr<value\"/>", NULL, NULL, WC_E_LESSTHAN },
     { NULL }
@@ -1617,12 +1626,11 @@ static void test_read_attribute(void)
             str = NULL;
             hr = IXmlReader_GetLocalName(reader, &str, &len);
             ok(hr == S_OK, "got 0x%08x\n", hr);
-        todo_wine {
             ok(len == strlen(test->name), "got %u\n", len);
             str_exp = a2w(test->name);
             ok(!lstrcmpW(str, str_exp), "got %s\n", wine_dbgstr_w(str));
             free_str(str_exp);
-        }
+
             len = 1;
             str = NULL;
             hr = IXmlReader_GetQualifiedName(reader, &str, &len);
@@ -1638,12 +1646,10 @@ static void test_read_attribute(void)
             str = NULL;
             hr = IXmlReader_GetValue(reader, &str, &len);
             ok(hr == S_OK, "got 0x%08x\n", hr);
-        todo_wine {
             ok(len == strlen(test->value), "got %u\n", len);
             str_exp = a2w(test->value);
             ok(!lstrcmpW(str, str_exp), "got %s\n", wine_dbgstr_w(str));
             free_str(str_exp);
-        }
         }
 
         IStream_Release(stream);

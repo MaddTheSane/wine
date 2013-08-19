@@ -226,6 +226,7 @@ struct element
 {
     struct list entry;
     strval qname;
+    strval localname;
 };
 
 typedef struct
@@ -437,7 +438,7 @@ static void reader_dec_depth(xmlreader *reader)
     if (reader->depth > 1) reader->depth--;
 }
 
-static HRESULT reader_push_element(xmlreader *reader, strval *qname)
+static HRESULT reader_push_element(xmlreader *reader, strval *qname, strval *localname)
 {
     struct element *elem;
     HRESULT hr;
@@ -447,6 +448,14 @@ static HRESULT reader_push_element(xmlreader *reader, strval *qname)
 
     hr = reader_strvaldup(reader, qname, &elem->qname);
     if (FAILED(hr)) {
+        reader_free(reader, elem);
+        return hr;
+    }
+
+    hr = reader_strvaldup(reader, localname, &elem->localname);
+    if (FAILED(hr))
+    {
+        reader_free_strvalued(reader, &elem->qname);
         reader_free(reader, elem);
         return hr;
     }
@@ -473,6 +482,7 @@ static void reader_pop_element(xmlreader *reader)
     {
         list_remove(&elem->entry);
         reader_free_strvalued(reader, &elem->qname);
+        reader_free_strvalued(reader, &elem->localname);
         reader_free(reader, elem);
         reader_dec_depth(reader);
     }
@@ -1524,8 +1534,7 @@ static HRESULT reader_parse_sys_literal(xmlreader *reader, strval *literal)
     }
     if (*cur == quote) reader_skipn(reader, 1);
 
-    literal->str = start;
-    literal->len = cur-start;
+    reader_init_strvalue(start, cur-start, literal);
     TRACE("%s\n", debugstr_wn(start, cur-start));
     return S_OK;
 }
@@ -1757,12 +1766,99 @@ static HRESULT reader_parse_qname(xmlreader *reader, strval *prefix, strval *loc
     return S_OK;
 }
 
+/* Applies normalization rules to a single char, used for attribute values.
+
+   Rules include 2 steps:
+
+   1) replacing \r\n with a single \n;
+   2) replacing all whitespace chars with ' '.
+
+ */
+static void reader_normalize_space(xmlreader *reader, WCHAR *ptr)
+{
+    encoded_buffer *buffer = &reader->input->buffer->utf16;
+
+    if (!is_wchar_space(*ptr)) return;
+
+    if (*ptr == '\r' && *(ptr+1) == '\n')
+    {
+        int len = buffer->written - ((char*)ptr - buffer->data) - 2*sizeof(WCHAR);
+        memmove(ptr+1, ptr+2, len);
+    }
+    *ptr = ' ';
+}
+
 /* [66] CharRef ::= '&#' [0-9]+ ';' | '&#x' [0-9a-fA-F]+ ';'
    [67] Reference ::= EntityRef | CharRef
    [68] EntityRef ::= '&' Name ';' */
 static HRESULT reader_parse_reference(xmlreader *reader)
 {
-    FIXME("References not supported\n");
+    WCHAR *start = reader_get_cur(reader), *ptr;
+    WCHAR ch = 0;
+    int len;
+
+    /* skip '&' */
+    reader_skipn(reader, 1);
+    ptr = reader_get_cur(reader);
+
+    if (*ptr == '#')
+    {
+        encoded_buffer *buffer = &reader->input->buffer->utf16;
+
+        reader_skipn(reader, 1);
+        ptr = reader_get_cur(reader);
+
+        /* hex char or decimal */
+        if (*ptr == 'x')
+        {
+            reader_skipn(reader, 1);
+            ptr = reader_get_cur(reader);
+
+            while (*ptr != ';')
+            {
+                if ((*ptr >= '0' && *ptr <= '9'))
+                    ch = ch*16 + *ptr - '0';
+                else if ((*ptr >= 'a' && *ptr <= 'f'))
+                    ch = ch*16 + *ptr - 'a' + 10;
+                else if ((*ptr >= 'A' && *ptr <= 'F'))
+                    ch = ch*16 + *ptr - 'A' + 10;
+                else
+                    return ch ? WC_E_SEMICOLON : WC_E_HEXDIGIT;
+                reader_skipn(reader, 1);
+                ptr = reader_get_cur(reader);
+            }
+        }
+        else
+        {
+            while (*ptr != ';')
+            {
+                if ((*ptr >= '0' && *ptr <= '9'))
+                {
+                    ch = ch*10 + *ptr - '0';
+                    reader_skipn(reader, 1);
+                    ptr = reader_get_cur(reader);
+                }
+                else
+                    return ch ? WC_E_SEMICOLON : WC_E_DIGIT;
+            }
+        }
+
+        if (!is_char(ch)) return WC_E_XMLCHARACTER;
+
+        /* normalize */
+        if (is_wchar_space(ch)) ch = ' ';
+
+        len = buffer->written - ((char*)ptr - buffer->data) - sizeof(WCHAR);
+        memmove(start+1, ptr+1, len);
+        buffer->cur = (char*)start;
+
+        *start = ch;
+
+        return S_OK;
+    }
+    else
+        FIXME("Entity references not supported\n");
+
     return E_NOTIMPL;
 }
 
@@ -1797,7 +1893,10 @@ static HRESULT reader_parse_attvalue(xmlreader *reader, strval *value)
             if (FAILED(hr)) return hr;
         }
         else
+        {
+            reader_normalize_space(reader, ptr);
             reader_skipn(reader, 1);
+        }
         ptr = reader_get_cur(reader);
     }
 
@@ -1839,7 +1938,7 @@ static HRESULT reader_parse_attribute(xmlreader *reader)
     hr = reader_parse_attvalue(reader, &value);
     if (FAILED(hr)) return hr;
 
-    TRACE("%s=\"%s\"\n", debugstr_wn(local.str, local.len), debugstr_wn(value.str, value.len));
+    TRACE("%s=%s\n", debugstr_wn(local.str, local.len), debugstr_wn(value.str, value.len));
     return reader_add_attr(reader, &local, &value);
 }
 
@@ -1872,7 +1971,7 @@ static HRESULT reader_parse_stag(xmlreader *reader, strval *prefix, strval *loca
         {
             /* skip '>' */
             reader_skipn(reader, 1);
-            return reader_push_element(reader, qname);
+            return reader_push_element(reader, qname, local);
         }
 
         hr = reader_parse_attribute(reader);
@@ -2413,6 +2512,9 @@ static HRESULT WINAPI xmlreader_MoveToFirstAttribute(IXmlReader* iface)
 
     if (!This->attr_count) return S_FALSE;
     This->attr = LIST_ENTRY(list_head(&This->attrs), struct attribute, entry);
+    reader_set_strvalue(This, StringValue_LocalName, &This->attr->localname);
+    reader_set_strvalue(This, StringValue_Value, &This->attr->value);
+
     return S_OK;
 }
 
@@ -2430,7 +2532,11 @@ static HRESULT WINAPI xmlreader_MoveToNextAttribute(IXmlReader* iface)
 
     next = list_next(&This->attrs, &This->attr->entry);
     if (next)
+    {
         This->attr = LIST_ENTRY(next, struct attribute, entry);
+        reader_set_strvalue(This, StringValue_LocalName, &This->attr->localname);
+        reader_set_strvalue(This, StringValue_Value, &This->attr->value);
+    }
 
     return next ? S_OK : S_FALSE;
 }
@@ -2446,11 +2552,21 @@ static HRESULT WINAPI xmlreader_MoveToAttributeByName(IXmlReader* iface,
 static HRESULT WINAPI xmlreader_MoveToElement(IXmlReader* iface)
 {
     xmlreader *This = impl_from_IXmlReader(iface);
+    struct element *elem;
 
     TRACE("(%p)\n", This);
 
     if (!This->attr_count) return S_FALSE;
     This->attr = NULL;
+
+    /* FIXME: support other node types with 'attributes' like DTD */
+    elem = LIST_ENTRY(list_head(&This->elements), struct element, entry);
+    if (elem)
+    {
+        reader_set_strvalue(This, StringValue_QualifiedName, &elem->qname);
+        reader_set_strvalue(This, StringValue_LocalName, &elem->localname);
+    }
+
     return S_OK;
 }
 

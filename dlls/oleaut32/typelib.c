@@ -9689,8 +9689,13 @@ static HRESULT WINAPI ICreateTypeLib2_fnSaveAllChanges(ICreateTypeLib2 *iface)
     HANDLE outfile;
     HRESULT hres;
     DWORD *junk;
+    UINT i;
 
     TRACE("%p\n", This);
+
+    for(i = 0; i < This->TypeInfoCount; ++i)
+        if(This->typeinfos[i]->needs_layout)
+            ICreateTypeInfo2_LayOut(&This->typeinfos[i]->ICreateTypeInfo2_iface);
 
     memset(&file, 0, sizeof(file));
 
@@ -9703,7 +9708,7 @@ static HRESULT WINAPI ICreateTypeLib2_fnSaveAllChanges(ICreateTypeLib2 *iface)
         file.header.varflags |= 0x10;
     if (This->HelpStringDll)
         file.header.varflags |= HELPDLLFLAG;
-    file.header.version = (This->ver_major << 16) | This->ver_minor;
+    file.header.version = (This->ver_minor << 16) | This->ver_major;
     file.header.flags = This->libflags;
     file.header.helpstringcontext = 0; /* TODO - SetHelpStringContext not implemented yet */
     file.header.helpcontext = This->dwHelpContext;
@@ -10731,6 +10736,33 @@ static HRESULT WINAPI ICreateTypeInfo2_fnLayOut(ICreateTypeInfo2 *iface)
 
     if (user_vft > This->cbSizeVft)
         This->cbSizeVft = user_vft + This->pTypeLib->ptr_size;
+
+    for(i = 0; i < This->cVars; ++i){
+        TLBVarDesc *var_desc = &This->vardescs[i];
+        if(var_desc->vardesc.memid == MEMBERID_NIL){
+            UINT j = 0;
+            BOOL reset = FALSE;
+            TLBVarDesc *iter;
+
+            var_desc->vardesc.memid = 0x40000000 + (depth << 16) + i;
+
+            iter = This->vardescs;
+            while (j < This->cVars) {
+                if (iter != var_desc && iter->vardesc.memid == var_desc->vardesc.memid) {
+                    if (!reset) {
+                        var_desc->vardesc.memid = 0x40000000 + (depth << 16) + This->cVars;
+                        reset = TRUE;
+                    } else
+                        ++var_desc->vardesc.memid;
+                    iter = This->vardescs;
+                    j = 0;
+                } else {
+                    ++iter;
+                    ++j;
+                }
+            }
+        }
+    }
 
     ITypeInfo_Release(tinfo);
     return hres;
