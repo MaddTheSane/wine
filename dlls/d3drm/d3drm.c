@@ -128,11 +128,11 @@ static ULONG WINAPI IDirect3DRMImpl_Release(IDirect3DRM* iface)
 }
 
 /*** IDirect3DRM methods ***/
-static HRESULT WINAPI IDirect3DRMImpl_CreateObject(IDirect3DRM* iface, REFCLSID rclsid, LPUNKNOWN pUnkOuter, REFIID riid, LPVOID *ppvObj)
+static HRESULT WINAPI IDirect3DRMImpl_CreateObject(IDirect3DRM *iface,
+        REFCLSID clsid, IUnknown *outer, REFIID iid, void **out)
 {
-    IDirect3DRMImpl *This = impl_from_IDirect3DRM(iface);
-
-    FIXME("(%p/%p)->(%s,%p,%s,%p): stub\n", iface, This, debugstr_guid(rclsid), pUnkOuter, debugstr_guid(riid), ppvObj);
+    FIXME("iface %p, clsid %s, outer %p, iid %s, out %p stub!\n",
+            iface, debugstr_guid(clsid), outer, debugstr_guid(iid), out);
 
     return E_NOTIMPL;
 }
@@ -492,14 +492,11 @@ static ULONG WINAPI IDirect3DRM2Impl_Release(IDirect3DRM2* iface)
 }
 
 /*** IDirect3DRM2 methods ***/
-static HRESULT WINAPI IDirect3DRM2Impl_CreateObject(IDirect3DRM2* iface, REFCLSID rclsid,
-                                                    LPUNKNOWN pUnkOuter, REFIID riid,
-                                                    LPVOID *ppvObj)
+static HRESULT WINAPI IDirect3DRM2Impl_CreateObject(IDirect3DRM2 *iface,
+        REFCLSID clsid, IUnknown *outer, REFIID iid, void **out)
 {
-    IDirect3DRMImpl *This = impl_from_IDirect3DRM2(iface);
-
-    FIXME("(%p/%p)->(%s,%p,%s,%p): stub\n", iface, This, debugstr_guid(rclsid), pUnkOuter,
-                                            debugstr_guid(riid), ppvObj);
+    FIXME("iface %p, clsid %s, outer %p, iid %s, out %p stub!\n",
+            iface, debugstr_guid(clsid), outer, debugstr_guid(iid), out);
 
     return E_NOTIMPL;
 }
@@ -872,13 +869,11 @@ static ULONG WINAPI IDirect3DRM3Impl_Release(IDirect3DRM3* iface)
 }
 
 /*** IDirect3DRM3 methods ***/
-static HRESULT WINAPI IDirect3DRM3Impl_CreateObject(IDirect3DRM3* iface, REFCLSID rclsid,
-                                                    LPUNKNOWN unkwn, REFIID riid, LPVOID* object)
+static HRESULT WINAPI IDirect3DRM3Impl_CreateObject(IDirect3DRM3 *iface,
+        REFCLSID clsid, IUnknown *outer, REFIID iid, void **out)
 {
-    IDirect3DRMImpl *This = impl_from_IDirect3DRM3(iface);
-
-    FIXME("(%p/%p)->(%s,%p,%s,%p): stub\n", iface, This, debugstr_guid(rclsid), unkwn,
-          debugstr_guid(riid), object);
+    FIXME("iface %p, clsid %s, outer %p, iid %s, out %p stub!\n",
+            iface, debugstr_guid(clsid), outer, debugstr_guid(iid), out);
 
     return E_NOTIMPL;
 }
@@ -1355,7 +1350,7 @@ static HRESULT WINAPI IDirect3DRM3Impl_Load(IDirect3DRM3 *iface, void *source, v
     DXFILELOADOPTIONS load_options;
     IDirectXFile *file = NULL;
     IDirectXFileEnumObject *enum_object = NULL;
-    LPDIRECTXFILEDATA pData = NULL;
+    IDirectXFileData *data = NULL;
     HRESULT hr;
     const GUID* pGuid;
     DWORD size;
@@ -1399,11 +1394,11 @@ static HRESULT WINAPI IDirect3DRM3Impl_Load(IDirect3DRM3 *iface, void *source, v
     if (hr != DXFILE_OK)
         goto end;
 
-    hr = IDirectXFileEnumObject_GetNextDataObject(enum_object, &pData);
+    hr = IDirectXFileEnumObject_GetNextDataObject(enum_object, &data);
     if (hr != DXFILE_OK)
         goto end;
 
-    hr = IDirectXFileData_GetType(pData, &pGuid);
+    hr = IDirectXFileData_GetType(data, &pGuid);
     if (hr != DXFILE_OK)
         goto end;
 
@@ -1415,7 +1410,7 @@ static HRESULT WINAPI IDirect3DRM3Impl_Load(IDirect3DRM3 *iface, void *source, v
         goto end;
     }
 
-    hr = IDirectXFileData_GetData(pData, NULL, &size, (void**)&pHeader);
+    hr = IDirectXFileData_GetData(data, NULL, &size, (void **)&pHeader);
     if ((hr != DXFILE_OK) || (size != sizeof(Header)))
         goto end;
 
@@ -1428,12 +1423,12 @@ static HRESULT WINAPI IDirect3DRM3Impl_Load(IDirect3DRM3 *iface, void *source, v
         goto end;
     }
 
-    IDirectXFileData_Release(pData);
-    pData = NULL;
+    IDirectXFileData_Release(data);
+    data = NULL;
 
     while (1)
     {
-        hr = IDirectXFileEnumObject_GetNextDataObject(enum_object, &pData);
+        hr = IDirectXFileEnumObject_GetNextDataObject(enum_object, &data);
         if (hr == DXFILEERR_NOMOREOBJECTS)
         {
             TRACE("No more object\n");
@@ -1445,19 +1440,19 @@ static HRESULT WINAPI IDirect3DRM3Impl_Load(IDirect3DRM3 *iface, void *source, v
             goto end;
         }
 
-        ret = load_data(iface, pData, iids, iid_count, load_cb, load_ctx, load_tex_cb, load_tex_ctx, parent_frame);
+        ret = load_data(iface, data, iids, iid_count, load_cb, load_ctx, load_tex_cb, load_tex_ctx, parent_frame);
         if (ret != D3DRM_OK)
             goto end;
 
-        IDirectXFileData_Release(pData);
-        pData = NULL;
+        IDirectXFileData_Release(data);
+        data = NULL;
     }
 
     ret = D3DRM_OK;
 
 end:
-    if (pData)
-        IDirectXFileData_Release(pData);
+    if (data)
+        IDirectXFileData_Release(data);
     if (enum_object)
         IDirectXFileEnumObject_Release(enum_object);
     if (file)

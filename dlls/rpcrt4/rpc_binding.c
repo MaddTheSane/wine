@@ -1414,7 +1414,18 @@ BOOL RpcQualityOfService_IsEqual(const RpcQualityOfService *qos1, const RpcQuali
         if (http_credentials1->AuthenticationTarget != http_credentials2->AuthenticationTarget)
             return FALSE;
 
-        /* authentication schemes and server certificate subject not currently used */
+        if (http_credentials1->NumberOfAuthnSchemes != http_credentials2->NumberOfAuthnSchemes)
+            return FALSE;
+
+        if ((!http_credentials1->AuthnSchemes && http_credentials2->AuthnSchemes) ||
+            (http_credentials1->AuthnSchemes && !http_credentials2->AuthnSchemes))
+            return FALSE;
+
+        if (memcmp(http_credentials1->AuthnSchemes, http_credentials2->AuthnSchemes,
+                   http_credentials1->NumberOfAuthnSchemes * sizeof(http_credentials1->AuthnSchemes[0])))
+            return FALSE;
+
+        /* server certificate subject not currently used */
 
         if (http_credentials1->TransportCredentials != http_credentials2->TransportCredentials)
         {
@@ -1652,12 +1663,13 @@ RpcBindingSetAuthInfoExA( RPC_BINDING_HANDLE Binding, RPC_CSTR ServerPrincName,
           const RPC_SECURITY_QOS_V2_A *SecurityQos2 = (const RPC_SECURITY_QOS_V2_A *)SecurityQos;
           TRACE(", AdditionalSecurityInfoType=%d", SecurityQos2->AdditionalSecurityInfoType);
           if (SecurityQos2->AdditionalSecurityInfoType == RPC_C_AUTHN_INFO_TYPE_HTTP)
-              TRACE(", { %p, 0x%x, %d, %d, %p, %s }",
+              TRACE(", { %p, 0x%x, %d, %d, %p(%u), %s }",
                     SecurityQos2->u.HttpCredentials->TransportCredentials,
                     SecurityQos2->u.HttpCredentials->Flags,
                     SecurityQos2->u.HttpCredentials->AuthenticationTarget,
                     SecurityQos2->u.HttpCredentials->NumberOfAuthnSchemes,
                     SecurityQos2->u.HttpCredentials->AuthnSchemes,
+                    SecurityQos2->u.HttpCredentials->AuthnSchemes ? *SecurityQos2->u.HttpCredentials->AuthnSchemes : 0,
                     SecurityQos2->u.HttpCredentials->ServerCertificateSubject);
       }
       TRACE("}\n");
@@ -1729,7 +1741,7 @@ RpcBindingSetAuthInfoExA( RPC_BINDING_HANDLE Binding, RPC_CSTR ServerPrincName,
     if (r == RPC_S_OK)
     {
       new_auth_info->server_principal_name = RPCRT4_strdupAtoW((char *)ServerPrincName);
-      if (new_auth_info->server_principal_name)
+      if (!ServerPrincName || new_auth_info->server_principal_name)
       {
         if (bind->AuthInfo) RpcAuthInfo_Release(bind->AuthInfo);
         bind->AuthInfo = new_auth_info;
@@ -1782,12 +1794,13 @@ RpcBindingSetAuthInfoExW( RPC_BINDING_HANDLE Binding, RPC_WSTR ServerPrincName, 
           const RPC_SECURITY_QOS_V2_W *SecurityQos2 = (const RPC_SECURITY_QOS_V2_W *)SecurityQos;
           TRACE(", AdditionalSecurityInfoType=%d", SecurityQos2->AdditionalSecurityInfoType);
           if (SecurityQos2->AdditionalSecurityInfoType == RPC_C_AUTHN_INFO_TYPE_HTTP)
-              TRACE(", { %p, 0x%x, %d, %d, %p, %s }",
+              TRACE(", { %p, 0x%x, %d, %d, %p(%u), %s }",
                     SecurityQos2->u.HttpCredentials->TransportCredentials,
                     SecurityQos2->u.HttpCredentials->Flags,
                     SecurityQos2->u.HttpCredentials->AuthenticationTarget,
                     SecurityQos2->u.HttpCredentials->NumberOfAuthnSchemes,
                     SecurityQos2->u.HttpCredentials->AuthnSchemes,
+                    SecurityQos2->u.HttpCredentials->AuthnSchemes ? *SecurityQos2->u.HttpCredentials->AuthnSchemes : 0,
                     debugstr_w(SecurityQos2->u.HttpCredentials->ServerCertificateSubject));
       }
       TRACE("}\n");

@@ -123,6 +123,22 @@
 #ifdef HAVE_SYS_TIHDR_H
 #include <sys/tihdr.h>
 #endif
+#ifdef HAVE_SYS_PARAM_H
+#include <sys/param.h>
+#endif
+#ifdef HAVE_SYS_QUEUE_H
+#include <sys/queue.h>
+#endif
+#ifdef HAVE_SYS_USER_H
+/* Make sure the definitions of struct kinfo_proc are the same. */
+#include <sys/user.h>
+#endif
+#ifdef HAVE_LIBPROCSTAT_H
+#include <libprocstat.h>
+#endif
+#ifdef HAVE_LIBPROC_H
+#include <libproc.h>
+#endif
 
 #ifndef ROUNDUP
 #define ROUNDUP(a) \
@@ -1950,13 +1966,13 @@ done:
     return map;
 }
 
-static unsigned int find_owning_pid( struct pid_map *map, unsigned int num_entries, int inode )
+static unsigned int find_owning_pid( struct pid_map *map, unsigned int num_entries, UINT_PTR inode )
 {
 #ifdef __linux__
     unsigned int i, len_socket;
     char socket[32];
 
-    sprintf( socket, "socket:[%d]", inode );
+    sprintf( socket, "socket:[%lu]", inode );
     len_socket = strlen( socket );
     for (i = 0; i < num_entries; i++)
     {
@@ -1982,6 +1998,82 @@ static unsigned int find_owning_pid( struct pid_map *map, unsigned int num_entri
             }
             closedir( dirfd );
         }
+    }
+    return 0;
+#elif defined(HAVE_LIBPROCSTAT)
+    struct procstat *pstat;
+    struct kinfo_proc *proc;
+    struct filestat_list *fds;
+    struct filestat *fd;
+    struct sockstat sock;
+    unsigned int i, proc_count;
+
+    pstat = procstat_open_sysctl();
+    if (!pstat) return 0;
+
+    for (i = 0; i < num_entries; i++)
+    {
+        proc = procstat_getprocs( pstat, KERN_PROC_PID, map[i].unix_pid, &proc_count );
+        if (!proc || proc_count < 1) continue;
+
+        fds = procstat_getfiles( pstat, proc, 0 );
+        if (!fds)
+        {
+            procstat_freeprocs( pstat, proc );
+            continue;
+        }
+
+        STAILQ_FOREACH( fd, fds, next )
+        {
+            char errbuf[_POSIX2_LINE_MAX];
+
+            if (fd->fs_type != PS_FST_TYPE_SOCKET) continue;
+
+            procstat_get_socket_info( pstat, fd, &sock, errbuf );
+
+            if (sock.so_pcb == inode)
+            {
+                procstat_freefiles( pstat, fds );
+                procstat_freeprocs( pstat, proc );
+                procstat_close( pstat );
+                return map[i].pid;
+            }
+        }
+
+        procstat_freefiles( pstat, fds );
+        procstat_freeprocs( pstat, proc );
+    }
+
+    procstat_close( pstat );
+    return 0;
+#elif defined(HAVE_LIBPROC_H)
+    struct proc_fdinfo *fds;
+    struct socket_fdinfo sock;
+    unsigned int i, j, n, fd_len;
+
+    for (i = 0; i < num_entries; i++)
+    {
+        fd_len = proc_pidinfo( map[i].unix_pid, PROC_PIDLISTFDS, 0, NULL, 0 );
+        if (fd_len <= 0) continue;
+
+        fds = HeapAlloc( GetProcessHeap(), 0, fd_len );
+        if (!fds) continue;
+
+        proc_pidinfo( map[i].unix_pid, PROC_PIDLISTFDS, 0, fds, fd_len );
+        n = fd_len / sizeof(struct proc_fdinfo);
+        for (j = 0; j < n; j++)
+        {
+            if (fds[j].proc_fdtype != PROX_FDTYPE_SOCKET) continue;
+
+            proc_pidfdinfo( map[i].unix_pid, fds[j].proc_fd, PROC_PIDFDSOCKETINFO, &sock, sizeof(sock) );
+            if (sock.psi.soi_pcb == inode)
+            {
+                HeapFree( GetProcessHeap(), 0, fds );
+                return map[i].pid;
+            }
+        }
+
+        HeapFree( GetProcessHeap(), 0, fds );
     }
     return 0;
 #else
@@ -2105,6 +2197,8 @@ DWORD build_tcp_table( TCP_TABLE_CLASS class, void **tablep, BOOL order, HANDLE 
         size_t Len = 0;
         char *Buf = NULL;
         struct xinpgen *pXIG, *pOrigXIG;
+        struct pid_map *pMap;
+        unsigned NumEntries;
 
         if (sysctlbyname ("net.inet.tcp.pcblist", NULL, &Len, NULL, 0) < 0)
         {
@@ -2126,6 +2220,8 @@ DWORD build_tcp_table( TCP_TABLE_CLASS class, void **tablep, BOOL order, HANDLE 
             ret = ERROR_NOT_SUPPORTED;
             goto done;
         }
+
+        if (class >= TCP_TABLE_OWNER_PID_LISTENER) pMap = get_pid_map( &NumEntries );
 
         /* Might be nothing here; first entry is just a header it seems */
         if (Len <= sizeof (struct xinpgen)) goto done;
@@ -2172,6 +2268,13 @@ DWORD build_tcp_table( TCP_TABLE_CLASS class, void **tablep, BOOL order, HANDLE 
             row.dwRemotePort = pINData->inp_fport;
             row.dwState = TCPStateToMIBState (pTCPData->t_state);
             if (!match_class( class, row.dwState )) continue;
+            if (class >= TCP_TABLE_OWNER_PID_LISTENER)
+                row.dwOwningPid = find_owning_pid( pMap, NumEntries, (UINT_PTR)pSockData->so_pcb );
+            if (class >= TCP_TABLE_OWNER_MODULE_LISTENER)
+            {
+                row.liCreateTimestamp.QuadPart = 0; /* FIXME */
+                memset( &row.OwningModuleInfo, 0, sizeof(row.OwningModuleInfo) );
+            }
             if (!(table = append_tcp_row( class, heap, flags, table, &count, &row, row_size )))
                 break;
         }
@@ -2368,6 +2471,8 @@ DWORD build_udp_table( UDP_TABLE_CLASS class, void **tablep, BOOL order, HANDLE 
         size_t Len = 0;
         char *Buf = NULL;
         struct xinpgen *pXIG, *pOrigXIG;
+        struct pid_map *pMap;
+        unsigned NumEntries;
 
         if (sysctlbyname ("net.inet.udp.pcblist", NULL, &Len, NULL, 0) < 0)
         {
@@ -2389,6 +2494,9 @@ DWORD build_udp_table( UDP_TABLE_CLASS class, void **tablep, BOOL order, HANDLE 
             ret = ERROR_NOT_SUPPORTED;
             goto done;
         }
+
+        if (class >= UDP_TABLE_OWNER_PID)
+            pMap = get_pid_map( &NumEntries );
 
         /* Might be nothing here; first entry is just a header it seems */
         if (Len <= sizeof (struct xinpgen)) goto done;
@@ -2427,6 +2535,14 @@ DWORD build_udp_table( UDP_TABLE_CLASS class, void **tablep, BOOL order, HANDLE 
             /* Fill in structure details */
             row.dwLocalAddr = pINData->inp_laddr.s_addr;
             row.dwLocalPort = pINData->inp_lport;
+            if (class >= UDP_TABLE_OWNER_PID)
+                row.dwOwningPid = find_owning_pid( pMap, NumEntries, (UINT_PTR)pSockData->so_pcb );
+            if (class >= UDP_TABLE_OWNER_MODULE)
+            {
+                row.liCreateTimestamp.QuadPart = 0; /* FIXME */
+                row.u.dwFlags = 0;
+                memset( &row.OwningModuleInfo, 0, sizeof(row.OwningModuleInfo) );
+            }
             if (!(table = append_udp_row( class, heap, flags, table, &count, &row, row_size ))) break;
         }
 
