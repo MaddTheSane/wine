@@ -607,7 +607,7 @@ void state_clipping(struct wined3d_context *context, const struct wined3d_state 
      * The enabled / disabled planes are hardcoded into the shader. Update the
      * shader to update the enabled clipplanes. In case of fixed function, we
      * need to update the clipping field from ffp_vertex_settings. */
-    context->select_shader = 1;
+    context->shader_update_mask |= 1 << WINED3D_SHADER_TYPE_VERTEX;
 
     /* TODO: Keep track of previously enabled clipplanes to avoid unnecessary resetting
      * of already set values
@@ -3676,7 +3676,7 @@ static void sampler(struct wined3d_context *context, const struct wined3d_state 
 
         /* Trigger shader constant reloading (for NP2 texcoord fixup) */
         if (!(texture->flags & WINED3D_TEXTURE_POW2_MAT_IDENT))
-            device->shader_backend->shader_load_np2fixup_constants(device->shader_priv, gl_info, state);
+            context->constant_update_mask |= WINED3D_SHADER_CONST_PS_NP2_FIXUP;
     }
     else
     {
@@ -3731,12 +3731,12 @@ void apply_pixelshader(struct wined3d_context *context, const struct wined3d_sta
         context->last_was_pshader = FALSE;
     }
 
-    context->select_shader = 1;
+    context->shader_update_mask |= 1 << WINED3D_SHADER_TYPE_PIXEL;
 }
 
 static void state_geometry_shader(struct wined3d_context *context, const struct wined3d_state *state, DWORD state_id)
 {
-    context->select_shader = 1;
+    context->shader_update_mask |= 1 << WINED3D_SHADER_TYPE_GEOMETRY;
 }
 
 static void shader_bumpenv(struct wined3d_context *context, const struct wined3d_state *state, DWORD state_id)
@@ -4630,7 +4630,7 @@ void vertexdeclaration(struct wined3d_context *context, const struct wined3d_sta
     }
 
     context->last_was_vshader = useVertexShaderFunction;
-    context->select_shader = 1;
+    context->shader_update_mask |= 1 << WINED3D_SHADER_TYPE_VERTEX;
 
     if (updateFog)
         context_apply_state(context, state, STATE_RENDER(WINED3D_RS_FOGVERTEXMODE));
@@ -4644,6 +4644,10 @@ void vertexdeclaration(struct wined3d_context *context, const struct wined3d_sta
             if (!isStateDirty(context, STATE_TRANSFORM(WINED3D_TS_TEXTURE0 + i)))
                 transform_texture(context, state, STATE_TEXTURESTAGE(i, WINED3D_TSS_TEXTURE_TRANSFORM_FLAGS));
         }
+
+        if (use_ps(state) && state->pixel_shader->reg_maps.shader_version.major == 1
+                && state->pixel_shader->reg_maps.shader_version.minor <= 3)
+            context->shader_update_mask |= 1 << WINED3D_SHADER_TYPE_PIXEL;
     }
 
     if (transformed != wasrhw && !isStateDirty(context, STATE_RENDER(WINED3D_RS_ZENABLE)))

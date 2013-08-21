@@ -1242,6 +1242,88 @@ NTSTATUS WINAPI NtDelayExecution( BOOLEAN alertable, const LARGE_INTEGER *timeou
     return STATUS_SUCCESS;
 }
 
+
+/******************************************************************************
+ *              NtCreateKeyedEvent (NTDLL.@)
+ */
+NTSTATUS WINAPI NtCreateKeyedEvent( HANDLE *handle, ACCESS_MASK access,
+                                    const OBJECT_ATTRIBUTES *attr, ULONG flags )
+{
+    DWORD len = attr && attr->ObjectName ? attr->ObjectName->Length : 0;
+    NTSTATUS ret;
+    struct security_descriptor *sd = NULL;
+    struct object_attributes objattr;
+
+    if (len >= MAX_PATH * sizeof(WCHAR)) return STATUS_NAME_TOO_LONG;
+
+    objattr.rootdir = wine_server_obj_handle( attr ? attr->RootDirectory : 0 );
+    objattr.sd_len = 0;
+    objattr.name_len = len;
+    if (attr)
+    {
+        ret = NTDLL_create_struct_sd( attr->SecurityDescriptor, &sd, &objattr.sd_len );
+        if (ret != STATUS_SUCCESS) return ret;
+    }
+
+    SERVER_START_REQ( create_keyed_event )
+    {
+        req->access = access;
+        req->attributes = attr ? attr->Attributes : 0;
+        wine_server_add_data( req, &objattr, sizeof(objattr) );
+        if (objattr.sd_len) wine_server_add_data( req, sd, objattr.sd_len );
+        if (len) wine_server_add_data( req, attr->ObjectName->Buffer, len );
+        ret = wine_server_call( req );
+        *handle = wine_server_ptr_handle( reply->handle );
+    }
+    SERVER_END_REQ;
+
+    NTDLL_free_struct_sd( sd );
+    return ret;
+}
+
+/******************************************************************************
+ *              NtOpenKeyedEvent (NTDLL.@)
+ */
+NTSTATUS WINAPI NtOpenKeyedEvent( HANDLE *handle, ACCESS_MASK access, const OBJECT_ATTRIBUTES *attr )
+{
+    DWORD len = attr && attr->ObjectName ? attr->ObjectName->Length : 0;
+    NTSTATUS ret;
+
+    if (len >= MAX_PATH * sizeof(WCHAR)) return STATUS_NAME_TOO_LONG;
+
+    SERVER_START_REQ( open_event )
+    {
+        req->access  = access;
+        req->attributes = attr ? attr->Attributes : 0;
+        req->rootdir = wine_server_obj_handle( attr ? attr->RootDirectory : 0 );
+        if (len) wine_server_add_data( req, attr->ObjectName->Buffer, len );
+        ret = wine_server_call( req );
+        *handle = wine_server_ptr_handle( reply->handle );
+    }
+    SERVER_END_REQ;
+    return ret;
+}
+
+/******************************************************************************
+ *              NtWaitForKeyedEvent (NTDLL.@)
+ */
+NTSTATUS WINAPI NtWaitForKeyedEvent( HANDLE handle, const void *key,
+                                     BOOLEAN alertable, const LARGE_INTEGER *timeout )
+{
+    FIXME( "stub\n" );
+    return STATUS_NOT_IMPLEMENTED;
+}
+
+/******************************************************************************
+ *              NtReleaseKeyedEvent (NTDLL.@)
+ */
+NTSTATUS WINAPI NtReleaseKeyedEvent( HANDLE handle, const void *key,
+                                     BOOLEAN alertable, const LARGE_INTEGER *timeout )
+{
+    FIXME( "stub\n" );
+    return STATUS_NOT_IMPLEMENTED;
+}
+
 /******************************************************************
  *              NtCreateIoCompletion (NTDLL.@)
  *              ZwCreateIoCompletion (NTDLL.@)

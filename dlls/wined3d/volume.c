@@ -49,7 +49,6 @@ static void volume_bind_and_dirtify(const struct wined3d_volume *volume, struct 
 
 void volume_add_dirty_box(struct wined3d_volume *volume, const struct wined3d_box *dirty_box)
 {
-    volume->dirty = TRUE;
     if (dirty_box)
     {
         volume->lockedBox.left = min(volume->lockedBox.left, dirty_box->left);
@@ -184,7 +183,16 @@ HRESULT CDECL wined3d_volume_map(struct wined3d_volume *volume,
             volume, map_desc, box, flags);
 
     if (!volume->resource.allocatedMemory)
-        volume->resource.allocatedMemory = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, volume->resource.size);
+    {
+        volume->resource.heap_memory = wined3d_resource_allocate_sysmem(volume->resource.size);
+        if (!volume->resource.heap_memory)
+        {
+            WARN("Out of memory.\n");
+            map_desc->data = NULL;
+            return E_OUTOFMEMORY;
+        }
+        volume->resource.allocatedMemory = volume->resource.heap_memory;
+    }
 
     TRACE("allocatedMemory %p.\n", volume->resource.allocatedMemory);
 
@@ -224,7 +232,7 @@ HRESULT CDECL wined3d_volume_map(struct wined3d_volume *volume,
         wined3d_texture_set_dirty(volume->container, TRUE);
     }
 
-    volume->locked = TRUE;
+    volume->flags |= WINED3D_VFLAG_LOCKED;
 
     TRACE("Returning memory %p, row pitch %d, slice pitch %d.\n",
             map_desc->data, map_desc->row_pitch, map_desc->slice_pitch);
@@ -241,13 +249,13 @@ HRESULT CDECL wined3d_volume_unmap(struct wined3d_volume *volume)
 {
     TRACE("volume %p.\n", volume);
 
-    if (!volume->locked)
+    if (!(volume->flags & WINED3D_VFLAG_LOCKED))
     {
         WARN("Trying to unlock unlocked volume %p.\n", volume);
         return WINED3DERR_INVALIDCALL;
     }
 
-    volume->locked = FALSE;
+    volume->flags &= ~WINED3D_VFLAG_LOCKED;
     memset(&volume->lockedBox, 0, sizeof(volume->lockedBox));
 
     return WINED3D_OK;
@@ -265,6 +273,7 @@ static HRESULT volume_init(struct wined3d_volume *volume, struct wined3d_device 
     const struct wined3d_gl_info *gl_info = &device->adapter->gl_info;
     const struct wined3d_format *format = wined3d_get_format(gl_info, format_id);
     HRESULT hr;
+    UINT size;
 
     if (!gl_info->supported[EXT_TEXTURE3D])
     {
@@ -272,20 +281,18 @@ static HRESULT volume_init(struct wined3d_volume *volume, struct wined3d_device 
         return WINED3DERR_INVALIDCALL;
     }
 
+    size = wined3d_format_calculate_size(format, device->surface_alignment, width, height, depth);
+
     hr = resource_init(&volume->resource, device, WINED3D_RTYPE_VOLUME, format,
             WINED3D_MULTISAMPLE_NONE, 0, usage, pool, width, height, depth,
-            width * height * depth * format->byte_count, parent, parent_ops,
-            &volume_resource_ops);
+            size, parent, parent_ops, &volume_resource_ops);
     if (FAILED(hr))
     {
         WARN("Failed to initialize resource, returning %#x.\n", hr);
         return hr;
     }
 
-    volume->lockable = TRUE;
-    volume->locked = FALSE;
     memset(&volume->lockedBox, 0, sizeof(volume->lockedBox));
-    volume->dirty = TRUE;
 
     volume_add_dirty_box(volume, NULL);
 

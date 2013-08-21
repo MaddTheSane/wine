@@ -292,7 +292,8 @@ enum wined3d_sampler_texture_type
 #define WINED3D_SHADER_CONST_PS_B           0x00000040
 #define WINED3D_SHADER_CONST_PS_BUMP_ENV    0x00000080
 #define WINED3D_SHADER_CONST_PS_Y_CORR      0x00000100
-#define WINED3D_SHADER_CONST_FFP_PS         0x00000200
+#define WINED3D_SHADER_CONST_PS_NP2_FIXUP   0x00000200
+#define WINED3D_SHADER_CONST_FFP_PS         0x00000400
 
 enum wined3d_shader_register_type
 {
@@ -817,8 +818,6 @@ struct wined3d_shader_backend_ops
     void (*shader_update_float_pixel_constants)(struct wined3d_device *device, UINT start, UINT count);
     void (*shader_load_constants)(void *shader_priv, struct wined3d_context *context,
             const struct wined3d_state *state);
-    void (*shader_load_np2fixup_constants)(void *shader_priv, const struct wined3d_gl_info *gl_info,
-            const struct wined3d_state *state);
     void (*shader_destroy)(struct wined3d_shader *shader);
     HRESULT (*shader_alloc_private)(struct wined3d_device *device, const struct wined3d_vertex_pipe_ops *vertex_pipe,
             const struct fragment_pipeline *fragment_pipe);
@@ -1092,9 +1091,10 @@ struct wined3d_context
     DWORD current : 1;
     DWORD destroyed : 1;
     DWORD valid : 1;
-    DWORD select_shader : 1;
+    DWORD padding : 1;
     DWORD texShaderBumpMap : 8;         /* MAX_TEXTURES, 8 */
     DWORD lastWasPow2Texture : 8;       /* MAX_TEXTURES, 8 */
+    DWORD shader_update_mask;
     DWORD constant_update_mask;
     DWORD                   numbered_array_mask;
     GLenum                  tracking_parm;     /* Which source is tracking current colour         */
@@ -1926,6 +1926,9 @@ struct wined3d_resource_ops
     void (*resource_unload)(struct wined3d_resource *resource);
 };
 
+void *wined3d_resource_allocate_sysmem(SIZE_T size) DECLSPEC_HIDDEN;
+void wined3d_resource_free_sysmem(void *mem) DECLSPEC_HIDDEN;
+
 struct wined3d_resource
 {
     LONG ref;
@@ -1935,19 +1938,19 @@ struct wined3d_resource
     enum wined3d_resource_type type;
     const struct wined3d_format *format;
     enum wined3d_multisample_type multisample_type;
-    UINT                    multisample_quality;
-    DWORD                   usage;
+    UINT multisample_quality;
+    DWORD usage;
     enum wined3d_pool pool;
     DWORD access_flags;
     UINT width;
     UINT height;
     UINT depth;
-    UINT                    size;
-    DWORD                   priority;
-    BYTE                   *allocatedMemory; /* Pointer to the real data location */
-    BYTE                   *heapMemory; /* Pointer to the HeapAlloced block of memory */
-    struct list             privateData;
-    struct list             resource_list_entry;
+    UINT size;
+    DWORD priority;
+    BYTE *allocatedMemory; /* Pointer to the real data location */
+    void *heap_memory;
+    struct list privateData;
+    struct list resource_list_entry;
 
     void *parent;
     const struct wined3d_parent_ops *parent_ops;
@@ -2047,15 +2050,17 @@ void wined3d_texture_apply_state_changes(struct wined3d_texture *texture,
         const struct wined3d_gl_info *gl_info) DECLSPEC_HIDDEN;
 void wined3d_texture_set_dirty(struct wined3d_texture *texture, BOOL dirty) DECLSPEC_HIDDEN;
 
+#define WINED3D_VFLAG_LOCKED            0x00000001
+
 struct wined3d_volume
 {
     struct wined3d_resource resource;
     struct wined3d_texture *container;
-    BOOL                    lockable;
-    BOOL                    locked;
+
     struct wined3d_box lockedBox;
     struct wined3d_box dirtyBox;
-    BOOL                    dirty;
+
+    DWORD flags;
 };
 
 static inline struct wined3d_volume *volume_from_resource(struct wined3d_resource *resource)
@@ -2962,7 +2967,7 @@ struct wined3d_format
 const struct wined3d_format *wined3d_get_format(const struct wined3d_gl_info *gl_info,
         enum wined3d_format_id format_id) DECLSPEC_HIDDEN;
 UINT wined3d_format_calculate_size(const struct wined3d_format *format,
-        UINT alignment, UINT width, UINT height) DECLSPEC_HIDDEN;
+        UINT alignment, UINT width, UINT height, UINT depth) DECLSPEC_HIDDEN;
 DWORD wined3d_format_convert_from_float(const struct wined3d_surface *surface,
         const struct wined3d_color *color) DECLSPEC_HIDDEN;
 

@@ -767,51 +767,38 @@ static void reset_program_constant_version(struct wine_rb_entry *entry, void *co
 }
 
 /* Context activation is done by the caller (state handler). */
-static void shader_glsl_load_np2fixup_constants(void *shader_priv,
+static void shader_glsl_load_np2fixup_constants(const struct glsl_ps_program *ps,
         const struct wined3d_gl_info *gl_info, const struct wined3d_state *state)
 {
-    struct shader_glsl_priv *glsl_priv = shader_priv;
-    const struct glsl_shader_prog_link *prog = glsl_priv->glsl_program;
+    GLfloat np2fixup_constants[4 * MAX_FRAGMENT_SAMPLERS];
+    UINT fixup = ps->np2_fixup_info->active;
+    UINT i;
 
-    /* No GLSL program set - nothing to do. */
-    if (!prog) return;
-
-    /* NP2 texcoord fixup is (currently) only done for pixelshaders. */
-    if (!use_ps(state)) return;
-
-    if (prog->ps.np2_fixup_info && prog->ps.np2_fixup_location != -1)
+    for (i = 0; fixup; fixup >>= 1, ++i)
     {
-        UINT i;
-        UINT fixup = prog->ps.np2_fixup_info->active;
-        GLfloat np2fixup_constants[4 * MAX_FRAGMENT_SAMPLERS];
+        const struct wined3d_texture *tex = state->textures[i];
+        unsigned char idx = ps->np2_fixup_info->idx[i];
+        GLfloat *tex_dim = &np2fixup_constants[(idx >> 1) * 4];
 
-        for (i = 0; fixup; fixup >>= 1, ++i)
+        if (!tex)
         {
-            const struct wined3d_texture *tex = state->textures[i];
-            const unsigned char idx = prog->ps.np2_fixup_info->idx[i];
-            GLfloat *tex_dim = &np2fixup_constants[(idx >> 1) * 4];
-
-            if (!tex)
-            {
-                ERR("Nonexistent texture is flagged for NP2 texcoord fixup.\n");
-                continue;
-            }
-
-            if (idx % 2)
-            {
-                tex_dim[2] = tex->pow2_matrix[0];
-                tex_dim[3] = tex->pow2_matrix[5];
-            }
-            else
-            {
-                tex_dim[0] = tex->pow2_matrix[0];
-                tex_dim[1] = tex->pow2_matrix[5];
-            }
+            ERR("Nonexistent texture is flagged for NP2 texcoord fixup.\n");
+            continue;
         }
 
-        GL_EXTCALL(glUniform4fvARB(prog->ps.np2_fixup_location,
-                prog->ps.np2_fixup_info->num_consts, np2fixup_constants));
+        if (idx % 2)
+        {
+            tex_dim[2] = tex->pow2_matrix[0];
+            tex_dim[3] = tex->pow2_matrix[5];
+        }
+        else
+        {
+            tex_dim[0] = tex->pow2_matrix[0];
+            tex_dim[1] = tex->pow2_matrix[5];
+        }
     }
+
+    GL_EXTCALL(glUniform4fvARB(ps->np2_fixup_location, ps->np2_fixup_info->num_consts, np2fixup_constants));
 }
 
 /* Context activation is done by the caller (state handler). */
@@ -906,6 +893,9 @@ static void shader_glsl_load_constants(void *shader_priv, struct wined3d_context
         }
         GL_EXTCALL(glUniform4fvARB(prog->ps.ycorrection_location, 1, correction_params));
     }
+
+    if (update_mask & WINED3D_SHADER_CONST_PS_NP2_FIXUP)
+        shader_glsl_load_np2fixup_constants(&prog->ps, gl_info, state);
 
     if (update_mask & WINED3D_SHADER_CONST_FFP_PS)
     {
@@ -5843,23 +5833,40 @@ static void set_glsl_shader_program(const struct wined3d_context *context, const
     GLhandleARB programId                  = 0;
     GLhandleARB reorder_shader_id          = 0;
     unsigned int i;
-    struct ps_compile_args ps_compile_args;
-    struct vs_compile_args vs_compile_args;
-    GLhandleARB vs_id, gs_id, ps_id;
+    GLhandleARB vs_id = 0;
+    GLhandleARB gs_id = 0;
+    GLhandleARB ps_id = 0;
     struct list *ps_list, *vs_list;
     struct wined3d_device *device = context->swapchain->device;
 
-    if (use_vs(state))
+    if (!(context->shader_update_mask & (1 << WINED3D_SHADER_TYPE_VERTEX)))
     {
+        vs_id = priv->glsl_program->vs.id;
+        vs_list = &priv->glsl_program->vs.shader_entry;
+
+        if (use_vs(state))
+        {
+            vshader = state->vertex_shader;
+            gshader = state->geometry_shader;
+
+            if (!(context->shader_update_mask & (1 << WINED3D_SHADER_TYPE_GEOMETRY))
+                    && priv->glsl_program->gs.id)
+                gs_id = priv->glsl_program->gs.id;
+            else if (gshader)
+                gs_id = find_glsl_geometry_shader(context, &priv->shader_buffer, gshader);
+        }
+    }
+    else if (use_vs(state))
+    {
+        struct vs_compile_args vs_compile_args;
         vshader = state->vertex_shader;
+
         find_vs_compile_args(state, vshader, &vs_compile_args);
         vs_id = find_glsl_vshader(context, &priv->shader_buffer, vshader, &vs_compile_args);
         vs_list = &vshader->linked_programs;
 
         if ((gshader = state->geometry_shader))
             gs_id = find_glsl_geometry_shader(context, &priv->shader_buffer, gshader);
-        else
-            gs_id = 0;
     }
     else if (priv->vertex_pipe == &glsl_vertex_pipe)
     {
@@ -5870,17 +5877,19 @@ static void set_glsl_shader_program(const struct wined3d_context *context, const
         ffp_shader = shader_glsl_find_ffp_vertex_shader(priv, gl_info, &settings);
         vs_id = ffp_shader->id;
         vs_list = &ffp_shader->linked_programs;
-
-        gs_id = 0;
-    }
-    else
-    {
-        vs_id = 0;
-        gs_id = 0;
     }
 
-    if (use_ps(state))
+    if (!(context->shader_update_mask & (1 << WINED3D_SHADER_TYPE_PIXEL)))
     {
+        ps_id = priv->glsl_program->ps.id;
+        ps_list = &priv->glsl_program->ps.shader_entry;
+
+        if (use_ps(state))
+            pshader = state->pixel_shader;
+    }
+    else if (use_ps(state))
+    {
+        struct ps_compile_args ps_compile_args;
         pshader = state->pixel_shader;
         find_ps_compile_args(state, pshader, &ps_compile_args);
         ps_id = find_glsl_pshader(context, &priv->shader_buffer,
@@ -5896,10 +5905,6 @@ static void set_glsl_shader_program(const struct wined3d_context *context, const
         ffp_shader = shader_glsl_find_ffp_fragment_shader(priv, gl_info, &settings);
         ps_id = ffp_shader->id;
         ps_list = &ffp_shader->linked_programs;
-    }
-    else
-    {
-        ps_id = 0;
     }
 
     if ((!vs_id && !gs_id && !ps_id) || (entry = get_glsl_program_entry(priv, vs_id, gs_id, ps_id)))
@@ -6071,6 +6076,9 @@ static void set_glsl_shader_program(const struct wined3d_context *context, const
                 break;
             }
         }
+
+        if (entry->ps.np2_fixup_location != -1)
+            entry->constant_update_mask |= WINED3D_SHADER_CONST_PS_NP2_FIXUP;
     }
 }
 
@@ -6243,14 +6251,6 @@ static void shader_glsl_select(void *shader_priv, struct wined3d_context *contex
         if (program_id)
             context->constant_update_mask |= priv->glsl_program->constant_update_mask;
     }
-
-    /* In case that NP2 texcoord fixup data is found for the selected program, trigger a reload of the
-     * constants. This has to be done because it can't be guaranteed that sampler() (from state.c) is
-     * called between selecting the shader and using it, which results in wrong fixup for some frames. */
-    if (priv->glsl_program && priv->glsl_program->ps.np2_fixup_info)
-    {
-        shader_glsl_load_np2fixup_constants(priv, gl_info, state);
-    }
 }
 
 /* Context activation is done by the caller. */
@@ -6320,6 +6320,7 @@ static void shader_glsl_destroy(struct wined3d_shader *shader)
     struct glsl_shader_private *shader_data = shader->backend_data;
     struct wined3d_device *device = shader->device;
     struct shader_glsl_priv *priv = device->shader_priv;
+    BOOL invalidate_current_program = FALSE;
     const struct wined3d_gl_info *gl_info;
     const struct list *linked_programs;
     struct wined3d_context *context;
@@ -6347,21 +6348,21 @@ static void shader_glsl_destroy(struct wined3d_shader *shader)
             {
                 struct glsl_ps_compiled_shader *gl_shaders = shader_data->gl_shaders.ps;
 
+                for (i = 0; i < shader_data->num_gl_shaders; ++i)
+                {
+                    TRACE("Deleting pixel shader %u.\n", gl_shaders[i].prgId);
+                    if (priv->glsl_program && priv->glsl_program->ps.id == gl_shaders[i].prgId)
+                        invalidate_current_program = TRUE;
+                    GL_EXTCALL(glDeleteObjectARB(gl_shaders[i].prgId));
+                    checkGLcall("glDeleteObjectARB");
+                }
+                HeapFree(GetProcessHeap(), 0, shader_data->gl_shaders.ps);
+
                 LIST_FOR_EACH_ENTRY_SAFE(entry, entry2, linked_programs,
                         struct glsl_shader_prog_link, ps.shader_entry)
                 {
                     delete_glsl_program_entry(priv, gl_info, entry);
                 }
-
-                for (i = 0; i < shader_data->num_gl_shaders; ++i)
-                {
-                    TRACE("Deleting pixel shader %u.\n", gl_shaders[i].prgId);
-                    if (priv->glsl_program && priv->glsl_program->ps.id == gl_shaders[i].prgId)
-                        shader_glsl_disable(priv, context);
-                    GL_EXTCALL(glDeleteObjectARB(gl_shaders[i].prgId));
-                    checkGLcall("glDeleteObjectARB");
-                }
-                HeapFree(GetProcessHeap(), 0, shader_data->gl_shaders.ps);
 
                 break;
             }
@@ -6370,21 +6371,21 @@ static void shader_glsl_destroy(struct wined3d_shader *shader)
             {
                 struct glsl_vs_compiled_shader *gl_shaders = shader_data->gl_shaders.vs;
 
+                for (i = 0; i < shader_data->num_gl_shaders; ++i)
+                {
+                    TRACE("Deleting vertex shader %u.\n", gl_shaders[i].prgId);
+                    if (priv->glsl_program && priv->glsl_program->vs.id == gl_shaders[i].prgId)
+                        invalidate_current_program = TRUE;
+                    GL_EXTCALL(glDeleteObjectARB(gl_shaders[i].prgId));
+                    checkGLcall("glDeleteObjectARB");
+                }
+                HeapFree(GetProcessHeap(), 0, shader_data->gl_shaders.vs);
+
                 LIST_FOR_EACH_ENTRY_SAFE(entry, entry2, linked_programs,
                         struct glsl_shader_prog_link, vs.shader_entry)
                 {
                     delete_glsl_program_entry(priv, gl_info, entry);
                 }
-
-                for (i = 0; i < shader_data->num_gl_shaders; ++i)
-                {
-                    TRACE("Deleting vertex shader %u.\n", gl_shaders[i].prgId);
-                    if (priv->glsl_program && priv->glsl_program->vs.id == gl_shaders[i].prgId)
-                        shader_glsl_disable(priv, context);
-                    GL_EXTCALL(glDeleteObjectARB(gl_shaders[i].prgId));
-                    checkGLcall("glDeleteObjectARB");
-                }
-                HeapFree(GetProcessHeap(), 0, shader_data->gl_shaders.vs);
 
                 break;
             }
@@ -6393,21 +6394,21 @@ static void shader_glsl_destroy(struct wined3d_shader *shader)
             {
                 struct glsl_gs_compiled_shader *gl_shaders = shader_data->gl_shaders.gs;
 
+                for (i = 0; i < shader_data->num_gl_shaders; ++i)
+                {
+                    TRACE("Deleting geometry shader %u.\n", gl_shaders[i].id);
+                    if (priv->glsl_program && priv->glsl_program->gs.id == gl_shaders[i].id)
+                        invalidate_current_program = TRUE;
+                    GL_EXTCALL(glDeleteObjectARB(gl_shaders[i].id));
+                    checkGLcall("glDeleteObjectARB");
+                }
+                HeapFree(GetProcessHeap(), 0, shader_data->gl_shaders.gs);
+
                 LIST_FOR_EACH_ENTRY_SAFE(entry, entry2, linked_programs,
                         struct glsl_shader_prog_link, gs.shader_entry)
                 {
                     delete_glsl_program_entry(priv, gl_info, entry);
                 }
-
-                for (i = 0; i < shader_data->num_gl_shaders; ++i)
-                {
-                    TRACE("Deleting geometry shader %u.\n", gl_shaders[i].id);
-                    if (priv->glsl_program && priv->glsl_program->gs.id == gl_shaders[i].id)
-                        shader_glsl_disable(priv, context);
-                    GL_EXTCALL(glDeleteObjectARB(gl_shaders[i].id));
-                    checkGLcall("glDeleteObjectARB");
-                }
-                HeapFree(GetProcessHeap(), 0, shader_data->gl_shaders.gs);
 
                 break;
             }
@@ -6416,6 +6417,14 @@ static void shader_glsl_destroy(struct wined3d_shader *shader)
                 ERR("Unhandled shader type %#x.\n", shader->reg_maps.shader_version.type);
                 break;
         }
+    }
+
+    if (invalidate_current_program)
+    {
+        shader_glsl_disable(priv, context);
+        context->shader_update_mask = (1 << WINED3D_SHADER_TYPE_PIXEL)
+                | (1 << WINED3D_SHADER_TYPE_VERTEX)
+                | (1 << WINED3D_SHADER_TYPE_GEOMETRY);
     }
 
     HeapFree(GetProcessHeap(), 0, shader->backend_data);
@@ -6798,7 +6807,6 @@ const struct wined3d_shader_backend_ops glsl_shader_backend =
     shader_glsl_update_float_vertex_constants,
     shader_glsl_update_float_pixel_constants,
     shader_glsl_load_constants,
-    shader_glsl_load_np2fixup_constants,
     shader_glsl_destroy,
     shader_glsl_alloc,
     shader_glsl_free,
@@ -6887,7 +6895,7 @@ static void glsl_vertex_pipe_vp_free(struct wined3d_device *device)
 static void glsl_vertex_pipe_shader(struct wined3d_context *context,
         const struct wined3d_state *state, DWORD state_id)
 {
-    context->select_shader = 1;
+    context->shader_update_mask |= 1 << WINED3D_SHADER_TYPE_VERTEX;
 }
 
 static void glsl_vertex_pipe_projection(struct wined3d_context *context,
@@ -6896,7 +6904,7 @@ static void glsl_vertex_pipe_projection(struct wined3d_context *context,
     /* Table fog behavior depends on the projection matrix. */
     if (state->render_states[WINED3D_RS_FOGENABLE]
             && state->render_states[WINED3D_RS_FOGTABLEMODE] != WINED3D_FOG_NONE)
-        context->select_shader = 1;
+        context->shader_update_mask |= 1 << WINED3D_SHADER_TYPE_VERTEX;
     transform_projection(context, state, state_id);
 }
 
@@ -7160,7 +7168,7 @@ static void glsl_fragment_pipe_shader(struct wined3d_context *context,
 {
     context->last_was_pshader = use_ps(state);
 
-    context->select_shader = 1;
+    context->shader_update_mask |= 1 << WINED3D_SHADER_TYPE_PIXEL;
 }
 
 static void glsl_fragment_pipe_fog(struct wined3d_context *context,
@@ -7171,7 +7179,7 @@ static void glsl_fragment_pipe_fog(struct wined3d_context *context,
     DWORD fogstart = state->render_states[WINED3D_RS_FOGSTART];
     DWORD fogend = state->render_states[WINED3D_RS_FOGEND];
 
-    context->select_shader = 1;
+    context->shader_update_mask |= 1 << WINED3D_SHADER_TYPE_PIXEL;
 
     if (!state->render_states[WINED3D_RS_FOGENABLE])
         return;
@@ -7200,7 +7208,7 @@ static void glsl_fragment_pipe_fog(struct wined3d_context *context,
 static void glsl_fragment_pipe_tex_transform(struct wined3d_context *context,
         const struct wined3d_state *state, DWORD state_id)
 {
-    context->select_shader = 1;
+    context->shader_update_mask |= 1 << WINED3D_SHADER_TYPE_PIXEL;
 }
 
 static void glsl_fragment_pipe_invalidate_constants(struct wined3d_context *context,
