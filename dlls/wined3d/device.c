@@ -2098,7 +2098,7 @@ void CDECL wined3d_device_get_material(const struct wined3d_device *device, stru
 {
     TRACE("device %p, material %p.\n", device, material);
 
-    *material = device->updateStateBlock->state.material;
+    *material = device->stateBlock->state.material;
 
     TRACE("diffuse {%.8e, %.8e, %.8e, %.8e}\n",
             material->diffuse.r, material->diffuse.g,
@@ -2340,7 +2340,7 @@ void CDECL wined3d_device_get_scissor_rect(const struct wined3d_device *device, 
 {
     TRACE("device %p, rect %p.\n", device, rect);
 
-    *rect = device->updateStateBlock->state.scissor_rect;
+    *rect = device->stateBlock->state.scissor_rect;
     TRACE("Returning rect %s.\n", wine_dbgstr_rect(rect));
 }
 
@@ -3665,7 +3665,7 @@ DWORD CDECL wined3d_device_get_texture_stage_state(const struct wined3d_device *
         return 0;
     }
 
-    return device->updateStateBlock->state.texture_states[stage][state];
+    return device->stateBlock->state.texture_states[stage][state];
 }
 
 HRESULT CDECL wined3d_device_set_texture(struct wined3d_device *device,

@@ -1917,9 +1917,6 @@ static inline void invalidate_active_texture(const struct wined3d_device *device
 
 #define WINED3D_RESOURCE_ACCESS_GPU     0x1
 #define WINED3D_RESOURCE_ACCESS_CPU     0x2
-/* SCRATCH is mostly the same as CPU, but can't be used by the GPU at all,
- * not even for resource uploads. */
-#define WINED3D_RESOURCE_ACCESS_SCRATCH 0x4
 
 struct wined3d_resource_ops
 {
@@ -2051,16 +2048,21 @@ void wined3d_texture_apply_state_changes(struct wined3d_texture *texture,
 void wined3d_texture_set_dirty(struct wined3d_texture *texture, BOOL dirty) DECLSPEC_HIDDEN;
 
 #define WINED3D_VFLAG_LOCKED            0x00000001
+#define WINED3D_VFLAG_ALLOCATED         0x00000002
+
+#define WINED3D_LOCATION_DISCARDED      0x00000001
+#define WINED3D_LOCATION_SYSMEM         0x00000002
+#define WINED3D_LOCATION_TEXTURE_RGB    0x00000004
+
+const char *wined3d_debug_location(DWORD location) DECLSPEC_HIDDEN;
 
 struct wined3d_volume
 {
     struct wined3d_resource resource;
     struct wined3d_texture *container;
 
-    struct wined3d_box lockedBox;
-    struct wined3d_box dirtyBox;
-
-    DWORD flags;
+    DWORD flags, locations;
+    GLint texture_level;
 };
 
 static inline struct wined3d_volume *volume_from_resource(struct wined3d_resource *resource)
@@ -2068,8 +2070,7 @@ static inline struct wined3d_volume *volume_from_resource(struct wined3d_resourc
     return CONTAINING_RECORD(resource, struct wined3d_volume, resource);
 }
 
-void volume_add_dirty_box(struct wined3d_volume *volume, const struct wined3d_box *dirty_box) DECLSPEC_HIDDEN;
-void volume_load(const struct wined3d_volume *volume, struct wined3d_context *context, UINT level, BOOL srgb_mode) DECLSPEC_HIDDEN;
+void wined3d_volume_load(struct wined3d_volume *volume, struct wined3d_context *context, BOOL srgb_mode) DECLSPEC_HIDDEN;
 void volume_set_container(struct wined3d_volume *volume, struct wined3d_texture *container) DECLSPEC_HIDDEN;
 
 struct wined3d_surface_dib
