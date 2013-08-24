@@ -810,7 +810,7 @@ struct wined3d_shader_backend_ops
     void (*shader_handle_instruction)(const struct wined3d_shader_instruction *);
     void (*shader_select)(void *shader_priv, struct wined3d_context *context,
             const struct wined3d_state *state);
-    void (*shader_disable)(void *shader_priv, const struct wined3d_context *context);
+    void (*shader_disable)(void *shader_priv, struct wined3d_context *context);
     void (*shader_select_depth_blt)(void *shader_priv, const struct wined3d_gl_info *gl_info,
             enum tex_types tex_type, const SIZE *ds_mask_size);
     void (*shader_deselect_depth_blt)(void *shader_priv, const struct wined3d_gl_info *gl_info);
@@ -822,7 +822,8 @@ struct wined3d_shader_backend_ops
     HRESULT (*shader_alloc_private)(struct wined3d_device *device, const struct wined3d_vertex_pipe_ops *vertex_pipe,
             const struct fragment_pipeline *fragment_pipe);
     void (*shader_free_private)(struct wined3d_device *device);
-    void (*shader_context_destroyed)(void *shader_priv, const struct wined3d_context *context);
+    BOOL (*shader_allocate_context_data)(struct wined3d_context *context);
+    void (*shader_free_context_data)(struct wined3d_context *context);
     void (*shader_get_caps)(const struct wined3d_gl_info *gl_info, struct shader_caps *caps);
     BOOL (*shader_color_fixup_supported)(struct color_fixup_desc fixup);
     BOOL (*shader_has_ffp_proj_control)(void *shader_priv);
@@ -1114,6 +1115,8 @@ struct wined3d_context
     HDC                     hdc;
     int pixel_format;
     GLint                   aux_buffers;
+
+    void *shader_backend_data;
 
     /* FBOs */
     UINT                    fbo_entry_count;
@@ -1463,6 +1466,7 @@ enum wined3d_pci_device
     CARD_NVIDIA_GEFORCE_GTX670MX    = 0x11a1,
     CARD_NVIDIA_GEFORCE_GTX680      = 0x1180,
     CARD_NVIDIA_GEFORCE_GTX770M     = 0x11e0,
+    CARD_NVIDIA_GEFORCE_GTX770      = 0x1184,
 
     CARD_INTEL_830M                 = 0x3577,
     CARD_INTEL_855GM                = 0x3582,
@@ -2063,6 +2067,7 @@ struct wined3d_volume
 
     DWORD flags, locations;
     GLint texture_level;
+    DWORD download_count;
 };
 
 static inline struct wined3d_volume *volume_from_resource(struct wined3d_resource *resource)
@@ -2072,6 +2077,9 @@ static inline struct wined3d_volume *volume_from_resource(struct wined3d_resourc
 
 void wined3d_volume_load(struct wined3d_volume *volume, struct wined3d_context *context, BOOL srgb_mode) DECLSPEC_HIDDEN;
 void volume_set_container(struct wined3d_volume *volume, struct wined3d_texture *container) DECLSPEC_HIDDEN;
+void wined3d_volume_invalidate_location(struct wined3d_volume *volume, DWORD location) DECLSPEC_HIDDEN;
+void wined3d_volume_upload_data(struct wined3d_volume *volume, const struct wined3d_context *context,
+        const struct wined3d_bo_address *data) DECLSPEC_HIDDEN;
 
 struct wined3d_surface_dib
 {

@@ -81,7 +81,7 @@ static NTSTATUS (WINAPI *pNtQueryVolumeInformationFile)(HANDLE,PIO_STATUS_BLOCK,
 
 static inline BOOL is_signaled( HANDLE obj )
 {
-    return WaitForSingleObject( obj, 0 ) == 0;
+    return WaitForSingleObject( obj, 0 ) == WAIT_OBJECT_0;
 }
 
 #define PIPENAME "\\\\.\\pipe\\ntdll_tests_file.c"
@@ -101,10 +101,11 @@ static BOOL create_pipe( HANDLE *read, HANDLE *write, ULONG flags, ULONG size )
 
 static HANDLE create_temp_file( ULONG flags )
 {
-    char buffer[MAX_PATH];
+    char path[MAX_PATH], buffer[MAX_PATH];
     HANDLE handle;
 
-    GetTempFileNameA( ".", "foo", 0, buffer );
+    GetTempPathA( MAX_PATH, path );
+    GetTempFileNameA( path, "foo", 0, buffer );
     handle = CreateFileA(buffer, GENERIC_READ | GENERIC_WRITE, 0, NULL, CREATE_ALWAYS,
                          flags | FILE_FLAG_DELETE_ON_CLOSE, 0);
     ok( handle != INVALID_HANDLE_VALUE, "failed to create temp file\n" );
@@ -781,6 +782,8 @@ static void read_file_test(void)
     iosb.Information = 0xdeadbeef;
     offset.QuadPart = strlen(text) + 2;
     status = pNtReadFile( handle, event, apc, &apc_count, &iosb, buffer, 2, &offset, NULL );
+todo_wine
+    ok(status == STATUS_PENDING || broken(status == STATUS_END_OF_FILE) /* before Vista */, "expected STATUS_PENDING, got %#x\n", status);
     if (status == STATUS_PENDING)  /* vista */
     {
         WaitForSingleObject( event, 1000 );
@@ -790,16 +793,6 @@ static void read_file_test(void)
         ok( !apc_count, "apc was called\n" );
         SleepEx( 1, TRUE ); /* alertable sleep */
         ok( apc_count == 1, "apc was not called\n" );
-    }
-    else
-    {
-        ok( status == STATUS_END_OF_FILE, "wrong status %x\n", status );
-        ok( U(iosb).Status == 0xdeadbabe, "wrong status %x\n", U(iosb).Status );
-        ok( iosb.Information == 0xdeadbeef, "wrong info %lu\n", iosb.Information );
-        ok( !is_signaled( event ), "event is signaled\n" );
-        ok( !apc_count, "apc was called\n" );
-        SleepEx( 1, TRUE ); /* alertable sleep */
-        ok( !apc_count, "apc was called\n" );
     }
     CloseHandle( handle );
 
@@ -1008,11 +1001,6 @@ static void test_iocp_setcompletion(HANDLE h)
     if (get_msg(h))
     {
         ok( completionKey == CKEY_FIRST, "Invalid completion key: %lx\n", completionKey );
-        /* FIXME: Remove once Wine is fixed */
-        if (sizeof(size) > 4)
-todo_wine
-        ok( ioSb.Information == size, "Invalid ioSb.Information: %lu\n", ioSb.Information );
-        else
         ok( ioSb.Information == size, "Invalid ioSb.Information: %lu\n", ioSb.Information );
         ok( U(ioSb).Status == STATUS_INVALID_DEVICE_REQUEST, "Invalid ioSb.Status: %x\n", U(ioSb).Status);
         ok( completionValue == CVALUE_FIRST, "Invalid completion value: %lx\n", completionValue );
@@ -2001,7 +1989,8 @@ static void test_read_write(void)
 
     iob.Status = -1;
     iob.Information = -1;
-    status = pNtWriteFile(hfile, 0, NULL, NULL, &iob, "DCBA", 4, NULL, NULL);
+    offset.QuadPart = (LONGLONG)-2 /* FILE_USE_FILE_POINTER_POSITION */;
+    status = pNtWriteFile(hfile, 0, NULL, NULL, &iob, "DCBA", 4, &offset, NULL);
     ok(status == STATUS_SUCCESS, "NtWriteFile error %#x\n", status);
     ok(iob.Status == STATUS_SUCCESS, "expected STATUS_SUCCESS, got %#x\n", iob.Status);
     ok(iob.Information == 4, "expected 4, got %lu\n", iob.Information);
@@ -2035,7 +2024,7 @@ todo_wine
 
     iob.Status = -1;
     iob.Information = -1;
-    offset.QuadPart = sizeof(contents);
+    offset.QuadPart = (LONGLONG)-2 /* FILE_USE_FILE_POINTER_POSITION */;
     status = pNtReadFile(hfile, 0, NULL, NULL, &iob, buf, sizeof(buf), &offset, NULL);
     ok(status == STATUS_END_OF_FILE, "expected STATUS_END_OF_FILE, got %#x\n", status);
 todo_wine
@@ -2139,6 +2128,17 @@ todo_wine
 
     iob.Status = -1;
     iob.Information = -1;
+    offset.QuadPart = (LONGLONG)-2 /* FILE_USE_FILE_POINTER_POSITION */;
+    status = pNtWriteFile(hfile, 0, NULL, NULL, &iob, contents, sizeof(contents), &offset, NULL);
+todo_wine
+    ok(status == STATUS_INVALID_PARAMETER, "expected STATUS_INVALID_PARAMETER, got %#x\n", status);
+todo_wine
+    ok(iob.Status == -1, "expected -1, got %#x\n", iob.Status);
+todo_wine
+    ok(iob.Information == -1, "expected -1, got %ld\n", iob.Information);
+
+    iob.Status = -1;
+    iob.Information = -1;
     offset.QuadPart = 0;
     status = pNtWriteFile(hfile, 0, NULL, NULL, &iob, contents, sizeof(contents), &offset, NULL);
 todo_wine
@@ -2175,8 +2175,15 @@ todo_wine
     ok(iob.Status == -1, "expected -1, got %#x\n", iob.Status);
     ok(iob.Information == -1, "expected -1, got %ld\n", iob.Information);
 
+    iob.Status = -1;
+    iob.Information = -1;
     offset.QuadPart = (LONGLONG)-2 /* FILE_USE_FILE_POINTER_POSITION */;
-    offset.QuadPart = sizeof(contents); /* magic -2 doen't seem to work under win7 */
+    status = pNtReadFile(hfile, 0, NULL, NULL, &iob, buf, sizeof(buf), &offset, NULL);
+    ok(status == STATUS_INVALID_PARAMETER, "expected STATUS_INVALID_PARAMETER, got %#x\n", status);
+    ok(iob.Status == -1, "expected -1, got %#x\n", iob.Status);
+    ok(iob.Information == -1, "expected -1, got %ld\n", iob.Information);
+
+    offset.QuadPart = sizeof(contents);
     S(U(ovl)).Offset = offset.u.LowPart;
     S(U(ovl)).OffsetHigh = offset.u.HighPart;
     ovl.Internal = -1;
