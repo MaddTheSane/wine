@@ -920,7 +920,7 @@ enum wined3d_ffp_emit_idx
 struct wined3d_bo_address
 {
     GLuint buffer_object;
-    const BYTE *addr;
+    BYTE *addr;
 };
 
 struct wined3d_stream_info_element
@@ -1816,7 +1816,6 @@ struct wined3d_device
     UINT instance_count;
 
     WORD vertexBlendUsed : 1;           /* To avoid needless setting of the blend matrices */
-    WORD isRecordingState : 1;
     WORD isInDraw : 1;
     WORD bCursorVisible : 1;
     WORD d3d_initialized : 1;
@@ -1824,7 +1823,7 @@ struct wined3d_device
     WORD softwareVertexProcessing : 1;  /* process vertex shaders using software or hardware */
     WORD useDrawStridedSlow : 1;
     WORD filter_messages : 1;
-    WORD padding : 7;
+    WORD padding : 8;
 
     BYTE fixed_function_usage_map;      /* MAX_TEXTURES, 8 */
 
@@ -1834,7 +1833,8 @@ struct wined3d_device
 
     /* State block related */
     struct wined3d_stateblock *stateBlock;
-    struct wined3d_stateblock *updateStateBlock;
+    struct wined3d_state *update_state;
+    struct wined3d_stateblock *recording;
 
     /* Internal use fields  */
     struct wined3d_device_creation_parameters create_parms;
@@ -1968,6 +1968,9 @@ HRESULT resource_init(struct wined3d_resource *resource, struct wined3d_device *
         const struct wined3d_resource_ops *resource_ops) DECLSPEC_HIDDEN;
 DWORD resource_set_priority(struct wined3d_resource *resource, DWORD priority) DECLSPEC_HIDDEN;
 void resource_unload(struct wined3d_resource *resource) DECLSPEC_HIDDEN;
+DWORD wined3d_resource_sanitize_map_flags(const struct wined3d_resource *resource,
+        DWORD flags) DECLSPEC_HIDDEN;
+GLbitfield wined3d_resource_gl_map_flags(DWORD d3d_flags) DECLSPEC_HIDDEN;
 
 /* Tests show that the start address of resources is 32 byte aligned */
 #define RESOURCE_ALIGNMENT 16
@@ -2053,10 +2056,14 @@ void wined3d_texture_set_dirty(struct wined3d_texture *texture, BOOL dirty) DECL
 
 #define WINED3D_VFLAG_LOCKED            0x00000001
 #define WINED3D_VFLAG_ALLOCATED         0x00000002
+#define WINED3D_VFLAG_SRGB_ALLOCATED    0x00000004
+#define WINED3D_VFLAG_PBO               0x00000008
 
 #define WINED3D_LOCATION_DISCARDED      0x00000001
 #define WINED3D_LOCATION_SYSMEM         0x00000002
-#define WINED3D_LOCATION_TEXTURE_RGB    0x00000004
+#define WINED3D_LOCATION_BUFFER         0x00000004
+#define WINED3D_LOCATION_TEXTURE_RGB    0x00000008
+#define WINED3D_LOCATION_TEXTURE_SRGB   0x00000010
 
 const char *wined3d_debug_location(DWORD location) DECLSPEC_HIDDEN;
 
@@ -2068,6 +2075,7 @@ struct wined3d_volume
     DWORD flags, locations;
     GLint texture_level;
     DWORD download_count;
+    GLuint pbo;
 };
 
 static inline struct wined3d_volume *volume_from_resource(struct wined3d_resource *resource)
@@ -2446,7 +2454,8 @@ struct wined3d_stateblock
 
 void stateblock_init_contained_states(struct wined3d_stateblock *stateblock) DECLSPEC_HIDDEN;
 void stateblock_init_default_state(struct wined3d_stateblock *stateblock) DECLSPEC_HIDDEN;
-void stateblock_unbind_resources(struct wined3d_stateblock *stateblock) DECLSPEC_HIDDEN;
+
+void state_unbind_resources(struct wined3d_state *state) DECLSPEC_HIDDEN;
 
 /* Direct3D terminology with little modifications. We do not have an issued state
  * because only the driver knows about it, but we have a created state because d3d

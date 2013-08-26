@@ -31,6 +31,8 @@
 #include "winerror.h"
 #include "aclapi.h"
 
+#define IS_HKCR(hk) ((UINT_PTR)hk > 0 && ((UINT_PTR)hk & 3) == 2)
+
 static HKEY hkey_main;
 static DWORD GLE;
 
@@ -2120,6 +2122,7 @@ static void test_classesroot(void)
         skip("not enough privileges to add a user class\n");
         return;
     }
+    ok(!IS_HKCR(hkey), "hkcr mask set in %p\n", hkey);
 
     /* try to open that key in hkcr */
     res = RegOpenKeyExA( HKEY_CLASSES_ROOT, "WineTestCls", 0,
@@ -2127,6 +2130,7 @@ static void test_classesroot(void)
     todo_wine ok(res == ERROR_SUCCESS ||
                  broken(res == ERROR_FILE_NOT_FOUND /* WinNT */),
                  "test key not found in hkcr: %d\n", res);
+    todo_wine ok(IS_HKCR(hkcr), "hkcr mask not set in %p\n", hkcr);
     if (res)
     {
         skip("HKCR key merging not supported\n");
@@ -2190,12 +2194,14 @@ static void test_classesroot(void)
         skip("not enough privileges to add a system class\n");
         return;
     }
+    ok(!IS_HKCR(hklm), "hkcr mask set in %p\n", hklm);
 
     /* try to open that key in hkcr */
     res = RegOpenKeyExA( HKEY_CLASSES_ROOT, "WineTestCls", 0,
                          KEY_QUERY_VALUE|KEY_SET_VALUE, &hkcr );
     ok(res == ERROR_SUCCESS,
        "test key not found in hkcr: %d\n", res);
+    ok(IS_HKCR(hkcr), "hkcr mask not set in %p\n", hkcr);
     if (res)
     {
         delete_key( hklm );
@@ -2223,12 +2229,14 @@ static void test_classesroot(void)
 
     if (RegCreateKeyExA( HKEY_CURRENT_USER, "Software\\Classes\\WineTestCls", 0, NULL, 0,
                          KEY_QUERY_VALUE|KEY_SET_VALUE, NULL, &hkey, NULL )) return;
+    ok(!IS_HKCR(hkey), "hkcr mask set in %p\n", hkey);
 
     /* try to open that key in hkcr */
     res = RegOpenKeyExA( HKEY_CLASSES_ROOT, "WineTestCls", 0,
                          KEY_QUERY_VALUE|KEY_SET_VALUE, &hkcr );
     ok(res == ERROR_SUCCESS,
        "test key not found in hkcr: %d\n", res);
+    ok(IS_HKCR(hkcr), "hkcr mask not set in %p\n", hkcr);
 
     /* set a value in user's classes */
     res = RegSetValueExA(hkey, "val2", 0, REG_SZ, (const BYTE *)"user", sizeof("user"));
@@ -2266,9 +2274,11 @@ static void test_classesroot(void)
     /* create a subkey in hklm */
     if (RegCreateKeyExA( hklm, "subkey1", 0, NULL, 0,
                          KEY_QUERY_VALUE|KEY_SET_VALUE, NULL, &hklmsub1, NULL )) return;
+    ok(!IS_HKCR(hklmsub1), "hkcr mask set in %p\n", hklmsub1);
     /* try to open that subkey in hkcr */
     res = RegOpenKeyExA( hkcr, "subkey1", 0, KEY_QUERY_VALUE|KEY_SET_VALUE, &hkcrsub1 );
     ok(res == ERROR_SUCCESS, "test key not found in hkcr: %d\n", res);
+    ok(IS_HKCR(hkcrsub1), "hkcr mask not set in %p\n", hkcrsub1);
 
     /* set a value in hklm classes */
     res = RegSetValueExA(hklmsub1, "subval1", 0, REG_SZ, (const BYTE *)"hklm", sizeof("hklm"));
@@ -2291,6 +2301,7 @@ static void test_classesroot(void)
     /* create a subkey in user's classes */
     if (RegCreateKeyExA( hkey, "subkey1", 0, NULL, 0,
                          KEY_QUERY_VALUE|KEY_SET_VALUE, NULL, &hkeysub1, NULL )) return;
+    ok(!IS_HKCR(hkeysub1), "hkcr mask set in %p\n", hkeysub1);
 
     /* set a value in user's classes */
     res = RegSetValueExA(hkeysub1, "subval1", 0, REG_SZ, (const BYTE *)"user", sizeof("user"));
@@ -2328,6 +2339,7 @@ static void test_classesroot(void)
     /* new subkey in hkcr */
     if (RegCreateKeyExA( hkcr, "subkey2", 0, NULL, 0,
                          KEY_QUERY_VALUE|KEY_SET_VALUE, NULL, &hkcrsub2, NULL )) return;
+    ok(IS_HKCR(hkcrsub2), "hkcr mask not set in %p\n", hkcrsub2);
     res = RegSetValueExA(hkcrsub2, "subval1", 0, REG_SZ, (const BYTE *)"hkcr", sizeof("hkcr"));
     ok(res == ERROR_SUCCESS, "RegSetValueExA failed: %d, GLE=%x\n", res, GetLastError());
 
@@ -2337,6 +2349,7 @@ static void test_classesroot(void)
     hklmsub2 = 0;
     res = RegOpenKeyExA( hklm, "subkey2", 0, KEY_QUERY_VALUE|KEY_SET_VALUE, &hklmsub2 );
     ok(res == ERROR_SUCCESS, "test key not found in hklm: %d\n", res);
+    ok(!IS_HKCR(hklmsub2), "hkcr mask set in %p\n", hklmsub2);
 
     /* check that the value is present in hklm */
     res = RegQueryValueExA(hklmsub2, "subval1", NULL, &type, (LPBYTE)buffer, &size);
@@ -2356,6 +2369,7 @@ static void test_classesroot(void)
     ok(res == ERROR_FILE_NOT_FOUND, "test key found in user's classes: %d\n", res);
     res = RegOpenKeyExA(hklm, "subkey1", 0, KEY_READ, &hklmsub1);
     ok(res == ERROR_SUCCESS, "test key not found in hklm: %d\n", res);
+    ok(!IS_HKCR(hklmsub1), "hkcr mask set in %p\n", hklmsub1);
 
     /* delete subkey1 from hkcr again (which should now point at hklm) */
     res = RegDeleteKey(hkcr, "subkey1");
@@ -2562,6 +2576,37 @@ cleanup:
     RegCloseKey( hkcr );
 }
 
+static void test_classesroot_mask(void)
+{
+    HKEY hkey;
+    LSTATUS res;
+
+    res = RegOpenKeyA( HKEY_CLASSES_ROOT, "CLSID", &hkey );
+    ok(res == ERROR_SUCCESS, "RegOpenKeyA failed: %d\n", res);
+    todo_wine ok(IS_HKCR(hkey), "hkcr mask not set in %p\n", hkey);
+    RegCloseKey( hkey );
+
+    res = RegOpenKeyA( HKEY_CURRENT_USER, "Software", &hkey );
+    ok(res == ERROR_SUCCESS, "RegOpenKeyA failed: %d\n", res);
+    ok(!IS_HKCR(hkey), "hkcr mask set in %p\n", hkey);
+    RegCloseKey( hkey );
+
+    res = RegOpenKeyA( HKEY_LOCAL_MACHINE, "Software", &hkey );
+    ok(res == ERROR_SUCCESS, "RegOpenKeyA failed: %d\n", res);
+    ok(!IS_HKCR(hkey), "hkcr mask set in %p\n", hkey);
+    RegCloseKey( hkey );
+
+    res = RegOpenKeyA( HKEY_USERS, ".Default", &hkey );
+    ok(res == ERROR_SUCCESS, "RegOpenKeyA failed: %d\n", res);
+    ok(!IS_HKCR(hkey), "hkcr mask set in %p\n", hkey);
+    RegCloseKey( hkey );
+
+    res = RegOpenKeyA( HKEY_CURRENT_CONFIG, "Software", &hkey );
+    ok(res == ERROR_SUCCESS, "RegOpenKeyA failed: %d\n", res);
+    ok(!IS_HKCR(hkey), "hkcr mask set in %p\n", hkey);
+    RegCloseKey( hkey );
+}
+
 static void test_deleted_key(void)
 {
     HKEY hkey, hkey2;
@@ -2656,6 +2701,7 @@ START_TEST(registry)
     test_redirection();
     test_classesroot();
     test_classesroot_enum();
+    test_classesroot_mask();
 
     /* SaveKey/LoadKey require the SE_BACKUP_NAME privilege to be set */
     if (set_privileges(SE_BACKUP_NAME, TRUE) &&

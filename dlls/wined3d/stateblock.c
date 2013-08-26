@@ -467,9 +467,8 @@ ULONG CDECL wined3d_stateblock_incref(struct wined3d_stateblock *stateblock)
     return refcount;
 }
 
-void stateblock_unbind_resources(struct wined3d_stateblock *stateblock)
+void state_unbind_resources(struct wined3d_state *state)
 {
-    struct wined3d_state *state = &stateblock->state;
     struct wined3d_vertex_declaration *decl;
     struct wined3d_sampler *sampler;
     struct wined3d_texture *texture;
@@ -589,6 +588,27 @@ void stateblock_unbind_resources(struct wined3d_stateblock *stateblock)
     }
 }
 
+static void state_cleanup(struct wined3d_state *state)
+{
+    unsigned int counter;
+
+    state_unbind_resources(state);
+
+    for (counter = 0; counter < LIGHTMAP_SIZE; ++counter)
+    {
+        struct list *e1, *e2;
+        LIST_FOR_EACH_SAFE(e1, e2, &state->light_map[counter])
+        {
+            struct wined3d_light_info *light = LIST_ENTRY(e1, struct wined3d_light_info, entry);
+            list_remove(&light->entry);
+            HeapFree(GetProcessHeap(), 0, light);
+        }
+    }
+
+    HeapFree(GetProcessHeap(), 0, state->vs_consts_f);
+    HeapFree(GetProcessHeap(), 0, state->ps_consts_f);
+}
+
 ULONG CDECL wined3d_stateblock_decref(struct wined3d_stateblock *stateblock)
 {
     ULONG refcount = InterlockedDecrement(&stateblock->ref);
@@ -597,24 +617,9 @@ ULONG CDECL wined3d_stateblock_decref(struct wined3d_stateblock *stateblock)
 
     if (!refcount)
     {
-        int counter;
+        state_cleanup(&stateblock->state);
 
-        stateblock_unbind_resources(stateblock);
-
-        for (counter = 0; counter < LIGHTMAP_SIZE; ++counter)
-        {
-            struct list *e1, *e2;
-            LIST_FOR_EACH_SAFE(e1, e2, &stateblock->state.light_map[counter])
-            {
-                struct wined3d_light_info *light = LIST_ENTRY(e1, struct wined3d_light_info, entry);
-                list_remove(&light->entry);
-                HeapFree(GetProcessHeap(), 0, light);
-            }
-        }
-
-        HeapFree(GetProcessHeap(), 0, stateblock->state.vs_consts_f);
         HeapFree(GetProcessHeap(), 0, stateblock->changed.vertexShaderConstantsF);
-        HeapFree(GetProcessHeap(), 0, stateblock->state.ps_consts_f);
         HeapFree(GetProcessHeap(), 0, stateblock->changed.pixelShaderConstantsF);
         HeapFree(GetProcessHeap(), 0, stateblock->contained_vs_consts_f);
         HeapFree(GetProcessHeap(), 0, stateblock->contained_ps_consts_f);
@@ -1075,11 +1080,11 @@ void CDECL wined3d_stateblock_apply(const struct wined3d_stateblock *stateblock)
     {
         GLenum gl_primitive_type, prev;
 
-        if (device->isRecordingState)
-            device->updateStateBlock->changed.primitive_type = TRUE;
+        if (device->recording)
+            device->recording->changed.primitive_type = TRUE;
         gl_primitive_type = stateblock->state.gl_primitive_type;
-        prev = device->updateStateBlock->state.gl_primitive_type;
-        device->updateStateBlock->state.gl_primitive_type = gl_primitive_type;
+        prev = device->update_state->gl_primitive_type;
+        device->update_state->gl_primitive_type = gl_primitive_type;
         if (gl_primitive_type != prev && (gl_primitive_type == GL_POINTS || prev == GL_POINTS))
             device_invalidate_state(device, STATE_POINT_SIZE_ENABLE);
     }
