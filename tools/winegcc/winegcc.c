@@ -330,6 +330,72 @@ static const strarray* get_translator(struct options *opts)
     return ret;
 }
 
+static int try_link( const strarray *prefix, const strarray *link_tool, const char *cflags )
+{
+    const char *in = get_temp_file( "try_link", ".c" );
+    const char *out = get_temp_file( "try_link", ".out" );
+    strarray *link = strarray_dup( link_tool );
+    int ret;
+
+    create_file( in, 0644, "int main(void){return 1;}" );
+
+    strarray_add( link, "-o" );
+    strarray_add( link, out );
+    strarray_addall( link, strarray_fromstring( cflags, " " ) );
+    strarray_add( link, in );
+
+    ret = spawn( prefix, link, 1 );
+    strarray_free( link );
+    return ret;
+}
+
+static const strarray* get_lddllflags( const struct options *opts, const strarray *link_tool )
+{
+    strarray *flags = strarray_alloc();
+    switch (opts->target_platform)
+    {
+    case PLATFORM_APPLE:
+        strarray_add( flags, "-bundle" );
+        strarray_add( flags, "-multiply_defined" );
+        strarray_add( flags, "suppress" );
+        if (opts->target_cpu == CPU_POWERPC)
+        {
+            strarray_add( flags, "-read_only_relocs" );
+            strarray_add( flags, "warning" );
+        }
+        break;
+
+    case PLATFORM_SOLARIS:
+        strarray_add( flags, "-Wl,-G,-B,symbolic" );
+        break;
+
+    case PLATFORM_UNSPECIFIED:
+        strarray_add( flags, "-shared" );
+        strarray_add( flags, "-Wl,-Bsymbolic" );
+
+        /* Try all options first - this is likely to succeed on modern compilers */
+        if (!try_link( opts->prefix, link_tool, "-fPIC -shared -Wl,-Bsymbolic "
+                       "-Wl,-z,defs -Wl,-init,__wine_spec_init,-fini,_wine_spec_fini" ))
+        {
+            strarray_add( flags, "-Wl,-z,defs" );
+            strarray_add( flags, "-Wl,-init,__wine_spec_init,-fini,__wine_spec_fini" );
+        }
+        else /* otherwise figure out which ones are allowed */
+        {
+            if (!try_link( opts->prefix, link_tool, "-fPIC -shared -Wl,-Bsymbolic -Wl,-z,defs" ))
+                strarray_add( flags, "-Wl,-z,defs" );
+            if (!try_link( opts->prefix, link_tool, "-fPIC -shared -Wl,-Bsymbolic "
+                           "-Wl,-init,__wine_spec_init,-fini,_wine_spec_fini" ))
+                strarray_add( flags, "-Wl,-init,__wine_spec_init,-fini,__wine_spec_fini" );
+        }
+        break;
+
+    default:
+        assert(0);
+    }
+    return flags;
+}
+
 /* check that file is a library for the correct platform */
 static int check_platform( struct options *opts, const char *file )
 {
@@ -445,7 +511,8 @@ static void compile(struct options* opts, const char* lang)
             strarray_add(comp_args, "-fshort-wchar");
             strarray_add(comp_args, "-DWINE_UNICODE_NATIVE");
 	}
-        strarray_addall(comp_args, strarray_fromstring(DLLFLAGS, " "));
+        strarray_add(comp_args, "-D_REENTRANT");
+        strarray_add(comp_args, "-fPIC");
     }
 
     if (opts->target_cpu == CPU_x86_64 || opts->target_cpu == CPU_ARM64)
@@ -944,7 +1011,8 @@ static void build(struct options* opts)
     spec_o_name = get_temp_file(output_name, ".spec.o");
     if (opts->force_pointer_size)
         strarray_add(spec_args, strmake("-m%u", 8 * opts->force_pointer_size ));
-    strarray_addall(spec_args, strarray_fromstring(DLLFLAGS, " "));
+    strarray_add(spec_args, "-D_REENTRANT");
+    strarray_add(spec_args, "-fPIC");
     strarray_add(spec_args, opts->shared ? "--dll" : "--exe");
     if (fake_module)
     {
@@ -1008,7 +1076,7 @@ static void build(struct options* opts)
 
     /* link everything together now */
     strarray_addall(link_args, get_translator(opts));
-    strarray_addall(link_args, strarray_fromstring(LDDLLFLAGS, " "));
+    strarray_addall(link_args, get_lddllflags(opts, link_args));
 
     strarray_add(link_args, "-o");
     strarray_add(link_args, strmake("%s.so", output_file));

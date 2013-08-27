@@ -804,6 +804,8 @@ typedef struct async_commio
  */
 static NTSTATUS get_irq_info(int fd, serial_irq_info *irq_info)
 {
+    int out;
+
 #if defined (HAVE_LINUX_SERIAL_H) && defined (TIOCGICOUNT)
     struct serial_icounter_struct einfo;
     if (!ioctl(fd, TIOCGICOUNT, &einfo))
@@ -820,21 +822,23 @@ static NTSTATUS get_irq_info(int fd, serial_irq_info *irq_info)
     {
         TRACE("TIOCGICOUNT err %s\n", strerror(errno));
         memset(irq_info,0, sizeof(serial_irq_info));
-        return FILE_GetNtStatus();
     }
 #else
     memset(irq_info,0, sizeof(serial_irq_info));
-    return STATUS_NOT_IMPLEMENTED;
 #endif
+
     irq_info->temt = 0;
     /* Generate a single TX_TXEMPTY event when the TX Buffer turns empty*/
 #ifdef TIOCSERGETLSR  /* prefer to log the state TIOCSERGETLSR */
-    if (ioctl(fd, TIOCSERGETLSR, &irq_info->temt))
+    if (!ioctl(fd, TIOCSERGETLSR, &out))
     {
-        TRACE("TIOCSERGETLSR err %s\n", strerror(errno));
-        return FILE_GetNtStatus();
+        irq_info->temt = (out & TIOCSER_TEMT) != 0;
+        return STATUS_SUCCESS;
     }
-#elif defined(TIOCOUTQ)  /* otherwise we log when the out queue gets empty */
+
+    TRACE("TIOCSERGETLSR err %s\n", strerror(errno));
+#endif
+#ifdef TIOCOUTQ  /* otherwise we log when the out queue gets empty */
     if (ioctl(fd, TIOCOUTQ, &irq_info->temt))
     {
         TRACE("TIOCOUTQ err %s\n", strerror(errno));

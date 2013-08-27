@@ -1160,7 +1160,7 @@ typedef struct tagITypeInfoImpl
     WORD wTypeFlags;
     WORD wMajorVerNum;
     WORD wMinorVerNum;
-    TYPEDESC tdescAlias;
+    TYPEDESC *tdescAlias;
     IDLDESC idldescType;
 
     ITypeLibImpl * pTypeLib;        /* back pointer to typelib */
@@ -1909,6 +1909,120 @@ static TLBString *TLB_append_str(struct list *string_list, BSTR new_str)
     return str;
 }
 
+static HRESULT TLB_get_size_from_hreftype(ITypeInfoImpl *info, HREFTYPE href,
+        ULONG *size, WORD *align)
+{
+    ITypeInfo *other;
+    TYPEATTR *attr;
+    HRESULT hr;
+
+    hr = ITypeInfo2_GetRefTypeInfo(&info->ITypeInfo2_iface, href, &other);
+    if(FAILED(hr))
+        return hr;
+
+    hr = ITypeInfo_GetTypeAttr(other, &attr);
+    if(FAILED(hr)){
+        ITypeInfo_Release(other);
+        return hr;
+    }
+
+    if(size)
+        *size = attr->cbSizeInstance;
+    if(align)
+        *align = attr->cbAlignment;
+
+    ITypeInfo_ReleaseTypeAttr(other, attr);
+    ITypeInfo_Release(other);
+
+    return S_OK;
+}
+
+static HRESULT TLB_size_instance(ITypeInfoImpl *info, SYSKIND sys,
+        TYPEDESC *tdesc, ULONG *size, WORD *align)
+{
+    ULONG i, sub, ptr_size;
+    HRESULT hr;
+
+    ptr_size = get_ptr_size(sys);
+
+    switch(tdesc->vt){
+    case VT_VOID:
+        *size = 0;
+        break;
+    case VT_I1:
+    case VT_UI1:
+        *size = 1;
+        break;
+    case VT_I2:
+    case VT_BOOL:
+    case VT_UI2:
+        *size = 2;
+        break;
+    case VT_I4:
+    case VT_R4:
+    case VT_ERROR:
+    case VT_UI4:
+    case VT_INT:
+    case VT_UINT:
+    case VT_HRESULT:
+        *size = 4;
+        break;
+    case VT_R8:
+    case VT_I8:
+    case VT_UI8:
+        *size = 8;
+        break;
+    case VT_BSTR:
+    case VT_DISPATCH:
+    case VT_UNKNOWN:
+    case VT_PTR:
+    case VT_SAFEARRAY:
+    case VT_LPSTR:
+    case VT_LPWSTR:
+        *size = ptr_size;
+        break;
+    case VT_DATE:
+        *size = sizeof(DATE);
+        break;
+    case VT_VARIANT:
+        *size = sizeof(VARIANT);
+#ifdef _WIN64
+        if(sys == SYS_WIN32)
+            *size -= 8; /* 32-bit VARIANT is 8 bytes smaller than 64-bit VARIANT */
+#endif
+        break;
+    case VT_DECIMAL:
+        *size = sizeof(DECIMAL);
+        break;
+    case VT_CY:
+        *size = sizeof(CY);
+        break;
+    case VT_CARRAY:
+        *size = 0;
+        for(i = 0; i < tdesc->u.lpadesc->cDims; ++i)
+            *size += tdesc->u.lpadesc->rgbounds[i].cElements;
+        hr = TLB_size_instance(info, sys, &tdesc->u.lpadesc->tdescElem, &sub, align);
+        if(FAILED(hr))
+            return hr;
+        *size *= sub;
+        return S_OK;
+    case VT_USERDEFINED:
+        return TLB_get_size_from_hreftype(info, tdesc->u.hreftype, size, align);
+    default:
+        FIXME("Unsized VT: 0x%x\n", tdesc->vt);
+        return E_FAIL;
+    }
+
+    if(align){
+        if(*size < 4)
+            *align = *size;
+        else
+            *align = 4;
+    }
+
+    return S_OK;
+}
+
 /**********************************************************************
  *
  *  Functions for reading MSFT typelibs (those created by CreateTypeLib2)
@@ -2217,8 +2331,7 @@ static int MSFT_CustData( TLBContext *pcx, int offset, struct list *custdata_lis
     return count;
 }
 
-static void MSFT_GetTdesc(TLBContext *pcx, INT type, TYPEDESC *pTd,
-			  ITypeInfoImpl *pTI)
+static void MSFT_GetTdesc(TLBContext *pcx, INT type, TYPEDESC *pTd)
 {
     if(type <0)
         pTd->vt=type & VT_TYPEMASK;
@@ -2350,8 +2463,7 @@ MSFT_DoFuncs(TLBContext*     pcx,
 
         MSFT_GetTdesc(pcx,
 		      pFuncRec->DataType,
-		      &ptfd->funcdesc.elemdescFunc.tdesc,
-		      pTI);
+		      &ptfd->funcdesc.elemdescFunc.tdesc);
 
         /* do the parameters/arguments */
         if(pFuncRec->nrargs)
@@ -2373,8 +2485,7 @@ MSFT_DoFuncs(TLBContext*     pcx,
 
                 MSFT_GetTdesc(pcx,
 			      paraminfo.DataType,
-			      &elemdesc->tdesc,
-			      pTI);
+			      &elemdesc->tdesc);
 
                 elemdesc->u.paramdesc.wParamFlags = paraminfo.Flags;
 
@@ -2478,7 +2589,7 @@ static void MSFT_DoVars(TLBContext *pcx, ITypeInfoImpl *pTI, int cFuncs,
         ptvd->vardesc.varkind = pVarRec->VarKind;
         ptvd->vardesc.wVarFlags = pVarRec->Flags;
         MSFT_GetTdesc(pcx, pVarRec->DataType,
-            &ptvd->vardesc.elemdescVar.tdesc, pTI);
+            &ptvd->vardesc.elemdescVar.tdesc);
 /*   ptvd->vardesc.lpstrSchema; is reserved (SDK) FIXME?? */
         if(pVarRec->VarKind == VAR_CONST ){
             ptvd->vardesc.u.lpvarValue = heap_alloc_zero(sizeof(VARIANT));
@@ -2512,6 +2623,47 @@ static void MSFT_DoImplTypes(TLBContext *pcx, ITypeInfoImpl *pTI, int count,
         ++pImpl;
     }
 }
+
+#ifdef _WIN64
+/* when a 32-bit typelib is loaded in 64-bit mode, we need to resize pointers
+ * and some structures, and fix the alignment */
+static void TLB_fix_32on64_typeinfo(ITypeInfoImpl *info)
+{
+    if(info->typekind == TKIND_ALIAS){
+        switch(info->tdescAlias->vt){
+        case VT_BSTR:
+        case VT_DISPATCH:
+        case VT_UNKNOWN:
+        case VT_PTR:
+        case VT_SAFEARRAY:
+        case VT_LPSTR:
+        case VT_LPWSTR:
+            info->cbSizeInstance = sizeof(void*);
+            info->cbAlignment = sizeof(void*);
+            break;
+        case VT_CARRAY:
+        case VT_USERDEFINED:
+            TLB_size_instance(info, SYS_WIN64, info->tdescAlias, &info->cbSizeInstance, &info->cbAlignment);
+            break;
+        case VT_VARIANT:
+            info->cbSizeInstance = sizeof(VARIANT);
+            info->cbAlignment = 8;
+        default:
+            if(info->cbSizeInstance < sizeof(void*))
+                info->cbAlignment = info->cbSizeInstance;
+            else
+                info->cbAlignment = sizeof(void*);
+            break;
+        }
+    }else if(info->typekind == TKIND_INTERFACE ||
+            info->typekind == TKIND_DISPATCH ||
+            info->typekind == TKIND_COCLASS){
+        info->cbSizeInstance = sizeof(void*);
+        info->cbAlignment = sizeof(void*);
+    }
+}
+#endif
+
 /*
  * process a typeinfo record
  */
@@ -2537,26 +2689,21 @@ static ITypeInfoImpl * MSFT_DoTypeInfo(
     ptiRet->lcid=pLibInfo->set_lcid;   /* FIXME: correct? */
     ptiRet->lpstrSchema=NULL;              /* reserved */
     ptiRet->cbSizeInstance=tiBase.size;
-#ifdef _WIN64
-    if(pLibInfo->syskind == SYS_WIN32)
-        ptiRet->cbSizeInstance=sizeof(void*);
-#endif
     ptiRet->typekind=tiBase.typekind & 0xF;
     ptiRet->cFuncs=LOWORD(tiBase.cElement);
     ptiRet->cVars=HIWORD(tiBase.cElement);
     ptiRet->cbAlignment=(tiBase.typekind >> 11 )& 0x1F; /* there are more flags there */
-#ifdef _WIN64
-    if(pLibInfo->syskind == SYS_WIN32)
-        ptiRet->cbAlignment = 8;
-#endif
     ptiRet->wTypeFlags=tiBase.flags;
     ptiRet->wMajorVerNum=LOWORD(tiBase.version);
     ptiRet->wMinorVerNum=HIWORD(tiBase.version);
     ptiRet->cImplTypes=tiBase.cImplTypes;
     ptiRet->cbSizeVft=tiBase.cbSizeVft; /* FIXME: this is only the non inherited part */
-    if(ptiRet->typekind == TKIND_ALIAS)
-        MSFT_GetTdesc(pcx, tiBase.datatype1,
-            &ptiRet->tdescAlias, ptiRet);
+    if(ptiRet->typekind == TKIND_ALIAS){
+        TYPEDESC tmp;
+        MSFT_GetTdesc(pcx, tiBase.datatype1, &tmp);
+        ptiRet->tdescAlias = heap_alloc(TLB_SizeTypeDesc(&tmp, TRUE));
+        TLB_CopyTypeDesc(NULL, &tmp, ptiRet->tdescAlias);
+    }
 
 /*  FIXME: */
 /*    IDLDESC  idldescType; *//* never saw this one != zero  */
@@ -3318,6 +3465,7 @@ static ITypeLib2* ITypeLib2_Constructor_MSFT(LPVOID pLib, DWORD dwTLBLength)
     MSFT_Header tlbHeader;
     MSFT_SegDir tlbSegDir;
     ITypeLibImpl * pTypeLibImpl;
+    int i;
 
     TRACE("%p, TLB length = %d\n", pLib, dwTLBLength);
 
@@ -3503,7 +3651,6 @@ static ITypeLib2* ITypeLib2_Constructor_MSFT(LPVOID pLib, DWORD dwTLBLength)
     if(tlbHeader.nrtypeinfos >= 0 )
     {
         ITypeInfoImpl **ppTI;
-        int i;
 
         ppTI = pTypeLibImpl->typeinfos = heap_alloc_zero(sizeof(ITypeInfoImpl*) * tlbHeader.nrtypeinfos);
 
@@ -3515,6 +3662,13 @@ static ITypeLib2* ITypeLib2_Constructor_MSFT(LPVOID pLib, DWORD dwTLBLength)
             (pTypeLibImpl->TypeInfoCount)++;
         }
     }
+
+#ifdef _WIN64
+    if(pTypeLibImpl->syskind == SYS_WIN32){
+        for(i = 0; i < pTypeLibImpl->TypeInfoCount; ++i)
+            TLB_fix_32on64_typeinfo(pTypeLibImpl->typeinfos[i]);
+    }
+#endif
 
     TRACE("(%p)\n", pTypeLibImpl);
     return &pTypeLibImpl->ITypeLib2_iface;
@@ -4154,9 +4308,10 @@ static void SLTG_ProcessAlias(char *pBlk, ITypeInfoImpl *pTI,
   sltg_ref_lookup_t *ref_lookup = NULL;
 
   if (pTITail->simple_alias) {
-    /* if simple alias, no more processing required */
-    pTI->tdescAlias.vt = pTITail->tdescalias_vt;
-    return;
+      /* if simple alias, no more processing required */
+      pTI->tdescAlias = heap_alloc_zero(sizeof(TYPEDESC));
+      pTI->tdescAlias->vt = pTITail->tdescalias_vt;
+      return;
   }
 
   if(pTIHeader->href_table != 0xffffffff) {
@@ -4167,7 +4322,8 @@ static void SLTG_ProcessAlias(char *pBlk, ITypeInfoImpl *pTI,
   /* otherwise it is an offset to a type */
   pType = (WORD *)(pBlk + pTITail->tdescalias_vt);
 
-  SLTG_DoType(pType, pBlk, &pTI->tdescAlias, ref_lookup);
+  pTI->tdescAlias = heap_alloc(sizeof(TYPEDESC));
+  SLTG_DoType(pType, pBlk, pTI->tdescAlias, ref_lookup);
 
   heap_free(ref_lookup);
 }
@@ -4646,8 +4802,10 @@ static ULONG WINAPI ITypeLib2_fnRelease( ITypeLib2 *iface)
           heap_free(ref_type);
       }
 
-      for (i = 0; i < This->TypeInfoCount; ++i)
+      for (i = 0; i < This->TypeInfoCount; ++i){
+          heap_free(This->typeinfos[i]->tdescAlias);
           ITypeInfoImpl_Destroy(This->typeinfos[i]);
+      }
       heap_free(This->typeinfos);
       heap_free(This);
       return 0;
@@ -5524,8 +5682,8 @@ static HRESULT WINAPI ITypeInfo_fnGetTypeAttr( ITypeInfo2 *iface,
     TRACE("(%p)\n",This);
 
     size = sizeof(**ppTypeAttr);
-    if (This->typekind == TKIND_ALIAS)
-        size += TLB_SizeTypeDesc(&This->tdescAlias, FALSE);
+    if (This->typekind == TKIND_ALIAS && This->tdescAlias)
+        size += TLB_SizeTypeDesc(This->tdescAlias, FALSE);
 
     *ppTypeAttr = heap_alloc(size);
     if (!*ppTypeAttr)
@@ -5546,12 +5704,15 @@ static HRESULT WINAPI ITypeInfo_fnGetTypeAttr( ITypeInfo2 *iface,
     (*ppTypeAttr)->wTypeFlags = This->wTypeFlags;
     (*ppTypeAttr)->wMajorVerNum = This->wMajorVerNum;
     (*ppTypeAttr)->wMinorVerNum = This->wMinorVerNum;
-    (*ppTypeAttr)->tdescAlias = This->tdescAlias;
     (*ppTypeAttr)->idldescType = This->idldescType;
 
-    if (This->typekind == TKIND_ALIAS)
+    if (This->tdescAlias)
         TLB_CopyTypeDesc(&(*ppTypeAttr)->tdescAlias,
-            &This->tdescAlias, *ppTypeAttr + 1);
+            This->tdescAlias, *ppTypeAttr + 1);
+    else{
+        (*ppTypeAttr)->tdescAlias.vt = VT_EMPTY;
+        (*ppTypeAttr)->tdescAlias.u.lptdesc = NULL;
+    }
 
     if((*ppTypeAttr)->typekind == TKIND_DISPATCH) {
         /* This should include all the inherited funcs */
@@ -8968,14 +9129,18 @@ static DWORD WMSFT_append_typedesc(TYPEDESC *desc, WMSFT_TLBFile *file, DWORD *o
     INT16 junk2;
     DWORD offs = 0;
     DWORD encoded[2];
-    VARTYPE vt = desc->vt & VT_TYPEMASK, subtype;
+    VARTYPE vt, subtype;
     char *data;
+
+    if(!desc)
+        return -1;
 
     if(!out_mix)
         out_mix = &junk;
     if(!out_size)
         out_size = &junk2;
 
+    vt = desc->vt & VT_TYPEMASK;
     switch(vt){
     case VT_INT:
         subtype = VT_I4;
@@ -9465,7 +9630,7 @@ static DWORD WMSFT_compile_typeinfo(ITypeInfoImpl *info, INT16 index, WMSFT_TLBF
         if(info->typekind == TKIND_COCLASS){
             base->datatype1 = WMSFT_compile_typeinfo_ref(info, file);
         }else if(info->typekind == TKIND_ALIAS){
-            base->datatype1 = WMSFT_append_typedesc(&info->tdescAlias, file, NULL, NULL);
+            base->datatype1 = WMSFT_append_typedesc(info->tdescAlias, file, NULL, NULL);
         }else if(info->typekind == TKIND_MODULE){
             if(info->DllName)
                 base->datatype1 = info->DllName->offset;
@@ -10530,8 +10695,25 @@ static HRESULT WINAPI ICreateTypeInfo2_fnSetTypeDescAlias(ICreateTypeInfo2 *ifac
         TYPEDESC *tdescAlias)
 {
     ITypeInfoImpl *This = info_impl_from_ICreateTypeInfo2(iface);
-    FIXME("%p %p - stub\n", This, tdescAlias);
-    return E_NOTIMPL;
+    HRESULT hr;
+
+    TRACE("%p %p\n", This, tdescAlias);
+
+    if(!tdescAlias)
+        return E_INVALIDARG;
+
+    if(This->typekind != TKIND_ALIAS)
+        return TYPE_E_BADMODULEKIND;
+
+    hr = TLB_size_instance(This, This->pTypeLib->syskind, tdescAlias, &This->cbSizeInstance, &This->cbAlignment);
+    if(FAILED(hr))
+        return hr;
+
+    heap_free(This->tdescAlias);
+    This->tdescAlias = heap_alloc(TLB_SizeTypeDesc(tdescAlias, TRUE));
+    TLB_CopyTypeDesc(NULL, tdescAlias, This->tdescAlias);
+
+    return S_OK;
 }
 
 static HRESULT WINAPI ICreateTypeInfo2_fnDefineFuncAsDllEntry(ICreateTypeInfo2 *iface,

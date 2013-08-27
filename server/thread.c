@@ -75,6 +75,7 @@ struct thread_wait
     struct thread          *thread;     /* owner thread */
     int                     count;      /* count of objects */
     int                     flags;
+    enum select_op          select;
     client_ptr_t            cookie;     /* magic cookie to return to client */
     timeout_t               timeout;
     struct timeout_user    *user;
@@ -558,7 +559,8 @@ static void end_wait( struct thread *thread )
 }
 
 /* build the thread wait structure */
-static int wait_on( unsigned int count, struct object *objects[], int flags, timeout_t timeout )
+static int wait_on( const select_op_t *select_op, unsigned int count, struct object *objects[],
+                    int flags, timeout_t timeout )
 {
     struct thread_wait *wait;
     struct wait_queue_entry *entry;
@@ -569,6 +571,7 @@ static int wait_on( unsigned int count, struct object *objects[], int flags, tim
     wait->thread  = current;
     wait->count   = count;
     wait->flags   = flags;
+    wait->select  = select_op->op;
     wait->user    = NULL;
     wait->timeout = timeout;
     current->wait = wait;
@@ -587,6 +590,25 @@ static int wait_on( unsigned int count, struct object *objects[], int flags, tim
     return 1;
 }
 
+static int wait_on_handles( const select_op_t *select_op, unsigned int count, const obj_handle_t *handles,
+                            int flags, timeout_t timeout )
+{
+    struct object *objects[MAXIMUM_WAIT_OBJECTS];
+    unsigned int i;
+    int ret = 0;
+
+    assert( count <= MAXIMUM_WAIT_OBJECTS );
+
+    for (i = 0; i < count; i++)
+        if (!(objects[i] = get_handle_obj( current->process, handles[i], SYNCHRONIZE, NULL )))
+            break;
+
+    if (i == count) ret = wait_on( select_op, count, objects, flags, timeout );
+
+    while (i > 0) release_object( objects[--i] );
+    return ret;
+}
+
 /* check if the thread waiting condition is satisfied */
 static int check_wait( struct thread *thread )
 {
@@ -602,7 +624,7 @@ static int check_wait( struct thread *thread )
     /* Suspended threads may not acquire locks, but they can run system APCs */
     if (thread->process->suspend + thread->suspend > 0) return -1;
 
-    if (wait->flags & SELECT_ALL)
+    if (wait->select == SELECT_WAIT_ALL)
     {
         int not_ok = 0;
         /* Note: we must check them all anyway, as some objects may
@@ -710,39 +732,50 @@ static int signal_object( obj_handle_t handle )
 }
 
 /* select on a list of handles */
-static timeout_t select_on( unsigned int count, client_ptr_t cookie, const obj_handle_t *handles,
-                            int flags, timeout_t timeout, obj_handle_t signal_obj )
+static timeout_t select_on( const select_op_t *select_op, data_size_t op_size, client_ptr_t cookie,
+                            int flags, timeout_t timeout )
 {
     int ret;
-    unsigned int i;
-    struct object *objects[MAXIMUM_WAIT_OBJECTS];
+    unsigned int count;
 
     if (timeout <= 0) timeout = current_time - timeout;
 
-    if (count > MAXIMUM_WAIT_OBJECTS)
+    switch (select_op->op)
     {
+    case SELECT_NONE:
+        if (!wait_on( select_op, 0, NULL, flags, timeout )) return timeout;
+        break;
+
+    case SELECT_WAIT:
+    case SELECT_WAIT_ALL:
+        count = (op_size - offsetof( select_op_t, wait.handles )) / sizeof(select_op->wait.handles[0]);
+        if (op_size < offsetof( select_op_t, wait.handles ) || count > MAXIMUM_WAIT_OBJECTS)
+        {
+            set_error( STATUS_INVALID_PARAMETER );
+            return 0;
+        }
+        if (!wait_on_handles( select_op, count, select_op->wait.handles, flags, timeout ))
+            return timeout;
+        break;
+
+    case SELECT_SIGNAL_AND_WAIT:
+        if (!wait_on_handles( select_op, 1, &select_op->signal_and_wait.wait, flags, timeout ))
+            return timeout;
+        if (select_op->signal_and_wait.signal)
+        {
+            if (!signal_object( select_op->signal_and_wait.signal ))
+            {
+                end_wait( current );
+                return timeout;
+            }
+            /* check if we woke ourselves up */
+            if (!current->wait) return timeout;
+        }
+        break;
+
+    default:
         set_error( STATUS_INVALID_PARAMETER );
         return 0;
-    }
-    for (i = 0; i < count; i++)
-    {
-        if (!(objects[i] = get_handle_obj( current->process, handles[i], SYNCHRONIZE, NULL )))
-            break;
-    }
-
-    if (i < count) goto done;
-    if (!wait_on( count, objects, flags, timeout )) goto done;
-
-    /* signal the object */
-    if (signal_obj)
-    {
-        if (!signal_object( signal_obj ))
-        {
-            end_wait( current );
-            goto done;
-        }
-        /* check if we woke ourselves up */
-        if (!current->wait) goto done;
     }
 
     if ((ret = check_wait( current )) != -1)
@@ -750,7 +783,7 @@ static timeout_t select_on( unsigned int count, client_ptr_t cookie, const obj_h
         /* condition is already satisfied */
         end_wait( current );
         set_error( ret );
-        goto done;
+        return timeout;
     }
 
     /* now we need to wait */
@@ -760,14 +793,11 @@ static timeout_t select_on( unsigned int count, client_ptr_t cookie, const obj_h
                                                       thread_timeout, current->wait )))
         {
             end_wait( current );
-            goto done;
+            return timeout;
         }
     }
     current->wait->cookie = cookie;
     set_error( STATUS_PENDING );
-
-done:
-    while (i > 0) release_object( objects[--i] );
     return timeout;
 }
 
@@ -1310,17 +1340,19 @@ DECL_HANDLER(resume_thread)
 /* select on a handle list */
 DECL_HANDLER(select)
 {
+    select_op_t select_op;
+    data_size_t op_size;
     struct thread_apc *apc;
-    unsigned int count;
     const apc_result_t *result = get_req_data();
-    const obj_handle_t *handles = (const obj_handle_t *)(result + 1);
 
     if (get_req_data_size() < sizeof(*result))
     {
         set_error( STATUS_INVALID_PARAMETER );
         return;
     }
-    count = (get_req_data_size() - sizeof(*result)) / sizeof(obj_handle_t);
+    op_size = min( get_req_data_size() - sizeof(*result), sizeof(select_op) );
+    memset( &select_op, 0, sizeof(select_op) );
+    memcpy( &select_op, result + 1, op_size );
 
     /* first store results of previous apc */
     if (req->prev_apc)
@@ -1348,7 +1380,7 @@ DECL_HANDLER(select)
         release_object( apc );
     }
 
-    reply->timeout = select_on( count, req->cookie, handles, req->flags, req->timeout, req->signal );
+    reply->timeout = select_on( &select_op, op_size, req->cookie, req->flags, req->timeout );
 
     if (get_error() == STATUS_USER_APC)
     {

@@ -404,6 +404,30 @@ struct token_groups
 
 };
 
+enum select_op
+{
+    SELECT_NONE,
+    SELECT_WAIT,
+    SELECT_WAIT_ALL,
+    SELECT_SIGNAL_AND_WAIT
+};
+
+typedef union
+{
+    enum select_op op;
+    struct
+    {
+        enum select_op  op;
+        obj_handle_t    handles[MAXIMUM_WAIT_OBJECTS];
+    } wait;
+    struct
+    {
+        enum select_op  op;
+        obj_handle_t    wait;
+        obj_handle_t    signal;
+    } signal_and_wait;
+} select_op_t;
+
 enum apc_type
 {
     APC_NONE,
@@ -1052,11 +1076,11 @@ struct select_request
     struct request_header __header;
     int          flags;
     client_ptr_t cookie;
-    obj_handle_t signal;
-    obj_handle_t prev_apc;
     timeout_t    timeout;
+    obj_handle_t prev_apc;
     /* VARARG(result,apc_result); */
-    /* VARARG(handles,handles); */
+    /* VARARG(data,select_op); */
+    char __pad_36[4];
 };
 struct select_reply
 {
@@ -1066,9 +1090,8 @@ struct select_reply
     obj_handle_t apc_handle;
     char __pad_60[4];
 };
-#define SELECT_ALL           1
-#define SELECT_ALERTABLE     2
-#define SELECT_INTERRUPTIBLE 4
+#define SELECT_ALERTABLE     1
+#define SELECT_INTERRUPTIBLE 2
 
 
 
@@ -5771,6 +5794,6 @@ union generic_reply
     struct set_suspend_context_reply set_suspend_context_reply;
 };
 
-#define SERVER_PROTOCOL_VERSION 443
+#define SERVER_PROTOCOL_VERSION 446
 
 #endif /* __WINE_WINE_SERVER_PROTOCOL_H */
