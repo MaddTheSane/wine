@@ -155,7 +155,6 @@ void *wined3d_rb_realloc(void *ptr, size_t size) DECLSPEC_HIDDEN;
 void wined3d_rb_free(void *ptr) DECLSPEC_HIDDEN;
 
 /* Device caps */
-#define MAX_PALETTES            65536
 #define MAX_STREAM_OUT          4
 #define MAX_STREAMS             16
 #define MAX_TEXTURES            8
@@ -242,9 +241,6 @@ static inline float float_24_to_32(DWORD in)
 #define ORM_BACKBUFFER  0
 #define ORM_FBO         1
 
-#define RTL_READDRAW   1
-#define RTL_READTEX    2
-
 #define PCI_VENDOR_NONE 0xffff /* e.g. 0x8086 for Intel and 0x10de for Nvidia */
 #define PCI_DEVICE_NONE 0xffff /* e.g. 0x14f for a Geforce6200 */
 
@@ -257,7 +253,6 @@ struct wined3d_settings
      * implemented, we'll leave it as a registry setting for developers. */
     BOOL glslRequested;
     int offscreen_rendering_mode;
-    int rendertargetlock_mode;
     unsigned short pci_vendor_id;
     unsigned short pci_device_id;
     /* Memory tracking and object counting. */

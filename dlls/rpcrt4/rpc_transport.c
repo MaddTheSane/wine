@@ -284,7 +284,7 @@ static RPC_STATUS rpcrt4_protseq_ncalrpc_open_endpoint(RpcServerProtseq* protseq
   }
 
   r = RPCRT4_CreateConnection(&Connection, TRUE, protseq->Protseq, NULL,
-                              endpoint, NULL, NULL, NULL);
+                              endpoint, NULL, NULL, NULL, NULL);
   if (r != RPC_S_OK)
       return r;
 
@@ -342,7 +342,7 @@ static RPC_STATUS rpcrt4_protseq_ncacn_np_open_endpoint(RpcServerProtseq *protse
   }
 
   r = RPCRT4_CreateConnection(&Connection, TRUE, protseq->Protseq, NULL,
-                              endpoint, NULL, NULL, NULL);
+                              endpoint, NULL, NULL, NULL, NULL);
   if (r != RPC_S_OK)
     return r;
 
@@ -1363,7 +1363,7 @@ static RPC_STATUS rpcrt4_protseq_ncacn_ip_tcp_open_endpoint(RpcServerProtseq *pr
 
         create_status = RPCRT4_CreateConnection((RpcConnection **)&tcpc, TRUE,
                                                 protseq->Protseq, NULL,
-                                                service, NULL, NULL, NULL);
+                                                service, NULL, NULL, NULL, NULL);
         if (create_status != RPC_S_OK)
         {
             closesocket(sock);
@@ -2039,7 +2039,7 @@ static RPC_STATUS rpcrt4_http_check_response(HINTERNET hor)
     ret = HttpQueryInfoW(hor, HTTP_QUERY_STATUS_CODE|HTTP_QUERY_FLAG_NUMBER, &status_code, &size, &index);
     if (!ret)
         return GetLastError();
-    if (status_code < 400)
+    if (status_code == HTTP_STATUS_OK)
         return RPC_S_OK;
     index = 0;
     size = sizeof(buf);
@@ -2232,7 +2232,7 @@ static RPC_STATUS rpcrt4_http_prepare_in_pipe(HINTERNET in_request, RpcHttpAsync
     if (status != RPC_S_OK) return status;
 
     TRACE("sending HTTP connect header to server\n");
-    hdr = RPCRT4_BuildHttpConnectHeader(0, FALSE, connection_uuid, in_pipe_uuid, association_uuid);
+    hdr = RPCRT4_BuildHttpConnectHeader(FALSE, connection_uuid, in_pipe_uuid, association_uuid);
     if (!hdr) return RPC_S_OUT_OF_RESOURCES;
     ret = InternetWriteFile(in_request, hdr, hdr->common.frag_len, &bytes_written);
     RPCRT4_FreeHeader(hdr);
@@ -2308,7 +2308,7 @@ static RPC_STATUS rpcrt4_http_prepare_out_pipe(HINTERNET out_request,
     status = send_echo_request(out_request, async_data, cancel_event);
     if (status != RPC_S_OK) return status;
 
-    hdr = RPCRT4_BuildHttpConnectHeader(0, TRUE, connection_uuid, out_pipe_uuid, NULL);
+    hdr = RPCRT4_BuildHttpConnectHeader(TRUE, connection_uuid, out_pipe_uuid, NULL);
     if (!hdr) return RPC_S_OUT_OF_RESOURCES;
 
     prepare_async_request(async_data);
@@ -2447,6 +2447,30 @@ static RPC_STATUS insert_authorization_header(HINTERNET request, RpcQualityOfSer
     return status;
 }
 
+static RPC_STATUS insert_cookie_header(HINTERNET request, const WCHAR *value)
+{
+    static const WCHAR cookieW[] = {'C','o','o','k','i','e',':',' '};
+    WCHAR *header, *ptr;
+    int len;
+    RPC_STATUS status = RPC_S_SERVER_UNAVAILABLE;
+
+    if (!value) return RPC_S_OK;
+
+    len = strlenW(value);
+    if ((header = HeapAlloc(GetProcessHeap(), 0, sizeof(cookieW) + (len + 3) * sizeof(WCHAR))))
+    {
+        memcpy(header, cookieW, sizeof(cookieW));
+        ptr = header + sizeof(cookieW) / sizeof(cookieW[0]);
+        memcpy(ptr, value, len * sizeof(WCHAR));
+        ptr[len++] = '\r';
+        ptr[len++] = '\n';
+        ptr[len] = 0;
+        if ((HttpAddRequestHeadersW(request, header, -1, HTTP_ADDREQ_FLAG_ADD_IF_NEW))) status = RPC_S_OK;
+        HeapFree(GetProcessHeap(), 0, header);
+    }
+    return status;
+}
+
 static RPC_STATUS rpcrt4_ncacn_http_open(RpcConnection* Connection)
 {
     RpcConnection_http *httpc = (RpcConnection_http *)Connection;
@@ -2496,7 +2520,8 @@ static RPC_STATUS rpcrt4_ncacn_http_open(RpcConnection* Connection)
              (httpc->common.QOS->qos->AdditionalSecurityInfoType == RPC_C_AUTHN_INFO_TYPE_HTTP) &&
              (httpc->common.QOS->qos->u.HttpCredentials->Flags & RPC_C_HTTP_FLAG_USE_SSL);
 
-    flags = INTERNET_FLAG_KEEP_CONNECTION | INTERNET_FLAG_PRAGMA_NOCACHE | INTERNET_FLAG_NO_CACHE_WRITE;
+    flags = INTERNET_FLAG_KEEP_CONNECTION | INTERNET_FLAG_PRAGMA_NOCACHE | INTERNET_FLAG_NO_CACHE_WRITE |
+            INTERNET_FLAG_NO_AUTO_REDIRECT;
     if (secure) flags |= INTERNET_FLAG_SECURE;
 
     httpc->in_request = HttpOpenRequestW(httpc->session, wszVerbIn, url, NULL, NULL, wszAcceptTypes,
@@ -2511,6 +2536,10 @@ static RPC_STATUS rpcrt4_ncacn_http_open(RpcConnection* Connection)
     if (status != RPC_S_OK)
         return status;
 
+    status = insert_cookie_header(httpc->in_request, Connection->CookieAuth);
+    if (status != RPC_S_OK)
+        return status;
+
     httpc->out_request = HttpOpenRequestW(httpc->session, wszVerbOut, url, NULL, NULL, wszAcceptTypes,
                                           flags, (DWORD_PTR)httpc->async_data);
     HeapFree(GetProcessHeap(), 0, url);
@@ -2520,6 +2549,10 @@ static RPC_STATUS rpcrt4_ncacn_http_open(RpcConnection* Connection)
         return RPC_S_SERVER_UNAVAILABLE;
     }
     status = insert_authorization_header(httpc->out_request, httpc->common.QOS);
+    if (status != RPC_S_OK)
+        return status;
+
+    status = insert_cookie_header(httpc->out_request, Connection->CookieAuth);
     if (status != RPC_S_OK)
         return status;
 
@@ -3001,7 +3034,7 @@ RPC_STATUS RPCRT4_CloseConnection(RpcConnection* Connection)
 
 RPC_STATUS RPCRT4_CreateConnection(RpcConnection** Connection, BOOL server,
     LPCSTR Protseq, LPCSTR NetworkAddr, LPCSTR Endpoint,
-    LPCWSTR NetworkOptions, RpcAuthInfo* AuthInfo, RpcQualityOfService *QOS)
+    LPCWSTR NetworkOptions, RpcAuthInfo* AuthInfo, RpcQualityOfService *QOS, LPCWSTR CookieAuth)
 {
   static LONG next_id;
   const struct connection_ops *ops;
@@ -3023,6 +3056,7 @@ RPC_STATUS RPCRT4_CreateConnection(RpcConnection** Connection, BOOL server,
   NewConnection->NetworkAddr = RPCRT4_strdupA(NetworkAddr);
   NewConnection->Endpoint = RPCRT4_strdupA(Endpoint);
   NewConnection->NetworkOptions = RPCRT4_strdupW(NetworkOptions);
+  NewConnection->CookieAuth = RPCRT4_strdupW(CookieAuth);
   NewConnection->MaxTransmissionSize = RPC_MAX_PACKET_SIZE;
   memset(&NewConnection->ActiveInterface, 0, sizeof(NewConnection->ActiveInterface));
   NewConnection->NextCallId = 1;
@@ -3051,11 +3085,9 @@ static RPC_STATUS RPCRT4_SpawnConnection(RpcConnection** Connection, RpcConnecti
 {
   RPC_STATUS err;
 
-  err = RPCRT4_CreateConnection(Connection, OldConnection->server,
-                                rpcrt4_conn_get_name(OldConnection),
-                                OldConnection->NetworkAddr,
-                                OldConnection->Endpoint, NULL,
-                                OldConnection->AuthInfo, OldConnection->QOS);
+  err = RPCRT4_CreateConnection(Connection, OldConnection->server, rpcrt4_conn_get_name(OldConnection),
+                                OldConnection->NetworkAddr, OldConnection->Endpoint, NULL,
+                                OldConnection->AuthInfo, OldConnection->QOS, OldConnection->CookieAuth);
   if (err == RPC_S_OK)
     rpcrt4_conn_handoff(OldConnection, *Connection);
   return err;
@@ -3077,6 +3109,7 @@ RPC_STATUS RPCRT4_ReleaseConnection(RpcConnection* Connection)
   RPCRT4_strfree(Connection->Endpoint);
   RPCRT4_strfree(Connection->NetworkAddr);
   HeapFree(GetProcessHeap(), 0, Connection->NetworkOptions);
+  HeapFree(GetProcessHeap(), 0, Connection->CookieAuth);
   if (Connection->AuthInfo) RpcAuthInfo_Release(Connection->AuthInfo);
   if (Connection->QOS) RpcQualityOfService_Release(Connection->QOS);
 

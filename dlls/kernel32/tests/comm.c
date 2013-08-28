@@ -832,7 +832,7 @@ todo_wine
     ok(!res && GetLastError() == ERROR_IO_PENDING, "WriteFile returned %d, error %d\n", res, GetLastError());
 todo_wine
     ok(!bytes, "expected 0, got %u\n", bytes);
-    ok(after - before == 0, "WriteFile took %d ms to write %d Bytes at %d Baud\n",
+    ok(after - before < 30, "WriteFile took %d ms to write %d Bytes at %d Baud\n",
        after - before, bytes, baud);
     /* don't wait for WriteFile completion */
 
@@ -891,7 +891,6 @@ static void test_ClearCommError(void)
     ok(lpStat.cbInQue == 0, "Unexpected %d chars in InQueue\n", lpStat.cbInQue);
     ok(lpStat.cbOutQue == 0, "Unexpected %d chars in OutQueue\n", lpStat.cbOutQue);
     ok(errors == 0, "ClearCommErrors: Unexpected error 0x%08x\n", errors);
-    trace("test_ClearCommErrors done\n");
 
     CloseHandle(hcom);
 }

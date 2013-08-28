@@ -31,7 +31,7 @@
 #include "wine/test.h"
 
 /* Do not allow more than 1 deviation here */
-#define match_off_by_1(a, b) (abs((a) - (b)) <= 1)
+#define match_off_by_1(a, b, exact) (abs((a) - (b)) <= ((exact) ? 0 : 1))
 
 #define near_match(a, b) (abs((a) - (b)) <= 6)
 #define expect(expected, got) ok(got == expected, "Expected %.8x, got %.8x\n", expected, got)
@@ -57,6 +57,21 @@ static BOOL  (WINAPI *pRemoveFontResourceExA)(LPCSTR, DWORD, PVOID);
 static HMODULE hgdi32 = 0;
 static const MAT2 mat = { {0,1}, {0,0}, {0,0}, {0,1} };
 static WORD system_lang_id;
+
+#ifdef WORDS_BIGENDIAN
+#define GET_BE_WORD(x) (x)
+#define GET_BE_DWORD(x) (x)
+#else
+#define GET_BE_WORD(x) MAKEWORD(HIBYTE(x), LOBYTE(x))
+#define GET_BE_DWORD(x) MAKELONG(GET_BE_WORD(HIWORD(x)), GET_BE_WORD(LOWORD(x)));
+#endif
+
+#define MS_MAKE_TAG(ch0, ch1, ch2, ch3) \
+                    ((DWORD)(BYTE)(ch0) | ((DWORD)(BYTE)(ch1) << 8) | \
+                    ((DWORD)(BYTE)(ch2) << 16) | ((DWORD)(BYTE)(ch3) << 24))
+#define MS_OS2_TAG MS_MAKE_TAG('O','S','/','2')
+#define MS_CMAP_TAG MS_MAKE_TAG('c','m','a','p')
+#define MS_NAME_TAG MS_MAKE_TAG('n','a','m','e')
 
 static void init(void)
 {
@@ -116,6 +131,52 @@ static BOOL is_font_installed(const char *name)
 
     ReleaseDC(0, hdc);
     return ret;
+}
+
+static void *get_res_data(const char *fontname, DWORD *rsrc_size)
+{
+    HRSRC rsrc;
+    void *rsrc_data;
+
+    rsrc = FindResource(GetModuleHandle(0), fontname, RT_RCDATA);
+    if (!rsrc) return NULL;
+
+    rsrc_data = LockResource(LoadResource(GetModuleHandle(0), rsrc));
+    if (!rsrc_data) return NULL;
+
+    *rsrc_size = SizeofResource(GetModuleHandle(0), rsrc);
+    if (!*rsrc_size) return NULL;
+
+    return rsrc_data;
+}
+
+static BOOL write_tmp_file( const void *data, DWORD *size, char *tmp_name )
+{
+    char tmp_path[MAX_PATH];
+    HANDLE hfile;
+    BOOL ret;
+
+    GetTempPath(MAX_PATH, tmp_path);
+    GetTempFileName(tmp_path, "ttf", 0, tmp_name);
+
+    hfile = CreateFile(tmp_name, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, 0);
+    if (hfile == INVALID_HANDLE_VALUE) return FALSE;
+
+    ret = WriteFile(hfile, data, *size, size, NULL);
+
+    CloseHandle(hfile);
+    return ret;
+}
+
+static BOOL write_ttf_file(const char *fontname, char *tmp_name)
+{
+    void *rsrc_data;
+    DWORD rsrc_size;
+
+    rsrc_data = get_res_data( fontname, &rsrc_size );
+    if (!rsrc_data) return FALSE;
+
+    return write_tmp_file( rsrc_data, &rsrc_size, tmp_name );
 }
 
 static void check_font(const char* test, const LOGFONTA* lf, HFONT hfont)
@@ -1529,9 +1590,9 @@ static void test_GetKerningPairs(void)
         uiRet = GetOutlineTextMetricsW(hdc, sizeof(otm), &otm);
         ok(uiRet == sizeof(otm), "GetOutlineTextMetricsW error %d\n", GetLastError());
 
-        ok(match_off_by_1(kd[i].tmHeight, otm.otmTextMetrics.tmHeight), "expected %d, got %d\n",
+        ok(match_off_by_1(kd[i].tmHeight, otm.otmTextMetrics.tmHeight, FALSE), "expected %d, got %d\n",
            kd[i].tmHeight, otm.otmTextMetrics.tmHeight);
-        ok(match_off_by_1(kd[i].tmAscent, otm.otmTextMetrics.tmAscent), "expected %d, got %d\n",
+        ok(match_off_by_1(kd[i].tmAscent, otm.otmTextMetrics.tmAscent, FALSE), "expected %d, got %d\n",
            kd[i].tmAscent, otm.otmTextMetrics.tmAscent);
         ok(kd[i].tmDescent == otm.otmTextMetrics.tmDescent, "expected %d, got %d\n",
            kd[i].tmDescent, otm.otmTextMetrics.tmDescent);
@@ -1617,36 +1678,22 @@ todo_wine {
     ReleaseDC(0, hdc);
 }
 
-static void test_height_selection(void)
+struct font_data
 {
-    static const struct font_data
-    {
-        const char face_name[LF_FACESIZE];
-        int requested_height;
-        int weight, height, ascent, descent, int_leading, ext_leading, dpi;
-    } fd[] =
-    {
-        {"Tahoma", -12, FW_NORMAL, 14, 12, 2, 2, 0, 96 },
-        {"Tahoma", -24, FW_NORMAL, 29, 24, 5, 5, 0, 96 },
-        {"Tahoma", -48, FW_NORMAL, 58, 48, 10, 10, 0, 96 },
-        {"Tahoma", -96, FW_NORMAL, 116, 96, 20, 20, 0, 96 },
-        {"Tahoma", -192, FW_NORMAL, 232, 192, 40, 40, 0, 96 },
-        {"Tahoma", 12, FW_NORMAL, 12, 10, 2, 2, 0, 96 },
-        {"Tahoma", 24, FW_NORMAL, 24, 20, 4, 4, 0, 96 },
-        {"Tahoma", 48, FW_NORMAL, 48, 40, 8, 8, 0, 96 },
-        {"Tahoma", 96, FW_NORMAL, 96, 80, 16, 17, 0, 96 },
-        {"Tahoma", 192, FW_NORMAL, 192, 159, 33, 33, 0, 96 }
-    };
-    HDC hdc;
+    const char face_name[LF_FACESIZE];
+    int requested_height;
+    int weight, height, ascent, descent, int_leading, ext_leading, dpi;
+    BOOL exact;
+};
+
+static void test_height( HDC hdc, const struct font_data *fd )
+{
     LOGFONT lf;
     HFONT hfont, old_hfont;
     TEXTMETRIC tm;
     INT ret, i;
 
-    hdc = CreateCompatibleDC(0);
-    assert(hdc);
-
-    for (i = 0; i < sizeof(fd)/sizeof(fd[0]); i++)
+    for (i = 0; fd[i].face_name[0]; i++)
     {
         if (!is_truetype_font_installed(fd[i].face_name))
         {
@@ -1669,18 +1716,223 @@ static void test_height_selection(void)
         {
             trace("found font %s, height %d charset %x dpi %d\n", lf.lfFaceName, lf.lfHeight, lf.lfCharSet, fd[i].dpi);
             ok(tm.tmWeight == fd[i].weight, "%s(%d): tm.tmWeight %d != %d\n", fd[i].face_name, fd[i].requested_height, tm.tmWeight, fd[i].weight);
-            ok(match_off_by_1(tm.tmHeight, fd[i].height), "%s(%d): tm.tmHeight %d != %d\n", fd[i].face_name, fd[i].requested_height, tm.tmHeight, fd[i].height);
-            ok(match_off_by_1(tm.tmAscent, fd[i].ascent), "%s(%d): tm.tmAscent %d != %d\n", fd[i].face_name, fd[i].requested_height, tm.tmAscent, fd[i].ascent);
-            ok(match_off_by_1(tm.tmDescent, fd[i].descent), "%s(%d): tm.tmDescent %d != %d\n", fd[i].face_name, fd[i].requested_height, tm.tmDescent, fd[i].descent);
-#if 0 /* FIXME: calculation of tmInternalLeading in Wine doesn't match what Windows does */
-            ok(tm.tmInternalLeading == fd[i].int_leading, "%s(%d): tm.tmInternalLeading %d != %d\n", fd[i].face_name, fd[i].requested_height, tm.tmInternalLeading, fd[i].int_leading);
-#endif
+            ok(match_off_by_1(tm.tmHeight, fd[i].height, fd[i].exact), "%s(%d): tm.tmHeight %d != %d\n", fd[i].face_name, fd[i].requested_height, tm.tmHeight, fd[i].height);
+            ok(match_off_by_1(tm.tmAscent, fd[i].ascent, fd[i].exact), "%s(%d): tm.tmAscent %d != %d\n", fd[i].face_name, fd[i].requested_height, tm.tmAscent, fd[i].ascent);
+            ok(match_off_by_1(tm.tmDescent, fd[i].descent, fd[i].exact), "%s(%d): tm.tmDescent %d != %d\n", fd[i].face_name, fd[i].requested_height, tm.tmDescent, fd[i].descent);
+            ok(match_off_by_1(tm.tmInternalLeading, fd[i].int_leading, fd[i].exact), "%s(%d): tm.tmInternalLeading %d != %d\n", fd[i].face_name, fd[i].requested_height, tm.tmInternalLeading, fd[i].int_leading);
             ok(tm.tmExternalLeading == fd[i].ext_leading, "%s(%d): tm.tmExternalLeading %d != %d\n", fd[i].face_name, fd[i].requested_height, tm.tmExternalLeading, fd[i].ext_leading);
         }
 
         SelectObject(hdc, old_hfont);
         DeleteObject(hfont);
     }
+}
+
+static void *find_ttf_table( void *ttf, DWORD size, DWORD tag )
+{
+    WORD i, num_tables = GET_BE_WORD(*((WORD *)ttf + 2));
+    DWORD *table = (DWORD *)ttf + 3;
+
+    for (i = 0; i < num_tables; i++)
+    {
+        if (table[0] == tag)
+            return (BYTE *)ttf + GET_BE_DWORD(table[2]);
+        table += 4;
+    }
+    return NULL;
+}
+
+static void test_height_selection_vdmx( HDC hdc )
+{
+    static const struct font_data charset_0[] = /* doesn't use VDMX */
+    {
+        { "wine_vdmx", 10, FW_NORMAL, 10, 8, 2, 2, 0, 96, TRUE },
+        { "wine_vdmx", 11, FW_NORMAL, 11, 9, 2, 2, 0, 96, TRUE },
+        { "wine_vdmx", 12, FW_NORMAL, 12, 10, 2, 2, 0, 96, TRUE },
+        { "wine_vdmx", 13, FW_NORMAL, 13, 11, 2, 2, 0, 96, TRUE },
+        { "wine_vdmx", 14, FW_NORMAL, 14, 12, 2, 2, 0, 96, TRUE },
+        { "wine_vdmx", 15, FW_NORMAL, 15, 12, 3, 3, 0, 96, FALSE },
+        { "wine_vdmx", 16, FW_NORMAL, 16, 13, 3, 3, 0, 96, TRUE },
+        { "wine_vdmx", 17, FW_NORMAL, 17, 14, 3, 3, 0, 96, TRUE },
+        { "wine_vdmx", 18, FW_NORMAL, 18, 15, 3, 3, 0, 96, TRUE },
+        { "wine_vdmx", 19, FW_NORMAL, 19, 16, 3, 3, 0, 96, TRUE },
+        { "wine_vdmx", 20, FW_NORMAL, 20, 17, 3, 4, 0, 96, FALSE },
+        { "wine_vdmx", 21, FW_NORMAL, 21, 17, 4, 4, 0, 96, TRUE },
+        { "wine_vdmx", 22, FW_NORMAL, 22, 18, 4, 4, 0, 96, TRUE },
+        { "wine_vdmx", 23, FW_NORMAL, 23, 19, 4, 4, 0, 96, TRUE },
+        { "wine_vdmx", 24, FW_NORMAL, 24, 20, 4, 4, 0, 96, TRUE },
+        { "wine_vdmx", 25, FW_NORMAL, 25, 21, 4, 4, 0, 96, TRUE },
+        { "wine_vdmx", 26, FW_NORMAL, 26, 22, 4, 5, 0, 96, FALSE },
+        { "wine_vdmx", 27, FW_NORMAL, 27, 22, 5, 5, 0, 96, TRUE },
+        { "wine_vdmx", 28, FW_NORMAL, 28, 23, 5, 5, 0, 96, TRUE },
+        { "wine_vdmx", 29, FW_NORMAL, 29, 24, 5, 5, 0, 96, TRUE },
+        { "wine_vdmx", 30, FW_NORMAL, 30, 25, 5, 5, 0, 96, TRUE },
+        { "wine_vdmx", 31, FW_NORMAL, 31, 26, 5, 5, 0, 96, TRUE },
+        { "wine_vdmx", 32, FW_NORMAL, 32, 27, 5, 6, 0, 96, FALSE },
+        { "wine_vdmx", 48, FW_NORMAL, 48, 40, 8, 8, 0, 96, TRUE },
+        { "wine_vdmx", 64, FW_NORMAL, 64, 53, 11, 11, 0, 96, TRUE },
+        { "wine_vdmx", 96, FW_NORMAL, 96, 80, 16, 17, 0, 96, FALSE },
+        { "wine_vdmx", -10, FW_NORMAL, 12, 10, 2, 2, 0, 96, TRUE },
+        { "wine_vdmx", -11, FW_NORMAL, 13, 11, 2, 2, 0, 96, TRUE },
+        { "wine_vdmx", -12, FW_NORMAL, 14, 12, 2, 2, 0, 96, TRUE },
+        { "wine_vdmx", -13, FW_NORMAL, 16, 13, 3, 3, 0, 96, TRUE },
+        { "wine_vdmx", -14, FW_NORMAL, 17, 14, 3, 3, 0, 96, TRUE },
+        { "wine_vdmx", -15, FW_NORMAL, 18, 15, 3, 3, 0, 96, TRUE },
+        { "wine_vdmx", -16, FW_NORMAL, 19, 16, 3, 3, 0, 96, TRUE },
+        { "wine_vdmx", -17, FW_NORMAL, 21, 17, 4, 4, 0, 96, TRUE },
+        { "wine_vdmx", -18, FW_NORMAL, 22, 18, 4, 4, 0, 96, TRUE },
+        { "wine_vdmx", -19, FW_NORMAL, 23, 19, 4, 4, 0, 96, TRUE },
+        { "wine_vdmx", -20, FW_NORMAL, 24, 20, 4, 4, 0, 96, TRUE },
+        { "wine_vdmx", -21, FW_NORMAL, 25, 21, 4, 4, 0, 96, TRUE },
+        { "wine_vdmx", -22, FW_NORMAL, 27, 22, 5, 5, 0, 96, TRUE },
+        { "wine_vdmx", -23, FW_NORMAL, 28, 23, 5, 5, 0, 96, TRUE },
+        { "wine_vdmx", -24, FW_NORMAL, 29, 24, 5, 5, 0, 96, TRUE },
+        { "wine_vdmx", -25, FW_NORMAL, 30, 25, 5, 5, 0, 96, TRUE },
+        { "wine_vdmx", -26, FW_NORMAL, 31, 26, 5, 5, 0, 96, TRUE },
+        { "wine_vdmx", -27, FW_NORMAL, 33, 27, 6, 6, 0, 96, TRUE },
+        { "wine_vdmx", -28, FW_NORMAL, 34, 28, 6, 6, 0, 96, TRUE },
+        { "wine_vdmx", -29, FW_NORMAL, 35, 29, 6, 6, 0, 96, TRUE },
+        { "wine_vdmx", -30, FW_NORMAL, 36, 30, 6, 6, 0, 96, TRUE },
+        { "wine_vdmx", -31, FW_NORMAL, 37, 31, 6, 6, 0, 96, TRUE },
+        { "wine_vdmx", -32, FW_NORMAL, 39, 32, 7, 7, 0, 96, TRUE },
+        { "wine_vdmx", -48, FW_NORMAL, 58, 48, 10, 10, 0, 96, TRUE },
+        { "wine_vdmx", -64, FW_NORMAL, 77, 64, 13, 13, 0, 96, TRUE },
+        { "wine_vdmx", -96, FW_NORMAL, 116, 96, 20, 20, 0, 96, TRUE },
+        { "", 0, 0, 0, 0, 0, 0, 0, 0, 0 }
+    };
+
+    static const struct font_data charset_1[] = /* Uses VDMX */
+    {
+        { "wine_vdmx", 10, FW_NORMAL, 10, 8, 2, 2, 0, 96, TRUE },
+        { "wine_vdmx", 11, FW_NORMAL, 11, 9, 2, 2, 0, 96, TRUE },
+        { "wine_vdmx", 12, FW_NORMAL, 12, 10, 2, 2, 0, 96, TRUE },
+        { "wine_vdmx", 13, FW_NORMAL, 13, 11, 2, 2, 0, 96, TRUE },
+        { "wine_vdmx", 14, FW_NORMAL, 13, 11, 2, 2, 0, 96, TRUE },
+        { "wine_vdmx", 15, FW_NORMAL, 13, 11, 2, 2, 0, 96, TRUE },
+        { "wine_vdmx", 16, FW_NORMAL, 16, 13, 3, 4, 0, 96, TRUE },
+        { "wine_vdmx", 17, FW_NORMAL, 16, 13, 3, 3, 0, 96, TRUE },
+        { "wine_vdmx", 18, FW_NORMAL, 16, 13, 3, 3, 0, 96, TRUE },
+        { "wine_vdmx", 19, FW_NORMAL, 19, 15, 4, 5, 0, 96, TRUE },
+        { "wine_vdmx", 20, FW_NORMAL, 20, 16, 4, 5, 0, 96, TRUE },
+        { "wine_vdmx", 21, FW_NORMAL, 21, 17, 4, 5, 0, 96, TRUE },
+        { "wine_vdmx", 22, FW_NORMAL, 22, 18, 4, 5, 0, 96, TRUE },
+        { "wine_vdmx", 23, FW_NORMAL, 23, 19, 4, 5, 0, 96, TRUE },
+        { "wine_vdmx", 24, FW_NORMAL, 23, 19, 4, 5, 0, 96, TRUE },
+        { "wine_vdmx", 25, FW_NORMAL, 25, 21, 4, 6, 0, 96, TRUE },
+        { "wine_vdmx", 26, FW_NORMAL, 26, 22, 4, 6, 0, 96, TRUE },
+        { "wine_vdmx", 27, FW_NORMAL, 27, 23, 4, 6, 0, 96, TRUE },
+        { "wine_vdmx", 28, FW_NORMAL, 27, 23, 4, 5, 0, 96, TRUE },
+        { "wine_vdmx", 29, FW_NORMAL, 29, 24, 5, 6, 0, 96, TRUE },
+        { "wine_vdmx", 30, FW_NORMAL, 29, 24, 5, 6, 0, 96, TRUE },
+        { "wine_vdmx", 31, FW_NORMAL, 29, 24, 5, 6, 0, 96, TRUE },
+        { "wine_vdmx", 32, FW_NORMAL, 32, 26, 6, 8, 0, 96, TRUE },
+        { "wine_vdmx", 48, FW_NORMAL, 48, 40, 8, 10, 0, 96, TRUE },
+        { "wine_vdmx", 64, FW_NORMAL, 64, 54, 10, 13, 0, 96, TRUE },
+        { "wine_vdmx", 96, FW_NORMAL, 95, 79, 16, 18, 0, 96, TRUE },
+        { "wine_vdmx", -10, FW_NORMAL, 12, 10, 2, 2, 0, 96, TRUE },
+        { "wine_vdmx", -11, FW_NORMAL, 13, 11, 2, 2, 0, 96, TRUE },
+        { "wine_vdmx", -12, FW_NORMAL, 16, 13, 3, 4, 0, 96, TRUE },
+        { "wine_vdmx", -13, FW_NORMAL, 16, 13, 3, 3, 0, 96, TRUE },
+        { "wine_vdmx", -14, FW_NORMAL, 19, 15, 4, 5, 0, 96, TRUE },
+        { "wine_vdmx", -15, FW_NORMAL, 20, 16, 4, 5, 0, 96, TRUE },
+        { "wine_vdmx", -16, FW_NORMAL, 21, 17, 4, 5, 0, 96, TRUE },
+        { "wine_vdmx", -17, FW_NORMAL, 22, 18, 4, 5, 0, 96, TRUE },
+        { "wine_vdmx", -18, FW_NORMAL, 23, 19, 4, 5, 0, 96, TRUE },
+        { "wine_vdmx", -19, FW_NORMAL, 25, 21, 4, 6, 0, 96, TRUE },
+        { "wine_vdmx", -20, FW_NORMAL, 26, 22, 4, 6, 0, 96, TRUE },
+        { "wine_vdmx", -21, FW_NORMAL, 27, 23, 4, 6, 0, 96, TRUE },
+        { "wine_vdmx", -22, FW_NORMAL, 27, 23, 4, 5, 0, 96, TRUE },
+        { "wine_vdmx", -23, FW_NORMAL, 29, 24, 5, 6, 0, 96, TRUE },
+        { "wine_vdmx", -24, FW_NORMAL, 32, 26, 6, 8, 0, 96, TRUE },
+        { "wine_vdmx", -25, FW_NORMAL, 32, 26, 6, 7, 0, 96, TRUE },
+        { "wine_vdmx", -26, FW_NORMAL, 33, 27, 6, 7, 0, 96, TRUE },
+        { "wine_vdmx", -27, FW_NORMAL, 35, 29, 6, 8, 0, 96, TRUE },
+        { "wine_vdmx", -28, FW_NORMAL, 36, 30, 6, 8, 0, 96, TRUE },
+        { "wine_vdmx", -29, FW_NORMAL, 36, 30, 6, 7, 0, 96, TRUE },
+        { "wine_vdmx", -30, FW_NORMAL, 38, 32, 6, 8, 0, 96, TRUE },
+        { "wine_vdmx", -31, FW_NORMAL, 39, 33, 6, 8, 0, 96, TRUE },
+        { "wine_vdmx", -32, FW_NORMAL, 40, 33, 7, 8, 0, 96, TRUE },
+        { "wine_vdmx", -48, FW_NORMAL, 60, 50, 10, 12, 0, 96, TRUE },
+        { "wine_vdmx", -64, FW_NORMAL, 81, 67, 14, 17, 0, 96, TRUE },
+        { "wine_vdmx", -96, FW_NORMAL, 119, 99, 20, 23, 0, 96, TRUE },
+        { "", 0, 0, 0, 0, 0, 0, 0, 0, 0 }
+    };
+
+    static const struct vdmx_data
+    {
+        WORD version;
+        BYTE bCharSet;
+        const struct font_data *fd;
+    } data[] =
+    {
+        { 0, 0, charset_0 },
+        { 0, 1, charset_1 },
+        { 1, 0, charset_0 },
+        { 1, 1, charset_1 }
+    };
+    int i;
+    DWORD size, num;
+    WORD *vdmx_header;
+    BYTE *ratio_rec;
+    char ttf_name[MAX_PATH];
+    void *res, *copy;
+
+    if (!pAddFontResourceExA)
+    {
+        win_skip("AddFontResourceExA unavailable\n");
+        return;
+    }
+
+    for (i = 0; i < sizeof(data) / sizeof(data[0]); i++)
+    {
+        res = get_res_data( "wine_vdmx.ttf", &size );
+
+        copy = HeapAlloc( GetProcessHeap(), 0, size );
+        memcpy( copy, res, size );
+        vdmx_header = find_ttf_table( copy, size, MS_MAKE_TAG('V','D','M','X') );
+        vdmx_header[0] = GET_BE_WORD( data[i].version );
+        ok( GET_BE_WORD( vdmx_header[1] ) == 1, "got %04x\n", GET_BE_WORD( vdmx_header[1] ) );
+        ok( GET_BE_WORD( vdmx_header[2] ) == 1, "got %04x\n", GET_BE_WORD( vdmx_header[2] ) );
+        ratio_rec = (BYTE *)&vdmx_header[3];
+        ratio_rec[0] = data[i].bCharSet;
+
+        write_tmp_file( copy, &size, ttf_name );
+        HeapFree( GetProcessHeap(), 0, copy );
+
+        ok( !is_truetype_font_installed("wine_vdmx"), "Already installed\n" );
+        num = pAddFontResourceExA( ttf_name, FR_PRIVATE, 0 );
+        if (!num) win_skip("Unable to add ttf font resource\n");
+        else
+        {
+            ok( is_truetype_font_installed("wine_vdmx"), "Not installed\n" );
+            test_height( hdc, data[i].fd );
+            pRemoveFontResourceExA( ttf_name, FR_PRIVATE, 0 );
+        }
+        DeleteFileA( ttf_name );
+    }
+}
+
+static void test_height_selection(void)
+{
+    static const struct font_data tahoma[] =
+    {
+        {"Tahoma", -12, FW_NORMAL, 14, 12, 2, 2, 0, 96, TRUE },
+        {"Tahoma", -24, FW_NORMAL, 29, 24, 5, 5, 0, 96, TRUE },
+        {"Tahoma", -48, FW_NORMAL, 58, 48, 10, 10, 0, 96, TRUE },
+        {"Tahoma", -96, FW_NORMAL, 116, 96, 20, 20, 0, 96, TRUE },
+        {"Tahoma", -192, FW_NORMAL, 232, 192, 40, 40, 0, 96, TRUE },
+        {"Tahoma", 12, FW_NORMAL, 12, 10, 2, 2, 0, 96, TRUE },
+        {"Tahoma", 24, FW_NORMAL, 24, 20, 4, 4, 0, 96, TRUE },
+        {"Tahoma", 48, FW_NORMAL, 48, 40, 8, 8, 0, 96, TRUE },
+        {"Tahoma", 96, FW_NORMAL, 96, 80, 16, 17, 0, 96, FALSE },
+        {"Tahoma", 192, FW_NORMAL, 192, 159, 33, 33, 0, 96, TRUE },
+        {"", 0, 0, 0, 0, 0, 0, 0, 0, 0 }
+    };
+    HDC hdc = CreateCompatibleDC(0);
+    assert(hdc);
+
+    test_height( hdc, tahoma );
+    test_height_selection_vdmx( hdc );
 
     DeleteDC(hdc);
 }
@@ -2740,21 +2992,6 @@ typedef struct
     USHORT usMaxContext;
 } TT_OS2_V2;
 #include "poppack.h"
-
-#ifdef WORDS_BIGENDIAN
-#define GET_BE_WORD(x) (x)
-#define GET_BE_DWORD(x) (x)
-#else
-#define GET_BE_WORD(x) MAKEWORD(HIBYTE(x), LOBYTE(x))
-#define GET_BE_DWORD(x) MAKELONG(GET_BE_WORD(HIWORD(x)), GET_BE_WORD(LOWORD(x)));
-#endif
-
-#define MS_MAKE_TAG(ch0, ch1, ch2, ch3) \
-                    ((DWORD)(BYTE)(ch0) | ((DWORD)(BYTE)(ch1) << 8) | \
-                    ((DWORD)(BYTE)(ch2) << 16) | ((DWORD)(BYTE)(ch3) << 24))
-#define MS_OS2_TAG MS_MAKE_TAG('O','S','/','2')
-#define MS_CMAP_TAG MS_MAKE_TAG('c','m','a','p')
-#define MS_NAME_TAG MS_MAKE_TAG('n','a','m','e')
 
 typedef struct
 {
@@ -3913,7 +4150,7 @@ static void test_GetTextMetrics2(const char *fontname, int font_height)
         SelectObject(hdc, of);
         DeleteObject(hf);
 
-        if (match_off_by_1(tm.tmAveCharWidth, ave_width) || width / height > 200)
+        if (match_off_by_1(tm.tmAveCharWidth, ave_width, FALSE) || width / height > 200)
             break;
     }
 
@@ -4497,48 +4734,6 @@ static void test_fullname2(void)
     test_fullname2_helper("@UnBatang");
     test_fullname2_helper("@UnDotum");
 
-}
-
-static BOOL write_ttf_file(const char *fontname, char *tmp_name)
-{
-    char tmp_path[MAX_PATH];
-    HRSRC rsrc;
-    void *rsrc_data;
-    DWORD rsrc_size;
-    HANDLE hfile;
-    BOOL ret;
-
-    SetLastError(0xdeadbeef);
-    rsrc = FindResource(GetModuleHandle(0), fontname, RT_RCDATA);
-    ok(rsrc != 0, "FindResource error %d\n", GetLastError());
-    if (!rsrc) return FALSE;
-    SetLastError(0xdeadbeef);
-    rsrc_data = LockResource(LoadResource(GetModuleHandle(0), rsrc));
-    ok(rsrc_data != 0, "LockResource error %d\n", GetLastError());
-    if (!rsrc_data) return FALSE;
-    SetLastError(0xdeadbeef);
-    rsrc_size = SizeofResource(GetModuleHandle(0), rsrc);
-    ok(rsrc_size != 0, "SizeofResource error %d\n", GetLastError());
-    if (!rsrc_size) return FALSE;
-
-    SetLastError(0xdeadbeef);
-    ret = GetTempPath(MAX_PATH, tmp_path);
-    ok(ret, "GetTempPath() error %d\n", GetLastError());
-    SetLastError(0xdeadbeef);
-    ret = GetTempFileName(tmp_path, "ttf", 0, tmp_name);
-    ok(ret, "GetTempFileName() error %d\n", GetLastError());
-
-    SetLastError(0xdeadbeef);
-    hfile = CreateFile(tmp_name, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, 0);
-    ok(hfile != INVALID_HANDLE_VALUE, "CreateFile() error %d\n", GetLastError());
-    if (hfile == INVALID_HANDLE_VALUE) return FALSE;
-
-    SetLastError(0xdeadbeef);
-    ret = WriteFile(hfile, rsrc_data, rsrc_size, &rsrc_size, NULL);
-    ok(ret, "WriteFile() error %d\n", GetLastError());
-
-    CloseHandle(hfile);
-    return ret;
 }
 
 static void test_GetGlyphOutline_empty_contour(void)

@@ -306,7 +306,7 @@ static NTSTATUS get_modem_status(int fd, DWORD* lpModemStat)
               (*lpModemStat & MS_CTS_ON)  ? "MS_CTS_ON  " : "");
         return STATUS_SUCCESS;
     }
-    WARN("ioctl failed\n");
+    WARN("TIOCMGET err %s\n", strerror(errno));
     status = FILE_GetNtStatus();
 #endif
     return status;
@@ -781,8 +781,7 @@ static NTSTATUS set_XOn(int fd)
  */
 typedef struct serial_irq_info
 {
-    int rx , tx, frame, overrun, parity, brk, buf_overrun;
-    DWORD temt;
+    int rx, tx, frame, overrun, parity, brk, buf_overrun, temt;
 }serial_irq_info;
 
 /***********************************************************************
@@ -869,6 +868,7 @@ static DWORD check_events(int fd, DWORD mask,
     TRACE("old->parity      0x%08x vs. new->parity      0x%08x\n", old->parity, new->parity);
     TRACE("old->brk         0x%08x vs. new->brk         0x%08x\n", old->brk, new->brk);
     TRACE("old->buf_overrun 0x%08x vs. new->buf_overrun 0x%08x\n", old->buf_overrun, new->buf_overrun);
+    TRACE("old->temt        0x%08x vs. new->temt        0x%08x\n", old->temt, new->temt);
 
     if (old->brk != new->brk) ret |= EV_BREAK;
     if ((old_mstat & MS_CTS_ON ) != (new_mstat & MS_CTS_ON )) ret |= EV_CTS;
@@ -928,7 +928,11 @@ static DWORD CALLBACK wait_for_event(LPVOID arg)
             NtDelayExecution(FALSE, &time);
             get_irq_info(fd, &new_irq_info);
             if (get_modem_status(fd, &new_mstat))
+            {
                 TRACE("get_modem_status failed\n");
+                *commio->events = 0;
+                break;
+            }
             *commio->events = check_events(fd, commio->evtmask,
                                            &new_irq_info, &commio->irq_info,
                                            new_mstat, commio->mstat);

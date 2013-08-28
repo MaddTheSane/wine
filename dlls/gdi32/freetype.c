@@ -4512,6 +4512,8 @@ static LONG load_VDMX(GdiFont *font, LONG height)
 
 	TRACE("Ratios[%d] %d  %d : %d -> %d\n", i, ratio.bCharSet, ratio.xRatio, ratio.yStartRatio, ratio.yEndRatio);
 
+        if (!ratio.bCharSet) continue;
+
 	if((ratio.xRatio == 0 &&
 	    ratio.yStartRatio == 0 &&
 	    ratio.yEndRatio == 0) ||
@@ -4526,10 +4528,7 @@ static LONG load_VDMX(GdiFont *font, LONG height)
 	    }
     }
 
-    if(offset == -1) {
-	FIXME("No suitable ratio found\n");
-	return ppem;
-    }
+    if(offset == -1) return 0;
 
     if(get_font_data(font, MS_VDMX_TAG, offset, &group, 4) != GDI_ERROR) {
 	USHORT recs;
@@ -4576,6 +4575,31 @@ static LONG load_VDMX(GdiFont *font, LONG height)
 	    if(!font->yMax) {
 		ppem = 0;
 		TRACE("ppem not found for height %d\n", height);
+	    }
+	} else {
+	    ppem = -height;
+	    if(ppem < startsz || ppem > endsz)
+            {
+                ppem = 0;
+                goto end;
+            }
+
+	    for(i = 0; i < recs; i++) {
+		USHORT yPelHeight;
+		yPelHeight = GET_BE_WORD(vTable[i * 3]);
+
+		if(yPelHeight > ppem)
+                {
+                    ppem = 0;
+                    break; /* failed */
+                }
+
+		if(yPelHeight == ppem) {
+		    font->yMax = GET_BE_WORD(vTable[(i * 3) + 1]);
+		    font->yMin = GET_BE_WORD(vTable[(i * 3) + 2]);
+                    TRACE("ppem %d found; yMax=%d  yMin=%d\n", ppem, font->yMax, font->yMin);
+		    break;
+		}
 	    }
 	}
 	end:

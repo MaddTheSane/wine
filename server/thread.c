@@ -75,7 +75,9 @@ struct thread_wait
     struct thread          *thread;     /* owner thread */
     int                     count;      /* count of objects */
     int                     flags;
+    int                     abandoned;
     enum select_op          select;
+    client_ptr_t            key;        /* wait key for keyed events */
     client_ptr_t            cookie;     /* magic cookie to return to client */
     timeout_t               timeout;
     struct timeout_user    *user;
@@ -96,7 +98,7 @@ struct thread_apc
 };
 
 static void dump_thread_apc( struct object *obj, int verbose );
-static int thread_apc_signaled( struct object *obj, struct thread *thread );
+static int thread_apc_signaled( struct object *obj, struct wait_queue_entry *entry );
 static void thread_apc_destroy( struct object *obj );
 static void clear_apc_queue( struct list *queue );
 
@@ -124,7 +126,7 @@ static const struct object_ops thread_apc_ops =
 /* thread operations */
 
 static void dump_thread( struct object *obj, int verbose );
-static int thread_signaled( struct object *obj, struct thread *thread );
+static int thread_signaled( struct object *obj, struct wait_queue_entry *entry );
 static unsigned int thread_map_access( struct object *obj, unsigned int access );
 static void thread_poll_event( struct fd *fd, int event );
 static void destroy_thread( struct object *obj );
@@ -321,7 +323,7 @@ static void dump_thread( struct object *obj, int verbose )
              thread->id, thread->unix_pid, thread->unix_tid, thread->state );
 }
 
-static int thread_signaled( struct object *obj, struct thread *thread )
+static int thread_signaled( struct object *obj, struct wait_queue_entry *entry )
 {
     struct thread *mythread = (struct thread *)obj;
     return (mythread->state == TERMINATED);
@@ -344,7 +346,7 @@ static void dump_thread_apc( struct object *obj, int verbose )
     fprintf( stderr, "APC owner=%p type=%u\n", apc->owner, apc->call.type );
 }
 
-static int thread_apc_signaled( struct object *obj, struct thread *thread )
+static int thread_apc_signaled( struct object *obj, struct wait_queue_entry *entry )
 {
     struct thread_apc *apc = (struct thread_apc *)obj;
     return apc->executed;
@@ -543,6 +545,26 @@ void remove_queue( struct object *obj, struct wait_queue_entry *entry )
     release_object( obj );
 }
 
+struct thread *get_wait_queue_thread( struct wait_queue_entry *entry )
+{
+    return entry->wait->thread;
+}
+
+enum select_op get_wait_queue_select_op( struct wait_queue_entry *entry )
+{
+    return entry->wait->select;
+}
+
+client_ptr_t get_wait_queue_key( struct wait_queue_entry *entry )
+{
+    return entry->wait->key;
+}
+
+void make_wait_abandoned( struct wait_queue_entry *entry )
+{
+    entry->wait->abandoned = 1;
+}
+
 /* finish waiting */
 static void end_wait( struct thread *thread )
 {
@@ -574,12 +596,13 @@ static int wait_on( const select_op_t *select_op, unsigned int count, struct obj
     wait->select  = select_op->op;
     wait->user    = NULL;
     wait->timeout = timeout;
+    wait->abandoned = 0;
     current->wait = wait;
 
     for (i = 0, entry = wait->queues; i < count; i++, entry++)
     {
         struct object *obj = objects[i];
-        entry->thread = current;
+        entry->wait = wait;
         if (!obj->ops->add_queue( obj, entry ))
         {
             wait->count = i;
@@ -612,7 +635,7 @@ static int wait_on_handles( const select_op_t *select_op, unsigned int count, co
 /* check if the thread waiting condition is satisfied */
 static int check_wait( struct thread *thread )
 {
-    int i, signaled;
+    int i;
     struct thread_wait *wait = thread->wait;
     struct wait_queue_entry *entry;
 
@@ -630,25 +653,22 @@ static int check_wait( struct thread *thread )
         /* Note: we must check them all anyway, as some objects may
          * want to do something when signaled, even if others are not */
         for (i = 0, entry = wait->queues; i < wait->count; i++, entry++)
-            not_ok |= !entry->obj->ops->signaled( entry->obj, thread );
+            not_ok |= !entry->obj->ops->signaled( entry->obj, entry );
         if (not_ok) goto other_checks;
         /* Wait satisfied: tell it to all objects */
-        signaled = 0;
         for (i = 0, entry = wait->queues; i < wait->count; i++, entry++)
-            if (entry->obj->ops->satisfied( entry->obj, thread ))
-                signaled = STATUS_ABANDONED_WAIT_0;
-        return signaled;
+            entry->obj->ops->satisfied( entry->obj, entry );
+        return wait->abandoned ? STATUS_ABANDONED_WAIT_0 : STATUS_WAIT_0;
     }
     else
     {
         for (i = 0, entry = wait->queues; i < wait->count; i++, entry++)
         {
-            if (!entry->obj->ops->signaled( entry->obj, thread )) continue;
+            if (!entry->obj->ops->signaled( entry->obj, entry )) continue;
             /* Wait satisfied: tell it to the object */
-            signaled = i;
-            if (entry->obj->ops->satisfied( entry->obj, thread ))
-                signaled = i + STATUS_ABANDONED_WAIT_0;
-            return signaled;
+            entry->obj->ops->satisfied( entry->obj, entry );
+            if (wait->abandoned) i += STATUS_ABANDONED_WAIT_0;
+            return i;
         }
     }
 
@@ -698,6 +718,33 @@ int wake_thread( struct thread *thread )
     return count;
 }
 
+/* attempt to wake up a thread from a wait queue entry, assuming that it is signaled */
+int wake_thread_queue_entry( struct wait_queue_entry *entry )
+{
+    struct thread_wait *wait = entry->wait;
+    struct thread *thread = wait->thread;
+    int signaled;
+    client_ptr_t cookie;
+
+    if (thread->wait != wait) return 0;  /* not the current wait */
+    if (thread->process->suspend + thread->suspend > 0) return 0;  /* cannot acquire locks */
+
+    assert( wait->select != SELECT_WAIT_ALL );
+
+    signaled = entry - wait->queues;
+    entry->obj->ops->satisfied( entry->obj, entry );
+    if (wait->abandoned) signaled += STATUS_ABANDONED_WAIT_0;
+
+    cookie = wait->cookie;
+    if (debug_level) fprintf( stderr, "%04x: *wakeup* signaled=%d\n", thread->id, signaled );
+    end_wait( thread );
+
+    if (send_thread_wakeup( thread, cookie, signaled ) != -1)
+        wake_thread( thread );  /* check other waits too */
+
+    return 1;
+}
+
 /* thread wait timeout */
 static void thread_timeout( void *ptr )
 {
@@ -737,6 +784,7 @@ static timeout_t select_on( const select_op_t *select_op, data_size_t op_size, c
 {
     int ret;
     unsigned int count;
+    struct object *object;
 
     if (timeout <= 0) timeout = current_time - timeout;
 
@@ -771,6 +819,17 @@ static timeout_t select_on( const select_op_t *select_op, data_size_t op_size, c
             /* check if we woke ourselves up */
             if (!current->wait) return timeout;
         }
+        break;
+
+    case SELECT_KEYED_EVENT_WAIT:
+    case SELECT_KEYED_EVENT_RELEASE:
+        object = (struct object *)get_keyed_event_obj( current->process, select_op->keyed_event.handle,
+                         select_op->op == SELECT_KEYED_EVENT_WAIT ? KEYEDEVENT_WAIT : KEYEDEVENT_WAKE );
+        if (!object) return timeout;
+        ret = wait_on( select_op, 1, &object, flags, timeout );
+        release_object( object );
+        if (!ret) return timeout;
+        current->wait->key = select_op->keyed_event.key;
         break;
 
     default:
@@ -809,7 +868,7 @@ void wake_up( struct object *obj, int max )
     LIST_FOR_EACH( ptr, &obj->wait_queue )
     {
         struct wait_queue_entry *entry = LIST_ENTRY( ptr, struct wait_queue_entry, entry );
-        if (!wake_thread( entry->thread )) continue;
+        if (!wake_thread( get_wait_queue_thread( entry ))) continue;
         if (max && !--max) break;
         /* restart at the head of the list since a wake up can change the object wait queue */
         ptr = &obj->wait_queue;
