@@ -1117,8 +1117,8 @@ struct comclassredirect_data {
 
 static void test_find_com_redirection(HANDLE handle, const GUID *clsid, const GUID *tlid, ULONG exid, int line)
 {
-    struct comclassredirect_data *comclass;
-    ACTCTX_SECTION_KEYED_DATA data;
+    struct comclassredirect_data *comclass, *comclass2;
+    ACTCTX_SECTION_KEYED_DATA data, data2;
     BOOL ret;
 
     memset(&data, 0xfe, sizeof(data));
@@ -1127,13 +1127,7 @@ static void test_find_com_redirection(HANDLE handle, const GUID *clsid, const GU
     ret = pFindActCtxSectionGuid(0, NULL,
                                     ACTIVATION_CONTEXT_SECTION_COM_SERVER_REDIRECTION,
                                     clsid, &data);
-todo_wine
     ok_(__FILE__, line)(ret, "FindActCtxSectionGuid failed: %u\n", GetLastError());
-    if(!ret)
-    {
-        skip("couldn't find guid %s\n", debugstr_guid(clsid));
-        return;
-    }
 
     comclass = (struct comclassredirect_data*)data.lpData;
 
@@ -1184,16 +1178,29 @@ todo_wine
                 ok_(__FILE__, line)(comclass->miscstatusdocprint != 0, "got miscstatusdocprint 0x%08x\n", comclass->miscstatusdocprint);
         }
     }
-
+todo_wine {
     ok_(__FILE__, line)(data.lpSectionGlobalData != NULL, "data.lpSectionGlobalData == NULL\n");
     ok_(__FILE__, line)(data.ulSectionGlobalDataLength > 0, "data.ulSectionGlobalDataLength=%u\n",
        data.ulSectionGlobalDataLength);
+}
     ok_(__FILE__, line)(data.lpSectionBase != NULL, "data.lpSectionBase == NULL\n");
     ok_(__FILE__, line)(data.ulSectionTotalLength > 0, "data.ulSectionTotalLength=%u\n",
        data.ulSectionTotalLength);
     ok_(__FILE__, line)(data.hActCtx == NULL, "data.hActCtx=%p\n", data.hActCtx);
     ok_(__FILE__, line)(data.ulAssemblyRosterIndex == exid, "data.ulAssemblyRosterIndex=%u, expected %u\n",
        data.ulAssemblyRosterIndex, exid);
+
+    /* generated guid for this class works as key guid in search */
+    memset(&data2, 0xfe, sizeof(data2));
+    data2.cbSize = sizeof(data2);
+    ret = pFindActCtxSectionGuid(0, NULL,
+                                    ACTIVATION_CONTEXT_SECTION_COM_SERVER_REDIRECTION,
+                                    &comclass->alias, &data2);
+    ok_(__FILE__, line)(ret, "FindActCtxSectionGuid failed: %u\n", GetLastError());
+
+    comclass2 = (struct comclassredirect_data*)data2.lpData;
+    ok_(__FILE__, line)(comclass->size == comclass2->size, "got wrong data length %d, expected %d\n", comclass2->size, comclass->size);
+    ok_(__FILE__, line)(!memcmp(comclass, comclass2, comclass->size), "got wrong data\n");
 }
 
 static void test_wndclass_section(void)

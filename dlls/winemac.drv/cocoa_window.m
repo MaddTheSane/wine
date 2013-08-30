@@ -537,6 +537,7 @@ static inline void fix_generic_modifiers_by_device(NSUInteger* modifiers)
         [liveResizeDisplayTimer invalidate];
         [liveResizeDisplayTimer release];
         [queue release];
+        [latentChildWindows release];
         [latentParentWindow release];
         [shape release];
         [super dealloc];
@@ -670,6 +671,121 @@ static inline void fix_generic_modifiers_by_device(NSUInteger* modifiers)
                                forWindow:self];
     }
 
+    - (BOOL) addChildWineWindow:(WineWindow*)child assumeVisible:(BOOL)assumeVisible
+    {
+        BOOL reordered = FALSE;
+
+        if ([self isVisible] && (assumeVisible || [child isVisible]))
+        {
+            if ([self level] > [child level])
+                [child setLevel:[self level]];
+            [self addChildWindow:child ordered:NSWindowAbove];
+            [latentChildWindows removeObjectIdenticalTo:child];
+            child.latentParentWindow = nil;
+            reordered = TRUE;
+        }
+        else
+        {
+            if (!latentChildWindows)
+                latentChildWindows = [[NSMutableArray alloc] init];
+            if (![latentChildWindows containsObject:child])
+                [latentChildWindows addObject:child];
+            child.latentParentWindow = self;
+        }
+
+        return reordered;
+    }
+
+    - (BOOL) addChildWineWindow:(WineWindow*)child
+    {
+        return [self addChildWineWindow:child assumeVisible:FALSE];
+    }
+
+    - (void) removeChildWineWindow:(WineWindow*)child
+    {
+        [self removeChildWindow:child];
+        if (child.latentParentWindow == self)
+            child.latentParentWindow = nil;
+        [latentChildWindows removeObjectIdenticalTo:child];
+    }
+
+    - (BOOL) becameEligibleParentOrChild
+    {
+        BOOL reordered = FALSE;
+        NSUInteger count;
+
+        // If we aren't visible currently, we assume that we should be and soon
+        // will be.  So, if the latent parent is visible that's enough to assume
+        // we can establish the parent-child relationship in Cocoa.  That will
+        // actually make us visible, which is fine.
+        if ([latentParentWindow addChildWineWindow:self assumeVisible:TRUE])
+            reordered = TRUE;
+
+        // Here, though, we may not actually be visible yet and adding a child
+        // won't make us visible.  The caller will have to call this method
+        // again after actually making us visible.
+        if ([self isVisible] && (count = [latentChildWindows count]))
+        {
+            NSMutableIndexSet* indexesToRemove = [NSMutableIndexSet indexSet];
+            NSUInteger i;
+
+            for (i = 0; i < count; i++)
+            {
+                WineWindow* child = [latentChildWindows objectAtIndex:i];
+                if ([child isVisible])
+                {
+                    if (child.latentParentWindow == self)
+                    {
+                        if ([self level] > [child level])
+                            [child setLevel:[self level]];
+                        [self addChildWindow:child ordered:NSWindowAbove];
+                        child.latentParentWindow = nil;
+                        reordered = TRUE;
+                    }
+                    else
+                        ERR(@"shouldn't happen: %@ thinks %@ is a latent child, but it doesn't agree\n", self, child);
+                    [indexesToRemove addIndex:i];
+                }
+            }
+
+            [latentChildWindows removeObjectsAtIndexes:indexesToRemove];
+        }
+
+        return reordered;
+    }
+
+    - (void) becameIneligibleParentOrChild
+    {
+        WineWindow* parent = (WineWindow*)[self parentWindow];
+        NSArray* childWindows = [self childWindows];
+
+        if (parent)
+        {
+            if (!parent->latentChildWindows)
+                parent->latentChildWindows = [[NSMutableArray alloc] init];
+            [parent->latentChildWindows insertObject:self atIndex:0];
+            self.latentParentWindow = parent;
+            [parent removeChildWindow:self];
+        }
+
+        if ([childWindows count])
+        {
+            WineWindow* child;
+
+            childWindows = [[childWindows copy] autorelease];
+            for (child in childWindows)
+            {
+                child.latentParentWindow = self;
+                [self removeChildWindow:child];
+            }
+
+            if (latentChildWindows)
+                [latentChildWindows replaceObjectsInRange:NSMakeRange(0, 0) withObjectsFromArray:childWindows];
+            else
+                latentChildWindows = [childWindows mutableCopy];
+        }
+    }
+
     // Determine if, among Wine windows, this window is directly above or below
     // a given other Wine window with no other Wine window intervening.
     // Intervening non-Wine windows are ignored.
@@ -786,14 +902,9 @@ static inline void fix_generic_modifiers_by_device(NSUInteger* modifiers)
 
             NSDisableScreenUpdates();
 
-            if (latentParentWindow)
-            {
-                if ([latentParentWindow level] > [self level])
-                    [self setLevel:[latentParentWindow level]];
-                [latentParentWindow addChildWindow:self ordered:NSWindowAbove];
-                self.latentParentWindow = nil;
+            if ([self becameEligibleParentOrChild])
                 needAdjustWindowLevels = TRUE;
-            }
+
             if (prev || next)
             {
                 WineWindow* other = [prev isVisible] ? prev : next;
@@ -831,6 +942,10 @@ static inline void fix_generic_modifiers_by_device(NSUInteger* modifiers)
                 [self orderFront:nil];
                 needAdjustWindowLevels = TRUE;
             }
+
+            if ([self becameEligibleParentOrChild])
+                needAdjustWindowLevels = TRUE;
+
             if (needAdjustWindowLevels)
             {
                 if (!wasVisible && fullscreen && [self isOnActiveSpace])
@@ -867,8 +982,8 @@ static inline void fix_generic_modifiers_by_device(NSUInteger* modifiers)
 
         if ([self isMiniaturized])
             pendingMinimize = TRUE;
-        self.latentParentWindow = [self parentWindow];
-        [latentParentWindow removeChildWindow:self];
+
+        [self becameIneligibleParentOrChild];
         [self orderOut:nil];
         if (wasVisible && wasOnActiveSpace && fullscreen)
             [controller updateFullscreenWindows];
@@ -949,19 +1064,13 @@ static inline void fix_generic_modifiers_by_device(NSUInteger* modifiers)
 
     - (void) setMacDrvParentWindow:(WineWindow*)parent
     {
-        if ([self parentWindow] != parent)
+        WineWindow* oldParent = (WineWindow*)[self parentWindow];
+        if ((oldParent && oldParent != parent) || (!oldParent && latentParentWindow != parent))
         {
-            [[self parentWindow] removeChildWindow:self];
-            self.latentParentWindow = nil;
-            if ([self isVisible] && parent)
-            {
-                if ([parent level] > [self level])
-                    [self setLevel:[parent level]];
-                [parent addChildWindow:self ordered:NSWindowAbove];
+            [oldParent removeChildWineWindow:self];
+            [latentParentWindow removeChildWineWindow:self];
+            if ([parent addChildWineWindow:self])
                 [[WineApplicationController sharedController] adjustWindowLevels];
-            }
-            else
-                self.latentParentWindow = parent;
         }
     }
 
@@ -1119,26 +1228,12 @@ static inline void fix_generic_modifiers_by_device(NSUInteger* modifiers)
     /* We don't call this.  It's the action method of the items in the Window menu. */
     - (void) makeKeyAndOrderFront:(id)sender
     {
-        WineApplicationController* controller = [WineApplicationController sharedController];
-        WineWindow* front = [controller frontWineWindow];
-        BOOL wasVisible = [self isVisible];
-
         if (![self isKeyWindow] && !self.disabled && !self.noActivate)
-            [controller windowGotFocus:self];
+            [[WineApplicationController sharedController] windowGotFocus:self];
 
-        if (front && [self level] < [front level])
-            [self setLevel:[front level]];
-        [self orderFront:nil];
-        if (!wasVisible && fullscreen && [self isOnActiveSpace])
-            [controller updateFullscreenWindows];
-        [controller adjustWindowLevels];
-
-        if (pendingMinimize)
-        {
-            ignore_windowMiniaturize = TRUE;
-            [self miniaturize:nil];
-            pendingMinimize = FALSE;
-        }
+        if ([self isMiniaturized])
+            [self deminiaturize:nil];
+        [self orderBelow:nil orAbove:nil activate:NO];
     }
 
     - (void) sendEvent:(NSEvent*)event
@@ -1288,6 +1383,8 @@ static inline void fix_generic_modifiers_by_device(NSUInteger* modifiers)
 
         ignore_windowDeminiaturize = FALSE;
 
+        [self becameEligibleParentOrChild];
+
         if (fullscreen && [self isOnActiveSpace])
             [controller updateFullscreenWindows];
         [controller adjustWindowLevels];
@@ -1368,8 +1465,28 @@ static inline void fix_generic_modifiers_by_device(NSUInteger* modifiers)
         return NO;
     }
 
+    - (void) windowWillClose:(NSNotification*)notification
+    {
+        WineWindow* child;
+
+        if (latentParentWindow)
+        {
+            [latentParentWindow->latentChildWindows removeObjectIdenticalTo:self];
+            self.latentParentWindow = nil;
+        }
+
+        for (child in latentChildWindows)
+        {
+            if (child.latentParentWindow == self)
+                child.latentParentWindow = nil;
+        }
+        [latentChildWindows removeAllObjects];
+    }
+
     - (void)windowWillMiniaturize:(NSNotification *)notification
     {
+        [self becameIneligibleParentOrChild];
+
         if (!ignore_windowMiniaturize)
         {
             macdrv_event* event;
