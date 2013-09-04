@@ -604,7 +604,7 @@ static void free_parameter_state(struct d3dx_parameter *param, BOOL element, BOO
         switch (param->type)
         {
             case D3DXPT_STRING:
-                HeapFree(GetProcessHeap(), 0, *(LPSTR *)param->data);
+                HeapFree(GetProcessHeap(), 0, *(char **)param->data);
                 if (!child) HeapFree(GetProcessHeap(), 0, param->data);
                 break;
 
@@ -621,7 +621,7 @@ static void free_parameter_state(struct d3dx_parameter *param, BOOL element, BOO
                 }
                 else
                 {
-                    HeapFree(GetProcessHeap(), 0, *(LPSTR *)param->data);
+                    HeapFree(GetProcessHeap(), 0, *(char **)param->data);
                 }
                 if (!child) HeapFree(GetProcessHeap(), 0, param->data);
                 break;
@@ -637,7 +637,7 @@ static void free_parameter_state(struct d3dx_parameter *param, BOOL element, BOO
                 }
                 else
                 {
-                    HeapFree(GetProcessHeap(), 0, *(LPSTR *)param->data);
+                    HeapFree(GetProcessHeap(), 0, *(char **)param->data);
                 }
                 /* samplers have always own data, so free that */
                 HeapFree(GetProcessHeap(), 0, param->data);
@@ -654,7 +654,7 @@ static void free_parameter_state(struct d3dx_parameter *param, BOOL element, BOO
         {
             if (st != ST_CONSTANT)
             {
-                HeapFree(GetProcessHeap(), 0, *(LPSTR *)param->data);
+                HeapFree(GetProcessHeap(), 0, *(char **)param->data);
             }
             HeapFree(GetProcessHeap(), 0, param->data);
         }
@@ -3368,11 +3368,11 @@ static HRESULT WINAPI ID3DXEffectImpl_CloneEffect(ID3DXEffect *iface,
     return E_NOTIMPL;
 }
 
-static HRESULT WINAPI ID3DXEffectImpl_SetRawValue(ID3DXEffect* iface, D3DXHANDLE parameter, LPCVOID data, UINT byte_offset, UINT bytes)
+static HRESULT WINAPI ID3DXEffectImpl_SetRawValue(ID3DXEffect *iface,
+        D3DXHANDLE parameter, const void *data, UINT byte_offset, UINT bytes)
 {
-    struct ID3DXEffectImpl *This = impl_from_ID3DXEffect(iface);
-
-    FIXME("(%p)->(%p, %p, %u, %u): stub\n", This, parameter, data, byte_offset, bytes);
+    FIXME("iface %p, parameter %p, data %p, byte_offset %u, bytes %u stub!\n",
+            iface, parameter, data, byte_offset, bytes);
 
     return E_NOTIMPL;
 }
@@ -4417,7 +4417,7 @@ static HRESULT d3dx9_parse_data(struct d3dx_parameter *param, const char **ptr, 
     {
         case D3DXPT_STRING:
             /* re-read with size (sizeof(DWORD) = 4) */
-            hr = d3dx9_parse_name((LPSTR *)param->data, *ptr - 4);
+            hr = d3dx9_parse_name((char **)param->data, *ptr - 4);
             if (hr != D3D_OK)
             {
                 WARN("Failed to parse string data\n");

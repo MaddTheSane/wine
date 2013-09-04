@@ -160,6 +160,9 @@ static inline void fix_generic_modifiers_by_device(NSUInteger* modifiers)
 
     - (void) updateColorSpace;
 
+    - (BOOL) becameEligibleParentOrChild;
+    - (void) becameIneligibleChild;
+
 @end
 
 
@@ -626,6 +629,31 @@ static inline void fix_generic_modifiers_by_device(NSUInteger* modifiers)
         if (self.floating != state->floating)
         {
             self.floating = state->floating;
+            if (state->floating)
+            {
+                // Became floating.  If child of non-floating window, make that
+                // relationship latent.
+                WineWindow* parent = (WineWindow*)[self parentWindow];
+                if (parent && !parent.floating)
+                    [self becameIneligibleChild];
+            }
+            else
+            {
+                // Became non-floating.  If parent of floating children, make that
+                // relationship latent.
+                WineWindow* child;
+                for (child in [[[self childWindows] copy] autorelease])
+                {
+                    if (child.floating)
+                        [child becameIneligibleChild];
+                }
+            }
+
+            // Check our latent relationships.  If floating status was the only
+            // reason they were latent, then make them active.
+            if ([self isVisible])
+                [self becameEligibleParentOrChild];
+
             [[WineApplicationController sharedController] adjustWindowLevels];
         }
 
@@ -675,7 +703,7 @@ static inline void fix_generic_modifiers_by_device(NSUInteger* modifiers)
     {
         BOOL reordered = FALSE;
 
-        if ([self isVisible] && (assumeVisible || [child isVisible]))
+        if ([self isVisible] && (assumeVisible || [child isVisible]) && (self.floating || !child.floating))
         {
             if ([self level] > [child level])
                 [child setLevel:[self level]];
@@ -714,12 +742,15 @@ static inline void fix_generic_modifiers_by_device(NSUInteger* modifiers)
         BOOL reordered = FALSE;
         NSUInteger count;
 
-        // If we aren't visible currently, we assume that we should be and soon
-        // will be.  So, if the latent parent is visible that's enough to assume
-        // we can establish the parent-child relationship in Cocoa.  That will
-        // actually make us visible, which is fine.
-        if ([latentParentWindow addChildWineWindow:self assumeVisible:TRUE])
-            reordered = TRUE;
+        if (latentParentWindow.floating || !self.floating)
+        {
+            // If we aren't visible currently, we assume that we should be and soon
+            // will be.  So, if the latent parent is visible that's enough to assume
+            // we can establish the parent-child relationship in Cocoa.  That will
+            // actually make us visible, which is fine.
+            if ([latentParentWindow addChildWineWindow:self assumeVisible:TRUE])
+                reordered = TRUE;
+        }
 
         // Here, though, we may not actually be visible yet and adding a child
         // won't make us visible.  The caller will have to call this method
@@ -732,7 +763,7 @@ static inline void fix_generic_modifiers_by_device(NSUInteger* modifiers)
             for (i = 0; i < count; i++)
             {
                 WineWindow* child = [latentChildWindows objectAtIndex:i];
-                if ([child isVisible])
+                if ([child isVisible] && (self.floating || !child.floating))
                 {
                     if (child.latentParentWindow == self)
                     {
@@ -754,11 +785,9 @@ static inline void fix_generic_modifiers_by_device(NSUInteger* modifiers)
         return reordered;
     }
 
-    - (void) becameIneligibleParentOrChild
+    - (void) becameIneligibleChild
     {
         WineWindow* parent = (WineWindow*)[self parentWindow];
-        NSArray* childWindows = [self childWindows];
-
         if (parent)
         {
             if (!parent->latentChildWindows)
@@ -767,6 +796,13 @@ static inline void fix_generic_modifiers_by_device(NSUInteger* modifiers)
             self.latentParentWindow = parent;
             [parent removeChildWindow:self];
         }
+    }
+
+    - (void) becameIneligibleParentOrChild
+    {
+        NSArray* childWindows = [self childWindows];
+
+        [self becameIneligibleChild];
 
         if ([childWindows count])
         {
@@ -839,7 +875,8 @@ static inline void fix_generic_modifiers_by_device(NSUInteger* modifiers)
     {
         NSMutableArray* windowNumbers;
         NSNumber* childWindowNumber;
-        NSUInteger otherIndex;
+        NSUInteger otherIndex, limit;
+        NSArray* origChildren;
         NSMutableArray* children;
 
         // Get the z-order from the window server and modify it to reflect the
@@ -852,7 +889,8 @@ static inline void fix_generic_modifiers_by_device(NSUInteger* modifiers)
 
         // Get our child windows and sort them in the reverse of the desired
         // z-order (back-to-front).
-        children = [[[self childWindows] mutableCopy] autorelease];
+        origChildren = [self childWindows];
+        children = [[origChildren mutableCopy] autorelease];
         [children sortWithOptions:NSSortStable
                   usingComparator:^NSComparisonResult(id obj1, id obj2){
             NSNumber* window1Number = [NSNumber numberWithInteger:[obj1 windowNumber]];
@@ -875,6 +913,16 @@ static inline void fix_generic_modifiers_by_device(NSUInteger* modifiers)
 
             return NSOrderedSame;
         }];
+
+        // If the current and desired children arrays match up to a point, leave
+        // those matching children alone.
+        limit = MIN([origChildren count], [children count]);
+        for (otherIndex = 0; otherIndex < limit; otherIndex++)
+        {
+            if ([origChildren objectAtIndex:otherIndex] != [children objectAtIndex:otherIndex])
+                break;
+        }
+        [children removeObjectsInRange:NSMakeRange(0, otherIndex)];
 
         // Remove all of the child windows and re-add them back-to-front so they
         // are in the desired order.

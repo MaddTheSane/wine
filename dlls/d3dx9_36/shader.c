@@ -174,7 +174,7 @@ HRESULT WINAPI D3DXFindShaderComment(const DWORD *byte_code, DWORD fourcc, const
             if (*(ptr + 1) == fourcc)
             {
                 UINT ctab_size = (comment_size - 1) * sizeof(DWORD);
-                LPCVOID ctab_data = ptr + 2;
+                const void *ctab_data = ptr + 2;
                 if (size)
                     *size = ctab_size;
                 if (data)
@@ -264,7 +264,8 @@ error:
     return HRESULT_FROM_WIN32(GetLastError());
 }
 
-static HRESULT WINAPI d3dincludefromfile_close(ID3DXInclude *iface, LPCVOID data) {
+static HRESULT WINAPI d3dincludefromfile_close(ID3DXInclude *iface, const void *data)
+{
     HeapFree(GetProcessHeap(), 0, *((char **)data - 1));
     HeapFree(GetProcessHeap(), 0, (char **)data - 1);
     return S_OK;
@@ -305,13 +306,14 @@ HRESULT WINAPI D3DXAssembleShaderFromFileA(const char *filename, const D3DXMACRO
 HRESULT WINAPI D3DXAssembleShaderFromFileW(const WCHAR *filename, const D3DXMACRO *defines,
         ID3DXInclude *include, DWORD flags, ID3DXBuffer **shader, ID3DXBuffer **error_messages)
 {
-    void *buffer;
+    const void *buffer;
     DWORD len;
     HRESULT hr;
     struct D3DXIncludeImpl includefromfile;
+    char *filename_a;
 
-    if(FAILED(map_view_of_file(filename, &buffer, &len)))
-        return D3DXERR_INVALIDDATA;
+    TRACE("filename %s, defines %p, include %p, flags %#x, shader %p, error_messages %p.\n",
+            debugstr_w(filename), defines, include, flags, shader, error_messages);
 
     if(!include)
     {
@@ -319,10 +321,23 @@ HRESULT WINAPI D3DXAssembleShaderFromFileW(const WCHAR *filename, const D3DXMACR
         include = &includefromfile.ID3DXInclude_iface;
     }
 
-    hr = D3DXAssembleShader(buffer, len, defines, include, flags,
-                            shader, error_messages);
+    len = WideCharToMultiByte(CP_ACP, 0, filename, -1, NULL, 0, NULL, NULL);
+    filename_a = HeapAlloc(GetProcessHeap(), 0, len * sizeof(char));
+    if (!filename_a)
+        return E_OUTOFMEMORY;
+    WideCharToMultiByte(CP_ACP, 0, filename, -1, filename_a, len, NULL, NULL);
 
-    UnmapViewOfFile(buffer);
+    hr = ID3DXInclude_Open(include, D3D_INCLUDE_LOCAL, filename_a, NULL, &buffer, &len);
+    if (FAILED(hr))
+    {
+        HeapFree(GetProcessHeap(), 0, filename_a);
+        return D3DXERR_INVALIDDATA;
+    }
+
+    hr = D3DXAssembleShader(buffer, len, defines, include, flags, shader, error_messages);
+
+    ID3DXInclude_Close(include, buffer);
+    HeapFree(GetProcessHeap(), 0, filename_a);
     return hr;
 }
 
@@ -332,6 +347,9 @@ HRESULT WINAPI D3DXAssembleShaderFromResourceA(HMODULE module, const char *resou
     void *buffer;
     HRSRC res;
     DWORD len;
+
+    TRACE("module %p, resource %s, defines %p, include %p, flags %#x, shader %p, error_messages %p.\n",
+            module, debugstr_a(resource), defines, include, flags, shader, error_messages);
 
     if (!(res = FindResourceA(module, resource, (const char *)RT_RCDATA)))
         return D3DXERR_INVALIDDATA;
@@ -365,8 +383,10 @@ HRESULT WINAPI D3DXCompileShader(const char *data, UINT length, const D3DXMACRO 
 {
     HRESULT hr;
 
-    TRACE("data %p, length %u, defines %p, include %p, function %s, profile %s, flags %#x, shader %p, error_msgs %p, constant_table %p\n",
-          data, length, defines, include, function, profile, flags, shader, error_msgs, constant_table);
+    TRACE("data %s, length %u, defines %p, include %p, function %s, profile %s, "
+            "flags %#x, shader %p, error_msgs %p, constant_table %p.\n",
+            debugstr_a(data), length, defines, include, debugstr_a(function), debugstr_a(profile),
+            flags, shader, error_msgs, constant_table);
 
     hr = D3DCompile(data, length, NULL, (D3D_SHADER_MACRO *)defines, (ID3DInclude *)include,
                     function, profile, flags, 0, (ID3DBlob **)shader, (ID3DBlob **)error_msgs);
@@ -416,14 +436,16 @@ HRESULT WINAPI D3DXCompileShaderFromFileW(const WCHAR *filename, const D3DXMACRO
         ID3DXInclude *include, const char *entrypoint, const char *profile, DWORD flags,
         ID3DXBuffer **shader, ID3DXBuffer **error_messages, ID3DXConstantTable **constant_table)
 {
-    void *buffer;
+    const void *buffer;
     DWORD len, filename_len;
     HRESULT hr;
     struct D3DXIncludeImpl includefromfile;
     char *filename_a;
 
-    if (FAILED(map_view_of_file(filename, &buffer, &len)))
-        return D3DXERR_INVALIDDATA;
+    TRACE("filename %s, defines %p, include %p, entrypoint %s, profile %s, "
+            "flags %#x, shader %p, error_messages %p, constant_table %p.\n",
+            debugstr_w(filename), defines, include, debugstr_a(entrypoint), debugstr_a(profile),
+            flags, shader, error_messages, constant_table);
 
     if (!include)
     {
@@ -434,11 +456,15 @@ HRESULT WINAPI D3DXCompileShaderFromFileW(const WCHAR *filename, const D3DXMACRO
     filename_len = WideCharToMultiByte(CP_ACP, 0, filename, -1, NULL, 0, NULL, NULL);
     filename_a = HeapAlloc(GetProcessHeap(), 0, filename_len * sizeof(char));
     if (!filename_a)
-    {
-        UnmapViewOfFile(buffer);
         return E_OUTOFMEMORY;
-    }
     WideCharToMultiByte(CP_ACP, 0, filename, -1, filename_a, filename_len, NULL, NULL);
+
+    hr = ID3DXInclude_Open(include, D3D_INCLUDE_LOCAL, filename_a, NULL, &buffer, &len);
+    if (FAILED(hr))
+    {
+        HeapFree(GetProcessHeap(), 0, filename_a);
+        return D3DXERR_INVALIDDATA;
+    }
 
     hr = D3DCompile(buffer, len, filename_a, (const D3D_SHADER_MACRO *)defines,
                     (ID3DInclude *)include, entrypoint, profile, flags, 0,
@@ -448,8 +474,8 @@ HRESULT WINAPI D3DXCompileShaderFromFileW(const WCHAR *filename, const D3DXMACRO
         hr = D3DXGetShaderConstantTable(ID3DXBuffer_GetBufferPointer(*shader),
                                         constant_table);
 
+    ID3DXInclude_Close(include, buffer);
     HeapFree(GetProcessHeap(), 0, filename_a);
-    UnmapViewOfFile(buffer);
     return hr;
 }
 
@@ -460,6 +486,11 @@ HRESULT WINAPI D3DXCompileShaderFromResourceA(HMODULE module, const char *resour
     void *buffer;
     HRSRC res;
     DWORD len;
+
+    TRACE("module %p, resource %s, defines %p, include %p, entrypoint %s, profile %s, "
+            "flags %#x, shader %p, error_messages %p, constant_table %p.\n",
+            module, debugstr_a(resource), defines, include, debugstr_a(entrypoint), debugstr_a(profile),
+            flags, shader, error_messages, constant_table);
 
     if (!(res = FindResourceA(module, resource, (const char *)RT_RCDATA)))
         return D3DXERR_INVALIDDATA;
@@ -493,7 +524,9 @@ HRESULT WINAPI D3DXCompileShaderFromResourceW(HMODULE module, const WCHAR *resou
 HRESULT WINAPI D3DXPreprocessShader(const char *data, UINT data_len, const D3DXMACRO *defines,
         ID3DXInclude *include, ID3DXBuffer **shader, ID3DXBuffer **error_messages)
 {
-    TRACE("Forward to D3DPreprocess\n");
+    TRACE("data %s, data_len %u, defines %p, include %p, shader %p, error_messages %p.\n",
+            debugstr_a(data), data_len, defines, include, shader, error_messages);
+
     return D3DPreprocess(data, data_len, NULL,
                          (const D3D_SHADER_MACRO *)defines, (ID3DInclude *)include,
                          (ID3DBlob **)shader, (ID3DBlob **)error_messages);
@@ -505,6 +538,9 @@ HRESULT WINAPI D3DXPreprocessShaderFromFileA(const char *filename, const D3DXMAC
     WCHAR *filename_w = NULL;
     DWORD len;
     HRESULT ret;
+
+    TRACE("filename %s, defines %p, include %p, shader %p, error_messages %p.\n",
+            debugstr_a(filename), defines, include, shader, error_messages);
 
     if (!filename) return D3DXERR_INVALIDDATA;
 
@@ -522,13 +558,14 @@ HRESULT WINAPI D3DXPreprocessShaderFromFileA(const char *filename, const D3DXMAC
 HRESULT WINAPI D3DXPreprocessShaderFromFileW(const WCHAR *filename, const D3DXMACRO *defines,
         ID3DXInclude *include, ID3DXBuffer **shader, ID3DXBuffer **error_messages)
 {
-    void *buffer;
+    const void *buffer;
     DWORD len;
     HRESULT hr;
     struct D3DXIncludeImpl includefromfile;
+    char *filename_a;
 
-    if (FAILED(map_view_of_file(filename, &buffer, &len)))
-        return D3DXERR_INVALIDDATA;
+    TRACE("filename %s, defines %p, include %p, shader %p, error_messages %p.\n",
+            debugstr_w(filename), defines, include, shader, error_messages);
 
     if (!include)
     {
@@ -536,12 +573,26 @@ HRESULT WINAPI D3DXPreprocessShaderFromFileW(const WCHAR *filename, const D3DXMA
         include = &includefromfile.ID3DXInclude_iface;
     }
 
+    len = WideCharToMultiByte(CP_ACP, 0, filename, -1, NULL, 0, NULL, NULL);
+    filename_a = HeapAlloc(GetProcessHeap(), 0, len * sizeof(char));
+    if (!filename_a)
+        return E_OUTOFMEMORY;
+    WideCharToMultiByte(CP_ACP, 0, filename, -1, filename_a, len, NULL, NULL);
+
+    hr = ID3DXInclude_Open(include, D3D_INCLUDE_LOCAL, filename_a, NULL, &buffer, &len);
+    if (FAILED(hr))
+    {
+        HeapFree(GetProcessHeap(), 0, filename_a);
+        return D3DXERR_INVALIDDATA;
+    }
+
     hr = D3DPreprocess(buffer, len, NULL,
                        (const D3D_SHADER_MACRO *)defines,
                        (ID3DInclude *) include,
                        (ID3DBlob **)shader, (ID3DBlob **)error_messages);
 
-    UnmapViewOfFile(buffer);
+    ID3DXInclude_Close(include, buffer);
+    HeapFree(GetProcessHeap(), 0, filename_a);
     return hr;
 }
 
@@ -551,6 +602,9 @@ HRESULT WINAPI D3DXPreprocessShaderFromResourceA(HMODULE module, const char *res
     void *buffer;
     HRSRC res;
     DWORD len;
+
+    TRACE("module %p, resource %s, defines %p, include %p, shader %p, error_messages %p.\n",
+            module, debugstr_a(resource), defines, include, shader, error_messages);
 
     if (!(res = FindResourceA(module, resource, (const char *)RT_RCDATA)))
         return D3DXERR_INVALIDDATA;
@@ -566,6 +620,9 @@ HRESULT WINAPI D3DXPreprocessShaderFromResourceW(HMODULE module, const WCHAR *re
     void *buffer;
     HRSRC res;
     DWORD len;
+
+    TRACE("module %p, resource %s, defines %p, include %p, shader %p, error_messages %p.\n",
+            module, debugstr_w(resource), defines, include, shader, error_messages);
 
     if (!(res = FindResourceW(module, resource, (const WCHAR *)RT_RCDATA)))
         return D3DXERR_INVALIDDATA;
@@ -1846,8 +1903,8 @@ error:
 HRESULT WINAPI D3DXGetShaderConstantTableEx(const DWORD *byte_code, DWORD flags, ID3DXConstantTable **constant_table)
 {
     struct ID3DXConstantTableImpl *object = NULL;
+    const void *data;
     HRESULT hr;
-    LPCVOID data;
     UINT size;
     const D3DXSHADER_CONSTANTTABLE *ctab_header;
     const D3DXSHADER_CONSTANTINFO *constant_info;
