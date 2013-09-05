@@ -5607,9 +5607,9 @@ HRESULT ddraw_surface_create_texture(struct ddraw_surface *surface, DWORD surfac
     else
         layers = 1;
 
-    /* DDSCAPS_SYSTEMMEMORY textures are in WINED3D_POOL_SYSTEM_MEM.
-     * Should I forward the MANAGED cap to the managed pool? */
-    if (desc->ddsCaps.dwCaps & DDSCAPS_SYSTEMMEMORY)
+    if (desc->ddsCaps.dwCaps2 & DDSCAPS2_TEXTUREMANAGE)
+        pool = WINED3D_POOL_MANAGED;
+    else if (desc->ddsCaps.dwCaps & DDSCAPS_SYSTEMMEMORY)
         pool = WINED3D_POOL_SYSTEM_MEM;
     else
         pool = WINED3D_POOL_DEFAULT;
@@ -5716,10 +5716,7 @@ HRESULT ddraw_surface_init(struct ddraw_surface *surface, struct ddraw *ddraw,
     }
 
     if (desc->ddsCaps.dwCaps & DDSCAPS_PRIMARYSURFACE)
-    {
-        usage |= WINED3DUSAGE_RENDERTARGET;
         desc->ddsCaps.dwCaps |= DDSCAPS_VISIBLE;
-    }
 
     if ((desc->ddsCaps.dwCaps & DDSCAPS_3DDEVICE) && !(desc->ddsCaps.dwCaps & DDSCAPS_ZBUFFER))
     {
