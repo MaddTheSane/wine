@@ -36,7 +36,7 @@ BOOL WINAPI CertAddCTLContextToStore(HCERTSTORE hCertStore,
  PCCTL_CONTEXT pCtlContext, DWORD dwAddDisposition,
  PCCTL_CONTEXT* ppStoreContext)
 {
-    PWINECRYPT_CERTSTORE store = hCertStore;
+    WINECRYPT_CERTSTORE *store = hCertStore;
     BOOL ret = TRUE;
     PCCTL_CONTEXT toAdd = NULL, existing = NULL;
 
@@ -318,7 +318,7 @@ BOOL WINAPI CertDeleteCTLFromStore(PCCTL_CONTEXT pCtlContext)
         ret = CertFreeCTLContext(pCtlContext);
     else
     {
-        PWINECRYPT_CERTSTORE hcs = pCtlContext->hCertStore;
+        WINECRYPT_CERTSTORE *hcs = pCtlContext->hCertStore;
 
         if (hcs->dwMagic != WINE_CRYPTCERTSTORE_MAGIC)
             ret = FALSE;
@@ -489,7 +489,7 @@ BOOL WINAPI CertFreeCTLContext(PCCTL_CONTEXT pCTLContext)
 DWORD WINAPI CertEnumCTLContextProperties(PCCTL_CONTEXT pCTLContext,
  DWORD dwPropId)
 {
-    PCONTEXT_PROPERTY_LIST properties = Context_GetProperties(
+    CONTEXT_PROPERTY_LIST *properties = Context_GetProperties(
      pCTLContext, sizeof(CTL_CONTEXT));
     DWORD ret;
 
@@ -523,7 +523,7 @@ static BOOL CTLContext_GetHashProp(PCCTL_CONTEXT context, DWORD dwPropId,
 static BOOL CTLContext_GetProperty(PCCTL_CONTEXT context, DWORD dwPropId,
                                    void *pvData, DWORD *pcbData)
 {
-    PCONTEXT_PROPERTY_LIST properties =
+    CONTEXT_PROPERTY_LIST *properties =
      Context_GetProperties(context, sizeof(CTL_CONTEXT));
     BOOL ret;
     CRYPT_DATA_BLOB blob;
@@ -621,8 +621,7 @@ BOOL WINAPI CertGetCTLContextProperty(PCCTL_CONTEXT pCTLContext,
 static BOOL CTLContext_SetProperty(PCCTL_CONTEXT context, DWORD dwPropId,
  DWORD dwFlags, const void *pvData)
 {
-    PCONTEXT_PROPERTY_LIST properties =
-     Context_GetProperties(context, sizeof(CTL_CONTEXT));
+    CONTEXT_PROPERTY_LIST *properties = Context_GetProperties(context, sizeof(CTL_CONTEXT));
     BOOL ret;
 
     TRACE("(%p, %d, %08x, %p)\n", context, dwPropId, dwFlags, pvData);

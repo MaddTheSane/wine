@@ -194,12 +194,11 @@ typedef struct _WINE_CONTEXT_INTERFACE
     SerializeElementFunc         serialize;
     FreeContextFunc              free;
     DeleteContextFunc            deleteFromStore;
-} WINE_CONTEXT_INTERFACE, *PWINE_CONTEXT_INTERFACE;
-typedef const WINE_CONTEXT_INTERFACE *PCWINE_CONTEXT_INTERFACE;
+} WINE_CONTEXT_INTERFACE;
 
-extern PCWINE_CONTEXT_INTERFACE pCertInterface DECLSPEC_HIDDEN;
-extern PCWINE_CONTEXT_INTERFACE pCRLInterface DECLSPEC_HIDDEN;
-extern PCWINE_CONTEXT_INTERFACE pCTLInterface DECLSPEC_HIDDEN;
+extern const WINE_CONTEXT_INTERFACE *pCertInterface DECLSPEC_HIDDEN;
+extern const WINE_CONTEXT_INTERFACE *pCRLInterface DECLSPEC_HIDDEN;
+extern const WINE_CONTEXT_INTERFACE *pCTLInterface DECLSPEC_HIDDEN;
 
 /* (Internal) certificate store types and functions */
 struct WINE_CRYPTCERTSTORE;
@@ -226,7 +225,7 @@ typedef struct _CONTEXT_FUNCS
     AddFunc    addContext;
     EnumFunc   enumContext;
     DeleteFunc deleteContext;
-} CONTEXT_FUNCS, *PCONTEXT_FUNCS;
+} CONTEXT_FUNCS;
 
 typedef enum _CertStoreType {
     StoreTypeMem,
@@ -234,8 +233,7 @@ typedef enum _CertStoreType {
     StoreTypeProvider,
 } CertStoreType;
 
-struct _CONTEXT_PROPERTY_LIST;
-typedef struct _CONTEXT_PROPERTY_LIST *PCONTEXT_PROPERTY_LIST;
+typedef struct _CONTEXT_PROPERTY_LIST CONTEXT_PROPERTY_LIST;
 
 #define WINE_CRYPTCERTSTORE_MAGIC 0x74726563
 
@@ -257,31 +255,31 @@ typedef struct WINE_CRYPTCERTSTORE
     CONTEXT_FUNCS               crls;
     CONTEXT_FUNCS               ctls;
     PFN_CERT_STORE_PROV_CONTROL control; /* optional */
-    PCONTEXT_PROPERTY_LIST      properties;
-} WINECRYPT_CERTSTORE, *PWINECRYPT_CERTSTORE;
+    CONTEXT_PROPERTY_LIST      *properties;
+} WINECRYPT_CERTSTORE;
 
 void CRYPT_InitStore(WINECRYPT_CERTSTORE *store, DWORD dwFlags,
  CertStoreType type) DECLSPEC_HIDDEN;
-void CRYPT_FreeStore(PWINECRYPT_CERTSTORE store) DECLSPEC_HIDDEN;
+void CRYPT_FreeStore(WINECRYPT_CERTSTORE *store) DECLSPEC_HIDDEN;
 BOOL WINAPI I_CertUpdateStore(HCERTSTORE store1, HCERTSTORE store2, DWORD unk0,
  DWORD unk1) DECLSPEC_HIDDEN;
 
-PWINECRYPT_CERTSTORE CRYPT_CollectionOpenStore(HCRYPTPROV hCryptProv,
+WINECRYPT_CERTSTORE *CRYPT_CollectionOpenStore(HCRYPTPROV hCryptProv,
  DWORD dwFlags, const void *pvPara) DECLSPEC_HIDDEN;
-PWINECRYPT_CERTSTORE CRYPT_ProvCreateStore(DWORD dwFlags,
- PWINECRYPT_CERTSTORE memStore, const CERT_STORE_PROV_INFO *pProvInfo) DECLSPEC_HIDDEN;
-PWINECRYPT_CERTSTORE CRYPT_ProvOpenStore(LPCSTR lpszStoreProvider,
+WINECRYPT_CERTSTORE *CRYPT_ProvCreateStore(DWORD dwFlags,
+ WINECRYPT_CERTSTORE *memStore, const CERT_STORE_PROV_INFO *pProvInfo) DECLSPEC_HIDDEN;
+WINECRYPT_CERTSTORE *CRYPT_ProvOpenStore(LPCSTR lpszStoreProvider,
  DWORD dwEncodingType, HCRYPTPROV hCryptProv, DWORD dwFlags,
  const void *pvPara) DECLSPEC_HIDDEN;
-PWINECRYPT_CERTSTORE CRYPT_RegOpenStore(HCRYPTPROV hCryptProv, DWORD dwFlags,
+WINECRYPT_CERTSTORE *CRYPT_RegOpenStore(HCRYPTPROV hCryptProv, DWORD dwFlags,
  const void *pvPara) DECLSPEC_HIDDEN;
-PWINECRYPT_CERTSTORE CRYPT_FileOpenStore(HCRYPTPROV hCryptProv, DWORD dwFlags,
+WINECRYPT_CERTSTORE *CRYPT_FileOpenStore(HCRYPTPROV hCryptProv, DWORD dwFlags,
  const void *pvPara) DECLSPEC_HIDDEN;
-PWINECRYPT_CERTSTORE CRYPT_FileNameOpenStoreA(HCRYPTPROV hCryptProv,
+WINECRYPT_CERTSTORE *CRYPT_FileNameOpenStoreA(HCRYPTPROV hCryptProv,
  DWORD dwFlags, const void *pvPara) DECLSPEC_HIDDEN;
-PWINECRYPT_CERTSTORE CRYPT_FileNameOpenStoreW(HCRYPTPROV hCryptProv,
+WINECRYPT_CERTSTORE *CRYPT_FileNameOpenStoreW(HCRYPTPROV hCryptProv,
  DWORD dwFlags, const void *pvPara) DECLSPEC_HIDDEN;
-PWINECRYPT_CERTSTORE CRYPT_RootOpenStore(HCRYPTPROV hCryptProv, DWORD dwFlags) DECLSPEC_HIDDEN;
+WINECRYPT_CERTSTORE *CRYPT_RootOpenStore(HCRYPTPROV hCryptProv, DWORD dwFlags) DECLSPEC_HIDDEN;
 
 /* Allocates and initializes a certificate chain engine, but without creating
  * the root store.  Instead, it uses root, and assumes the caller has done any
@@ -359,7 +357,7 @@ void Context_CopyProperties(const void *to, const void *from,
 /* Returns context's properties, or the linked context's properties if context
  * is a link context.
  */
-PCONTEXT_PROPERTY_LIST Context_GetProperties(const void *context, size_t contextSize) DECLSPEC_HIDDEN;
+CONTEXT_PROPERTY_LIST *Context_GetProperties(const void *context, size_t contextSize) DECLSPEC_HIDDEN;
 
 void Context_AddRef(void *context, size_t contextSize) DECLSPEC_HIDDEN;
 
@@ -377,26 +375,26 @@ BOOL Context_Release(void *context, size_t contextSize,
  *  Context property list functions
  */
 
-PCONTEXT_PROPERTY_LIST ContextPropertyList_Create(void) DECLSPEC_HIDDEN;
+CONTEXT_PROPERTY_LIST *ContextPropertyList_Create(void) DECLSPEC_HIDDEN;
 
 /* Searches for the property with ID id in the context.  Returns TRUE if found,
  * and copies the property's length and a pointer to its data to blob.
  * Otherwise returns FALSE.
  */
-BOOL ContextPropertyList_FindProperty(PCONTEXT_PROPERTY_LIST list, DWORD id,
+BOOL ContextPropertyList_FindProperty(CONTEXT_PROPERTY_LIST *list, DWORD id,
  PCRYPT_DATA_BLOB blob) DECLSPEC_HIDDEN;
 
-BOOL ContextPropertyList_SetProperty(PCONTEXT_PROPERTY_LIST list, DWORD id,
+BOOL ContextPropertyList_SetProperty(CONTEXT_PROPERTY_LIST *list, DWORD id,
  const BYTE *pbData, size_t cbData) DECLSPEC_HIDDEN;
 
-void ContextPropertyList_RemoveProperty(PCONTEXT_PROPERTY_LIST list, DWORD id) DECLSPEC_HIDDEN;
+void ContextPropertyList_RemoveProperty(CONTEXT_PROPERTY_LIST *list, DWORD id) DECLSPEC_HIDDEN;
 
-DWORD ContextPropertyList_EnumPropIDs(PCONTEXT_PROPERTY_LIST list, DWORD id) DECLSPEC_HIDDEN;
+DWORD ContextPropertyList_EnumPropIDs(CONTEXT_PROPERTY_LIST *list, DWORD id) DECLSPEC_HIDDEN;
 
-void ContextPropertyList_Copy(PCONTEXT_PROPERTY_LIST to,
- PCONTEXT_PROPERTY_LIST from) DECLSPEC_HIDDEN;
+void ContextPropertyList_Copy(CONTEXT_PROPERTY_LIST *to,
+ CONTEXT_PROPERTY_LIST *from) DECLSPEC_HIDDEN;
 
-void ContextPropertyList_Free(PCONTEXT_PROPERTY_LIST list) DECLSPEC_HIDDEN;
+void ContextPropertyList_Free(CONTEXT_PROPERTY_LIST *list) DECLSPEC_HIDDEN;
 
 /**
  *  Context list functions.  A context list is a simple list of link contexts.
@@ -404,7 +402,7 @@ void ContextPropertyList_Free(PCONTEXT_PROPERTY_LIST list) DECLSPEC_HIDDEN;
 struct ContextList;
 
 struct ContextList *ContextList_Create(
- PCWINE_CONTEXT_INTERFACE contextInterface, size_t contextSize) DECLSPEC_HIDDEN;
+ const WINE_CONTEXT_INTERFACE *contextInterface, size_t contextSize) DECLSPEC_HIDDEN;
 
 void *ContextList_Add(struct ContextList *list, void *toLink, void *toReplace) DECLSPEC_HIDDEN;
 

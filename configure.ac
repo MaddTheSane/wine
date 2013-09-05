@@ -2041,6 +2041,7 @@ AC_CHECK_FUNCS(\
 	port_create \
 	prctl \
 	pread \
+	proc_pidinfo \
 	pwrite \
 	readdir \
 	readlink \
@@ -3168,6 +3169,7 @@ WINE_CONFIG_DLL(xinput1_1)
 WINE_CONFIG_DLL(xinput1_2)
 WINE_CONFIG_DLL(xinput1_3,,[implib],[xinput])
 WINE_CONFIG_TEST(dlls/xinput1_3/tests)
+WINE_CONFIG_DLL(xinput1_4)
 WINE_CONFIG_DLL(xinput9_1_0)
 WINE_CONFIG_DLL(xmllite)
 WINE_CONFIG_TEST(dlls/xmllite/tests)

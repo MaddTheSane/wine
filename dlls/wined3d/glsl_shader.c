@@ -4940,7 +4940,7 @@ static void shader_glsl_ffp_vertex_lighting(struct wined3d_shader_buffer *buffer
                 if (!settings->normal)
                     break;
                 shader_addline(buffer, "dir = normalize(dir);\n");
-                shader_addline(buffer, "diffuse += (max(0.0, dot(dir, normal))"
+                shader_addline(buffer, "diffuse += (clamp(dot(dir, normal), 0.0, 1.0)"
                         " * gl_LightSource[%u].diffuse.xyz) / att;\n", i);
                 if (settings->localviewer)
                     shader_addline(buffer, "t = dot(normal, normalize(dir - normalize(ec_pos.xyz)));\n");
@@ -4965,7 +4965,7 @@ static void shader_glsl_ffp_vertex_lighting(struct wined3d_shader_buffer *buffer
                 shader_addline(buffer, "ambient += gl_LightSource[%u].ambient.xyz * att;\n", i);
                 if (!settings->normal)
                     break;
-                shader_addline(buffer, "diffuse += (max(0.0, dot(dir, normal))"
+                shader_addline(buffer, "diffuse += (clamp(dot(dir, normal), 0.0, 1.0)"
                         " * gl_LightSource[%u].diffuse.xyz) * att;\n", i);
                 if (settings->localviewer)
                     shader_addline(buffer, "t = dot(normal, normalize(dir - normalize(ec_pos.xyz)));\n");
@@ -4980,7 +4980,8 @@ static void shader_glsl_ffp_vertex_lighting(struct wined3d_shader_buffer *buffer
                 if (!settings->normal)
                     break;
                 shader_addline(buffer, "dir = normalize(gl_LightSource[%u].position.xyz);\n", i);
-                shader_addline(buffer, "diffuse += max(0.0, dot(dir, normal)) * gl_LightSource[%u].diffuse.xyz;\n", i);
+                shader_addline(buffer, "diffuse += clamp(dot(dir, normal), 0.0, 1.0)"
+                        " * gl_LightSource[%u].diffuse.xyz;\n", i);
                 shader_addline(buffer, "t = dot(normal, gl_LightSource[%u].halfVector.xyz);\n", i);
                 shader_addline(buffer, "if (t > 0.0) specular += pow(t, gl_FrontMaterial.shininess)"
                         " * gl_LightSource[%u].specular;\n", i);
@@ -5753,18 +5754,20 @@ static struct glsl_ffp_fragment_shader *shader_glsl_find_ffp_fragment_shader(str
 
 
 static void shader_glsl_init_vs_uniform_locations(const struct wined3d_gl_info *gl_info,
-        GLhandleARB program_id, struct glsl_vs_program *vs)
+        GLhandleARB program_id, struct glsl_vs_program *vs, unsigned int vs_c_count)
 {
     unsigned int i;
     char name[32];
 
     vs->uniform_f_locations = HeapAlloc(GetProcessHeap(), 0,
             sizeof(GLhandleARB) * gl_info->limits.glsl_vs_float_constants);
-    for (i = 0; i < gl_info->limits.glsl_vs_float_constants; ++i)
+    for (i = 0; i < vs_c_count; ++i)
     {
         snprintf(name, sizeof(name), "vs_c[%u]", i);
         vs->uniform_f_locations[i] = GL_EXTCALL(glGetUniformLocationARB(program_id, name));
     }
+    memset(&vs->uniform_f_locations[vs_c_count], 0xff,
+            (gl_info->limits.glsl_vs_float_constants - vs_c_count) * sizeof(GLhandleARB));
 
     for (i = 0; i < MAX_CONST_I; ++i)
     {
@@ -5776,18 +5779,20 @@ static void shader_glsl_init_vs_uniform_locations(const struct wined3d_gl_info *
 }
 
 static void shader_glsl_init_ps_uniform_locations(const struct wined3d_gl_info *gl_info,
-        GLhandleARB program_id, struct glsl_ps_program *ps)
+        GLhandleARB program_id, struct glsl_ps_program *ps, unsigned int ps_c_count)
 {
     unsigned int i;
     char name[32];
 
     ps->uniform_f_locations = HeapAlloc(GetProcessHeap(), 0,
             sizeof(GLhandleARB) * gl_info->limits.glsl_ps_float_constants);
-    for (i = 0; i < gl_info->limits.glsl_ps_float_constants; ++i)
+    for (i = 0; i < ps_c_count; ++i)
     {
         snprintf(name, sizeof(name), "ps_c[%u]", i);
         ps->uniform_f_locations[i] = GL_EXTCALL(glGetUniformLocationARB(program_id, name));
     }
+    memset(&ps->uniform_f_locations[ps_c_count], 0xff,
+            (gl_info->limits.glsl_ps_float_constants - ps_c_count) * sizeof(GLhandleARB));
 
     for (i = 0; i < MAX_CONST_I; ++i)
     {
@@ -6001,8 +6006,10 @@ static void set_glsl_shader_program(const struct wined3d_context *context, const
     GL_EXTCALL(glLinkProgramARB(programId));
     shader_glsl_validate_link(gl_info, programId);
 
-    shader_glsl_init_vs_uniform_locations(gl_info, programId, &entry->vs);
-    shader_glsl_init_ps_uniform_locations(gl_info, programId, &entry->ps);
+    shader_glsl_init_vs_uniform_locations(gl_info, programId, &entry->vs,
+            vshader ? vshader->limits.constant_float : 0);
+    shader_glsl_init_ps_uniform_locations(gl_info, programId, &entry->ps,
+            pshader ? pshader->limits.constant_float : 0);
     checkGLcall("Find glsl program uniform locations");
 
     if (pshader && pshader->reg_maps.shader_version.major >= 3
