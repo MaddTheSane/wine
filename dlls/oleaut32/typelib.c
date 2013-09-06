@@ -5080,8 +5080,8 @@ static HRESULT WINAPI ITypeLib2_fnIsName(
     *pfName=FALSE;
 
 ITypeLib2_fnIsName_exit:
-    TRACE("(%p)slow! search for %s: %s found!\n", This,
-          debugstr_w(szNameBuf), *pfName?"NOT":"");
+    TRACE("(%p)slow! search for %s: %sfound!\n", This,
+          debugstr_w(szNameBuf), *pfName ? "" : "NOT ");
 
     return S_OK;
 }
@@ -8475,7 +8475,7 @@ static HRESULT WINAPI ITypeComp_fnBind(
 
     for(fdc = 0; fdc < This->cFuncs; ++fdc){
         pFDesc = &This->funcdescs[fdc];
-        if (!strcmpiW(TLB_get_bstr(pFDesc->Name), szName)) {
+        if (!lstrcmpiW(TLB_get_bstr(pFDesc->Name), szName)) {
             if (!wFlags || (pFDesc->funcdesc.invkind & wFlags))
                 break;
             else
@@ -8508,7 +8508,7 @@ static HRESULT WINAPI ITypeComp_fnBind(
             return S_OK;
         }
     }
-    /* FIXME: search each inherited interface, not just the first */
+
     if (hr == DISP_E_MEMBERNOTFOUND && This->impltypes) {
         /* recursive search */
         ITypeInfo *pTInfo;
@@ -8524,6 +8524,13 @@ static HRESULT WINAPI ITypeComp_fnBind(
         {
             hr = ITypeComp_Bind(pTComp, szName, lHash, wFlags, ppTInfo, pDescKind, pBindPtr);
             ITypeComp_Release(pTComp);
+            if (SUCCEEDED(hr) && *pDescKind == DESCKIND_FUNCDESC &&
+                    This->typekind == TKIND_DISPATCH)
+            {
+                FUNCDESC *tmp = pBindPtr->lpfuncdesc;
+                hr = TLB_AllocAndInitFuncDesc(tmp, &pBindPtr->lpfuncdesc, TRUE);
+                SysFreeString((BSTR)tmp);
+            }
             return hr;
         }
         WARN("Could not search inherited interface!\n");
@@ -9142,41 +9149,6 @@ static DWORD WMSFT_append_typedesc(TYPEDESC *desc, WMSFT_TLBFile *file, DWORD *o
         out_size = &junk2;
 
     vt = desc->vt & VT_TYPEMASK;
-    switch(vt){
-    case VT_INT:
-        subtype = VT_I4;
-        break;
-    case VT_UINT:
-        subtype = VT_UI4;
-        break;
-    case VT_VOID:
-        subtype = VT_EMPTY;
-        break;
-    default:
-        subtype = vt;
-        break;
-    }
-
-    switch(vt){
-    case VT_INT:
-    case VT_UINT:
-    case VT_I1:
-    case VT_UI1:
-    case VT_I2:
-    case VT_UI2:
-    case VT_I4:
-    case VT_UI4:
-    case VT_BOOL:
-    case VT_R4:
-    case VT_ERROR:
-    case VT_BSTR:
-    case VT_HRESULT:
-    case VT_CY:
-    case VT_VOID:
-    case VT_VARIANT:
-        *out_mix = subtype;
-        return 0x80000000 | (subtype << 16) | desc->vt;
-    }
 
     if(vt == VT_PTR || vt == VT_SAFEARRAY){
         DWORD mix;
@@ -9193,9 +9165,25 @@ static DWORD WMSFT_append_typedesc(TYPEDESC *desc, WMSFT_TLBFile *file, DWORD *o
         encoded[1] = desc->u.hreftype;
         *out_mix = 0x7FFF; /* FIXME: Should get TYPEKIND of the hreftype, e.g. TKIND_ENUM => VT_I4 */
     }else{
-        FIXME("Don't know what to do! VT: 0x%x\n", desc->vt);
-        *out_mix = desc->vt;
-        return 0x80000000 | (desc->vt << 16) | desc->vt;
+        TRACE("Mixing in-place, VT: 0x%x\n", desc->vt);
+
+        switch(vt){
+        case VT_INT:
+            subtype = VT_I4;
+            break;
+        case VT_UINT:
+            subtype = VT_UI4;
+            break;
+        case VT_VOID:
+            subtype = VT_EMPTY;
+            break;
+        default:
+            subtype = vt;
+            break;
+        }
+
+        *out_mix = subtype;
+        return 0x80000000 | (subtype << 16) | desc->vt;
     }
 
     data = file->typdesc_seg.data;

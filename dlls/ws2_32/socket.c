@@ -1649,11 +1649,7 @@ static INT WS_EnterSingleProtocolW( INT protocol, WSAPROTOCOL_INFOW* info )
         break;
 
     default:
-        if ((protocol == ISOPROTO_TP4) || (protocol == NSPROTO_SPX))
-            FIXME("Protocol <%s> not implemented\n",
-                  (protocol == ISOPROTO_TP4) ? "ISOPROTO_TP4" : "NSPROTO_SPX");
-        else
-            FIXME("unknown Protocol <0x%08x>\n", protocol);
+        FIXME("unknown Protocol <0x%08x>\n", protocol);
         return SOCKET_ERROR;
     }
     return 1;
@@ -1703,6 +1699,9 @@ static INT WS_EnumProtocols( BOOL unicode, const INT *protocols, LPWSAPROTOCOL_I
     }
 
     size = items * (unicode ? sizeof(WSAPROTOCOL_INFOW) : sizeof(WSAPROTOCOL_INFOA));
+
+    TRACE("unicode %d, protocols %p, buffer %p, length %p %d, items %d, required %d\n",
+          unicode, protocols, buffer, len, len ? *len : 0, items, size);
 
     if (*len < size || !buffer)
     {
@@ -2852,7 +2851,6 @@ INT WINAPI WS_getsockopt(SOCKET s, INT level,
         {
         /* Handle common cases. The special cases are below, sorted
          * alphabetically */
-        case WS_SO_ACCEPTCONN:
         case WS_SO_BROADCAST:
         case WS_SO_DEBUG:
         case WS_SO_ERROR:
@@ -2872,7 +2870,20 @@ INT WINAPI WS_getsockopt(SOCKET s, INT level,
             }
             release_sock_fd( s, fd );
             return ret;
+        case WS_SO_ACCEPTCONN:
+            if ( (fd = get_sock_fd( s, 0, NULL )) == -1)
+                return SOCKET_ERROR;
+            if (getsockopt(fd, SOL_SOCKET, SO_ACCEPTCONN, optval, (socklen_t *)optlen) != 0 )
+            {
+                SetLastError((errno == EBADF) ? WSAENOTSOCK : wsaErrno());
+                ret = SOCKET_ERROR;
+            }
 
+            /* BSD returns != 0 while Windows return exact == 1 */
+            if (*(int *)optval) *(int *)optval = 1;
+
+            release_sock_fd( s, fd );
+            return ret;
         case WS_SO_DONTLINGER:
         {
             struct linger lingval;
