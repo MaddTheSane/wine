@@ -91,12 +91,12 @@ DECLARE_INTERFACE_(IDirect3DRM,IUnknown)
     STDMETHOD(LoadTextureFromResource)(THIS_ HRSRC resource, IDirect3DRMTexture **texture) PURE;
     STDMETHOD(SetSearchPath)(THIS_ const char *path) PURE;
     STDMETHOD(AddSearchPath)(THIS_ const char *path) PURE;
-    STDMETHOD(GetSearchPath)(THIS_ DWORD *size_return, LPSTR path_return) PURE;
+    STDMETHOD(GetSearchPath)(THIS_ DWORD *size, char *path) PURE;
     STDMETHOD(SetDefaultTextureColors)(THIS_ DWORD) PURE;
     STDMETHOD(SetDefaultTextureShades)(THIS_ DWORD) PURE;
     STDMETHOD(GetDevices)(THIS_ IDirect3DRMDeviceArray **array) PURE;
     STDMETHOD(GetNamedObject)(THIS_ const char *name, IDirect3DRMObject **object) PURE;
-    STDMETHOD(EnumerateObjects)(THIS_ D3DRMOBJECTCALLBACK, LPVOID) PURE;
+    STDMETHOD(EnumerateObjects)(THIS_ D3DRMOBJECTCALLBACK cb, void *ctx) PURE;
     STDMETHOD(Load)(THIS_ void *source, void *object_id, IID **iids, DWORD iid_count, D3DRMLOADOPTIONS flags,
             D3DRMLOADCALLBACK load_cb, void *load_ctx, D3DRMLOADTEXTURECALLBACK load_tex_cb, void *load_tex_ctx,
             IDirect3DRMFrame *parent_frame) PURE;
@@ -231,12 +231,12 @@ DECLARE_INTERFACE_(IDirect3DRM2,IUnknown)
             const char *resource_type, IDirect3DRMTexture2 **texture) PURE;
     STDMETHOD(SetSearchPath)(THIS_ const char *path) PURE;
     STDMETHOD(AddSearchPath)(THIS_ const char *path) PURE;
-    STDMETHOD(GetSearchPath)(THIS_ DWORD *size_return, LPSTR path_return) PURE;
+    STDMETHOD(GetSearchPath)(THIS_ DWORD *size, char *path) PURE;
     STDMETHOD(SetDefaultTextureColors)(THIS_ DWORD) PURE;
     STDMETHOD(SetDefaultTextureShades)(THIS_ DWORD) PURE;
     STDMETHOD(GetDevices)(THIS_ IDirect3DRMDeviceArray **array) PURE;
     STDMETHOD(GetNamedObject)(THIS_ const char *name, IDirect3DRMObject **object) PURE;
-    STDMETHOD(EnumerateObjects)(THIS_ D3DRMOBJECTCALLBACK, LPVOID) PURE;
+    STDMETHOD(EnumerateObjects)(THIS_ D3DRMOBJECTCALLBACK cb, void *ctx) PURE;
     STDMETHOD(Load)(THIS_ void *source, void *object_id, IID **iids, DWORD iid_count, D3DRMLOADOPTIONS flags,
             D3DRMLOADCALLBACK load_cb, void *load_ctx, D3DRMLOADTEXTURECALLBACK load_tex_cb, void *load_tex_ctx,
             IDirect3DRMFrame *parent_frame) PURE;
@@ -374,12 +374,12 @@ DECLARE_INTERFACE_(IDirect3DRM3,IUnknown)
             const char *resource_type, IDirect3DRMTexture3 **texture) PURE;
     STDMETHOD(SetSearchPath)(THIS_ const char *path) PURE;
     STDMETHOD(AddSearchPath)(THIS_ const char *path) PURE;
-    STDMETHOD(GetSearchPath)(THIS_ DWORD *size_return, LPSTR path_return) PURE;
+    STDMETHOD(GetSearchPath)(THIS_ DWORD *size, char *path) PURE;
     STDMETHOD(SetDefaultTextureColors)(THIS_ DWORD) PURE;
     STDMETHOD(SetDefaultTextureShades)(THIS_ DWORD) PURE;
     STDMETHOD(GetDevices)(THIS_ IDirect3DRMDeviceArray **array) PURE;
     STDMETHOD(GetNamedObject)(THIS_ const char *name, IDirect3DRMObject **object) PURE;
-    STDMETHOD(EnumerateObjects)(THIS_ D3DRMOBJECTCALLBACK, LPVOID) PURE;
+    STDMETHOD(EnumerateObjects)(THIS_ D3DRMOBJECTCALLBACK cb, void *ctx) PURE;
     STDMETHOD(Load)(THIS_ void *source, void *object_id, IID **iids, DWORD iid_count, D3DRMLOADOPTIONS flags,
             D3DRMLOADCALLBACK load_cb, void *load_ctx, D3DRMLOADTEXTURECALLBACK load_tex_cb, void *load_tex_ctx,
             IDirect3DRMFrame3 *parent_frame) PURE;

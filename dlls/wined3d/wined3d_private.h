@@ -1957,7 +1957,7 @@ void device_resource_add(struct wined3d_device *device, struct wined3d_resource 
 void device_resource_released(struct wined3d_device *device, struct wined3d_resource *resource) DECLSPEC_HIDDEN;
 void device_switch_onscreen_ds(struct wined3d_device *device, struct wined3d_context *context,
         struct wined3d_surface *depth_stencil) DECLSPEC_HIDDEN;
-void device_update_stream_info(struct wined3d_device *device, const struct wined3d_gl_info *gl_info) DECLSPEC_HIDDEN;
+void device_update_stream_info(struct wined3d_device *device, struct wined3d_context *context) DECLSPEC_HIDDEN;
 void device_update_tex_unit_map(struct wined3d_device *device) DECLSPEC_HIDDEN;
 void device_invalidate_state(const struct wined3d_device *device, DWORD state) DECLSPEC_HIDDEN;
 
@@ -2057,7 +2057,6 @@ enum WINED3DSRGB
 struct gl_texture
 {
     DWORD                   states[MAX_WINETEXTURESTATES];
-    BOOL                    dirty;
     GLuint                  name;
 };
 
@@ -2071,9 +2070,11 @@ struct wined3d_texture_ops
     void (*texture_sub_resource_cleanup)(struct wined3d_resource *sub_resource);
 };
 
-#define WINED3D_TEXTURE_COND_NP2            0x1
-#define WINED3D_TEXTURE_POW2_MAT_IDENT      0x2
-#define WINED3D_TEXTURE_IS_SRGB             0x4
+#define WINED3D_TEXTURE_COND_NP2            0x00000001
+#define WINED3D_TEXTURE_POW2_MAT_IDENT      0x00000002
+#define WINED3D_TEXTURE_IS_SRGB             0x00000004
+#define WINED3D_TEXTURE_RGB_VALID           0x00000008
+#define WINED3D_TEXTURE_SRGB_VALID          0x00000010
 
 struct wined3d_texture
 {
@@ -2108,7 +2109,7 @@ static inline struct gl_texture *wined3d_texture_get_gl_texture(struct wined3d_t
 void wined3d_texture_apply_state_changes(struct wined3d_texture *texture,
         const DWORD samplerStates[WINED3D_HIGHEST_SAMPLER_STATE + 1],
         const struct wined3d_gl_info *gl_info) DECLSPEC_HIDDEN;
-void wined3d_texture_set_dirty(struct wined3d_texture *texture, BOOL dirty) DECLSPEC_HIDDEN;
+void wined3d_texture_set_dirty(struct wined3d_texture *texture) DECLSPEC_HIDDEN;
 
 #define WINED3D_VFLAG_LOCKED            0x00000001
 #define WINED3D_VFLAG_ALLOCATED         0x00000002
@@ -2519,9 +2520,11 @@ static inline struct wined3d_buffer *buffer_from_resource(struct wined3d_resourc
     return CONTAINING_RECORD(resource, struct wined3d_buffer, resource);
 }
 
-void buffer_get_memory(struct wined3d_buffer *buffer, const struct wined3d_gl_info *gl_info,
+void buffer_get_memory(struct wined3d_buffer *buffer, struct wined3d_context *context,
         struct wined3d_bo_address *data) DECLSPEC_HIDDEN;
-BYTE *buffer_get_sysmem(struct wined3d_buffer *This, const struct wined3d_gl_info *gl_info) DECLSPEC_HIDDEN;
+BYTE *buffer_get_sysmem(struct wined3d_buffer *This, struct wined3d_context *context) DECLSPEC_HIDDEN;
+void buffer_internal_preload(struct wined3d_buffer *buffer,
+        struct wined3d_context *context) DECLSPEC_HIDDEN;
 
 struct wined3d_rendertarget_view
 {

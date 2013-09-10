@@ -76,7 +76,7 @@ typedef struct {
     D3DVECTOR* pNormals;
     DWORD nb_faces;
     DWORD face_data_size;
-    LPVOID pFaceData;
+    void *pFaceData;
     DWORD nb_coords2d;
     Coords2d *pCoords2d;
     D3DCOLOR color;
@@ -423,24 +423,18 @@ static HRESULT WINAPI IDirect3DRMMeshBuilder2Impl_Clone(IDirect3DRMMeshBuilder2 
     return E_NOTIMPL;
 }
 
-static HRESULT WINAPI IDirect3DRMMeshBuilder2Impl_AddDestroyCallback(IDirect3DRMMeshBuilder2* iface,
-                                                                     D3DRMOBJECTCALLBACK cb,
-                                                                     LPVOID argument)
+static HRESULT WINAPI IDirect3DRMMeshBuilder2Impl_AddDestroyCallback(IDirect3DRMMeshBuilder2 *iface,
+        D3DRMOBJECTCALLBACK cb, void *ctx)
 {
-    IDirect3DRMMeshBuilderImpl *This = impl_from_IDirect3DRMMeshBuilder2(iface);
-
-    FIXME("(%p)->(%p,%p): stub\n", This, cb, argument);
+    FIXME("iface %p, cb %p, ctx %p stub!\n", iface, cb, ctx);
 
     return E_NOTIMPL;
 }
 
-static HRESULT WINAPI IDirect3DRMMeshBuilder2Impl_DeleteDestroyCallback(IDirect3DRMMeshBuilder2* iface,
-                                                                        D3DRMOBJECTCALLBACK cb,
-                                                                        LPVOID argument)
+static HRESULT WINAPI IDirect3DRMMeshBuilder2Impl_DeleteDestroyCallback(IDirect3DRMMeshBuilder2 *iface,
+        D3DRMOBJECTCALLBACK cb, void *ctx)
 {
-    IDirect3DRMMeshBuilderImpl *This = impl_from_IDirect3DRMMeshBuilder2(iface);
-
-    FIXME("(%p)->(%p,%p): stub\n", This, cb, argument);
+    FIXME("iface %p, cb %p, ctx %p stub!\n", iface, cb, ctx);
 
     return E_NOTIMPL;
 }
@@ -473,41 +467,39 @@ static HRESULT WINAPI IDirect3DRMMeshBuilder2Impl_SetName(IDirect3DRMMeshBuilder
     return IDirect3DRMMeshBuilder3_SetName(&mesh_builder->IDirect3DRMMeshBuilder3_iface, name);
 }
 
-static HRESULT WINAPI IDirect3DRMMeshBuilder2Impl_GetName(IDirect3DRMMeshBuilder2* iface,
-                                                          LPDWORD size, LPSTR name)
+static HRESULT WINAPI IDirect3DRMMeshBuilder2Impl_GetName(IDirect3DRMMeshBuilder2 *iface, DWORD *size, char *name)
 {
-    IDirect3DRMMeshBuilderImpl *This = impl_from_IDirect3DRMMeshBuilder2(iface);
+    IDirect3DRMMeshBuilderImpl *mesh_builder = impl_from_IDirect3DRMMeshBuilder2(iface);
 
-    TRACE("(%p)->(%p,%p)\n", This, size, name);
+    TRACE("iface %p, size %p, name %p.\n", iface, size, name);
 
-    return IDirect3DRMMeshBuilder3_GetName(&This->IDirect3DRMMeshBuilder3_iface, size, name);
+    return IDirect3DRMMeshBuilder3_GetName(&mesh_builder->IDirect3DRMMeshBuilder3_iface, size, name);
 }
 
-static HRESULT WINAPI IDirect3DRMMeshBuilder2Impl_GetClassName(IDirect3DRMMeshBuilder2* iface,
-                                                               LPDWORD size, LPSTR name)
+static HRESULT WINAPI IDirect3DRMMeshBuilder2Impl_GetClassName(IDirect3DRMMeshBuilder2 *iface,
+        DWORD *size, char *name)
 {
-    IDirect3DRMMeshBuilderImpl *This = impl_from_IDirect3DRMMeshBuilder2(iface);
+    IDirect3DRMMeshBuilderImpl *mesh_builder = impl_from_IDirect3DRMMeshBuilder2(iface);
 
-    TRACE("(%p)->(%p, %p)\n", This, size, name);
+    TRACE("iface %p, size %p, name %p.\n", iface, size, name);
 
-    return IDirect3DRMMeshBuilder3_GetClassName(&This->IDirect3DRMMeshBuilder3_iface, size, name);
+    return IDirect3DRMMeshBuilder3_GetClassName(&mesh_builder->IDirect3DRMMeshBuilder3_iface, size, name);
 }
 
 /*** IDirect3DRMMeshBuilder2 methods ***/
-static HRESULT WINAPI IDirect3DRMMeshBuilder2Impl_Load(IDirect3DRMMeshBuilder2* iface,
-                                                       LPVOID filename, LPVOID name,
-                                                       D3DRMLOADOPTIONS loadflags,
-                                                       D3DRMLOADTEXTURECALLBACK cb, LPVOID arg)
+static HRESULT WINAPI IDirect3DRMMeshBuilder2Impl_Load(IDirect3DRMMeshBuilder2 *iface, void *filename,
+        void *name, D3DRMLOADOPTIONS flags, D3DRMLOADTEXTURECALLBACK cb, void *ctx)
 {
-    IDirect3DRMMeshBuilderImpl *This = impl_from_IDirect3DRMMeshBuilder2(iface);
+    IDirect3DRMMeshBuilderImpl *mesh_builder = impl_from_IDirect3DRMMeshBuilder2(iface);
 
-    TRACE("(%p)->(%p,%p,%x,%p,%p)\n", This, filename, name, loadflags, cb, arg);
+    TRACE("iface %p, filename %p, name %p, flags %#x, cb %p, ctx %p.\n",
+            iface, filename, name, flags, cb, ctx);
 
     if (cb)
         FIXME("Texture callback is not yet supported\n");
 
-    return IDirect3DRMMeshBuilder3_Load(&This->IDirect3DRMMeshBuilder3_iface, filename, name,
-                                        loadflags, NULL, arg);
+    return IDirect3DRMMeshBuilder3_Load(&mesh_builder->IDirect3DRMMeshBuilder3_iface,
+            filename, name, flags, NULL, ctx);
 }
 
 static HRESULT WINAPI IDirect3DRMMeshBuilder2Impl_Save(IDirect3DRMMeshBuilder2* iface,
@@ -659,7 +651,7 @@ static HRESULT WINAPI IDirect3DRMMeshBuilder2Impl_SetTexture(IDirect3DRMMeshBuil
     HRESULT hr = D3DRM_OK;
 
     if (texture)
-        hr = IDirect3DRMTexture_QueryInterface(texture, &IID_IDirect3DRMTexture3, (LPVOID*)&texture3);
+        hr = IDirect3DRMTexture_QueryInterface(texture, &IID_IDirect3DRMTexture3, (void **)&texture3);
     if (SUCCEEDED(hr))
         hr = IDirect3DRMMeshBuilder3_SetTexture(&This->IDirect3DRMMeshBuilder3_iface, texture3);
     if (texture3)
@@ -1007,24 +999,18 @@ static HRESULT WINAPI IDirect3DRMMeshBuilder3Impl_Clone(IDirect3DRMMeshBuilder3 
     return E_NOTIMPL;
 }
 
-static HRESULT WINAPI IDirect3DRMMeshBuilder3Impl_AddDestroyCallback(IDirect3DRMMeshBuilder3* iface,
-                                                                     D3DRMOBJECTCALLBACK cb,
-                                                                     LPVOID argument)
+static HRESULT WINAPI IDirect3DRMMeshBuilder3Impl_AddDestroyCallback(IDirect3DRMMeshBuilder3 *iface,
+        D3DRMOBJECTCALLBACK cb, void *ctx)
 {
-    IDirect3DRMMeshBuilderImpl *This = impl_from_IDirect3DRMMeshBuilder3(iface);
-
-    FIXME("(%p)->(%p,%p): stub\n", This, cb, argument);
+    FIXME("iface %p, cb %p, ctx %p stub!\n", iface, cb, ctx);
 
     return E_NOTIMPL;
 }
 
-static HRESULT WINAPI IDirect3DRMMeshBuilder3Impl_DeleteDestroyCallback(IDirect3DRMMeshBuilder3* iface,
-                                                                        D3DRMOBJECTCALLBACK cb,
-                                                                        LPVOID argument)
+static HRESULT WINAPI IDirect3DRMMeshBuilder3Impl_DeleteDestroyCallback(IDirect3DRMMeshBuilder3 *iface,
+        D3DRMOBJECTCALLBACK cb, void *ctx)
 {
-    IDirect3DRMMeshBuilderImpl *This = impl_from_IDirect3DRMMeshBuilder3(iface);
-
-    FIXME("(%p)->(%p,%p): stub\n", This, cb, argument);
+    FIXME("iface %p, cb %p, ctx %p stub!\n", iface, cb, ctx);
 
     return E_NOTIMPL;
 }
@@ -1067,37 +1053,35 @@ static HRESULT WINAPI IDirect3DRMMeshBuilder3Impl_SetName(IDirect3DRMMeshBuilder
     return D3DRM_OK;
 }
 
-static HRESULT WINAPI IDirect3DRMMeshBuilder3Impl_GetName(IDirect3DRMMeshBuilder3* iface,
-                                                          LPDWORD size, LPSTR name)
+static HRESULT WINAPI IDirect3DRMMeshBuilder3Impl_GetName(IDirect3DRMMeshBuilder3 *iface,
+        DWORD *size, char *name)
 {
-    IDirect3DRMMeshBuilderImpl *This = impl_from_IDirect3DRMMeshBuilder3(iface);
+    IDirect3DRMMeshBuilderImpl *mesh_builder = impl_from_IDirect3DRMMeshBuilder3(iface);
 
-    TRACE("(%p)->(%p,%p)\n", This, size, name);
+    TRACE("iface %p, size %p, name %p.\n", iface, size, name);
 
     if (!size)
         return E_POINTER;
 
-    if (!This->name)
+    if (!mesh_builder->name)
     {
         *size = 0;
         return D3DRM_OK;
     }
 
-    if (*size < (strlen(This->name) + 1))
+    if (*size < (strlen(mesh_builder->name) + 1))
         return E_INVALIDARG;
 
-    strcpy(name, This->name);
-    *size = strlen(This->name) + 1;
+    strcpy(name, mesh_builder->name);
+    *size = strlen(mesh_builder->name) + 1;
 
     return D3DRM_OK;
 }
 
-static HRESULT WINAPI IDirect3DRMMeshBuilder3Impl_GetClassName(IDirect3DRMMeshBuilder3* iface,
-                                                               LPDWORD size, LPSTR name)
+static HRESULT WINAPI IDirect3DRMMeshBuilder3Impl_GetClassName(IDirect3DRMMeshBuilder3 *iface,
+        DWORD *size, char *name)
 {
-    IDirect3DRMMeshBuilderImpl *This = impl_from_IDirect3DRMMeshBuilder3(iface);
-
-    TRACE("(%p)->(%p, %p)\n", This, size, name);
+    TRACE("iface %p, size %p, name %p.\n", iface, size, name);
 
     if (!size || *size < strlen("Builder") || !name)
         return E_INVALIDARG;
@@ -2154,7 +2138,8 @@ static HRESULT WINAPI IDirect3DRMMeshBuilder3Impl_CreateMesh(IDirect3DRMMeshBuil
             {
                 IDirect3DRMTexture *texture;
 
-                IDirect3DRMTexture3_QueryInterface(This->materials[k].texture, &IID_IDirect3DRMTexture, (LPVOID*)&texture);
+                IDirect3DRMTexture3_QueryInterface(This->materials[k].texture,
+                        &IID_IDirect3DRMTexture, (void **)&texture);
                 hr = IDirect3DRMMesh_SetGroupTexture(*mesh, group, texture);
                 IDirect3DRMTexture_Release(texture);
             }
@@ -2304,13 +2289,11 @@ static HRESULT WINAPI IDirect3DRMMeshBuilder3Impl_GetEnable(IDirect3DRMMeshBuild
     return E_NOTIMPL;
 }
 
-static HRESULT WINAPI IDirect3DRMMeshBuilder3Impl_AddTriangles(IDirect3DRMMeshBuilder3* iface,
-                                                               DWORD flags, DWORD format,
-                                                               DWORD VertexCount, LPVOID data)
+static HRESULT WINAPI IDirect3DRMMeshBuilder3Impl_AddTriangles(IDirect3DRMMeshBuilder3 *iface,
+        DWORD flags, DWORD format, DWORD vertex_count, void *data)
 {
-    IDirect3DRMMeshBuilderImpl *This = impl_from_IDirect3DRMMeshBuilder3(iface);
-
-    FIXME("(%p)->(%u,%u,%u,%p): stub\n", This, flags, format, VertexCount, data);
+    FIXME("iface %p, flags %#x, format %#x, vertex_count %u, data %p stub!\n",
+            iface, flags, format, vertex_count, data);
 
     return E_NOTIMPL;
 }
@@ -2546,24 +2529,18 @@ static HRESULT WINAPI IDirect3DRMMeshImpl_Clone(IDirect3DRMMesh *iface,
     return E_NOTIMPL;
 }
 
-static HRESULT WINAPI IDirect3DRMMeshImpl_AddDestroyCallback(IDirect3DRMMesh* iface,
-                                                             D3DRMOBJECTCALLBACK cb,
-                                                             LPVOID argument)
+static HRESULT WINAPI IDirect3DRMMeshImpl_AddDestroyCallback(IDirect3DRMMesh *iface,
+        D3DRMOBJECTCALLBACK cb, void *ctx)
 {
-    IDirect3DRMMeshImpl *This = impl_from_IDirect3DRMMesh(iface);
-
-    FIXME("(%p)->(%p,%p): stub\n", This, cb, argument);
+    FIXME("iface %p, cb %p, ctx %p stub!\n", iface, cb, ctx);
 
     return E_NOTIMPL;
 }
 
-static HRESULT WINAPI IDirect3DRMMeshImpl_DeleteDestroyCallback(IDirect3DRMMesh* iface,
-                                                                 D3DRMOBJECTCALLBACK cb,
-                                                                 LPVOID argument)
+static HRESULT WINAPI IDirect3DRMMeshImpl_DeleteDestroyCallback(IDirect3DRMMesh *iface,
+        D3DRMOBJECTCALLBACK cb, void *ctx)
 {
-    IDirect3DRMMeshImpl *This = impl_from_IDirect3DRMMesh(iface);
-
-    FIXME("(%p)->(%p,%p): stub\n", This, cb, argument);
+    FIXME("iface %p, cb %p, ctx %p stub!\n", iface, cb, ctx);
 
     return E_NOTIMPL;
 }
@@ -2594,22 +2571,16 @@ static HRESULT WINAPI IDirect3DRMMeshImpl_SetName(IDirect3DRMMesh *iface, const 
     return E_NOTIMPL;
 }
 
-static HRESULT WINAPI IDirect3DRMMeshImpl_GetName(IDirect3DRMMesh* iface,
-                                                  LPDWORD lpdwSize, LPSTR lpName)
+static HRESULT WINAPI IDirect3DRMMeshImpl_GetName(IDirect3DRMMesh *iface, DWORD *size, char *name)
 {
-    IDirect3DRMMeshImpl *This = impl_from_IDirect3DRMMesh(iface);
-
-    FIXME("(%p)->(%p,%p): stub\n", This, lpdwSize, lpName);
+    FIXME("iface %p, size %p, name %p stub!\n", iface, size, name);
 
     return E_NOTIMPL;
 }
 
-static HRESULT WINAPI IDirect3DRMMeshImpl_GetClassName(IDirect3DRMMesh* iface,
-                                                       LPDWORD size, LPSTR name)
+static HRESULT WINAPI IDirect3DRMMeshImpl_GetClassName(IDirect3DRMMesh *iface, DWORD *size, char *name)
 {
-    IDirect3DRMMeshImpl *This = impl_from_IDirect3DRMMesh(iface);
-
-    TRACE("(%p)->(%p, %p)\n", This, size, name);
+    TRACE("iface %p, size %p, name %p.\n", iface, size, name);
 
     if (!size || *size < strlen("Mesh") || !name)
         return E_INVALIDARG;
@@ -2843,7 +2814,7 @@ static HRESULT WINAPI IDirect3DRMMeshImpl_SetGroupTexture(IDirect3DRMMesh *iface
         return D3DRM_OK;
     }
 
-    return IDirect3DRMTexture3_QueryInterface(texture, &IID_IDirect3DRMTexture, (LPVOID*)&This->groups[id].texture);
+    return IDirect3DRMTexture3_QueryInterface(texture, &IID_IDirect3DRMTexture, (void **)&This->groups[id].texture);
 }
 
 static DWORD WINAPI IDirect3DRMMeshImpl_GetGroupCount(IDirect3DRMMesh* iface)

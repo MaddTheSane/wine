@@ -1,6 +1,5 @@
 /*
- * Copyright 2004 Ivan Leo Puoti
- * Copyright 2010 Christian Costa
+ * Copyright 2013 Detlef Riekenberg
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -15,28 +14,42 @@
  * You should have received a copy of the GNU Lesser General Public
  * License along with this library; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA
+ *
  */
 
+#include "config.h"
+#include "wine/port.h"
 #include <stdarg.h>
+
+#define COBJMACROS
 #include "windef.h"
 #include "winbase.h"
-#include "wingdi.h"
-#include "d3drm.h"
-#include "d3drm_private.h"
+#include "winuser.h"
+#include "objbase.h"
+#include "d3d11.h"
 
+BOOL WINAPI DllMain(HINSTANCE hdll, DWORD reason, LPVOID reserved)
+{
+    switch (reason)
+    {
+        case DLL_WINE_PREATTACH:
+            return FALSE;       /* prefer native version */
+        case DLL_PROCESS_ATTACH:
+            DisableThreadLibraryCalls(hdll);
+    }
+
+   return TRUE;
+}
 
 /***********************************************************************
- *		DllMain  (D3DRM.@)
+ * D3DX11CheckVersion
+ *
+ * Checks whether we are compiling against the correct d3d and d3dx library.
  */
-BOOL WINAPI DllMain(HINSTANCE inst, DWORD reason, void *reserved)
+BOOL WINAPI D3DX11CheckVersion(UINT d3dsdkversion, UINT d3dxsdkversion)
 {
-    switch(reason)
-    {
-    case DLL_WINE_PREATTACH:
-        return FALSE;  /* prefer native version */
-    case DLL_PROCESS_ATTACH:
-        DisableThreadLibraryCalls( inst );
-        break;
-    }
-    return TRUE;
+    if ((d3dsdkversion == D3D11_SDK_VERSION) && (d3dxsdkversion == 42))
+        return TRUE;
+
+    return FALSE;
 }

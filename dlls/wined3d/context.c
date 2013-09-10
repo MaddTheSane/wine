@@ -2368,13 +2368,13 @@ BOOL context_apply_draw_state(struct wined3d_context *context, struct wined3d_de
     device_update_tex_unit_map(device);
     device_preload_textures(device);
     if (isStateDirty(context, STATE_VDECL) || isStateDirty(context, STATE_STREAMSRC))
-        device_update_stream_info(device, context->gl_info);
+        device_update_stream_info(device, context);
     if (state->index_buffer)
     {
         if (device->stream_info.all_vbo)
-            wined3d_buffer_preload(state->index_buffer);
+            buffer_internal_preload(state->index_buffer, context);
         else
-            buffer_get_sysmem(state->index_buffer, context->gl_info);
+            buffer_get_sysmem(state->index_buffer, context);
     }
 
     for (i = 0; i < context->numDirtyEntries; ++i)
