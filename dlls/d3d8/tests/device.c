@@ -4362,8 +4362,11 @@ static void test_surface_blocks(void)
          * which doesn't match the format spec. On newer Nvidia cards
          * it has the correct 4x4 block size */
         {MAKEFOURCC('A','T','I','2'), "ATI2N",       4, 4, TRUE,  FALSE, FALSE},
-        {D3DFMT_YUY2,                 "D3DFMT_YUY2", 2, 1, FALSE, FALSE, TRUE },
-        {D3DFMT_UYVY,                 "D3DFMT_UYVY", 2, 1, FALSE, FALSE, TRUE },
+        /* Windows drivers generally enforce block-aligned locks for
+         * YUY2 and UYVY. The notable exception is the AMD r500 driver
+         * in d3d8. The same driver checks the sizes in d3d9. */
+        {D3DFMT_YUY2,                 "D3DFMT_YUY2", 2, 1, TRUE,  FALSE, TRUE },
+        {D3DFMT_UYVY,                 "D3DFMT_UYVY", 2, 1, TRUE,  FALSE, TRUE },
     };
     static const struct
     {
@@ -5320,6 +5323,56 @@ out:
     IDirect3D8_Release(d3d8);
     DestroyWindow(window);
 }
+
+static void test_create_rt_ds_fail(void)
+{
+    IDirect3DDevice8 *device;
+    HWND window;
+    HRESULT hr;
+    ULONG refcount;
+    IDirect3D8 *d3d8;
+    IDirect3DSurface8 *surface;
+
+    if (!(d3d8 = pDirect3DCreate8(D3D_SDK_VERSION)))
+    {
+        skip("Failed to create IDirect3D8 object, skipping tests.\n");
+        return;
+    }
+
+    window = CreateWindowA("static", "d3d8_test", WS_OVERLAPPEDWINDOW,
+            0, 0, 640, 480, 0, 0, 0, 0);
+    if (!(device = create_device(d3d8, window, window, TRUE)))
+    {
+        skip("Failed to create a D3D device, skipping tests.\n");
+        IDirect3D8_Release(d3d8);
+        DestroyWindow(window);
+        return;
+    }
+
+    /* Output pointer == NULL segfaults on Windows. */
+
+    surface = (IDirect3DSurface8 *)0xdeadbeef;
+    hr = IDirect3DDevice8_CreateRenderTarget(device, 4, 4, D3DFMT_D16,
+            D3DMULTISAMPLE_NONE, FALSE, &surface);
+    ok(hr == D3DERR_INVALIDCALL, "Creating a D16 render target returned hr %#x.\n", hr);
+    ok(surface == NULL, "Got pointer %p, expected NULL.\n", surface);
+    if (SUCCEEDED(hr))
+        IDirect3DSurface8_Release(surface);
+
+    surface = (IDirect3DSurface8 *)0xdeadbeef;
+    hr = IDirect3DDevice8_CreateDepthStencilSurface(device, 4, 4, D3DFMT_A8R8G8B8,
+            D3DMULTISAMPLE_NONE, &surface);
+    ok(hr == D3DERR_INVALIDCALL, "Creating a A8R8G8B8 depth stencil returned hr %#x.\n", hr);
+    ok(surface == NULL, "Got pointer %p, expected NULL.\n", surface);
+    if (SUCCEEDED(hr))
+        IDirect3DSurface8_Release(surface);
+
+    refcount = IDirect3DDevice8_Release(device);
+    ok(!refcount, "Device has %u references left.\n", refcount);
+    IDirect3D8_Release(d3d8);
+    DestroyWindow(window);
+}
+
 START_TEST(device)
 {
     HMODULE d3d8_handle = LoadLibraryA( "d3d8.dll" );
@@ -5399,6 +5452,7 @@ START_TEST(device)
         test_npot_textures();
         test_volume_locking();
         test_update_volumetexture();
+        test_create_rt_ds_fail();
     }
     UnregisterClassA("d3d8_test_wc", GetModuleHandleA(NULL));
 }
