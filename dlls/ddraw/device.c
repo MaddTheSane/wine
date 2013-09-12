@@ -245,10 +245,7 @@ static ULONG WINAPI d3d_device_inner_Release(IUnknown *iface)
         if (This->vertex_buffer)
             wined3d_buffer_decref(This->vertex_buffer);
 
-        /* Set the device up to render to the front buffer since the back
-         * buffer will vanish soon. */
-        wined3d_device_set_render_target(This->wined3d_device, 0,
-                This->ddraw->wined3d_frontbuffer, TRUE);
+        wined3d_device_set_render_target(This->wined3d_device, 0, NULL, FALSE);
 
         /* Release the wined3d device. This won't destroy it. */
         if (!wined3d_device_decref(This->wined3d_device))
@@ -1827,10 +1824,15 @@ static HRESULT d3d_device_set_render_target(struct d3d_device *device, struct dd
         wined3d_mutex_unlock();
         return D3D_OK;
     }
+    if (!target)
+    {
+        WARN("Trying to set render target to NULL.\n");
+        wined3d_mutex_unlock();
+        return DDERR_INVALIDPARAMS;
+    }
     device->target = target;
-    hr = wined3d_device_set_render_target(device->wined3d_device, 0,
-            target ? target->wined3d_surface : NULL, FALSE);
-    if(hr != D3D_OK)
+    if (FAILED(hr = wined3d_device_set_render_target(device->wined3d_device,
+            0, target->wined3d_surface, FALSE)))
     {
         wined3d_mutex_unlock();
         return hr;
