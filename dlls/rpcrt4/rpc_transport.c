@@ -2653,7 +2653,7 @@ static RPC_STATUS do_authorization(HINTERNET request, SEC_WCHAR *servername,
         in_desc.pBuffers  = &in;
 
         p = auth_value + scheme_len;
-        if (*p == ' ')
+        if (!first && *p == ' ')
         {
             int len = strlenW(++p);
             in.cbBuffer = decode_base64(p, len, NULL);
@@ -2803,7 +2803,9 @@ static RPC_STATUS authorize_request(RpcConnection_http *httpc, HINTERNET request
         drain_content(request);
     }
 
-    HttpAddRequestHeadersW(request, authW, -1, HTTP_ADDREQ_FLAG_REPLACE);
+    if (info->scheme != RPC_C_HTTP_AUTHN_SCHEME_BASIC)
+        HttpAddRequestHeadersW(request, authW, -1, HTTP_ADDREQ_FLAG_REPLACE);
+
     destroy_authinfo(info);
     return status;
 }

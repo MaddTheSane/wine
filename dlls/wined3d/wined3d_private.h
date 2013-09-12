@@ -2774,11 +2774,12 @@ struct wined3d_shader
 };
 
 void pixelshader_update_samplers(struct wined3d_shader *shader, WORD tex_types) DECLSPEC_HIDDEN;
-void find_ps_compile_args(const struct wined3d_state *state,
-        const struct wined3d_shader *shader, struct ps_compile_args *args) DECLSPEC_HIDDEN;
+void find_ps_compile_args(const struct wined3d_state *state, const struct wined3d_shader *shader,
+        BOOL position_transformed, struct ps_compile_args *args,
+        const struct wined3d_gl_info *gl_info) DECLSPEC_HIDDEN;
 
-void find_vs_compile_args(const struct wined3d_state *state,
-        const struct wined3d_shader *shader, struct vs_compile_args *args) DECLSPEC_HIDDEN;
+void find_vs_compile_args(const struct wined3d_state *state, const struct wined3d_shader *shader,
+        WORD swizzle_map, struct vs_compile_args *args) DECLSPEC_HIDDEN;
 
 void shader_buffer_clear(struct wined3d_shader_buffer *buffer) DECLSPEC_HIDDEN;
 BOOL shader_buffer_init(struct wined3d_shader_buffer *buffer) DECLSPEC_HIDDEN;
