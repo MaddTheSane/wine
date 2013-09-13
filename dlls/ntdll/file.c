@@ -606,7 +606,7 @@ NTSTATUS WINAPI NtReadFile(HANDLE hFile, HANDLE hEvent,
 
     if (type == FD_TYPE_FILE)
     {
-        if (!(options & (FILE_SYNCHRONOUS_IO_ALERT | FILE_SYNCHRONOUS_IO_NONALERT)) && !offset)
+        if (!(options & (FILE_SYNCHRONOUS_IO_ALERT | FILE_SYNCHRONOUS_IO_NONALERT)) && (!offset || offset->QuadPart < 0))
         {
             status = STATUS_INVALID_PARAMETER;
             goto done;
@@ -961,7 +961,7 @@ NTSTATUS WINAPI NtWriteFile(HANDLE hFile, HANDLE hEvent,
 
     if (type == FD_TYPE_FILE)
     {
-        if (!(options & (FILE_SYNCHRONOUS_IO_ALERT | FILE_SYNCHRONOUS_IO_NONALERT)) && !offset)
+        if (!(options & (FILE_SYNCHRONOUS_IO_ALERT | FILE_SYNCHRONOUS_IO_NONALERT)) && (!offset || offset->QuadPart < 0))
         {
             status = STATUS_INVALID_PARAMETER;
             goto done;
@@ -981,6 +981,11 @@ NTSTATUS WINAPI NtWriteFile(HANDLE hFile, HANDLE hEvent,
                     goto done;
                 }
                 off = st.st_size;
+            }
+            else if (offset->QuadPart < 0)
+            {
+                status = STATUS_INVALID_PARAMETER;
+                goto done;
             }
 
             /* async I/O doesn't make sense on regular files */
