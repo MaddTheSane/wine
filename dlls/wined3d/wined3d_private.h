@@ -1086,6 +1086,8 @@ struct wined3d_context
     DWORD use_immediate_mode_draw : 1;
     DWORD texShaderBumpMap : 8;         /* MAX_TEXTURES, 8 */
     DWORD lastWasPow2Texture : 8;       /* MAX_TEXTURES, 8 */
+    DWORD fixed_function_usage_map : 8; /* MAX_TEXTURES, 8 */
+    DWORD padding : 24;
     DWORD shader_update_mask;
     DWORD constant_update_mask;
     DWORD                   numbered_array_mask;
@@ -1095,6 +1097,8 @@ struct wined3d_context
     enum fogsource          fog_source;
     DWORD active_texture;
     DWORD texture_type[MAX_COMBINED_SAMPLERS];
+
+    UINT instance_count;
 
     /* The actual opengl context */
     UINT level;
@@ -1137,6 +1141,9 @@ struct wined3d_context
     /* Fences for GL_APPLE_flush_buffer_range */
     struct wined3d_event_query *buffer_queries[MAX_ATTRIBS];
     unsigned int num_buffer_queries;
+
+    DWORD                     tex_unit_map[MAX_COMBINED_SAMPLERS];
+    DWORD                     rev_tex_unit_map[MAX_COMBINED_SAMPLERS];
 
     /* Extension emulation */
     GLint                   gl_fog_source;
@@ -1880,20 +1887,17 @@ struct wined3d_device
     APPLYSTATEFUNC *multistate_funcs[STATE_HIGHEST + 1];
     const struct blit_shader *blitter;
 
-    UINT instance_count;
-
-    WORD vertexBlendUsed : 1;           /* To avoid needless setting of the blend matrices */
-    WORD isInDraw : 1;
-    WORD bCursorVisible : 1;
-    WORD d3d_initialized : 1;
-    WORD inScene : 1;                   /* A flag to check for proper BeginScene / EndScene call pairs */
-    WORD softwareVertexProcessing : 1;  /* process vertex shaders using software or hardware */
-    WORD filter_messages : 1;
-    WORD padding : 9;
-
-    BYTE fixed_function_usage_map;      /* MAX_TEXTURES, 8 */
+    BYTE vertexBlendUsed : 1;           /* To avoid needless setting of the blend matrices */
+    BYTE bCursorVisible : 1;
+    BYTE d3d_initialized : 1;
+    BYTE inScene : 1;                   /* A flag to check for proper BeginScene / EndScene call pairs */
+    BYTE softwareVertexProcessing : 1;  /* process vertex shaders using software or hardware */
+    BYTE filter_messages : 1;
+    BYTE padding : 2;
 
     unsigned char           surface_alignment; /* Line Alignment of surfaces                      */
+
+    WORD padding2 : 16;
 
     struct wined3d_state state;
     struct wined3d_state *update_state;
@@ -1935,10 +1939,6 @@ struct wined3d_device
     UINT dummy_texture_3d[MAX_COMBINED_SAMPLERS];
     UINT dummy_texture_cube[MAX_COMBINED_SAMPLERS];
 
-    /* With register combiners we can skip junk texture stages */
-    DWORD                     texUnitMap[MAX_COMBINED_SAMPLERS];
-    DWORD                     rev_tex_unit_map[MAX_COMBINED_SAMPLERS];
-
     /* Context management */
     struct wined3d_context **contexts;
     UINT context_count;
@@ -1952,14 +1952,12 @@ void device_context_remove(struct wined3d_device *device, struct wined3d_context
 HRESULT device_init(struct wined3d_device *device, struct wined3d *wined3d,
         UINT adapter_idx, enum wined3d_device_type device_type, HWND focus_window, DWORD flags,
         BYTE surface_alignment, struct wined3d_device_parent *device_parent) DECLSPEC_HIDDEN;
-void device_preload_textures(const struct wined3d_device *device) DECLSPEC_HIDDEN;
 LRESULT device_process_message(struct wined3d_device *device, HWND window, BOOL unicode,
         UINT message, WPARAM wparam, LPARAM lparam, WNDPROC proc) DECLSPEC_HIDDEN;
 void device_resource_add(struct wined3d_device *device, struct wined3d_resource *resource) DECLSPEC_HIDDEN;
 void device_resource_released(struct wined3d_device *device, struct wined3d_resource *resource) DECLSPEC_HIDDEN;
 void device_switch_onscreen_ds(struct wined3d_device *device, struct wined3d_context *context,
         struct wined3d_surface *depth_stencil) DECLSPEC_HIDDEN;
-void device_update_tex_unit_map(struct wined3d_device *device) DECLSPEC_HIDDEN;
 void device_invalidate_state(const struct wined3d_device *device, DWORD state) DECLSPEC_HIDDEN;
 
 static inline BOOL isStateDirty(const struct wined3d_context *context, DWORD state)
@@ -1969,9 +1967,9 @@ static inline BOOL isStateDirty(const struct wined3d_context *context, DWORD sta
     return context->isStateDirty[idx] & (1 << shift);
 }
 
-static inline void invalidate_active_texture(const struct wined3d_device *device, struct wined3d_context *context)
+static inline void context_invalidate_active_texture(struct wined3d_context *context)
 {
-    DWORD sampler = device->rev_tex_unit_map[context->active_texture];
+    DWORD sampler = context->rev_tex_unit_map[context->active_texture];
     if (sampler != WINED3D_UNMAPPED_STAGE)
         context_invalidate_state(context, STATE_SAMPLER(sampler));
 }
@@ -1983,9 +1981,6 @@ struct wined3d_resource_ops
 {
     void (*resource_unload)(struct wined3d_resource *resource);
 };
-
-void *wined3d_resource_allocate_sysmem(SIZE_T size) DECLSPEC_HIDDEN;
-void wined3d_resource_free_sysmem(void *mem) DECLSPEC_HIDDEN;
 
 struct wined3d_resource
 {
@@ -2025,6 +2020,8 @@ HRESULT resource_init(struct wined3d_resource *resource, struct wined3d_device *
         const struct wined3d_resource_ops *resource_ops) DECLSPEC_HIDDEN;
 DWORD resource_set_priority(struct wined3d_resource *resource, DWORD priority) DECLSPEC_HIDDEN;
 void resource_unload(struct wined3d_resource *resource) DECLSPEC_HIDDEN;
+BOOL wined3d_resource_allocate_sysmem(struct wined3d_resource *resource) DECLSPEC_HIDDEN;
+void wined3d_resource_free_sysmem(struct wined3d_resource *resource) DECLSPEC_HIDDEN;
 DWORD wined3d_resource_sanitize_map_flags(const struct wined3d_resource *resource,
         DWORD flags) DECLSPEC_HIDDEN;
 GLbitfield wined3d_resource_gl_map_flags(DWORD d3d_flags) DECLSPEC_HIDDEN;
@@ -2065,7 +2062,8 @@ struct wined3d_texture_ops
 {
     HRESULT (*texture_bind)(struct wined3d_texture *texture,
             struct wined3d_context *context, BOOL srgb);
-    void (*texture_preload)(struct wined3d_texture *texture, enum WINED3DSRGB srgb);
+    void (*texture_preload)(struct wined3d_texture *texture, struct wined3d_context *context,
+            enum WINED3DSRGB srgb);
     void (*texture_sub_resource_add_dirty_region)(struct wined3d_resource *sub_resource,
             const struct wined3d_box *dirty_region);
     void (*texture_sub_resource_cleanup)(struct wined3d_resource *sub_resource);
@@ -2253,7 +2251,8 @@ void surface_add_dirty_rect(struct wined3d_surface *surface, const struct wined3
 HRESULT surface_color_fill(struct wined3d_surface *s,
         const RECT *rect, const struct wined3d_color *color) DECLSPEC_HIDDEN;
 GLenum surface_get_gl_buffer(const struct wined3d_surface *surface) DECLSPEC_HIDDEN;
-void surface_internal_preload(struct wined3d_surface *surface, enum WINED3DSRGB srgb) DECLSPEC_HIDDEN;
+void surface_internal_preload(struct wined3d_surface *surface,
+        struct wined3d_context *context, enum WINED3DSRGB srgb) DECLSPEC_HIDDEN;
 void surface_invalidate_location(struct wined3d_surface *surface, DWORD location) DECLSPEC_HIDDEN;
 BOOL surface_is_offscreen(const struct wined3d_surface *surface) DECLSPEC_HIDDEN;
 HRESULT surface_load(struct wined3d_surface *surface, BOOL srgb) DECLSPEC_HIDDEN;

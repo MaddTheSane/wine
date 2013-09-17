@@ -1854,7 +1854,6 @@ todo_wine
     ok(WSASocketA(AF_INET, 0xdead, 0, NULL, 0, 0) == INVALID_SOCKET,
        "WSASocketA should have failed\n");
     err = WSAGetLastError();
-todo_wine
     ok(err == WSAESOCKTNOSUPPORT, "Expected 10044, received %d\n", err);
 
     SetLastError(0xdeadbeef);
@@ -1874,7 +1873,6 @@ todo_wine
     ok(WSASocketA(AF_INET, SOCK_STREAM, IPPROTO_UDP, NULL, 0, 0) == INVALID_SOCKET,
        "WSASocketA should have failed\n");
     err = WSAGetLastError();
-todo_wine
     ok(err == WSAEPROTONOSUPPORT, "Expected 10043, received %d\n", err);
 
     /* SOCK_DGRAM does not support IPPROTO_TCP */
@@ -1882,7 +1880,6 @@ todo_wine
     ok(WSASocketA(AF_INET, SOCK_DGRAM, IPPROTO_TCP, NULL, 0, 0) == INVALID_SOCKET,
        "WSASocketA should have failed\n");
     err = WSAGetLastError();
-todo_wine
     ok(err == WSAEPROTONOSUPPORT, "Expected 10043, received %d\n", err);
 
     /* Set pi_size explicitly to a value below 2*sizeof(WSAPROTOCOL_INFOA)
@@ -2000,22 +1997,22 @@ todo_wine
     ok(sock != INVALID_SOCKET, "Failed to create socket: %d\n",
             WSAGetLastError());
 
-todo_wine {
     size = sizeof(socktype);
     socktype = 0xdead;
     err = getsockopt(sock, SOL_SOCKET, SO_TYPE, (char *) &socktype, &size);
+todo_wine
     ok(!err, "getsockopt failed with %d\n", WSAGetLastError());
     for(i = 0; i < items; i++)
     {
         if(pi[i].dwProviderFlags & PFL_MATCHES_PROTOCOL_ZERO)
         {
+todo_wine
             ok(socktype == pi[i].iSocketType, "Wrong socket type, expected %d received %d\n",
                pi[i].iSocketType, socktype);
              break;
         }
     }
     ok(i != items, "Creating a socket without protocol and socket type didn't work\n");
-}
     closesocket(sock);
 
     /* when no socket type is specified the first entry from WSAEnumProtocols
@@ -2053,6 +2050,53 @@ todo_wine
     }
 
     HeapFree(GetProcessHeap(), 0, pi);
+
+    SetLastError(0xdeadbeef);
+    /* starting on vista the socket function returns error during the socket
+       creation and no longer in the socket operations (sendto, readfrom) */
+    sock = WSASocketA(AF_INET, SOCK_RAW, IPPROTO_ICMP, NULL, 0, 0);
+    if (sock == INVALID_SOCKET)
+    {
+        err = WSAGetLastError();
+        ok(err == WSAEACCES, "Expected 10013, received %d\n", err);
+        skip("SOCK_RAW is not supported\n");
+    }
+    else
+    {
+        trace("SOCK_RAW is supported\n");
+
+        size = sizeof(socktype);
+        socktype = 0xdead;
+        err = getsockopt(sock, SOL_SOCKET, SO_TYPE, (char *) &socktype, &size);
+        ok(!err, "getsockopt failed with %d\n", WSAGetLastError());
+        ok(socktype == SOCK_RAW, "Wrong socket type, expected %d received %d\n",
+           SOCK_RAW, socktype);
+        closesocket(sock);
+
+        todo_wine {
+        sock = WSASocketA(0, 0, IPPROTO_RAW, NULL, 0, 0);
+        ok(sock != INVALID_SOCKET, "Failed to create socket: %d\n",
+           WSAGetLastError());
+        size = sizeof(socktype);
+        socktype = 0xdead;
+        err = getsockopt(sock, SOL_SOCKET, SO_TYPE, (char *) &socktype, &size);
+        ok(!err, "getsockopt failed with %d\n", WSAGetLastError());
+        ok(socktype == SOCK_RAW, "Wrong socket type, expected %d received %d\n",
+           SOCK_RAW, socktype);
+        closesocket(sock);
+        }
+
+        sock = WSASocketA(AF_INET, SOCK_RAW, IPPROTO_TCP, NULL, 0, 0);
+        ok(sock != INVALID_SOCKET, "Failed to create socket: %d\n",
+           WSAGetLastError());
+        size = sizeof(socktype);
+        socktype = 0xdead;
+        err = getsockopt(sock, SOL_SOCKET, SO_TYPE, (char *) &socktype, &size);
+        ok(!err, "getsockopt failed with %d\n", WSAGetLastError());
+        ok(socktype == SOCK_RAW, "Wrong socket type, expected %d received %d\n",
+           SOCK_RAW, socktype);
+        closesocket(sock);
+    }
 }
 
 static void test_WSADuplicateSocket(void)

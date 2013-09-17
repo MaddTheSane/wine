@@ -1592,15 +1592,14 @@ static INT WS_DuplicateSocket(BOOL unicode, SOCKET s, DWORD dwProcessId, LPWSAPR
  *    buffer.
  *
  * RETURNS
- *    1 if a protocol was entered into the buffer.
- *    SOCKET_ERROR otherwise.
+ *    TRUE if a protocol was entered into the buffer.
  *
  * BUGS
  *    - only implemented for IPX, SPX, SPXII, TCP, UDP
  *    - there is no check that the operating system supports the returned
  *      protocols
  */
-static INT WS_EnterSingleProtocolW( INT protocol, WSAPROTOCOL_INFOW* info )
+static BOOL WS_EnterSingleProtocolW( INT protocol, WSAPROTOCOL_INFOW* info )
 {
     memset( info, 0, sizeof(WSAPROTOCOL_INFOW) );
     info->iProtocol = protocol;
@@ -1613,6 +1612,7 @@ static INT WS_EnterSingleProtocolW( INT protocol, WSAPROTOCOL_INFOW* info )
                                 XP1_GUARANTEED_DELIVERY;
         info->ProviderId = ProviderIdIP;
         info->dwCatalogEntryId = 0x3e9;
+        info->dwProviderFlags = PFL_MATCHES_PROTOCOL_ZERO;
         info->ProtocolChain.ChainLen = 1;
         info->iVersion = 2;
         info->iAddressFamily = WS_AF_INET;
@@ -1628,6 +1628,7 @@ static INT WS_EnterSingleProtocolW( INT protocol, WSAPROTOCOL_INFOW* info )
                                 XP1_CONNECTIONLESS;
         info->ProviderId = ProviderIdIP;
         info->dwCatalogEntryId = 0x3ea;
+        info->dwProviderFlags = PFL_MATCHES_PROTOCOL_ZERO;
         info->ProtocolChain.ChainLen = 1;
         info->iVersion = 2;
         info->iAddressFamily = WS_AF_INET;
@@ -1644,6 +1645,7 @@ static INT WS_EnterSingleProtocolW( INT protocol, WSAPROTOCOL_INFOW* info )
                                 XP1_CONNECTIONLESS;
         info->ProviderId = ProviderIdIPX;
         info->dwCatalogEntryId = 0x406;
+        info->dwProviderFlags = PFL_MATCHES_PROTOCOL_ZERO;
         info->ProtocolChain.ChainLen = 1;
         info->iVersion = 2;
         info->iAddressFamily = WS_AF_IPX;
@@ -1661,12 +1663,13 @@ static INT WS_EnterSingleProtocolW( INT protocol, WSAPROTOCOL_INFOW* info )
                                 XP1_GUARANTEED_DELIVERY;
         info->ProviderId = ProviderIdSPX;
         info->dwCatalogEntryId = 0x407;
+        info->dwProviderFlags = PFL_MATCHES_PROTOCOL_ZERO;
         info->ProtocolChain.ChainLen = 1;
         info->iVersion = 2;
         info->iAddressFamily = WS_AF_IPX;
         info->iMaxSockAddr = 0x10;
         info->iMinSockAddr = 0x0e;
-        info->iSocketType = 5;
+        info->iSocketType = WS_SOCK_SEQPACKET;
         info->dwMessageSize = 0xffffffff;
         strcpyW( info->szProtocol, NameSpxW );
         break;
@@ -1677,21 +1680,22 @@ static INT WS_EnterSingleProtocolW( INT protocol, WSAPROTOCOL_INFOW* info )
                                 XP1_GUARANTEED_ORDER | XP1_GUARANTEED_DELIVERY;
         info->ProviderId = ProviderIdSPX;
         info->dwCatalogEntryId = 0x409;
+        info->dwProviderFlags = PFL_MATCHES_PROTOCOL_ZERO;
         info->ProtocolChain.ChainLen = 1;
         info->iVersion = 2;
         info->iAddressFamily = WS_AF_IPX;
         info->iMaxSockAddr = 0x10;
         info->iMinSockAddr = 0x0e;
-        info->iSocketType = 5;
+        info->iSocketType = WS_SOCK_SEQPACKET;
         info->dwMessageSize = 0xffffffff;
         strcpyW( info->szProtocol, NameSpxIIW );
         break;
 
     default:
         FIXME("unknown Protocol <0x%08x>\n", protocol);
-        return SOCKET_ERROR;
+        return FALSE;
     }
-    return 1;
+    return TRUE;
 }
 
 /*****************************************************************************
@@ -1700,14 +1704,14 @@ static INT WS_EnterSingleProtocolW( INT protocol, WSAPROTOCOL_INFOW* info )
  *    see function WS_EnterSingleProtocolW
  *
  */
-static INT WS_EnterSingleProtocolA( INT protocol, WSAPROTOCOL_INFOA* info )
+static BOOL WS_EnterSingleProtocolA( INT protocol, WSAPROTOCOL_INFOA* info )
 {
     WSAPROTOCOL_INFOW infow;
     INT ret;
     memset( info, 0, sizeof(WSAPROTOCOL_INFOA) );
 
     ret = WS_EnterSingleProtocolW( protocol, &infow );
-    if (ret != SOCKET_ERROR)
+    if (ret)
     {
         /* convert the structure from W to A */
         memcpy( info, &infow, FIELD_OFFSET( WSAPROTOCOL_INFOA, szProtocol ) );
@@ -1753,12 +1757,12 @@ static INT WS_EnumProtocols( BOOL unicode, const INT *protocols, LPWSAPROTOCOL_I
     {
         if (unicode)
         {
-            if (WS_EnterSingleProtocolW( protocols[i], &info.w[items] ) != SOCKET_ERROR)
+            if (WS_EnterSingleProtocolW( protocols[i], &info.w[items] ))
                 items++;
         }
         else
         {
-            if (WS_EnterSingleProtocolA( protocols[i], &info.a[items] ) != SOCKET_ERROR)
+            if (WS_EnterSingleProtocolA( protocols[i], &info.a[items] ))
                 items++;
         }
     }
@@ -5863,6 +5867,7 @@ SOCKET WINAPI WSASocketW(int af, int type, int protocol,
                          GROUP g, DWORD dwFlags)
 {
     SOCKET ret;
+    DWORD err;
 
    /*
       FIXME: The "advanced" parameters of WSASocketW (lpProtocolInfo,
@@ -5925,16 +5930,25 @@ SOCKET WINAPI WSASocketW(int af, int type, int protocol,
         return ret;
     }
 
-    if (GetLastError() == WSAEACCES) /* raw socket denied */
+    err = GetLastError();
+    if (err == WSAEACCES) /* raw socket denied */
     {
         if (type == SOCK_RAW)
             ERR_(winediag)("Failed to create a socket of type SOCK_RAW, this requires special permissions.\n");
         else
             ERR_(winediag)("Failed to create socket, this requires special permissions.\n");
-        SetLastError(WSAESOCKTNOSUPPORT);
+    }
+    else
+    {
+        /* invalid combination of valid parameters, like SOCK_STREAM + IPPROTO_UDP */
+        if (err == WSAEINVAL)
+            err = WSAESOCKTNOSUPPORT;
+        else if (err == WSAEOPNOTSUPP)
+            err = WSAEPROTONOSUPPORT;
     }
 
-    WARN("\t\tfailed!\n");
+    WARN("\t\tfailed, error %d!\n", err);
+    SetLastError(err);
     return INVALID_SOCKET;
 }
 

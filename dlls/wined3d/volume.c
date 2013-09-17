@@ -42,10 +42,10 @@ static void volume_bind_and_dirtify(const struct wined3d_volume *volume,
      * from sampler() in state.c. This means we can't touch anything other than
      * whatever happens to be the currently active texture, or we would risk
      * marking already applied sampler states dirty again. */
-    active_sampler = volume->resource.device->rev_tex_unit_map[context->active_texture];
+    active_sampler = context->rev_tex_unit_map[context->active_texture];
 
     if (active_sampler != WINED3D_UNMAPPED_STAGE)
-        device_invalidate_state(volume->resource.device, STATE_SAMPLER(active_sampler));
+        context_invalidate_state(context, STATE_SAMPLER(active_sampler));
 
     container->texture_ops->texture_bind(container, context, srgb);
 }
@@ -142,8 +142,7 @@ static void wined3d_volume_download_data(struct wined3d_volume *volume,
 
 static void wined3d_volume_evict_sysmem(struct wined3d_volume *volume)
 {
-    wined3d_resource_free_sysmem(volume->resource.heap_memory);
-    volume->resource.heap_memory = NULL;
+    wined3d_resource_free_sysmem(&volume->resource);
     volume->resource.allocatedMemory = NULL;
     wined3d_volume_invalidate_location(volume, WINED3D_LOCATION_SYSMEM);
 }
@@ -391,9 +390,11 @@ static BOOL volume_prepare_system_memory(struct wined3d_volume *volume)
     if (volume->resource.allocatedMemory)
         return TRUE;
 
-    volume->resource.heap_memory = wined3d_resource_allocate_sysmem(volume->resource.size);
-    if (!volume->resource.heap_memory)
+    if (!wined3d_resource_allocate_sysmem(&volume->resource))
+    {
+        ERR("Failed to allocate system memory.\n");
         return FALSE;
+    }
     volume->resource.allocatedMemory = volume->resource.heap_memory;
     return TRUE;
 }
@@ -700,8 +701,7 @@ static HRESULT volume_init(struct wined3d_volume *volume, struct wined3d_device 
     if (pool == WINED3D_POOL_DEFAULT && usage & WINED3DUSAGE_DYNAMIC
             && gl_info->supported[ARB_PIXEL_BUFFER_OBJECT])
     {
-        wined3d_resource_free_sysmem(volume->resource.heap_memory);
-        volume->resource.heap_memory = NULL;
+        wined3d_resource_free_sysmem(&volume->resource);
         volume->resource.allocatedMemory = NULL;
         volume->flags |= WINED3D_VFLAG_PBO;
     }

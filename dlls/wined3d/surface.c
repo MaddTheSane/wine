@@ -566,10 +566,7 @@ static void surface_load_pbo(struct wined3d_surface *surface, const struct wined
 
     /* We don't need the system memory anymore and we can't even use it for PBOs. */
     if (!(surface->flags & SFLAG_CLIENT))
-    {
-        wined3d_resource_free_sysmem(surface->resource.heap_memory);
-        surface->resource.heap_memory = NULL;
-    }
+        wined3d_resource_free_sysmem(&surface->resource);
     surface->resource.allocatedMemory = NULL;
     surface->flags |= SFLAG_PBO;
     context_release(context);
@@ -587,9 +584,8 @@ static void surface_prepare_system_memory(struct wined3d_surface *surface)
     {
         /* Whatever surface we have, make sure that there is memory allocated
          * for the downloaded copy, or a PBO to map. */
-        if (!surface->resource.heap_memory)
-            surface->resource.heap_memory = wined3d_resource_allocate_sysmem(surface->resource.size);
-
+        if (!surface->resource.heap_memory && !wined3d_resource_allocate_sysmem(&surface->resource))
+            ERR("Failed to allocate system memory.\n");
         surface->resource.allocatedMemory = surface->resource.heap_memory;
 
         if (surface->flags & SFLAG_INSYSMEM)
@@ -602,9 +598,8 @@ static void surface_evict_sysmem(struct wined3d_surface *surface)
     if (surface->resource.map_count || (surface->flags & SFLAG_DONOTFREE))
         return;
 
-    wined3d_resource_free_sysmem(surface->resource.heap_memory);
+    wined3d_resource_free_sysmem(&surface->resource);
     surface->resource.allocatedMemory = NULL;
-    surface->resource.heap_memory = NULL;
     surface_invalidate_location(surface, SFLAG_INSYSMEM);
 }
 
@@ -659,7 +654,6 @@ static void surface_bind(struct wined3d_surface *surface, struct wined3d_context
 static void surface_bind_and_dirtify(struct wined3d_surface *surface,
         struct wined3d_context *context, BOOL srgb)
 {
-    struct wined3d_device *device = surface->resource.device;
     DWORD active_sampler;
 
     /* We don't need a specific texture unit, but after binding the texture
@@ -671,10 +665,10 @@ static void surface_bind_and_dirtify(struct wined3d_surface *surface,
      * called from sampler() in state.c. This means we can't touch anything
      * other than whatever happens to be the currently active texture, or we
      * would risk marking already applied sampler states dirty again. */
-    active_sampler = device->rev_tex_unit_map[context->active_texture];
+    active_sampler = context->rev_tex_unit_map[context->active_texture];
 
     if (active_sampler != WINED3D_UNMAPPED_STAGE)
-        device_invalidate_state(device, STATE_SAMPLER(active_sampler));
+        context_invalidate_state(context, STATE_SAMPLER(active_sampler));
     surface_bind(surface, context, srgb);
 }
 
@@ -1432,7 +1426,7 @@ static void surface_remove_pbo(struct wined3d_surface *surface, const struct win
     else
     {
         if (!surface->resource.heap_memory)
-            surface->resource.heap_memory = wined3d_resource_allocate_sysmem(surface->resource.size);
+            wined3d_resource_allocate_sysmem(&surface->resource);
         else if (!(surface->flags & SFLAG_CLIENT))
             ERR("Surface %p has heap_memory %p and flags %#x.\n",
                     surface, surface->resource.heap_memory, surface->flags);
@@ -1458,9 +1452,9 @@ static BOOL surface_init_sysmem(struct wined3d_surface *surface)
     {
         if (!surface->resource.heap_memory)
         {
-            if (!(surface->resource.heap_memory = wined3d_resource_allocate_sysmem(surface->resource.size)))
+            if (!wined3d_resource_allocate_sysmem(&surface->resource))
             {
-                ERR("Failed to allocate memory.\n");
+                ERR("Failed to allocate system memory.\n");
                 return FALSE;
             }
         }
@@ -1612,8 +1606,7 @@ static HRESULT gdi_surface_private_setup(struct wined3d_surface *surface)
     hr = surface_create_dib_section(surface);
     if (SUCCEEDED(hr))
     {
-        wined3d_resource_free_sysmem(surface->resource.heap_memory);
-        surface->resource.heap_memory = NULL;
+        wined3d_resource_free_sysmem(&surface->resource);
         surface->resource.allocatedMemory = surface->dib.bitmap_data;
     }
 
@@ -1672,8 +1665,7 @@ static void gdi_surface_map(struct wined3d_surface *surface, const RECT *rect, D
             ERR("Failed to create dib section, hr %#x.\n", hr);
             return;
         }
-        wined3d_resource_free_sysmem(surface->resource.heap_memory);
-        surface->resource.heap_memory = NULL;
+        wined3d_resource_free_sysmem(&surface->resource);
         surface->resource.allocatedMemory = surface->dib.bitmap_data;
     }
 }
@@ -2254,7 +2246,7 @@ HRESULT surface_upload_from_surface(struct wined3d_surface *dst_surface, const P
 
     surface_upload_data(dst_surface, gl_info, src_format, src_rect, src_pitch, dst_point, FALSE, &data);
 
-    invalidate_active_texture(dst_surface->resource.device, context);
+    context_invalidate_active_texture(context);
 
     context_release(context);
 
@@ -2654,6 +2646,7 @@ DWORD CDECL wined3d_surface_get_priority(const struct wined3d_surface *surface)
 
 void CDECL wined3d_surface_preload(struct wined3d_surface *surface)
 {
+    struct wined3d_context *context;
     TRACE("surface %p.\n", surface);
 
     if (!surface->resource.device->d3d_initialized)
@@ -2662,7 +2655,9 @@ void CDECL wined3d_surface_preload(struct wined3d_surface *surface)
         return;
     }
 
-    surface_internal_preload(surface, SRGB_ANY);
+    context = context_acquire(surface->resource.device, NULL);
+    surface_internal_preload(surface, context, SRGB_ANY);
+    context_release(context);
 }
 
 void * CDECL wined3d_surface_get_parent(const struct wined3d_surface *surface)
@@ -2868,8 +2863,6 @@ HRESULT CDECL wined3d_surface_set_mem(struct wined3d_surface *surface, void *mem
 
     if (mem && mem != surface->resource.allocatedMemory)
     {
-        void *release = NULL;
-
         /* Do I have to copy the old surface content? */
         if (surface->flags & SFLAG_DIBSECTION)
         {
@@ -2882,8 +2875,7 @@ HRESULT CDECL wined3d_surface_set_mem(struct wined3d_surface *surface, void *mem
         }
         else if (!(surface->flags & SFLAG_USERPTR))
         {
-            release = surface->resource.heap_memory;
-            surface->resource.heap_memory = NULL;
+            wined3d_resource_free_sysmem(&surface->resource);
         }
         surface->resource.allocatedMemory = mem;
         surface->flags |= SFLAG_USERPTR;
@@ -2895,9 +2887,6 @@ HRESULT CDECL wined3d_surface_set_mem(struct wined3d_surface *surface, void *mem
         /* For client textures OpenGL has to be notified. */
         if (surface->flags & SFLAG_CLIENT)
             surface_release_client_storage(surface);
-
-        /* Now free the old memory if any. */
-        wined3d_resource_free_sysmem(release);
     }
     else if (surface->flags & SFLAG_USERPTR)
     {
@@ -3087,8 +3076,7 @@ HRESULT CDECL wined3d_surface_update_desc(struct wined3d_surface *surface,
 
     surface->flags &= ~(SFLAG_LOCATIONS | SFLAG_USERPTR);
     surface->resource.allocatedMemory = NULL;
-    wined3d_resource_free_sysmem(surface->resource.heap_memory);
-    surface->resource.heap_memory = NULL;
+    wined3d_resource_free_sysmem(&surface->resource);
 
     surface->resource.width = width;
     surface->resource.height = height;
@@ -3584,8 +3572,7 @@ HRESULT CDECL wined3d_surface_getdc(struct wined3d_surface *surface, HDC *dc)
         /* Use the DIB section from now on if we are not using a PBO. */
         if (!(surface->flags & (SFLAG_PBO | SFLAG_PIN_SYSMEM)))
         {
-            wined3d_resource_free_sysmem(surface->resource.heap_memory);
-            surface->resource.heap_memory = NULL;
+            wined3d_resource_free_sysmem(&surface->resource);
             surface->resource.allocatedMemory = surface->dib.bitmap_data;
         }
     }
@@ -3702,10 +3689,10 @@ HRESULT CDECL wined3d_surface_flip(struct wined3d_surface *surface, struct wined
     return WINED3D_OK;
 }
 
-void surface_internal_preload(struct wined3d_surface *surface, enum WINED3DSRGB srgb)
+/* Context activation is done by the caller */
+void surface_internal_preload(struct wined3d_surface *surface,
+        struct wined3d_context *context, enum WINED3DSRGB srgb)
 {
-    struct wined3d_device *device = surface->resource.device;
-
     TRACE("iface %p, srgb %#x.\n", surface, srgb);
 
     if (surface->container)
@@ -3713,16 +3700,11 @@ void surface_internal_preload(struct wined3d_surface *surface, enum WINED3DSRGB 
         struct wined3d_texture *texture = surface->container;
 
         TRACE("Passing to container (%p).\n", texture);
-        texture->texture_ops->texture_preload(texture, srgb);
+        texture->texture_ops->texture_preload(texture, context, srgb);
     }
     else
     {
-        struct wined3d_context *context;
-
         TRACE("(%p) : About to load surface\n", surface);
-
-        /* TODO: Use already acquired context when possible. */
-        context = context_acquire(device, NULL);
 
         surface_load(surface, srgb == SRGB_SRGB);
 
@@ -3733,8 +3715,6 @@ void surface_internal_preload(struct wined3d_surface *surface, enum WINED3DSRGB 
             tmp = 0.9f;
             context->gl_info->gl_ops.gl.p_glPrioritizeTextures(1, &surface->texture_name, &tmp);
         }
-
-        context_release(context);
     }
 }
 
@@ -4410,7 +4390,7 @@ static void fb_copy_to_texture_direct(struct wined3d_surface *dst_surface, struc
     context = context_acquire(device, src_surface);
     gl_info = context->gl_info;
     context_apply_blit_state(context, device);
-    surface_internal_preload(dst_surface, SRGB_RGB);
+    surface_internal_preload(dst_surface, context, SRGB_RGB);
 
     /* Bind the target texture */
     context_bind_texture(context, dst_target, dst_surface->texture_name);
@@ -4518,14 +4498,14 @@ static void fb_copy_to_texture_hwstretch(struct wined3d_surface *dst_surface, st
     context = context_acquire(device, src_surface);
     gl_info = context->gl_info;
     context_apply_blit_state(context, device);
-    surface_internal_preload(dst_surface, SRGB_RGB);
+    surface_internal_preload(dst_surface, context, SRGB_RGB);
 
     src_offscreen = surface_is_offscreen(src_surface);
     noBackBufferBackup = src_offscreen && wined3d_settings.offscreen_rendering_mode == ORM_FBO;
     if (!noBackBufferBackup && !src_surface->texture_name)
     {
         /* Get it a description */
-        surface_internal_preload(src_surface, SRGB_RGB);
+        surface_internal_preload(src_surface, context, SRGB_RGB);
     }
 
     /* Try to use an aux buffer for drawing the rectangle. This way it doesn't need restoring.
@@ -4808,14 +4788,15 @@ static void surface_blt_to_drawable(const struct wined3d_device *device,
     src_rect = *src_rect_in;
     dst_rect = *dst_rect_in;
 
+    context = context_acquire(device, dst_surface);
+    gl_info = context->gl_info;
+
     /* Make sure the surface is up-to-date. This should probably use
      * surface_load_location() and worry about the destination surface too,
      * unless we're overwriting it completely. */
-    surface_internal_preload(src_surface, SRGB_RGB);
+    surface_internal_preload(src_surface, context, SRGB_RGB);
 
     /* Activate the destination context, set it up for blitting */
-    context = context_acquire(device, dst_surface);
-    gl_info = context->gl_info;
     context_apply_blit_state(context, device);
 
     if (!surface_is_offscreen(dst_surface))
@@ -5005,9 +4986,8 @@ static HRESULT surface_blt_special(struct wined3d_surface *dst_surface, const RE
 
         if (!dst_surface->resource.map_count && !(dst_surface->flags & SFLAG_DONOTFREE))
         {
-            wined3d_resource_free_sysmem(dst_surface->resource.heap_memory);
+            wined3d_resource_free_sysmem(&dst_surface->resource);
             dst_surface->resource.allocatedMemory = NULL;
-            dst_surface->resource.heap_memory = NULL;
         }
         else
         {
@@ -6934,8 +6914,7 @@ static HRESULT surface_init(struct wined3d_surface *surface, UINT alignment, UIN
     if ((usage & WINED3DUSAGE_OWNDC) && !surface->hDC
             && SUCCEEDED(surface_create_dib_section(surface)))
     {
-        wined3d_resource_free_sysmem(surface->resource.heap_memory);
-        surface->resource.heap_memory = NULL;
+        wined3d_resource_free_sysmem(&surface->resource);
         surface->resource.allocatedMemory = surface->dib.bitmap_data;
     }
 

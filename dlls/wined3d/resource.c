@@ -120,11 +120,10 @@ HRESULT resource_init(struct wined3d_resource *resource, struct wined3d_device *
 
     if (size)
     {
-        resource->heap_memory = wined3d_resource_allocate_sysmem(size);
-        if (!resource->heap_memory)
+        if (!wined3d_resource_allocate_sysmem(resource))
         {
-            ERR("Out of memory!\n");
-            return WINED3DERR_OUTOFVIDEOMEMORY;
+            ERR("Failed to allocate system memory.\n");
+            return E_OUTOFMEMORY;
         }
     }
     else
@@ -139,7 +138,7 @@ HRESULT resource_init(struct wined3d_resource *resource, struct wined3d_device *
         if (size > wined3d_device_get_available_texture_mem(device))
         {
             ERR("Out of adapter memory\n");
-            wined3d_resource_free_sysmem(resource->heap_memory);
+            wined3d_resource_free_sysmem(resource);
             return WINED3DERR_OUTOFVIDEOMEMORY;
         }
         adapter_adjust_memory(device->adapter, size);
@@ -173,9 +172,8 @@ void resource_cleanup(struct wined3d_resource *resource)
             ERR("Failed to free private data when destroying resource %p, hr = %#x.\n", resource, hr);
     }
 
-    wined3d_resource_free_sysmem(resource->heap_memory);
+    wined3d_resource_free_sysmem(resource);
     resource->allocatedMemory = NULL;
-    resource->heap_memory = NULL;
 
     device_resource_released(resource->device, resource);
 }
@@ -344,29 +342,32 @@ void CDECL wined3d_resource_get_desc(const struct wined3d_resource *resource, st
     desc->size = resource->size;
 }
 
-void *wined3d_resource_allocate_sysmem(SIZE_T size)
+BOOL wined3d_resource_allocate_sysmem(struct wined3d_resource *resource)
 {
     void **p;
     SIZE_T align = RESOURCE_ALIGNMENT - 1 + sizeof(*p);
     void *mem;
 
-    if (!(mem = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, size + align)))
-        return NULL;
+    if (!(mem = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, resource->size + align)))
+        return FALSE;
 
     p = (void **)(((ULONG_PTR)mem + align) & ~(RESOURCE_ALIGNMENT - 1)) - 1;
     *p = mem;
 
-    return ++p;
+    resource->heap_memory = ++p;
+
+    return TRUE;
 }
 
-void wined3d_resource_free_sysmem(void *mem)
+void wined3d_resource_free_sysmem(struct wined3d_resource *resource)
 {
-    void **p = mem;
+    void **p = resource->heap_memory;
 
-    if (!mem)
+    if (!p)
         return;
 
     HeapFree(GetProcessHeap(), 0, *(--p));
+    resource->heap_memory = NULL;
 }
 
 DWORD wined3d_resource_sanitize_map_flags(const struct wined3d_resource *resource, DWORD flags)

@@ -4574,7 +4574,7 @@ static void find_arb_vs_compile_args(const struct wined3d_state *state,
         const struct wined3d_context *context, const struct wined3d_shader *shader,
         struct arb_vs_compile_args *args)
 {
-    struct wined3d_device *device = shader->device;
+    const struct wined3d_device *device = shader->device;
     const struct wined3d_adapter *adapter = device->adapter;
     const struct wined3d_gl_info *gl_info = context->gl_info;
     const struct wined3d_d3d_info *d3d_info = context->d3d_info;
@@ -4618,9 +4618,9 @@ static void find_arb_vs_compile_args(const struct wined3d_state *state,
             args->clip.boolclip.bools |= ( 1 << i);
     }
 
-    args->vertex.samplers[0] = device->texUnitMap[MAX_FRAGMENT_SAMPLERS + 0];
-    args->vertex.samplers[1] = device->texUnitMap[MAX_FRAGMENT_SAMPLERS + 1];
-    args->vertex.samplers[2] = device->texUnitMap[MAX_FRAGMENT_SAMPLERS + 2];
+    args->vertex.samplers[0] = context->tex_unit_map[MAX_FRAGMENT_SAMPLERS + 0];
+    args->vertex.samplers[1] = context->tex_unit_map[MAX_FRAGMENT_SAMPLERS + 1];
+    args->vertex.samplers[2] = context->tex_unit_map[MAX_FRAGMENT_SAMPLERS + 2];
     args->vertex.samplers[3] = 0;
 
     /* Skip if unused or local */
@@ -7455,6 +7455,9 @@ HRESULT arbfp_blit_surface(struct wined3d_device *device, DWORD filter,
     RECT src_rect = *src_rect_in;
     RECT dst_rect = *dst_rect_in;
 
+    /* Activate the destination context, set it up for blitting */
+    context = context_acquire(device, dst_surface);
+
     /* Now load the surface */
     if (wined3d_settings.offscreen_rendering_mode != ORM_FBO
             && (src_surface->flags & (SFLAG_INTEXTURE | SFLAG_INDRAWABLE)) == SFLAG_INDRAWABLE)
@@ -7470,10 +7473,8 @@ HRESULT arbfp_blit_surface(struct wined3d_device *device, DWORD filter,
         src_rect.bottom = src_surface->resource.height - src_rect.bottom;
     }
     else
-        surface_internal_preload(src_surface, SRGB_RGB);
+        surface_internal_preload(src_surface, context, SRGB_RGB);
 
-    /* Activate the destination context, set it up for blitting */
-    context = context_acquire(device, dst_surface);
     context_apply_blit_state(context, device);
 
     if (!surface_is_offscreen(dst_surface))
