@@ -677,6 +677,14 @@ int CDECL MSVCRT_strncat_s( char* dst, MSVCRT_size_t elem, const char* src, MSVC
 }
 
 /*********************************************************************
+ *      strncat (MSVCRT.@)
+ */
+char* __cdecl MSVCRT_strncat(char *dst, const char *src, MSVCRT_size_t len)
+{
+    return strncat(dst, src, len);
+}
+
+/*********************************************************************
  *		strxfrm (MSVCRT.@)
  */
 MSVCRT_size_t CDECL MSVCRT_strxfrm( char *dest, const char *src, MSVCRT_size_t len )
@@ -779,6 +787,14 @@ MSVCRT_ulong CDECL MSVCRT_strtoul(const char* nptr, char** end, int base)
     }
 
     return ret;
+}
+
+/*********************************************************************
+ *              strlen (MSVCRT.@)
+ */
+MSVCRT_size_t __cdecl MSVCRT_strlen(const char *str)
+{
+    return strlen(str);
 }
 
 /******************************************************************
@@ -1594,11 +1610,27 @@ int CDECL MSVCRT_I10_OUTPUT(MSVCRT__LDOUBLE ld80, int prec, int flag, struct _I1
 #undef I10_OUTPUT_MAX_PREC
 
 /*********************************************************************
+ *                  memcmp (MSVCRT.@)
+ */
+int __cdecl MSVCRT_memcmp(const void *ptr1, const void *ptr2, MSVCRT_size_t n)
+{
+    return memcmp(ptr1, ptr2, n);
+}
+
+/*********************************************************************
  *                  memcpy   (MSVCRT.@)
  */
-void * __cdecl MSVCRT_memcpy( void *dst, const void *src, size_t n )
+void * __cdecl MSVCRT_memcpy(void *dst, const void *src, MSVCRT_size_t n)
 {
-    return memmove( dst, src, n );
+    return memmove(dst, src, n);
+}
+
+/*********************************************************************
+ *                  memmove (MSVCRT.@)
+ */
+void * __cdecl MSVCRT_memmove(void *dst, const void *src, MSVCRT_size_t n)
+{
+    return memmove(dst, src, n);
 }
 
 /*********************************************************************
@@ -1618,11 +1650,27 @@ char* __cdecl MSVCRT_strchr(const char *str, int c)
 }
 
 /*********************************************************************
+ *                  strrchr (MSVCRT.@)
+ */
+char* __cdecl MSVCRT_strrchr(const char *str, int c)
+{
+    return strrchr(str, c);
+}
+
+/*********************************************************************
  *                  memchr   (MSVCRT.@)
  */
 void* __cdecl MSVCRT_memchr(const void *ptr, int c, MSVCRT_size_t n)
 {
     return memchr(ptr, c, n);
+}
+
+/*********************************************************************
+ *                  strcmp (MSVCRT.@)
+ */
+int __cdecl MSVCRT_strcmp(const char *str1, const char *str2)
+{
+    return strcmp(str1, str2);
 }
 
 /*********************************************************************
@@ -1686,4 +1734,12 @@ int __cdecl MSVCRT__strnicmp(const char *s1, const char *s2, MSVCRT_size_t count
 int __cdecl MSVCRT__stricmp(const char *s1, const char *s2)
 {
     return MSVCRT__strnicmp_l(s1, s2, -1, NULL);
+}
+
+/*********************************************************************
+ *                  strstr   (MSVCRT.@)
+ */
+char* __cdecl MSVCRT_strstr(const char *haystack, const char *needle)
+{
+    return strstr(haystack, needle);
 }

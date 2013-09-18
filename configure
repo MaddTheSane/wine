@@ -13370,6 +13370,8 @@ esac
 ac_save_CFLAGS="$CFLAGS"
 CFLAGS="$CFLAGS $BUILTINFLAG"
 for ac_func in \
+        __res_get_state \
+        __res_getservers \
 	_finite \
 	_isnan \
 	_pclose \
@@ -14786,6 +14788,20 @@ if test "x$ac_cv_member_struct_sockaddr_in6_sin6_scope_id" = xyes; then :
 
 cat >>confdefs.h <<_ACEOF
 #define HAVE_STRUCT_SOCKADDR_IN6_SIN6_SCOPE_ID 1
+_ACEOF
+
+
+fi
+
+
+ac_fn_c_check_type "$LINENO" "struct __res_state" "ac_cv_type_struct___res_state" "#ifdef HAVE_RESOLV_H
+#include <resolv.h>
+#endif
+"
+if test "x$ac_cv_type_struct___res_state" = xyes; then :
+
+cat >>confdefs.h <<_ACEOF
+#define HAVE_STRUCT___RES_STATE 1
 _ACEOF
 
 
@@ -16493,7 +16509,8 @@ wine_fn_config_dll ws2_32 enable_ws2_32 implib
 wine_fn_config_test dlls/ws2_32/tests ws2_32_test
 wine_fn_config_dll wshom.ocx enable_wshom_ocx
 wine_fn_config_test dlls/wshom.ocx/tests wshom.ocx_test
-wine_fn_config_dll wsnmp32 enable_wsnmp32
+wine_fn_config_dll wsnmp32 enable_wsnmp32 implib
+wine_fn_config_test dlls/wsnmp32/tests wsnmp32_test
 wine_fn_config_dll wsock32 enable_wsock32 implib
 wine_fn_config_dll wtsapi32 enable_wtsapi32 implib
 wine_fn_config_dll wuapi enable_wuapi

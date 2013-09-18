@@ -5868,6 +5868,7 @@ SOCKET WINAPI WSASocketW(int af, int type, int protocol,
 {
     SOCKET ret;
     DWORD err;
+    int unixaf, unixtype;
 
    /*
       FIXME: The "advanced" parameters of WSASocketW (lpProtocolInfo,
@@ -5877,6 +5878,12 @@ SOCKET WINAPI WSASocketW(int af, int type, int protocol,
    TRACE("af=%d type=%d protocol=%d protocol_info=%p group=%d flags=0x%x\n",
          af, type, protocol, lpProtocolInfo, g, dwFlags );
 
+    if (!num_startup)
+    {
+        err = WSANOTINITIALISED;
+        goto done;
+    }
+
     /* hack for WSADuplicateSocket */
     if (lpProtocolInfo && lpProtocolInfo->dwServiceFlags4 == 0xff00ff00) {
       ret = lpProtocolInfo->dwServiceFlags3;
@@ -5884,38 +5891,79 @@ SOCKET WINAPI WSASocketW(int af, int type, int protocol,
       return ret;
     }
 
-    /* convert the socket family and type */
-    af = convert_af_w2u(af);
-    type = convert_socktype_w2u(type);
-
     if (lpProtocolInfo)
     {
-        if (af == FROM_PROTOCOL_INFO)
+        if (af == FROM_PROTOCOL_INFO || !af)
             af = lpProtocolInfo->iAddressFamily;
-        if (type == FROM_PROTOCOL_INFO)
+        if (type == FROM_PROTOCOL_INFO || !type)
             type = lpProtocolInfo->iSocketType;
-        if (protocol == FROM_PROTOCOL_INFO)
+        if (protocol == FROM_PROTOCOL_INFO || !protocol)
             protocol = lpProtocolInfo->iProtocol;
     }
 
-    if ( af == AF_UNSPEC)  /* did they not specify the address family? */
+    if (!type && (af || protocol))
     {
-        if ((protocol == IPPROTO_TCP && type == SOCK_STREAM) ||
-            (protocol == IPPROTO_UDP && type == SOCK_DGRAM))
+        WSAPROTOCOL_INFOW infow;
+
+        /* default to the first valid protocol */
+        if (!protocol)
+            protocol = valid_protocols[0];
+
+        if (WS_EnterSingleProtocolW(protocol, &infow))
         {
-            af = AF_INET;
+            type = infow.iSocketType;
+
+            /* after win2003 it's no longer possible to pass AF_UNSPEC
+               using the protocol info struct */
+            if (!lpProtocolInfo && af == WS_AF_UNSPEC)
+                af = infow.iAddressFamily;
         }
-        else
+    }
+
+    /* convert the socket family, type and protocol */
+    unixaf = convert_af_w2u(af);
+    unixtype = convert_socktype_w2u(type);
+    protocol = convert_proto_w2u(protocol);
+    if (unixaf == AF_UNSPEC) unixaf = -1;
+
+    /* filter invalid parameters */
+    if (protocol < 0)
+    {
+        /* the type could not be converted */
+        if (type && unixtype < 0)
         {
-            SetLastError(WSAEPROTOTYPE);
-            return INVALID_SOCKET;
+            err = WSAESOCKTNOSUPPORT;
+            goto done;
         }
+
+        err = WSAEPROTONOSUPPORT;
+        goto done;
+    }
+    if (unixaf < 0)
+    {
+        /* both family and protocol can't be invalid */
+        if (protocol <= 0)
+        {
+            err = WSAEINVAL;
+            goto done;
+        }
+
+        /* family could not be converted and neither socket type */
+        if (unixtype < 0 && af >= 0)
+        {
+
+            err = WSAESOCKTNOSUPPORT;
+            goto done;
+        }
+
+        err = WSAEAFNOSUPPORT;
+        goto done;
     }
 
     SERVER_START_REQ( create_socket )
     {
-        req->family     = af;
-        req->type       = type;
+        req->family     = unixaf;
+        req->type       = unixtype;
         req->protocol   = protocol;
         req->access     = GENERIC_READ|GENERIC_WRITE|SYNCHRONIZE;
         req->attributes = OBJ_INHERIT;
@@ -5947,6 +5995,7 @@ SOCKET WINAPI WSASocketW(int af, int type, int protocol,
             err = WSAEPROTONOSUPPORT;
     }
 
+done:
     WARN("\t\tfailed, error %d!\n", err);
     SetLastError(err);
     return INVALID_SOCKET;

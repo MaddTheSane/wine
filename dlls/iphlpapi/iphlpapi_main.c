@@ -63,14 +63,6 @@ WINE_DEFAULT_DEBUG_CHANNEL(iphlpapi);
 #define INADDR_NONE ~0UL
 #endif
 
-/* call res_init() just once because of a bug in Mac OS X 10.4 */
-/* Call once per thread on systems that have per-thread _res. */
-static void initialise_resolver(void)
-{
-    if ((_res.options & RES_INIT) == 0)
-        res_init();
-}
-
 /******************************************************************
  *    AddIPAddress (IPHLPAPI.@)
  *
@@ -933,6 +925,15 @@ static ULONG adapterAddressesFromIndex(ULONG family, ULONG flags, IF_INDEX index
     return ERROR_SUCCESS;
 }
 
+#ifdef HAVE_STRUCT___RES_STATE
+/* call res_init() just once because of a bug in Mac OS X 10.4 */
+/* Call once per thread on systems that have per-thread _res. */
+static void initialise_resolver(void)
+{
+    if ((_res.options & RES_INIT) == 0)
+        res_init();
+}
+
 static int get_dns_servers( SOCKADDR_STORAGE *servers, int num, BOOL ip4_only )
 {
     int i, ip6_count = 0;
@@ -977,6 +978,62 @@ static int get_dns_servers( SOCKADDR_STORAGE *servers, int num, BOOL ip4_only )
     }
     return addr - servers;
 }
+#elif defined(HAVE___RES_GET_STATE) && defined(HAVE___RES_GETSERVERS)
+
+static int get_dns_servers( SOCKADDR_STORAGE *servers, int num, BOOL ip4_only )
+{
+    extern struct res_state *__res_get_state( void );
+    extern int __res_getservers( struct res_state *, struct sockaddr_storage *, int );
+    struct res_state *state = __res_get_state();
+    int i, found = 0, total = __res_getservers( state, NULL, 0 );
+    SOCKADDR_STORAGE *addr = servers;
+    struct sockaddr_storage *buf;
+
+    if ((!servers || !num) && !ip4_only) return total;
+
+    buf = HeapAlloc( GetProcessHeap(), 0, total * sizeof(struct sockaddr_storage) );
+    total = __res_getservers( state, buf, total );
+
+    for (i = 0; i < total; i++)
+    {
+        if (buf[i].ss_family == AF_INET6 && ip4_only) continue;
+        if (buf[i].ss_family != AF_INET && buf[i].ss_family != AF_INET6) continue;
+
+        found++;
+        if (!servers || !num) continue;
+
+        if (buf[i].ss_family == AF_INET6)
+        {
+            SOCKADDR_IN6 *s = (SOCKADDR_IN6 *)addr;
+            struct sockaddr_in6 *ptr = (struct sockaddr_in6 *)(buf + i);
+            s->sin6_family = WS_AF_INET6;
+            s->sin6_port = ptr->sin6_port;
+            s->sin6_flowinfo = ptr->sin6_flowinfo;
+            memcpy( &s->sin6_addr, &ptr->sin6_addr, sizeof(IN6_ADDR) );
+            s->sin6_scope_id = ptr->sin6_scope_id;
+            memset( (char *)s + sizeof(SOCKADDR_IN6), 0,
+                    sizeof(SOCKADDR_STORAGE) - sizeof(SOCKADDR_IN6) );
+        }
+        else
+        {
+            *(struct sockaddr_in *)addr = *(struct sockaddr_in *)(buf + i);
+            memset( (char *)addr + sizeof(struct sockaddr_in), 0,
+                    sizeof(SOCKADDR_STORAGE) - sizeof(struct sockaddr_in) );
+        }
+        if (++addr >= servers + num) break;
+    }
+
+    HeapFree( GetProcessHeap(), 0, buf );
+    return found;
+}
+#else
+
+static int get_dns_servers( SOCKADDR_STORAGE *servers, int num, BOOL ip4_only )
+{
+    FIXME("Unimplemented on this system\n");
+    return 0;
+}
+#endif
 
 static ULONG get_dns_server_addresses(PIP_ADAPTER_DNS_SERVER_ADDRESS address, ULONG *len)
 {
@@ -1015,6 +1072,7 @@ static ULONG get_dns_server_addresses(PIP_ADAPTER_DNS_SERVER_ADDRESS address, UL
     return ERROR_SUCCESS;
 }
 
+#ifdef HAVE_STRUCT___RES_STATE
 static BOOL is_ip_address_string(const char *str)
 {
     struct in_addr in;
@@ -1023,22 +1081,28 @@ static BOOL is_ip_address_string(const char *str)
     ret = inet_aton(str, &in);
     return ret != 0;
 }
+#endif
 
 static ULONG get_dns_suffix(WCHAR *suffix, ULONG *len)
 {
-    ULONG size, i;
+    ULONG size;
     const char *found_suffix = "";
     /* Always return a NULL-terminated string, even if it's empty. */
 
-    initialise_resolver();
-    for (i = 0; !*found_suffix && i < MAXDNSRCH + 1 && _res.dnsrch[i]; i++)
+#ifdef HAVE_STRUCT___RES_STATE
     {
-        /* This uses a heuristic to select a DNS suffix:
-         * the first, non-IP address string is selected.
-         */
-        if (!is_ip_address_string(_res.dnsrch[i]))
-            found_suffix = _res.dnsrch[i];
+        ULONG i;
+        initialise_resolver();
+        for (i = 0; !*found_suffix && i < MAXDNSRCH + 1 && _res.dnsrch[i]; i++)
+        {
+            /* This uses a heuristic to select a DNS suffix:
+             * the first, non-IP address string is selected.
+             */
+            if (!is_ip_address_string(_res.dnsrch[i]))
+                found_suffix = _res.dnsrch[i];
+        }
     }
+#endif
 
     size = MultiByteToWideChar( CP_UNIXCP, 0, found_suffix, -1, NULL, 0 ) * sizeof(WCHAR);
     if (!suffix || *len < size)

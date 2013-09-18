@@ -207,9 +207,10 @@ static HRESULT WINAPI ddraw_surface7_QueryInterface(IDirectDrawSurface7 *iface, 
             wined3d_mutex_lock();
             if (!This->device1)
             {
-                HRESULT hr = d3d_device_create(This->ddraw, This, 1, &This->device1,
-                        (IUnknown *)&This->IDirectDrawSurface_iface);
-                if (FAILED(hr))
+                HRESULT hr;
+
+                if (FAILED(hr = d3d_device_create(This->ddraw, This, (IUnknown *)&This->IDirectDrawSurface_iface,
+                        1, &This->device1, (IUnknown *)&This->IDirectDrawSurface_iface)))
                 {
                     This->device1 = NULL;
                     wined3d_mutex_unlock();
@@ -5739,18 +5740,18 @@ HRESULT ddraw_surface_init(struct ddraw_surface *surface, struct ddraw *ddraw,
     if (desc->ddsCaps.dwCaps & DDSCAPS_PRIMARYSURFACE)
         desc->ddsCaps.dwCaps |= DDSCAPS_VISIBLE;
 
-    if ((desc->ddsCaps.dwCaps & DDSCAPS_3DDEVICE) && !(desc->ddsCaps.dwCaps & DDSCAPS_ZBUFFER))
+    if (!(desc->ddsCaps.dwCaps & DDSCAPS_SYSTEMMEMORY))
     {
-        usage |= WINED3DUSAGE_RENDERTARGET;
+        if (desc->ddsCaps.dwCaps & DDSCAPS_ZBUFFER)
+            usage |= WINED3DUSAGE_DEPTHSTENCIL;
+        else if (desc->ddsCaps.dwCaps & DDSCAPS_3DDEVICE)
+            usage |= WINED3DUSAGE_RENDERTARGET;
     }
 
     if (desc->ddsCaps.dwCaps & (DDSCAPS_OVERLAY))
     {
         usage |= WINED3DUSAGE_OVERLAY;
     }
-
-    if (desc->ddsCaps.dwCaps & DDSCAPS_ZBUFFER)
-        usage |= WINED3DUSAGE_DEPTHSTENCIL;
 
     if (desc->ddsCaps.dwCaps & DDSCAPS_OWNDC)
         usage |= WINED3DUSAGE_OWNDC;

@@ -1370,10 +1370,10 @@
 @ cdecl mbstowcs_s(ptr ptr long str long) MSVCRT__mbstowcs_s
 @ cdecl mbtowc(ptr str long) MSVCRT_mbtowc
 @ cdecl memchr(ptr long long) MSVCRT_memchr
-@ cdecl memcmp(ptr ptr long) ntdll.memcmp
+@ cdecl memcmp(ptr ptr long) MSVCRT_memcmp
 @ cdecl memcpy(ptr ptr long) MSVCRT_memcpy
 @ cdecl memcpy_s(ptr long ptr long)
-@ cdecl memmove(ptr ptr long) ntdll.memmove
+@ cdecl memmove(ptr ptr long) MSVCRT_memmove
 @ cdecl memmove_s(ptr long ptr long)
 @ cdecl memset(ptr long long) MSVCRT_memset
 @ cdecl mktime(ptr) MSVCRT_mktime
@@ -1419,7 +1419,7 @@
 @ cdecl strcat(str str) ntdll.strcat
 @ cdecl strcat_s(str long str) MSVCRT_strcat_s
 @ cdecl strchr(str long) MSVCRT_strchr
-@ cdecl strcmp(str str) ntdll.strcmp
+@ cdecl strcmp(str str) MSVCRT_strcmp
 @ cdecl strcoll(str str) MSVCRT_strcoll
 @ cdecl strcpy(ptr str) ntdll.strcpy
 @ cdecl strcpy_s(ptr long str) MSVCRT_strcpy_s
@@ -1427,17 +1427,17 @@
 @ cdecl strerror(long) MSVCRT_strerror
 @ cdecl strerror_s(ptr long long)
 @ cdecl strftime(str long str ptr) MSVCRT_strftime
-@ cdecl strlen(str) ntdll.strlen
-@ cdecl strncat(str str long) ntdll.strncat
+@ cdecl strlen(str) MSVCRT_strlen
+@ cdecl strncat(str str long) MSVCRT_strncat
 @ cdecl strncat_s(str long str long) MSVCRT_strncat_s
 @ cdecl strncmp(str str long) MSVCRT_strncmp
 @ cdecl strncpy(ptr str long) MSVCRT_strncpy
 @ cdecl strncpy_s(ptr long str long)
 @ cdecl strnlen(str long) MSVCRT_strnlen
 @ cdecl strpbrk(str str) ntdll.strpbrk
-@ cdecl strrchr(str long) ntdll.strrchr
+@ cdecl strrchr(str long) MSVCRT_strrchr
 @ cdecl strspn(str str) ntdll.strspn
-@ cdecl strstr(str str) ntdll.strstr
+@ cdecl strstr(str str) MSVCRT_strstr
 @ cdecl strtod(str ptr) MSVCRT_strtod
 @ cdecl strtok(str str) MSVCRT_strtok
 @ cdecl strtok_s(ptr str ptr) MSVCRT_strtok_s
@@ -1482,14 +1482,14 @@
 # stub wcrtomb_s(ptr ptr long long ptr)
 @ cdecl wcscat(wstr wstr) ntdll.wcscat
 @ cdecl wcscat_s(wstr long wstr) MSVCRT_wcscat_s
-@ cdecl wcschr(wstr long) ntdll.wcschr
+@ cdecl wcschr(wstr long) MSVCRT_wcschr
 @ cdecl wcscmp(wstr wstr) ntdll.wcscmp
 @ cdecl wcscoll(wstr wstr) MSVCRT_wcscoll
 @ cdecl wcscpy(ptr wstr) ntdll.wcscpy
 @ cdecl wcscpy_s(ptr long wstr) MSVCRT_wcscpy_s
 @ cdecl wcscspn(wstr wstr) ntdll.wcscspn
 @ cdecl wcsftime(ptr long wstr ptr) MSVCRT_wcsftime
-@ cdecl wcslen(wstr) ntdll.wcslen
+@ cdecl wcslen(wstr) MSVCRT_wcslen
 @ cdecl wcsncat(wstr wstr long) ntdll.wcsncat
 @ cdecl wcsncat_s(wstr long wstr long) MSVCRT_wcsncat_s
 @ cdecl wcsncmp(wstr wstr long) ntdll.wcsncmp
@@ -1501,7 +1501,7 @@
 @ cdecl wcsrtombs(ptr ptr long ptr) MSVCRT_wcsrtombs
 @ cdecl wcsrtombs_s(ptr ptr long ptr long ptr) MSVCRT_wcsrtombs_s
 @ cdecl wcsspn(wstr wstr) ntdll.wcsspn
-@ cdecl wcsstr(wstr wstr) ntdll.wcsstr
+@ cdecl wcsstr(wstr wstr) MSVCRT_wcsstr
 @ cdecl wcstod(wstr ptr) MSVCRT_wcstod
 @ cdecl wcstok(wstr wstr) MSVCRT_wcstok
 @ cdecl wcstok_s(ptr wstr ptr)

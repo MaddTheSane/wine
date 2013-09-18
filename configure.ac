@@ -1997,6 +1997,8 @@ dnl **** Check for functions ****
 ac_save_CFLAGS="$CFLAGS"
 CFLAGS="$CFLAGS $BUILTINFLAG"
 AC_CHECK_FUNCS(\
+        __res_get_state \
+        __res_getservers \
 	_finite \
 	_isnan \
 	_pclose \
@@ -2342,6 +2344,12 @@ AC_CHECK_MEMBERS([struct sockaddr_in6.sin6_scope_id],,,
 #endif
 #ifdef HAVE_NETINET_IN_H
 #include <netinet/in.h>
+#endif])
+
+dnl Check for struct __res_state
+AC_CHECK_TYPES([struct __res_state],,,
+[#ifdef HAVE_RESOLV_H
+#include <resolv.h>
 #endif])
 
 dnl Check for _u._ext.nscount6
@@ -3167,7 +3175,8 @@ WINE_CONFIG_DLL(ws2_32,,[implib])
 WINE_CONFIG_TEST(dlls/ws2_32/tests)
 WINE_CONFIG_DLL(wshom.ocx)
 WINE_CONFIG_TEST(dlls/wshom.ocx/tests)
-WINE_CONFIG_DLL(wsnmp32)
+WINE_CONFIG_DLL(wsnmp32,,[implib])
+WINE_CONFIG_TEST(dlls/wsnmp32/tests)
 WINE_CONFIG_DLL(wsock32,,[implib])
 WINE_CONFIG_DLL(wtsapi32,,[implib])
 WINE_CONFIG_DLL(wuapi)
