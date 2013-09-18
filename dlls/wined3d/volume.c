@@ -71,6 +71,31 @@ static void wined3d_volume_allocate_texture(const struct wined3d_volume *volume,
     checkGLcall("glTexImage3D");
 }
 
+static void wined3d_volume_get_pitch(const struct wined3d_volume *volume, UINT *row_pitch,
+        UINT *slice_pitch)
+{
+    const struct wined3d_format *format = volume->resource.format;
+
+    if (format->flags & WINED3DFMT_FLAG_BLOCKS)
+    {
+        /* Since compressed formats are block based, pitch means the amount of
+         * bytes to the next row of block rather than the next row of pixels. */
+        UINT row_block_count = (volume->resource.width + format->block_width - 1) / format->block_width;
+        UINT slice_block_count = (volume->resource.height + format->block_height - 1) / format->block_height;
+        *row_pitch = row_block_count * format->block_byte_count;
+        *slice_pitch = *row_pitch * slice_block_count;
+    }
+    else
+    {
+        unsigned char alignment = volume->resource.device->surface_alignment;
+        *row_pitch = format->byte_count * volume->resource.width;  /* Bytes / row */
+        *row_pitch = (*row_pitch + alignment - 1) & ~(alignment - 1);
+        *slice_pitch = *row_pitch * volume->resource.height;
+    }
+
+    TRACE("Returning row pitch %u, slice pitch %u.\n", *row_pitch, *slice_pitch);
+}
+
 /* Context activation is done by the caller. */
 void wined3d_volume_upload_data(struct wined3d_volume *volume, const struct wined3d_context *context,
         const struct wined3d_bo_address *data)
@@ -513,6 +538,56 @@ struct wined3d_resource * CDECL wined3d_volume_get_resource(struct wined3d_volum
     return &volume->resource;
 }
 
+static BOOL volume_check_block_align(const struct wined3d_volume *volume,
+        const struct wined3d_box *box)
+{
+    UINT width_mask, height_mask;
+    const struct wined3d_format *format = volume->resource.format;
+
+    if (!box)
+        return TRUE;
+
+    /* This assumes power of two block sizes, but NPOT block sizes would be
+     * silly anyway.
+     *
+     * This also assumes that the format's block depth is 1. */
+    width_mask = format->block_width - 1;
+    height_mask = format->block_height - 1;
+
+    if (box->left & width_mask)
+        return FALSE;
+    if (box->top & height_mask)
+        return FALSE;
+    if (box->right & width_mask && box->right != volume->resource.width)
+        return FALSE;
+    if (box->bottom & height_mask && box->bottom != volume->resource.height)
+        return FALSE;
+
+    return TRUE;
+}
+
+static BOOL wined3d_volume_check_box_dimensions(const struct wined3d_volume *volume,
+        const struct wined3d_box *box)
+{
+    if (!box)
+        return TRUE;
+
+    if (box->left >= box->right)
+        return FALSE;
+    if (box->top >= box->bottom)
+        return FALSE;
+    if (box->front >= box->back)
+        return FALSE;
+    if (box->right > volume->resource.width)
+        return FALSE;
+    if (box->bottom > volume->resource.height)
+        return FALSE;
+    if (box->back > volume->resource.depth)
+        return FALSE;
+
+    return TRUE;
+}
+
 HRESULT CDECL wined3d_volume_map(struct wined3d_volume *volume,
         struct wined3d_map_desc *map_desc, const struct wined3d_box *box, DWORD flags)
 {
@@ -520,16 +595,34 @@ HRESULT CDECL wined3d_volume_map(struct wined3d_volume *volume,
     struct wined3d_context *context;
     const struct wined3d_gl_info *gl_info;
     BYTE *base_memory;
+    const struct wined3d_format *format = volume->resource.format;
 
     TRACE("volume %p, map_desc %p, box %p, flags %#x.\n",
             volume, map_desc, box, flags);
 
+    map_desc->data = NULL;
     if (!(volume->resource.access_flags & WINED3D_RESOURCE_ACCESS_CPU))
     {
         WARN("Volume %p is not CPU accessible.\n", volume);
-        map_desc->data = NULL;
         return WINED3DERR_INVALIDCALL;
     }
+    if (volume->resource.map_count)
+    {
+        WARN("Volume is already mapped.\n");
+        return WINED3DERR_INVALIDCALL;
+    }
+    if (!wined3d_volume_check_box_dimensions(volume, box))
+    {
+        WARN("Map box is invalid.\n");
+        return WINED3DERR_INVALIDCALL;
+    }
+    if ((format->flags & WINED3DFMT_FLAG_BLOCKS) && !volume_check_block_align(volume, box))
+    {
+        WARN("Map box is misaligned for %ux%u blocks.\n",
+                format->block_width, format->block_height);
+        return WINED3DERR_INVALIDCALL;
+    }
+
     flags = wined3d_resource_sanitize_map_flags(&volume->resource, flags);
 
     if (volume->flags & WINED3D_VFLAG_PBO)
@@ -586,9 +679,16 @@ HRESULT CDECL wined3d_volume_map(struct wined3d_volume *volume,
 
     TRACE("Base memory pointer %p.\n", base_memory);
 
-    map_desc->row_pitch = volume->resource.format->byte_count * volume->resource.width; /* Bytes / row */
-    map_desc->slice_pitch = volume->resource.format->byte_count
-            * volume->resource.width * volume->resource.height; /* Bytes / slice */
+    if (format->flags & WINED3DFMT_FLAG_BROKEN_PITCH)
+    {
+        map_desc->row_pitch = volume->resource.width * format->byte_count;
+        map_desc->slice_pitch = map_desc->row_pitch * volume->resource.height;
+    }
+    else
+    {
+        wined3d_volume_get_pitch(volume, &map_desc->row_pitch, &map_desc->slice_pitch);
+    }
+
     if (!box)
     {
         TRACE("No box supplied - all is ok\n");
@@ -598,10 +698,23 @@ HRESULT CDECL wined3d_volume_map(struct wined3d_volume *volume,
     {
         TRACE("Lock Box (%p) = l %u, t %u, r %u, b %u, fr %u, ba %u\n",
                 box, box->left, box->top, box->right, box->bottom, box->front, box->back);
-        map_desc->data = base_memory
-                + (map_desc->slice_pitch * box->front)     /* FIXME: is front < back or vica versa? */
-                + (map_desc->row_pitch * box->top)
-                + (box->left * volume->resource.format->byte_count);
+
+        if ((format->flags & (WINED3DFMT_FLAG_BLOCKS | WINED3DFMT_FLAG_BROKEN_PITCH)) == WINED3DFMT_FLAG_BLOCKS)
+        {
+            /* Compressed textures are block based, so calculate the offset of
+             * the block that contains the top-left pixel of the locked rectangle. */
+            map_desc->data = base_memory
+                    + (box->front * map_desc->slice_pitch)
+                    + ((box->top / format->block_height) * map_desc->row_pitch)
+                    + ((box->left / format->block_width) * format->block_byte_count);
+        }
+        else
+        {
+            map_desc->data = base_memory
+                    + (map_desc->slice_pitch * box->front)
+                    + (map_desc->row_pitch * box->top)
+                    + (box->left * volume->resource.format->byte_count);
+        }
     }
 
     if (!(flags & (WINED3D_MAP_NO_DIRTY_UPDATE | WINED3D_MAP_READONLY)))
@@ -614,7 +727,7 @@ HRESULT CDECL wined3d_volume_map(struct wined3d_volume *volume,
             wined3d_volume_invalidate_location(volume, ~WINED3D_LOCATION_SYSMEM);
     }
 
-    volume->flags |= WINED3D_VFLAG_LOCKED;
+    volume->resource.map_count++;
 
     TRACE("Returning memory %p, row pitch %d, slice pitch %d.\n",
             map_desc->data, map_desc->row_pitch, map_desc->slice_pitch);
@@ -631,9 +744,9 @@ HRESULT CDECL wined3d_volume_unmap(struct wined3d_volume *volume)
 {
     TRACE("volume %p.\n", volume);
 
-    if (!(volume->flags & WINED3D_VFLAG_LOCKED))
+    if (!volume->resource.map_count)
     {
-        WARN("Trying to unlock unlocked volume %p.\n", volume);
+        WARN("Trying to unlock an unlocked volume %p.\n", volume);
         return WINED3DERR_INVALIDCALL;
     }
 
@@ -651,7 +764,7 @@ HRESULT CDECL wined3d_volume_unmap(struct wined3d_volume *volume)
         context_release(context);
     }
 
-    volume->flags &= ~WINED3D_VFLAG_LOCKED;
+    volume->resource.map_count--;
 
     return WINED3D_OK;
 }

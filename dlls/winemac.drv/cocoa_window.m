@@ -158,6 +158,8 @@ static inline void fix_generic_modifiers_by_device(NSUInteger* modifiers)
 @property (assign, nonatomic) void* imeData;
 @property (nonatomic) BOOL commandDone;
 
+@property (retain, nonatomic) NSTimer* liveResizeDisplayTimer;
+
     - (void) updateColorSpace;
 
     - (BOOL) becameEligibleParentOrChild;
@@ -468,6 +470,7 @@ static inline void fix_generic_modifiers_by_device(NSUInteger* modifiers)
     @synthesize colorKeyed, colorKeyRed, colorKeyGreen, colorKeyBlue;
     @synthesize usePerPixelAlpha;
     @synthesize imeData, commandDone;
+    @synthesize liveResizeDisplayTimer;
 
     + (WineWindow*) createWindowWithFeatures:(const struct macdrv_window_features*)wf
                                  windowFrame:(NSRect)window_frame
@@ -500,6 +503,8 @@ static inline void fix_generic_modifiers_by_device(NSUInteger* modifiers)
         [window setDelegate:window];
         window.hwnd = hwnd;
         window.queue = queue;
+        window->savedContentMinSize = NSZeroSize;
+        window->savedContentMaxSize = NSMakeSize(FLT_MAX, FLT_MAX);
 
         [window registerForDraggedTypes:[NSArray arrayWithObjects:(NSString*)kUTTypeData,
                                                                   (NSString*)kUTTypeContent,
@@ -1131,14 +1136,14 @@ static inline void fix_generic_modifiers_by_device(NSUInteger* modifiers)
 
             if (disabled)
             {
-                NSSize size = [self frame].size;
-                [self setMinSize:size];
-                [self setMaxSize:size];
+                NSSize size = [self contentRectForFrameRect:[self frame]].size;
+                [self setContentMinSize:size];
+                [self setContentMaxSize:size];
             }
             else
             {
-                [self setMaxSize:NSMakeSize(FLT_MAX, FLT_MAX)];
-                [self setMinSize:NSZeroSize];
+                [self setContentMaxSize:savedContentMaxSize];
+                [self setContentMinSize:savedContentMinSize];
             }
         }
     }
@@ -1179,6 +1184,16 @@ static inline void fix_generic_modifiers_by_device(NSUInteger* modifiers)
         self.shapeChangedSinceLastDraw = TRUE;
 
         [self checkTransparency];
+    }
+
+    - (void) setLiveResizeDisplayTimer:(NSTimer*)newTimer
+    {
+        if (newTimer != liveResizeDisplayTimer)
+        {
+            [liveResizeDisplayTimer invalidate];
+            [liveResizeDisplayTimer release];
+            liveResizeDisplayTimer = [newTimer retain];
+        }
     }
 
     - (void) makeFocused:(BOOL)activate
@@ -1229,6 +1244,17 @@ static inline void fix_generic_modifiers_by_device(NSUInteger* modifiers)
               pressed:[theEvent type] == NSKeyDown
             modifiers:[theEvent modifierFlags]
                 event:theEvent];
+    }
+
+    - (void) setWineMinSize:(NSSize)minSize maxSize:(NSSize)maxSize
+    {
+        savedContentMinSize = minSize;
+        savedContentMaxSize = maxSize;
+        if (!self.disabled)
+        {
+            [self setContentMinSize:minSize];
+            [self setContentMaxSize:maxSize];
+        }
     }
 
 
@@ -1450,9 +1476,14 @@ static inline void fix_generic_modifiers_by_device(NSUInteger* modifiers)
 
     - (void) windowDidEndLiveResize:(NSNotification *)notification
     {
-        [liveResizeDisplayTimer invalidate];
-        [liveResizeDisplayTimer release];
-        liveResizeDisplayTimer = nil;
+        macdrv_query* query = macdrv_create_query();
+        query->type = QUERY_RESIZE_END;
+        query->window = (macdrv_window)[self retain];
+
+        [self.queue query:query timeout:0.3];
+        macdrv_release_query(query);
+
+        self.liveResizeDisplayTimer = nil;
     }
 
     - (void)windowDidMiniaturize:(NSNotification *)notification
@@ -1480,16 +1511,14 @@ static inline void fix_generic_modifiers_by_device(NSUInteger* modifiers)
     - (void)windowDidResize:(NSNotification *)notification
     {
         macdrv_event* event;
-        NSRect frame = [self frame];
+        NSRect frame = [self contentRectForFrameRect:[self frame]];
 
         if (self.disabled)
         {
-            NSSize size = frame.size;
-            [self setMinSize:size];
-            [self setMaxSize:size];
+            [self setContentMinSize:frame.size];
+            [self setContentMaxSize:frame.size];
         }
 
-        frame = [self contentRectForFrameRect:frame];
         [[WineApplicationController sharedController] flipRect:&frame];
 
         /* Coalesce events by discarding any previous ones still in the queue. */
@@ -1554,6 +1583,13 @@ static inline void fix_generic_modifiers_by_device(NSUInteger* modifiers)
 
     - (void) windowWillStartLiveResize:(NSNotification *)notification
     {
+        macdrv_query* query = macdrv_create_query();
+        query->type = QUERY_RESIZE_START;
+        query->window = (macdrv_window)[self retain];
+
+        [self.queue query:query timeout:0.3];
+        macdrv_release_query(query);
+
         // There's a strange restriction in window redrawing during Cocoa-
         // managed window resizing.  Only calls to -[NSView setNeedsDisplay...]
         // that happen synchronously when Cocoa tells us that our window size
@@ -1569,13 +1605,11 @@ static inline void fix_generic_modifiers_by_device(NSUInteger* modifiers)
         //
         // We address this by "manually" asking our windows to check if they need
         // redrawing every so often (during live resize only).
-        [self windowDidEndLiveResize:nil];
-        liveResizeDisplayTimer = [NSTimer scheduledTimerWithTimeInterval:1.0/30.0
-                                                                  target:self
-                                                                selector:@selector(displayIfNeeded)
-                                                                userInfo:nil
-                                                                 repeats:YES];
-        [liveResizeDisplayTimer retain];
+        self.liveResizeDisplayTimer = [NSTimer scheduledTimerWithTimeInterval:1.0/30.0
+                                                                       target:self
+                                                                     selector:@selector(displayIfNeeded)
+                                                                     userInfo:nil
+                                                                      repeats:YES];
         [[NSRunLoop currentRunLoop] addTimer:liveResizeDisplayTimer
                                      forMode:NSRunLoopCommonModes];
     }
@@ -2007,6 +2041,20 @@ void macdrv_give_cocoa_window_focus(macdrv_window w, int activate)
 
     OnMainThread(^{
         [window makeFocused:activate];
+    });
+}
+
+/***********************************************************************
+ *              macdrv_set_window_min_max_sizes
+ *
+ * Sets the window's minimum and maximum content sizes.
+ */
+void macdrv_set_window_min_max_sizes(macdrv_window w, CGSize min_size, CGSize max_size)
+{
+    WineWindow* window = (WineWindow*)w;
+
+    OnMainThread(^{
+        [window setWineMinSize:NSSizeFromCGSize(min_size) maxSize:NSSizeFromCGSize(max_size)];
     });
 }
 
