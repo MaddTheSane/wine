@@ -360,6 +360,11 @@ static HRESULT WINAPI BindStatusCallback_OnStopBinding(IBindStatusCallback *ifac
         This->binding = NULL;
     }
 
+    if(This->mon) {
+        IMoniker_Release(This->mon);
+        This->mon = NULL;
+    }
+
     list_remove(&This->entry);
     list_init(&This->entry);
     This->window = NULL;
@@ -823,9 +828,6 @@ HRESULT start_binding(HTMLInnerWindow *inner_window, BSCallback *bscallback, IBi
     if(str)
         IStream_Release(str);
 
-    IMoniker_Release(bscallback->mon);
-    bscallback->mon = NULL;
-
     return S_OK;
 }
 
@@ -1158,6 +1160,9 @@ static HRESULT read_stream_data(nsChannelBSC *This, IStream *stream)
             }
         }
     }
+
+    if(!This->nschannel)
+        return S_OK;
 
     if(!This->nslistener) {
         BYTE buf[1024];
@@ -1542,7 +1547,7 @@ static HRESULT nsChannelBSC_stop_binding(BSCallback *bsc, HRESULT result)
     if(result != E_ABORT) {
         if(FAILED(result))
             handle_navigation_error(This, result);
-        else if(This->is_doc_channel) {
+        else if(This->is_doc_channel && This->nschannel) {
             result = async_stop_request(This);
             if(SUCCEEDED(result))
                 return S_OK;
@@ -1602,12 +1607,121 @@ static HRESULT handle_redirect(nsChannelBSC *This, const WCHAR *new_url)
     return hres;
 }
 
+static BOOL is_supported_doc_mime(const WCHAR *mime)
+{
+    char *nscat, *mimea;
+    BOOL ret;
+
+    mimea = heap_strdupWtoA(mime);
+    if(!mimea)
+        return FALSE;
+
+    nscat = get_nscategory_entry("Gecko-Content-Viewers", mimea);
+
+    ret = nscat != NULL && !strcmp(nscat, "@mozilla.org/content/document-loader-factory;1");
+
+    heap_free(mimea);
+    nsfree(nscat);
+    return ret;
+}
+
+static IUri *get_moniker_uri(IMoniker *mon)
+{
+    IUriContainer *uri_container;
+    IUri *ret = NULL;
+    HRESULT hres;
+
+    hres = IMoniker_QueryInterface(mon, &IID_IUriContainer, (void**)&uri_container);
+    if(SUCCEEDED(hres)) {
+        hres = IUriContainer_GetIUri(uri_container, &ret);
+        IUriContainer_Release(uri_container);
+        if(FAILED(hres))
+            return NULL;
+    }else {
+        FIXME("No IUriContainer\n");
+    }
+
+    return ret;
+}
+
+static void handle_extern_mime_navigation(nsChannelBSC *This)
+{
+    IWebBrowserPriv2IE8 *webbrowser_priv;
+    IOleCommandTarget *cmdtrg;
+    HTMLDocumentObj *doc_obj;
+    IBindCtx *bind_ctx;
+    IUri *uri;
+    VARIANT flags;
+    HRESULT hres;
+
+    if(!This->bsc.window || !This->bsc.window->base.outer_window || !This->bsc.window->base.outer_window->doc_obj)
+        return;
+
+    doc_obj = This->bsc.window->base.outer_window->doc_obj;
+
+    hres = IOleClientSite_QueryInterface(doc_obj->client, &IID_IOleCommandTarget, (void**)&cmdtrg);
+    if(SUCCEEDED(hres)) {
+        IOleCommandTarget_Exec(cmdtrg, &CGID_ShellDocView, 62, 0, NULL, NULL);
+        IOleCommandTarget_Release(cmdtrg);
+    }
+
+    set_document_navigation(doc_obj, FALSE);
+
+    if(!doc_obj->webbrowser) {
+        FIXME("unimplemented in non-webbrowser mode\n");
+        return;
+    }
+
+    uri = get_moniker_uri(This->bsc.mon);
+    if(!uri)
+        return;
+
+    hres = CreateBindCtx(0, &bind_ctx);
+    if(FAILED(hres)) {
+        IUri_Release(uri);
+        return;
+    }
+
+    V_VT(&flags) = VT_I4;
+    V_I4(&flags) = navHyperlink;
+
+    hres = IUnknown_QueryInterface(doc_obj->webbrowser, &IID_IWebBrowserPriv2IE8, (void**)&webbrowser_priv);
+    if(SUCCEEDED(hres)) {
+        hres = IWebBrowserPriv2IE8_NavigateWithBindCtx2(webbrowser_priv, uri, &flags, NULL, NULL, NULL, bind_ctx, NULL);
+        IWebBrowserPriv2IE8_Release(webbrowser_priv);
+    }else {
+        IWebBrowserPriv *webbrowser_priv_old;
+        VARIANT uriv;
+
+        hres = IUnknown_QueryInterface(doc_obj->webbrowser, &IID_IWebBrowserPriv, (void**)&webbrowser_priv_old);
+        if(SUCCEEDED(hres)) {
+            V_VT(&uriv) = VT_BSTR;
+            IUri_GetDisplayUri(uri, &V_BSTR(&uriv));
+
+            hres = IWebBrowserPriv_NavigateWithBindCtx(webbrowser_priv_old, &uriv, &flags, NULL, NULL, NULL, bind_ctx, NULL);
+
+            SysFreeString(V_BSTR(&uriv));
+            IWebBrowserPriv_Release(webbrowser_priv_old);
+        }
+    }
+
+    IUri_Release(uri);
+}
+
 static HRESULT nsChannelBSC_on_progress(BSCallback *bsc, ULONG status_code, LPCWSTR status_text)
 {
     nsChannelBSC *This = nsChannelBSC_from_BSCallback(bsc);
 
     switch(status_code) {
     case BINDSTATUS_MIMETYPEAVAILABLE:
+        if(This->is_doc_channel && !is_supported_doc_mime(status_text)) {
+            FIXME("External MIME: %s\n", debugstr_w(status_text));
+
+            handle_extern_mime_navigation(This);
+
+            This->nschannel = NULL;
+        }
+
         if(!This->nschannel)
             return S_OK;
 
