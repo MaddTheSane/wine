@@ -2319,6 +2319,13 @@ static BOOL WINAPI WS2_AcceptEx(SOCKET listener, SOCKET acceptor, PVOID dest, DW
         return FALSE;
     }
 
+    if ((local_addr_len < sizeof(struct sockaddr_in) + 16)
+       || (rem_addr_len < sizeof(struct sockaddr_in) + 16))
+    {
+        SetLastError(WSAEINVAL);
+        return FALSE;
+    }
+
     fd = get_sock_fd( listener, FILE_READ_DATA, NULL );
     if (fd == -1)
     {
@@ -2967,10 +2974,11 @@ INT WINAPI WS_getsockopt(SOCKET s, INT level,
                 SetLastError((errno == EBADF) ? WSAENOTSOCK : wsaErrno());
                 ret = SOCKET_ERROR;
             }
-
-            /* BSD returns != 0 while Windows return exact == 1 */
-            if (*(int *)optval) *(int *)optval = 1;
-
+            else
+            {
+                /* BSD returns != 0 while Windows return exact == 1 */
+                if (*(int *)optval) *(int *)optval = 1;
+            }
             release_sock_fd( s, fd );
             return ret;
         case WS_SO_DONTLINGER:

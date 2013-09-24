@@ -6208,15 +6208,18 @@ static GpStatus SOFTWARE_GdipDrawDriverString(GpGraphics *graphics, GDIPCONST UI
         if (glyphsize > max_glyphsize)
             max_glyphsize = glyphsize;
 
-        left = pti[i].x + glyphmetrics.gmptGlyphOrigin.x;
-        top = pti[i].y - glyphmetrics.gmptGlyphOrigin.y;
-        right = pti[i].x + glyphmetrics.gmptGlyphOrigin.x + glyphmetrics.gmBlackBoxX;
-        bottom = pti[i].y - glyphmetrics.gmptGlyphOrigin.y + glyphmetrics.gmBlackBoxY;
+        if (glyphsize != 0)
+        {
+            left = pti[i].x + glyphmetrics.gmptGlyphOrigin.x;
+            top = pti[i].y - glyphmetrics.gmptGlyphOrigin.y;
+            right = pti[i].x + glyphmetrics.gmptGlyphOrigin.x + glyphmetrics.gmBlackBoxX;
+            bottom = pti[i].y - glyphmetrics.gmptGlyphOrigin.y + glyphmetrics.gmBlackBoxY;
 
-        if (left < min_x) min_x = left;
-        if (top < min_y) min_y = top;
-        if (right > max_x) max_x = right;
-        if (bottom > max_y) max_y = bottom;
+            if (left < min_x) min_x = left;
+            if (top < min_y) min_y = top;
+            if (right > max_x) max_x = right;
+            if (bottom > max_y) max_y = bottom;
+        }
 
         if (i+1 < length && (flags & DriverStringOptionsRealizedAdvance) == DriverStringOptionsRealizedAdvance)
         {
@@ -6224,6 +6227,10 @@ static GpStatus SOFTWARE_GdipDrawDriverString(GpGraphics *graphics, GDIPCONST UI
             pti[i+1].y = pti[i].y + glyphmetrics.gmCellIncY;
         }
     }
+
+    if (max_glyphsize == 0)
+        /* Nothing to draw. */
+        return Ok;
 
     glyph_mask = GdipAlloc(max_glyphsize);
     text_mask = GdipAlloc((max_x - min_x) * (max_y - min_y));
@@ -6242,10 +6249,14 @@ static GpStatus SOFTWARE_GdipDrawDriverString(GpGraphics *graphics, GDIPCONST UI
     /* Generate a mask for the text */
     for (i=0; i<length; i++)
     {
+        DWORD ret;
         int left, top, stride;
 
-        GetGlyphOutlineW(hdc, text[i], ggo_flags,
+        ret = GetGlyphOutlineW(hdc, text[i], ggo_flags,
             &glyphmetrics, max_glyphsize, glyph_mask, &identity);
+
+        if (ret == GDI_ERROR || ret == 0)
+            continue; /* empty glyph */
 
         left = pti[i].x + glyphmetrics.gmptGlyphOrigin.x;
         top = pti[i].y - glyphmetrics.gmptGlyphOrigin.y;

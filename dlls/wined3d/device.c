@@ -827,6 +827,23 @@ void CDECL wined3d_device_release_focus_window(struct wined3d_device *device)
     InterlockedExchangePointer((void **)&device->focus_window, NULL);
 }
 
+static void device_reset_viewport_scissor(struct wined3d_device *device, UINT width, UINT height)
+{
+    struct wined3d_state *state = &device->state;
+
+    state->viewport.x = 0;
+    state->viewport.y = 0;
+    state->viewport.width = width;
+    state->viewport.height = height;
+    state->viewport.min_z = 0.0f;
+    state->viewport.max_z = 1.0f;
+
+    state->scissor_rect.left = 0;
+    state->scissor_rect.top = 0;
+    state->scissor_rect.right = width;
+    state->scissor_rect.bottom = height;
+}
+
 HRESULT CDECL wined3d_device_init_3d(struct wined3d_device *device,
         struct wined3d_swapchain_desc *swapchain_desc)
 {
@@ -895,6 +912,8 @@ HRESULT CDECL wined3d_device_init_3d(struct wined3d_device *device,
 
     /* Setup all the devices defaults */
     state_init_default(&device->state, device);
+    device_reset_viewport_scissor(device, swapchain->desc.backbuffer_width,
+            swapchain->desc.backbuffer_height);
 
     context = context_acquire(device, swapchain->front_buffer);
 
@@ -2225,7 +2244,7 @@ struct wined3d_sampler * CDECL wined3d_device_get_vs_sampler(const struct wined3
     return device->state.vs_sampler[idx];
 }
 
-void device_invalidate_shader_constants(const struct wined3d_device *device, DWORD mask)
+static void device_invalidate_shader_constants(const struct wined3d_device *device, DWORD mask)
 {
     UINT i;
 
@@ -4486,9 +4505,12 @@ HRESULT CDECL wined3d_device_reset(struct wined3d_device *device,
 
     /* No special treatment of these parameters. Just store them */
     swapchain->desc.swap_effect = swapchain_desc->swap_effect;
+    swapchain->desc.enable_auto_depth_stencil = swapchain_desc->enable_auto_depth_stencil;
+    swapchain->desc.auto_depth_stencil_format = swapchain_desc->auto_depth_stencil_format;
     swapchain->desc.flags = swapchain_desc->flags;
-    swapchain->desc.swap_interval = swapchain_desc->swap_interval;
     swapchain->desc.refresh_rate = swapchain_desc->refresh_rate;
+    swapchain->desc.swap_interval = swapchain_desc->swap_interval;
+    swapchain->desc.auto_restore_display_mode = swapchain_desc->auto_restore_display_mode;
 
     /* What to do about these? */
     if (swapchain_desc->backbuffer_count
@@ -4704,6 +4726,8 @@ HRESULT CDECL wined3d_device_reset(struct wined3d_device *device,
         if (FAILED(hr = state_init(&device->state, &device->adapter->d3d_info)))
             ERR("Failed to initialize device state, hr %#x.\n", hr);
         state_init_default(&device->state, device);
+        device_reset_viewport_scissor(device, swapchain->desc.backbuffer_width,
+                swapchain->desc.backbuffer_height);
         device->update_state = &device->state;
     }
     else

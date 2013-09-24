@@ -23,7 +23,7 @@
 #include <limits.h>
 #include <share.h>
 
-#include "msvcp90.h"
+#include "msvcp.h"
 #include "windef.h"
 #include "winbase.h"
 #include "wine/debug.h"

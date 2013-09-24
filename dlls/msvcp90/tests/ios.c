@@ -423,12 +423,12 @@ typedef struct {
 } fpos_int;
 
 /* stringstream */
-static basic_stringstream_char* (*__thiscall p_basic_stringstream_char_ctor)(basic_stringstream_char*, MSVCP_bool);
+static basic_stringstream_char* (*__thiscall p_basic_stringstream_char_ctor)(basic_stringstream_char*);
 static basic_stringstream_char* (*__thiscall p_basic_stringstream_char_ctor_str)(basic_stringstream_char*, const basic_string_char*, int, MSVCP_bool);
 static basic_string_char* (*__thiscall p_basic_stringstream_char_str_get)(const basic_stringstream_char*, basic_string_char*);
 static void (*__thiscall p_basic_stringstream_char_vbase_dtor)(basic_stringstream_char*);
 
-static basic_stringstream_wchar* (*__thiscall p_basic_stringstream_wchar_ctor)(basic_stringstream_wchar*, MSVCP_bool);
+static basic_stringstream_wchar* (*__thiscall p_basic_stringstream_wchar_ctor)(basic_stringstream_wchar*);
 static basic_stringstream_wchar* (*__thiscall p_basic_stringstream_wchar_ctor_str)(basic_stringstream_wchar*, const basic_string_wchar*, int, MSVCP_bool);
 static basic_string_wchar* (*__thiscall p_basic_stringstream_wchar_str_get)(const basic_stringstream_wchar*, basic_string_wchar*);
 static void (*__thiscall p_basic_stringstream_wchar_vbase_dtor)(basic_stringstream_wchar*);
@@ -467,6 +467,8 @@ static basic_istream_wchar* (*__cdecl    p_basic_istream_wchar_getline_bstr_deli
 static basic_ostream_char* (*__thiscall p_basic_ostream_char_print_double)(basic_ostream_char*, double);
 
 static basic_ostream_wchar* (*__thiscall p_basic_ostream_wchar_print_double)(basic_ostream_wchar*, double);
+
+static basic_ostream_wchar* (*__thiscall p_basic_ostream_short_print_ushort)(basic_ostream_wchar*, unsigned short);
 
 /* basic_ios */
 static locale*  (*__thiscall p_basic_ios_char_imbue)(basic_ios_char*, locale*, const locale*);
@@ -685,6 +687,9 @@ static BOOL init(void)
         SET(p_basic_ostream_wchar_print_double,
             "??6?$basic_ostream@_WU?$char_traits@_W@std@@@std@@QEAAAEAV01@N@Z");
 
+        SET(p_basic_ostream_short_print_ushort,
+            "??6?$basic_ostream@GU?$char_traits@G@std@@@std@@QEAAAEAV01@G@Z");
+
         SET(p_ios_base_rdstate,
             "?rdstate@ios_base@std@@QEBAHXZ");
         SET(p_ios_base_setf_mask,
@@ -796,6 +801,9 @@ static BOOL init(void)
         SET(p_basic_ostream_wchar_print_double,
             "??6?$basic_ostream@_WU?$char_traits@_W@std@@@std@@QAAAAV01@N@Z");
 
+        SET(p_basic_ostream_short_print_ushort,
+            "??6?$basic_ostream@GU?$char_traits@G@std@@@std@@QAAAAV01@G@Z");
+
         SET(p_ios_base_rdstate,
             "?rdstate@ios_base@std@@QBAHXZ");
         SET(p_ios_base_setf_mask,
@@ -905,6 +913,9 @@ static BOOL init(void)
 
         SET(p_basic_ostream_wchar_print_double,
             "??6?$basic_ostream@_WU?$char_traits@_W@std@@@std@@QAEAAV01@N@Z");
+
+        SET(p_basic_ostream_short_print_ushort,
+            "??6?$basic_ostream@GU?$char_traits@G@std@@@std@@QAEAAV01@G@Z");
 
         SET(p_ios_base_rdstate,
             "?rdstate@ios_base@std@@QBEHXZ");
@@ -1299,7 +1310,7 @@ static void test_num_put_put_double(void)
 
     for(i=0; i<sizeof(tests)/sizeof(tests[0]); i++) {
         /* char version */
-        call_func2(p_basic_stringstream_char_ctor, &ss, TRUE);
+        call_func1(p_basic_stringstream_char_ctor, &ss);
 
         if(tests[i].lcl) {
             call_func3(p_locale_ctor_cstr, &lcl, tests[i].lcl, 0x3f /* FIXME: support categories */);
@@ -1325,7 +1336,7 @@ static void test_num_put_put_double(void)
         call_func1(p_basic_stringstream_char_vbase_dtor, &ss);
 
         /* wchar_t version */
-        call_func2(p_basic_stringstream_wchar_ctor, &wss, TRUE);
+        call_func1(p_basic_stringstream_wchar_ctor, &wss);
 
         if(tests[i].lcl) {
             call_func3(p_locale_ctor_cstr, &lcl, tests[i].lcl, 0x3f /* FIXME: support categories */);
@@ -1920,6 +1931,25 @@ static void test_istream_getline(void)
     }
 }
 
+static void test_ostream_print_ushort(void)
+{
+    static const wchar_t str65[] = { '6','5',0 };
+
+    basic_stringstream_wchar wss;
+    basic_string_wchar pwstr;
+    const wchar_t *wstr;
+
+    call_func1(p_basic_stringstream_wchar_ctor, &wss);
+    call_func2(p_basic_ostream_short_print_ushort, &wss.base.base2, 65);
+
+    call_func2(p_basic_stringstream_wchar_str_get, &wss, &pwstr);
+    wstr = call_func1(p_basic_string_wchar_cstr, &pwstr);
+    ok(!lstrcmpW(str65, wstr), "wstr = %s\n", wine_dbgstr_w(wstr));
+
+    call_func1(p_basic_string_wchar_dtor, &pwstr);
+    call_func1(p_basic_stringstream_wchar_vbase_dtor, &wss);
+}
+
 
 START_TEST(ios)
 {
@@ -1936,6 +1966,7 @@ START_TEST(ios)
     test_istream_peek();
     test_istream_tellg();
     test_istream_getline();
+    test_ostream_print_ushort();
 
     ok(!invalid_parameter, "invalid_parameter_handler was invoked too many times\n");
 }

@@ -86,7 +86,9 @@ static void verify_region(HRGN hrgn, const RECT *rc)
     {
         rect = (const RECT *)rgn.data.Buffer;
         trace("rect (%d,%d-%d,%d)\n", rect->left, rect->top, rect->right, rect->bottom);
-        ok(EqualRect(rect, rc), "rects don't match\n");
+        ok(EqualRect(rect, rc), "expected (%d,%d)-(%d,%d), got (%d,%d)-(%d,%d)\n",
+           rc->left, rc->top, rc->right, rc->bottom,
+           rect->left, rect->top, rect->right, rect->bottom);
     }
 
     ok(rgn.data.rdh.dwSize == sizeof(rgn.data.rdh), "expected sizeof(rdh), got %u\n", rgn.data.rdh.dwSize);
@@ -101,7 +103,9 @@ static void verify_region(HRGN hrgn, const RECT *rc)
         ok(rgn.data.rdh.nCount == 1, "expected 1, got %u\n", rgn.data.rdh.nCount);
         ok(rgn.data.rdh.nRgnSize == sizeof(RECT),  "expected sizeof(RECT), got %u\n", rgn.data.rdh.nRgnSize);
     }
-    ok(EqualRect(&rgn.data.rdh.rcBound, rc), "rects don't match\n");
+    ok(EqualRect(&rgn.data.rdh.rcBound, rc), "expected (%d,%d)-(%d,%d), got (%d,%d)-(%d,%d)\n",
+       rc->left, rc->top, rc->right, rc->bottom,
+       rgn.data.rdh.rcBound.left, rgn.data.rdh.rcBound.top, rgn.data.rdh.rcBound.right, rgn.data.rdh.rcBound.bottom);
 }
 
 static void test_getregiondata(void)
@@ -113,6 +117,7 @@ static void test_getregiondata(void)
     DWORD buf[100];
     GpRect rect;
     GpPath *path;
+    GpMatrix *matrix;
 
     memset(buf, 0xee, sizeof(buf));
 
@@ -371,6 +376,13 @@ static void test_getregiondata(void)
     /* flags 0x4000 means its a path of shorts instead of FLOAT */
     ok((*(buf + 8) & (~ 0x00004000)) == 0x00000000,
        "expected 00000000 got %08x\n", *(buf + 8) & (~ 0x00004000));
+
+    /* Transform an empty region */
+    status = GdipCreateMatrix(&matrix);
+    expect(Ok, status);
+    status = GdipTransformRegion(region, matrix);
+    expect(Ok, status);
+    GdipDeleteMatrix(matrix);
 
     status = GdipDeleteRegion(region);
     expect(Ok, status);
@@ -856,12 +868,10 @@ static void test_gethrgn(void)
     status = GdipGetRegionHRgn(region, NULL, &hrgn);
     ok(status == Ok, "status %08x\n", status);
     ok(hrgn == NULL, "hrgn=%p\n", hrgn);
-    DeleteObject(hrgn);
 
     status = GdipGetRegionHRgn(region, graphics, &hrgn);
     ok(status == Ok, "status %08x\n", status);
     ok(hrgn == NULL, "hrgn=%p\n", hrgn);
-    DeleteObject(hrgn);
 
     status = GdipSetEmpty(region);
     ok(status == Ok, "status %08x\n", status);

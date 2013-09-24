@@ -5524,7 +5524,8 @@ static HRESULT surface_load_texture(struct wined3d_surface *surface,
             context_release(context);
             return E_OUTOFMEMORY;
         }
-        format.convert(surface->resource.allocatedMemory, mem, src_pitch, dst_pitch, width, height);
+        format.convert(surface->resource.allocatedMemory, mem, src_pitch, src_pitch * height,
+                dst_pitch, dst_pitch * height, width, height, 1);
         format.byte_count = format.conv_byte_count;
         src_pitch = dst_pitch;
     }
@@ -6776,15 +6777,9 @@ HRESULT CDECL wined3d_surface_blt(struct wined3d_surface *dst_surface, const REC
     }
 
 fallback:
-
     /* Special cases for render targets. */
-    if ((dst_surface->resource.usage & WINED3DUSAGE_RENDERTARGET)
-            || (src_surface && (src_surface->resource.usage & WINED3DUSAGE_RENDERTARGET)))
-    {
-        if (SUCCEEDED(surface_blt_special(dst_surface, &dst_rect,
-                src_surface, &src_rect, flags, fx, filter)))
-            return WINED3D_OK;
-    }
+    if (SUCCEEDED(surface_blt_special(dst_surface, &dst_rect, src_surface, &src_rect, flags, fx, filter)))
+        return WINED3D_OK;
 
 cpu:
 

@@ -2114,6 +2114,7 @@ void wined3d_texture_set_dirty(struct wined3d_texture *texture) DECLSPEC_HIDDEN;
 #define WINED3D_VFLAG_ALLOCATED         0x00000001
 #define WINED3D_VFLAG_SRGB_ALLOCATED    0x00000002
 #define WINED3D_VFLAG_PBO               0x00000004
+#define WINED3D_VFLAG_CLIENT_STORAGE    0x00000008
 
 #define WINED3D_LOCATION_DISCARDED      0x00000001
 #define WINED3D_LOCATION_SYSMEM         0x00000002
@@ -2970,7 +2971,8 @@ struct wined3d_format
     unsigned int flags;
     struct wined3d_rational height_scale;
     struct color_fixup_desc color_fixup;
-    void (*convert)(const BYTE *src, BYTE *dst, UINT src_pitch, UINT dst_pitch, UINT width, UINT height);
+    void (*convert)(const BYTE *src, BYTE *dst, UINT src_row_pitch, UINT src_slice_pitch,
+            UINT dst_row_pitch, UINT dst_slice_pitch, UINT width, UINT height, UINT depth);
 };
 
 const struct wined3d_format *wined3d_get_format(const struct wined3d_gl_info *gl_info,

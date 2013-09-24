@@ -1181,7 +1181,6 @@ void state_init_default(struct wined3d_state *state, struct wined3d_device *devi
         DWORD d;
     } tmpfloat;
     unsigned int i;
-    struct wined3d_swapchain_desc *swapchain_desc;
     static const struct wined3d_matrix identity =
     {{{
         1.0f, 0.0f, 0.0f, 0.0f,
@@ -1379,27 +1378,6 @@ void state_init_default(struct wined3d_state *state, struct wined3d_device *devi
         /* TODO: Vertex offset in the presampled displacement map. */
         state->sampler_states[i][WINED3D_SAMP_DMAP_OFFSET] = 0;
     }
-
-    for (i = 0; i < gl_info->limits.textures; ++i)
-    {
-        state->textures[i] = NULL;
-    }
-
-    swapchain_desc = &device->swapchains[0]->desc;
-
-    /* Set the default scissor rect values */
-    state->scissor_rect.left = 0;
-    state->scissor_rect.right = swapchain_desc->backbuffer_width;
-    state->scissor_rect.top = 0;
-    state->scissor_rect.bottom = swapchain_desc->backbuffer_height;
-
-    /* Set the default viewport */
-    state->viewport.x = 0;
-    state->viewport.y = 0;
-    state->viewport.width = swapchain_desc->backbuffer_width;
-    state->viewport.height = swapchain_desc->backbuffer_height;
-    state->viewport.min_z = 0.0f;
-    state->viewport.max_z = 1.0f;
 }
 
 static HRESULT stateblock_init(struct wined3d_stateblock *stateblock,

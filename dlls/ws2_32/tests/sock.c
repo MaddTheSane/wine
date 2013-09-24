@@ -2094,7 +2094,7 @@ static void test_WSADuplicateSocket(void)
     WSAPROTOCOL_INFOA info;
     DWORD err;
     struct sockaddr_in addr;
-    int socktype, size, addrsize;
+    int socktype, size, addrsize, ret;
     char teststr[] = "TEST", buffer[16];
 
     source = WSASocketA(AF_INET, SOCK_STREAM, IPPROTO_TCP, NULL, 0, 0);
@@ -2181,8 +2181,8 @@ static void test_WSADuplicateSocket(void)
     ok(dupsock != INVALID_SOCKET, "WSASocketA should have succeeded\n");
 
     size = sizeof(int);
-    ok(!getsockopt(dupsock, SOL_SOCKET, SO_TYPE, (char *) &socktype, &size),
-       "getsockopt failed with %d\n", WSAGetLastError());
+    ret = getsockopt(dupsock, SOL_SOCKET, SO_TYPE, (char *) &socktype, &size);
+    ok(!ret, "getsockopt failed with %d\n", WSAGetLastError());
     ok(socktype == SOCK_DGRAM, "Wrong socket type, expected %d received %d\n",
        SOCK_DGRAM, socktype);
 
@@ -5348,17 +5348,31 @@ static void test_AcceptEx(void)
 
     bret = pAcceptEx(listener, acceptor, buffer, 0, 0, sizeof(struct sockaddr_in) + 16,
         &bytesReturned, &overlapped);
-    todo_wine ok(bret == FALSE && WSAGetLastError() == WSAEINVAL, "AcceptEx on too small local address size "
+    ok(bret == FALSE && WSAGetLastError() == WSAEINVAL, "AcceptEx on too small local address size "
+        "returned %d + errno %d\n", bret, WSAGetLastError());
+
+    bret = pAcceptEx(listener, acceptor, buffer, 0, sizeof(struct sockaddr_in) + 15,
+        sizeof(struct sockaddr_in) + 16, &bytesReturned, &overlapped);
+    ok(bret == FALSE && WSAGetLastError() == WSAEINVAL, "AcceptEx on too small local address size "
         "returned %d + errno %d\n", bret, WSAGetLastError());
 
     bret = pAcceptEx(listener, acceptor, buffer, 0, sizeof(struct sockaddr_in) + 16, 0,
         &bytesReturned, &overlapped);
-    todo_wine ok(bret == FALSE && WSAGetLastError() == WSAEINVAL, "AcceptEx on too small remote address size "
+    ok(bret == FALSE && WSAGetLastError() == WSAEINVAL, "AcceptEx on too small remote address size "
+        "returned %d + errno %d\n", bret, WSAGetLastError());
+
+    bret = pAcceptEx(listener, acceptor, buffer, 0, sizeof(struct sockaddr_in) + 16,
+        sizeof(struct sockaddr_in) + 15, &bytesReturned, &overlapped);
+    ok(bret == FALSE && WSAGetLastError() == WSAEINVAL, "AcceptEx on too small remote address size "
         "returned %d + errno %d\n", bret, WSAGetLastError());
 
     bret = pAcceptEx(listener, acceptor, buffer, 0,
         sizeof(struct sockaddr_in) + 16, sizeof(struct sockaddr_in) + 16,
         &bytesReturned, NULL);
+    ok(bret == FALSE && WSAGetLastError() == ERROR_INVALID_PARAMETER, "AcceptEx on a NULL overlapped "
+        "returned %d + errno %d\n", bret, WSAGetLastError());
+
+    bret = pAcceptEx(listener, acceptor, buffer, 0, 0, 0, &bytesReturned, NULL);
     ok(bret == FALSE && WSAGetLastError() == ERROR_INVALID_PARAMETER, "AcceptEx on a NULL overlapped "
         "returned %d + errno %d\n", bret, WSAGetLastError());
 
