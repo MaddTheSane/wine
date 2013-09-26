@@ -676,7 +676,9 @@ AC_CHECK_HEADERS([libprocstat.h],,,
 
 dnl **** Check for working dll ****
 
+AC_SUBST(dlldir,"\${libdir}/wine")
 AC_SUBST(DLLEXT,"")
+AC_SUBST(DLLPREFIX,"")
 AC_SUBST(DLLFLAGS,"-D_REENTRANT")
 AC_SUBST(IMPLIBEXT,"def")
 AC_SUBST(LDRPATH_INSTALL,"")
@@ -871,6 +873,8 @@ clean::
   linux-android*)
     DLLFLAGS="$DLLFLAGS -fPIC"
     DLLEXT=".so"
+    DLLPREFIX="lib"
+    dlldir="\${libdir}"
     WINE_TRY_CFLAGS([-fPIC -Wl,--export-dynamic],
                     [AC_SUBST(LDEXECFLAGS,["-Wl,--export-dynamic"])])
     WINE_TRY_CFLAGS([-fPIC -Wl,--rpath,\$ORIGIN/../lib],

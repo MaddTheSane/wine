@@ -598,9 +598,12 @@ void state_cleanup(struct wined3d_state *state)
     HeapFree(GetProcessHeap(), 0, state->ps_consts_f);
 }
 
-HRESULT state_init(struct wined3d_state *state, const struct wined3d_d3d_info *d3d_info)
+HRESULT state_init(struct wined3d_state *state, struct wined3d_fb_state *fb,
+        const struct wined3d_d3d_info *d3d_info)
 {
     unsigned int i;
+
+    state->fb = fb;
 
     for (i = 0; i < LIGHTMAP_SIZE; i++)
     {
@@ -1168,9 +1171,8 @@ void CDECL wined3d_stateblock_apply(const struct wined3d_stateblock *stateblock)
     TRACE("Applied stateblock %p.\n", stateblock);
 }
 
-void state_init_default(struct wined3d_state *state, struct wined3d_device *device)
+void state_init_default(struct wined3d_state *state, const struct wined3d_gl_info *gl_info)
 {
-    const struct wined3d_gl_info *gl_info = &device->adapter->gl_info;
     union
     {
         struct wined3d_line_pattern lp;
@@ -1189,7 +1191,7 @@ void state_init_default(struct wined3d_state *state, struct wined3d_device *devi
         0.0f, 0.0f, 0.0f, 1.0f,
     }}};
 
-    TRACE("state %p, device %p.\n", state, device);
+    TRACE("state %p, gl_info %p.\n", state, gl_info);
 
     /* Set some of the defaults for lights, transforms etc */
     state->transforms[WINED3D_TS_PROJECTION] = identity;
@@ -1198,8 +1200,6 @@ void state_init_default(struct wined3d_state *state, struct wined3d_device *devi
     {
         state->transforms[WINED3D_TS_WORLD_MATRIX(i)] = identity;
     }
-
-    state->fb = &device->fb;
 
     TRACE("Render states\n");
     /* Render states: */
@@ -1386,7 +1386,7 @@ static HRESULT stateblock_init(struct wined3d_stateblock *stateblock,
     stateblock->ref = 1;
     stateblock->device = device;
 
-    if (FAILED(hr = state_init(&stateblock->state, d3d_info)))
+    if (FAILED(hr = state_init(&stateblock->state, NULL, d3d_info)))
         return hr;
 
     if (FAILED(hr = stateblock_allocate_shader_constants(stateblock)))
