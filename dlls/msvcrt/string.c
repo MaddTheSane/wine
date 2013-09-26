@@ -726,69 +726,6 @@ int CDECL __STRINGTOLD( MSVCRT__LDOUBLE *value, char **endptr, const char *str, 
     return 0;
 }
 
-/******************************************************************
- *		strtol (MSVCRT.@)
- */
-MSVCRT_long CDECL MSVCRT_strtol(const char* nptr, char** end, int base)
-{
-    /* wrapper to forward libc error code to msvcrt's error codes */
-    long ret;
-
-    errno = 0;
-    ret = strtol(nptr, end, base);
-    switch (errno)
-    {
-    case ERANGE:        *MSVCRT__errno() = MSVCRT_ERANGE;       break;
-    case EINVAL:        *MSVCRT__errno() = MSVCRT_EINVAL;       break;
-    default:
-        /* cope with the fact that we may use 64bit long integers on libc
-         * while msvcrt always uses 32bit long integers
-         */
-        if (ret > MSVCRT_LONG_MAX)
-        {
-            ret = MSVCRT_LONG_MAX;
-            *MSVCRT__errno() = MSVCRT_ERANGE;
-        }
-        else if (ret < -MSVCRT_LONG_MAX - 1)
-        {
-            ret = -MSVCRT_LONG_MAX - 1;
-            *MSVCRT__errno() = MSVCRT_ERANGE;
-        }
-        break;
-    }
-
-    return ret;
-}
-
-/******************************************************************
- *		strtoul (MSVCRT.@)
- */
-MSVCRT_ulong CDECL MSVCRT_strtoul(const char* nptr, char** end, int base)
-{
-    /* wrapper to forward libc error code to msvcrt's error codes */
-    unsigned long ret;
-
-    errno = 0;
-    ret = strtoul(nptr, end, base);
-    switch (errno)
-    {
-    case ERANGE:        *MSVCRT__errno() = MSVCRT_ERANGE;       break;
-    case EINVAL:        *MSVCRT__errno() = MSVCRT_EINVAL;       break;
-    default:
-        /* cope with the fact that we may use 64bit long integers on libc
-         * while msvcrt always uses 32bit long integers
-         */
-        if (ret > MSVCRT_ULONG_MAX)
-        {
-            ret = MSVCRT_ULONG_MAX;
-            *MSVCRT__errno() = MSVCRT_ERANGE;
-        }
-        break;
-    }
-
-    return ret;
-}
-
 /*********************************************************************
  *              strlen (MSVCRT.@)
  */
@@ -932,6 +869,42 @@ int __cdecl MSVCRT_atoi(const char *str)
     }
 
     return minus ? -ret : ret;
+}
+
+/******************************************************************
+ *		strtol (MSVCRT.@)
+ */
+MSVCRT_long CDECL MSVCRT_strtol(const char* nptr, char** end, int base)
+{
+    __int64 ret = MSVCRT_strtoi64_l(nptr, end, base, NULL);
+
+    if(ret > MSVCRT_LONG_MAX) {
+        ret = MSVCRT_LONG_MAX;
+        *MSVCRT__errno() = MSVCRT_ERANGE;
+    } else if(ret < MSVCRT_LONG_MIN) {
+        ret = MSVCRT_LONG_MIN;
+        *MSVCRT__errno() = MSVCRT_ERANGE;
+    }
+
+    return ret;
+}
+
+/******************************************************************
+ *		strtoul (MSVCRT.@)
+ */
+MSVCRT_ulong CDECL MSVCRT_strtoul(const char* nptr, char** end, int base)
+{
+    __int64 ret = MSVCRT_strtoi64_l(nptr, end, base, NULL);
+
+    if(ret > MSVCRT_ULONG_MAX) {
+        ret = MSVCRT_ULONG_MAX;
+        *MSVCRT__errno() = MSVCRT_ERANGE;
+    }else if(ret < -(__int64)MSVCRT_ULONG_MAX) {
+        ret = 1;
+        *MSVCRT__errno() = MSVCRT_ERANGE;
+    }
+
+    return ret;
 }
 
 /*********************************************************************
