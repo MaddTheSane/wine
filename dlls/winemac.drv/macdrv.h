@@ -145,6 +145,7 @@ extern struct macdrv_win_data *get_win_data(HWND hwnd) DECLSPEC_HIDDEN;
 extern void release_win_data(struct macdrv_win_data *data) DECLSPEC_HIDDEN;
 extern macdrv_window macdrv_get_cocoa_window(HWND hwnd, BOOL require_on_screen) DECLSPEC_HIDDEN;
 extern RGNDATA *get_region_data(HRGN hrgn, HDC hdc_lptodp) DECLSPEC_HIDDEN;
+extern void activate_on_following_focus(void) DECLSPEC_HIDDEN;
 extern struct window_surface *create_surface(macdrv_window window, const RECT *rect,
                                              struct window_surface *old_surface, BOOL use_alpha) DECLSPEC_HIDDEN;
 extern void set_window_surface(macdrv_window window, struct window_surface *window_surface) DECLSPEC_HIDDEN;
@@ -172,6 +173,7 @@ extern void macdrv_release_capture(HWND hwnd, const macdrv_event *event) DECLSPE
 extern void macdrv_compute_keyboard_layout(struct macdrv_thread_data *thread_data) DECLSPEC_HIDDEN;
 extern void macdrv_keyboard_changed(const macdrv_event *event) DECLSPEC_HIDDEN;
 extern void macdrv_key_event(HWND hwnd, const macdrv_event *event) DECLSPEC_HIDDEN;
+extern void macdrv_hotkey_press(const macdrv_event *event) DECLSPEC_HIDDEN;
 
 extern void macdrv_displays_changed(const macdrv_event *event) DECLSPEC_HIDDEN;
 

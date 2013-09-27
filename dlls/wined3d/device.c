@@ -485,6 +485,8 @@ ULONG CDECL wined3d_device_decref(struct wined3d_device *device)
     {
         UINT i;
 
+        wined3d_cs_destroy(device->cs);
+
         if (device->recording && wined3d_stateblock_decref(device->recording))
             FIXME("Something's still holding the recording stateblock.\n");
         device->recording = NULL;
@@ -3464,8 +3466,6 @@ HRESULT CDECL wined3d_device_present(const struct wined3d_device *device, const 
 HRESULT CDECL wined3d_device_clear(struct wined3d_device *device, DWORD rect_count,
         const RECT *rects, DWORD flags, const struct wined3d_color *color, float depth, DWORD stencil)
 {
-    RECT draw_rect;
-
     TRACE("device %p, rect_count %u, rects %p, flags %#x, color {%.8e, %.8e, %.8e, %.8e}, depth %.8e, stencil %u.\n",
             device, rect_count, rects, flags, color->r, color->g, color->b, color->a, depth, stencil);
 
@@ -3495,9 +3495,7 @@ HRESULT CDECL wined3d_device_clear(struct wined3d_device *device, DWORD rect_cou
         }
     }
 
-    wined3d_get_draw_rect(&device->state, &draw_rect);
-    device_clear_render_targets(device, device->adapter->gl_info.limits.buffers,
-            &device->fb, rect_count, rects, &draw_rect, flags, color, depth, stencil);
+    wined3d_cs_emit_clear(device->cs, rect_count, rects, flags, color, depth, stencil);
 
     return WINED3D_OK;
 }
@@ -3544,9 +3542,8 @@ HRESULT CDECL wined3d_device_draw_primitive(struct wined3d_device *device, UINT 
         device_invalidate_state(device, STATE_BASEVERTEXINDEX);
     }
 
-    /* Account for the loading offset due to index buffers. Instead of
-     * reloading all sources correct it with the startvertex parameter. */
-    draw_primitive(device, start_vertex, vertex_count, 0, 0, FALSE);
+    wined3d_cs_emit_draw(device->cs, start_vertex, vertex_count, 0, 0, FALSE);
+
     return WINED3D_OK;
 }
 
@@ -3579,7 +3576,7 @@ HRESULT CDECL wined3d_device_draw_indexed_primitive(struct wined3d_device *devic
         device_invalidate_state(device, STATE_BASEVERTEXINDEX);
     }
 
-    draw_primitive(device, start_idx, index_count, 0, 0, TRUE);
+    wined3d_cs_emit_draw(device->cs, start_idx, index_count, 0, 0, TRUE);
 
     return WINED3D_OK;
 }
@@ -3589,7 +3586,7 @@ void CDECL wined3d_device_draw_indexed_primitive_instanced(struct wined3d_device
 {
     TRACE("device %p, start_idx %u, index_count %u.\n", device, start_idx, index_count);
 
-    draw_primitive(device, start_idx, index_count, start_instance, instance_count, TRUE);
+    wined3d_cs_emit_draw(device->cs, start_idx, index_count, start_instance, instance_count, TRUE);
 }
 
 /* This is a helper function for UpdateTexture, there is no UpdateVolume method in D3D. */
@@ -4975,17 +4972,28 @@ HRESULT device_init(struct wined3d_device *device, struct wined3d *wined3d,
     if (FAILED(hr = state_init(&device->state, &device->fb, &adapter->d3d_info)))
     {
         ERR("Failed to initialize device state, hr %#x.\n", hr);
-        for (i = 0; i < sizeof(device->multistate_funcs) / sizeof(device->multistate_funcs[0]); ++i)
-        {
-            HeapFree(GetProcessHeap(), 0, device->multistate_funcs[i]);
-        }
-        wined3d_decref(device->wined3d);
-        return hr;
+        goto err;
     }
     state_init_default(&device->state, &adapter->gl_info);
     device->update_state = &device->state;
 
+    if (!(device->cs = wined3d_cs_create(device)))
+    {
+        WARN("Failed to create command stream.\n");
+        state_cleanup(&device->state);
+        hr = E_FAIL;
+        goto err;
+    }
+
     return WINED3D_OK;
+
+err:
+    for (i = 0; i < sizeof(device->multistate_funcs) / sizeof(device->multistate_funcs[0]); ++i)
+    {
+        HeapFree(GetProcessHeap(), 0, device->multistate_funcs[i]);
+    }
+    wined3d_decref(device->wined3d);
+    return hr;
 }
 
 
