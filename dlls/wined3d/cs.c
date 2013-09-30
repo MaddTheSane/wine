@@ -28,6 +28,8 @@ enum wined3d_cs_op
     WINED3D_CS_OP_PRESENT,
     WINED3D_CS_OP_CLEAR,
     WINED3D_CS_OP_DRAW,
+    WINED3D_CS_OP_SET_VIEWPORT,
+    WINED3D_CS_OP_SET_SCISSOR_RECT,
 };
 
 struct wined3d_cs_present
@@ -60,6 +62,18 @@ struct wined3d_cs_draw
     UINT start_instance;
     UINT instance_count;
     BOOL indexed;
+};
+
+struct wined3d_cs_set_viewport
+{
+    enum wined3d_cs_op opcode;
+    const struct wined3d_viewport *viewport;
+};
+
+struct wined3d_cs_set_scissor_rect
+{
+    enum wined3d_cs_op opcode;
+    const RECT *rect;
 };
 
 static void wined3d_cs_exec_present(struct wined3d_cs *cs, const void *data)
@@ -146,11 +160,51 @@ void wined3d_cs_emit_draw(struct wined3d_cs *cs, UINT start_idx, UINT index_coun
     cs->ops->submit(cs);
 }
 
+static void wined3d_cs_exec_set_viewport(struct wined3d_cs *cs, const void *data)
+{
+    const struct wined3d_cs_set_viewport *op = data;
+
+    cs->state.viewport = *op->viewport;
+    device_invalidate_state(cs->device, STATE_VIEWPORT);
+}
+
+void wined3d_cs_emit_set_viewport(struct wined3d_cs *cs, const struct wined3d_viewport *viewport)
+{
+    struct wined3d_cs_set_viewport *op;
+
+    op = cs->ops->require_space(cs, sizeof(*op));
+    op->opcode = WINED3D_CS_OP_SET_VIEWPORT;
+    op->viewport = viewport;
+
+    cs->ops->submit(cs);
+}
+
+static void wined3d_cs_exec_set_scissor_rect(struct wined3d_cs *cs, const void *data)
+{
+    const struct wined3d_cs_set_scissor_rect *op = data;
+
+    cs->state.scissor_rect = *op->rect;
+    device_invalidate_state(cs->device, STATE_SCISSORRECT);
+}
+
+void wined3d_cs_emit_set_scissor_rect(struct wined3d_cs *cs, const RECT *rect)
+{
+    struct wined3d_cs_set_scissor_rect *op;
+
+    op = cs->ops->require_space(cs, sizeof(*op));
+    op->opcode = WINED3D_CS_OP_SET_SCISSOR_RECT;
+    op->rect = rect;
+
+    cs->ops->submit(cs);
+}
+
 static void (* const wined3d_cs_op_handlers[])(struct wined3d_cs *cs, const void *data) =
 {
     /* WINED3D_CS_OP_PRESENT                */ wined3d_cs_exec_present,
     /* WINED3D_CS_OP_CLEAR                  */ wined3d_cs_exec_clear,
     /* WINED3D_CS_OP_DRAW                   */ wined3d_cs_exec_draw,
+    /* WINED3D_CS_OP_SET_VIEWPORT           */ wined3d_cs_exec_set_viewport,
+    /* WINED3D_CS_OP_SET_SCISSOR_RECT       */ wined3d_cs_exec_set_scissor_rect,
 };
 
 static void *wined3d_cs_st_require_space(struct wined3d_cs *cs, size_t size)
@@ -184,10 +238,26 @@ static const struct wined3d_cs_ops wined3d_cs_st_ops =
 
 struct wined3d_cs *wined3d_cs_create(struct wined3d_device *device)
 {
+    const struct wined3d_gl_info *gl_info = &device->adapter->gl_info;
     struct wined3d_cs *cs;
 
-    if (!(cs = HeapAlloc(GetProcessHeap(), 0, sizeof(*cs))))
+    if (!(cs = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(*cs))))
         return NULL;
+
+    if (!(cs->fb.render_targets = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY,
+            sizeof(*cs->fb.render_targets) * gl_info->limits.buffers)))
+    {
+        HeapFree(GetProcessHeap(), 0, cs);
+        return NULL;
+    }
+
+    if (FAILED(state_init(&cs->state, &cs->fb, gl_info, &device->adapter->d3d_info,
+            WINED3D_STATE_NO_REF | WINED3D_STATE_INIT_DEFAULT)))
+    {
+        HeapFree(GetProcessHeap(), 0, cs->fb.render_targets);
+        HeapFree(GetProcessHeap(), 0, cs);
+        return NULL;
+    }
 
     cs->ops = &wined3d_cs_st_ops;
     cs->device = device;
@@ -204,5 +274,7 @@ struct wined3d_cs *wined3d_cs_create(struct wined3d_device *device)
 
 void wined3d_cs_destroy(struct wined3d_cs *cs)
 {
+    state_cleanup(&cs->state);
+    HeapFree(GetProcessHeap(), 0, cs->fb.render_targets);
     HeapFree(GetProcessHeap(), 0, cs);
 }

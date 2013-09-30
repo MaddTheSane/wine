@@ -17,6 +17,7 @@
  */
 
 #include <stdarg.h>
+#include <assert.h>
 
 #define COBJMACROS
 
@@ -621,20 +622,48 @@ static HRESULT WINAPI HTMLEventObj_get_reason(IHTMLEventObj *iface, LONG *p)
 static HRESULT WINAPI HTMLEventObj_get_x(IHTMLEventObj *iface, LONG *p)
 {
     HTMLEventObj *This = impl_from_IHTMLEventObj(iface);
+    LONG x = 0;
 
-    FIXME("(%p)->(%p)\n", This, p);
+    TRACE("(%p)->(%p)\n", This, p);
 
-    *p = -1;
+    if(This->nsevent) {
+        nsIDOMUIEvent *ui_event;
+        nsresult nsres;
+
+        nsres = nsIDOMEvent_QueryInterface(This->nsevent, &IID_nsIDOMUIEvent, (void**)&ui_event);
+        if(NS_SUCCEEDED(nsres)) {
+            /* NOTE: pageX is not exactly right here. */
+            nsres = nsIDOMUIEvent_GetPageX(ui_event, &x);
+            assert(nsres == NS_OK);
+            nsIDOMUIEvent_Release(ui_event);
+        }
+    }
+
+    *p = x;
     return S_OK;
 }
 
 static HRESULT WINAPI HTMLEventObj_get_y(IHTMLEventObj *iface, LONG *p)
 {
     HTMLEventObj *This = impl_from_IHTMLEventObj(iface);
+    LONG y = 0;
 
-    FIXME("(%p)->(%p)\n", This, p);
+    TRACE("(%p)->(%p)\n", This, p);
 
-    *p = -1;
+    if(This->nsevent) {
+        nsIDOMUIEvent *ui_event;
+        nsresult nsres;
+
+        nsres = nsIDOMEvent_QueryInterface(This->nsevent, &IID_nsIDOMUIEvent, (void**)&ui_event);
+        if(NS_SUCCEEDED(nsres)) {
+            /* NOTE: pageY is not exactly right here. */
+            nsres = nsIDOMUIEvent_GetPageY(ui_event, &y);
+            assert(nsres == NS_OK);
+            nsIDOMUIEvent_Release(ui_event);
+        }
+    }
+
+    *p = y;
     return S_OK;
 }
 

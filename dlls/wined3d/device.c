@@ -1922,7 +1922,7 @@ void CDECL wined3d_device_set_viewport(struct wined3d_device *device, const stru
         return;
     }
 
-    device_invalidate_state(device, STATE_VIEWPORT);
+    wined3d_cs_emit_set_viewport(device->cs, viewport);
 }
 
 void CDECL wined3d_device_get_viewport(const struct wined3d_device *device, struct wined3d_viewport *viewport)
@@ -2060,7 +2060,7 @@ void CDECL wined3d_device_set_scissor_rect(struct wined3d_device *device, const 
         return;
     }
 
-    device_invalidate_state(device, STATE_SCISSORRECT);
+    wined3d_cs_emit_set_scissor_rect(device->cs, rect);
 }
 
 void CDECL wined3d_device_get_scissor_rect(const struct wined3d_device *device, RECT *rect)
@@ -4015,13 +4015,13 @@ HRESULT CDECL wined3d_device_set_render_target(struct wined3d_device *device,
         state->viewport.height = render_target->resource.height;
         state->viewport.min_z = 0.0f;
         state->viewport.max_z = 1.0f;
-        device_invalidate_state(device, STATE_VIEWPORT);
+        wined3d_cs_emit_set_viewport(device->cs, &state->viewport);
 
         state->scissor_rect.top = 0;
         state->scissor_rect.left = 0;
         state->scissor_rect.right = render_target->resource.width;
         state->scissor_rect.bottom = render_target->resource.height;
-        device_invalidate_state(device, STATE_SCISSORRECT);
+        wined3d_cs_emit_set_scissor_rect(device->cs, &state->scissor_rect);
     }
 
 
@@ -4705,9 +4705,9 @@ HRESULT CDECL wined3d_device_reset(struct wined3d_device *device,
         if (device->d3d_initialized)
             delete_opengl_contexts(device, swapchain);
 
-        if (FAILED(hr = state_init(&device->state, &device->fb, &device->adapter->d3d_info)))
+        if (FAILED(hr = state_init(&device->state, &device->fb, &device->adapter->gl_info,
+                &device->adapter->d3d_info, WINED3D_STATE_INIT_DEFAULT)))
             ERR("Failed to initialize device state, hr %#x.\n", hr);
-        state_init_default(&device->state, &device->adapter->gl_info);
         device->update_state = &device->state;
 
         device_init_swapchain_state(device, swapchain);
@@ -4722,13 +4722,13 @@ HRESULT CDECL wined3d_device_reset(struct wined3d_device *device,
         state->viewport.y = 0;
         state->viewport.width = rt->resource.width;
         state->viewport.height = rt->resource.height;
-        device_invalidate_state(device, STATE_VIEWPORT);
+        wined3d_cs_emit_set_viewport(device->cs, &state->viewport);
 
         state->scissor_rect.top = 0;
         state->scissor_rect.left = 0;
         state->scissor_rect.right = rt->resource.width;
         state->scissor_rect.bottom = rt->resource.height;
-        device_invalidate_state(device, STATE_SCISSORRECT);
+        wined3d_cs_emit_set_scissor_rect(device->cs, &state->scissor_rect);
     }
 
     swapchain_update_render_to_fbo(swapchain);
@@ -4969,12 +4969,12 @@ HRESULT device_init(struct wined3d_device *device, struct wined3d *wined3d,
 
     device->blitter = adapter->blitter;
 
-    if (FAILED(hr = state_init(&device->state, &device->fb, &adapter->d3d_info)))
+    if (FAILED(hr = state_init(&device->state, &device->fb, &adapter->gl_info,
+            &adapter->d3d_info, WINED3D_STATE_INIT_DEFAULT)))
     {
         ERR("Failed to initialize device state, hr %#x.\n", hr);
         goto err;
     }
-    state_init_default(&device->state, &adapter->gl_info);
     device->update_state = &device->state;
 
     if (!(device->cs = wined3d_cs_create(device)))
