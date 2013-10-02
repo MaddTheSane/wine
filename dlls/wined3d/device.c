@@ -2078,28 +2078,19 @@ void CDECL wined3d_device_set_vertex_declaration(struct wined3d_device *device,
 
     TRACE("device %p, declaration %p.\n", device, declaration);
 
-    if (declaration)
-        wined3d_vertex_declaration_incref(declaration);
-    if (prev)
-        wined3d_vertex_declaration_decref(prev);
-
-    device->update_state->vertex_declaration = declaration;
-
     if (device->recording)
-    {
-        TRACE("Recording... not performing anything.\n");
         device->recording->changed.vertexDecl = TRUE;
-        return;
-    }
 
     if (declaration == prev)
-    {
-        /* Checked after the assignment to allow proper stateblock recording. */
-        TRACE("Application is setting the old declaration over, nothing to do.\n");
         return;
-    }
 
-    device_invalidate_state(device, STATE_VDECL);
+    if (declaration)
+        wined3d_vertex_declaration_incref(declaration);
+    device->update_state->vertex_declaration = declaration;
+    if (!device->recording)
+        wined3d_cs_emit_set_vertex_declaration(device->cs, declaration);
+    if (prev)
+        wined3d_vertex_declaration_decref(prev);
 }
 
 struct wined3d_vertex_declaration * CDECL wined3d_device_get_vertex_declaration(const struct wined3d_device *device)
@@ -4032,12 +4023,11 @@ HRESULT CDECL wined3d_device_set_render_target(struct wined3d_device *device,
     if (render_target)
         wined3d_surface_incref(render_target);
     device->fb.render_targets[render_target_idx] = render_target;
+    wined3d_cs_emit_set_render_target(device->cs, render_target_idx, render_target);
     /* Release after the assignment, to prevent device_resource_released()
      * from seeing the surface as still in use. */
     if (prev)
         wined3d_surface_decref(prev);
-
-    device_invalidate_state(device, STATE_FRAMEBUFFER);
 
     return WINED3D_OK;
 }
@@ -4055,43 +4045,12 @@ void CDECL wined3d_device_set_depth_stencil(struct wined3d_device *device, struc
         return;
     }
 
-    if (prev)
-    {
-        if (device->swapchains[0]->desc.flags & WINED3DPRESENTFLAG_DISCARD_DEPTHSTENCIL
-                || prev->flags & SFLAG_DISCARD)
-        {
-            surface_modify_ds_location(prev, SFLAG_DISCARDED,
-                    prev->resource.width, prev->resource.height);
-            if (prev == device->onscreen_depth_stencil)
-            {
-                wined3d_surface_decref(device->onscreen_depth_stencil);
-                device->onscreen_depth_stencil = NULL;
-            }
-        }
-    }
-
     device->fb.depth_stencil = depth_stencil;
     if (depth_stencil)
         wined3d_surface_incref(depth_stencil);
-
-    if (!prev != !depth_stencil)
-    {
-        /* Swapping NULL / non NULL depth stencil affects the depth and tests */
-        device_invalidate_state(device, STATE_RENDER(WINED3D_RS_ZENABLE));
-        device_invalidate_state(device, STATE_RENDER(WINED3D_RS_STENCILENABLE));
-        device_invalidate_state(device, STATE_RENDER(WINED3D_RS_STENCILWRITEMASK));
-        device_invalidate_state(device, STATE_RENDER(WINED3D_RS_DEPTHBIAS));
-    }
-    else if (prev && prev->resource.format->depth_size != depth_stencil->resource.format->depth_size)
-    {
-        device_invalidate_state(device, STATE_RENDER(WINED3D_RS_DEPTHBIAS));
-    }
+    wined3d_cs_emit_set_depth_stencil(device->cs, depth_stencil);
     if (prev)
         wined3d_surface_decref(prev);
-
-    device_invalidate_state(device, STATE_FRAMEBUFFER);
-
-    return;
 }
 
 HRESULT CDECL wined3d_device_set_cursor_properties(struct wined3d_device *device,
