@@ -2247,8 +2247,7 @@ static int WS2_register_async_shutdown( SOCKET s, int type )
 /***********************************************************************
  *		accept		(WS2_32.1)
  */
-SOCKET WINAPI WS_accept(SOCKET s, struct WS_sockaddr *addr,
-                                 int *addrlen32)
+SOCKET WINAPI WS_accept(SOCKET s, struct WS_sockaddr *addr, int *addrlen32)
 {
     NTSTATUS status;
     SOCKET as;
@@ -2275,7 +2274,11 @@ SOCKET WINAPI WS_accept(SOCKET s, struct WS_sockaddr *addr,
         SERVER_END_REQ;
         if (!status)
         {
-            if (addr) WS_getpeername(as, addr, addrlen32);
+            if (addr && WS_getpeername(as, addr, addrlen32))
+            {
+                WS_closesocket(as);
+                return SOCKET_ERROR;
+            }
             return as;
         }
         if (is_blocking && status == STATUS_CANT_WAIT)
@@ -2956,7 +2959,7 @@ INT WINAPI WS_getsockopt(SOCKET s, INT level,
     INT ret = 0;
 
     TRACE("socket: %04lx, level 0x%x, name 0x%x, ptr %p, len %d\n",
-          s, level, optname, optval, *optlen);
+          s, level, optname, optval, optlen ? *optlen : 0);
 
     switch(level)
     {
@@ -5397,6 +5400,7 @@ int WINAPI WS_getaddrinfo(LPCSTR nodename, LPCSTR servname, const struct WS_addr
     char *hostname = NULL;
     const char *node;
 
+    *res = NULL;
     if (!nodename && !servname) return WSAHOST_NOT_FOUND;
 
     if (!nodename)
@@ -5479,16 +5483,14 @@ int WINAPI WS_getaddrinfo(LPCSTR nodename, LPCSTR servname, const struct WS_addr
             xuai = xuai->ai_next;
         }
         freeaddrinfo(unixaires);
-    } else {
+    } else
         result = convert_eai_u2w(result);
-        *res = NULL;
-    }
+
     return result;
 
 outofmem:
     if (*res) WS_freeaddrinfo(*res);
     if (unixaires) freeaddrinfo(unixaires);
-    *res = NULL;
     return WSA_NOT_ENOUGH_MEMORY;
 #else
     FIXME("getaddrinfo() failed, not found during buildtime.\n");
@@ -5595,6 +5597,7 @@ int WINAPI GetAddrInfoW(LPCWSTR nodename, LPCWSTR servname, const ADDRINFOW *hin
     char *nodenameA = NULL, *servnameA = NULL;
     struct WS_addrinfo *resA, *hintsA = NULL;
 
+    *res = NULL;
     if (nodename)
     {
         len = WideCharToMultiByte(CP_ACP, 0, nodename, -1, NULL, 0, NULL, NULL);
@@ -6552,7 +6555,7 @@ SOCKET WINAPI WSAAccept( SOCKET s, struct WS_sockaddr *addr, LPINT addrlen,
                LPCONDITIONPROC lpfnCondition, DWORD_PTR dwCallbackData)
 {
 
-       int ret = 0, size = 0;
+       int ret = 0, size;
        WSABUF CallerId, CallerData, CalleeId, CalleeData;
        /*        QOS SQOS, GQOS; */
        GROUP g;
@@ -6562,25 +6565,30 @@ SOCKET WINAPI WSAAccept( SOCKET s, struct WS_sockaddr *addr, LPINT addrlen,
        TRACE("Socket %04lx, sockaddr %p, addrlen %p, fnCondition %p, dwCallbackData %ld\n",
                s, addr, addrlen, lpfnCondition, dwCallbackData);
 
-
-       size = sizeof(src_addr);
-       cs = WS_accept(s, &src_addr, &size);
-
+       cs = WS_accept(s, addr, addrlen);
        if (cs == SOCKET_ERROR) return SOCKET_ERROR;
-
        if (!lpfnCondition) return cs;
 
-       CallerId.buf = (char *)&src_addr;
-       CallerId.len = sizeof(src_addr);
-
+       if (addr && addrlen)
+       {
+           CallerId.buf = (char *)addr;
+           CallerId.len = *addrlen;
+       }
+       else
+       {
+           size = sizeof(src_addr);
+           WS_getpeername(cs, &src_addr, &size);
+           CallerId.buf = (char *)&src_addr;
+           CallerId.len = size;
+       }
        CallerData.buf = NULL;
        CallerData.len = 0;
 
+       size = sizeof(dst_addr);
        WS_getsockname(cs, &dst_addr, &size);
 
        CalleeId.buf = (char *)&dst_addr;
        CalleeId.len = sizeof(dst_addr);
-
 
        ret = (*lpfnCondition)(&CallerId, &CallerData, NULL, NULL,
                        &CalleeId, &CalleeData, &g, dwCallbackData);
@@ -6588,8 +6596,6 @@ SOCKET WINAPI WSAAccept( SOCKET s, struct WS_sockaddr *addr, LPINT addrlen,
        switch (ret)
        {
                case CF_ACCEPT:
-                       if (addr && addrlen)
-                           memcpy(addr, &src_addr, (*addrlen > size) ? size : *addrlen );
                        return cs;
                case CF_DEFER:
                        SERVER_START_REQ( set_socket_deferred )

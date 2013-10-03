@@ -3110,54 +3110,93 @@ static int CALLBACK AlwaysDeferConditionFunc(LPWSABUF lpCallerId, LPWSABUF lpCal
     return CF_DEFER;
 }
 
-static void test_accept(void)
+static SOCKET setup_server_socket(struct sockaddr_in *addr, int *len)
 {
-    int ret;
-    SOCKET server_socket = INVALID_SOCKET, accepted = INVALID_SOCKET, connector = INVALID_SOCKET;
-    struct sockaddr_in address;
-    int socklen;
-    select_thread_params thread_params;
-    HANDLE thread_handle = NULL;
-    DWORD id;
+    int ret, val;
+    SOCKET server_socket;
 
     server_socket = socket(AF_INET, SOCK_STREAM, 0);
     if (server_socket == INVALID_SOCKET)
     {
         trace("error creating server socket: %d\n", WSAGetLastError());
-        goto done;
+        return INVALID_SOCKET;
     }
+
+    val = 1;
+    ret = setsockopt(server_socket, SOL_SOCKET, SO_REUSEADDR, (char *)&val, sizeof(val));
+    if (ret)
+    {
+        trace("error setting SO_REUSEADDR: %d\n", WSAGetLastError());
+        closesocket(server_socket);
+        return INVALID_SOCKET;
+    }
+
+    ret = bind(server_socket, (struct sockaddr *)addr, *len);
+    if (ret)
+    {
+        trace("error binding server socket: %d\n", WSAGetLastError());
+    }
+
+    ret = getsockname(server_socket, (struct sockaddr *)addr, len);
+    if (ret)
+    {
+        skip("failed to lookup bind address: %d\n", WSAGetLastError());
+        closesocket(server_socket);
+        return INVALID_SOCKET;
+    }
+
+    ret = listen(server_socket, 5);
+    if (ret)
+    {
+        trace("error making server socket listen: %d\n", WSAGetLastError());
+        closesocket(server_socket);
+        return INVALID_SOCKET;
+    }
+
+    return server_socket;
+}
+
+static SOCKET setup_connector_socket(struct sockaddr_in *addr, int len)
+{
+    int ret;
+    SOCKET connector;
+
+    connector = socket(AF_INET, SOCK_STREAM, 0);
+    ok(connector != INVALID_SOCKET, "failed to create connector socket %d\n", WSAGetLastError());
+
+    ret = connect(connector, (struct sockaddr *)addr, len);
+    ok(!ret, "connecting to accepting socket failed %d\n", WSAGetLastError());
+
+    return connector;
+}
+
+static void test_accept(void)
+{
+    int ret;
+    SOCKET server_socket, accepted = INVALID_SOCKET, connector;
+    struct sockaddr_in address;
+    SOCKADDR_STORAGE ss;
+    int socklen;
+    select_thread_params thread_params;
+    HANDLE thread_handle = NULL;
+    DWORD id;
 
     memset(&address, 0, sizeof(address));
     address.sin_addr.s_addr = inet_addr("127.0.0.1");
     address.sin_family = AF_INET;
-    ret = bind(server_socket, (struct sockaddr*) &address, sizeof(address));
-    if (ret != 0)
-    {
-        trace("error binding server socket: %d\n", WSAGetLastError());
-        goto done;
-    }
 
     socklen = sizeof(address);
-    ret = getsockname(server_socket, (struct sockaddr*)&address, &socklen);
-    if (ret != 0) {
-        skip("failed to lookup bind address, error %d\n", WSAGetLastError());
-        goto done;
+    server_socket = setup_server_socket(&address, &socklen);
+    if (server_socket == INVALID_SOCKET)
+    {
+        trace("error creating server socket: %d\n", WSAGetLastError());
+        return;
     }
 
-    ret = listen(server_socket, 5);
-    if (ret != 0)
-    {
-        trace("error making server socket listen: %d\n", WSAGetLastError());
-        goto done;
-    }
+    connector = setup_connector_socket(&address, socklen);
+    if (connector == INVALID_SOCKET) goto done;
 
     trace("Blocking accept next\n");
-
-    connector = socket(AF_INET, SOCK_STREAM, 0);
-    ok(connector != INVALID_SOCKET, "Failed to create connector socket, error %d\n", WSAGetLastError());
-
-    ret = connect(connector, (struct sockaddr*)&address, sizeof(address));
-    ok(ret == 0, "connecting to accepting socket failed, error %d\n", WSAGetLastError());
 
     accepted = WSAAccept(server_socket, NULL, NULL, AlwaysDeferConditionFunc, 0);
     ok(accepted == INVALID_SOCKET && WSAGetLastError() == WSATRY_AGAIN, "Failed to defer connection, %d\n", WSAGetLastError());
@@ -3193,6 +3232,80 @@ static void test_accept(void)
     WaitForSingleObject(thread_handle, 1000);
     ok(thread_params.ReadKilled || broken(!thread_params.ReadKilled) /* Win98/ME, after accept */,
        "closesocket did not wakeup accept\n");
+
+    closesocket(accepted);
+    closesocket(connector);
+    accepted = connector = server_socket = INVALID_SOCKET;
+
+    socklen = sizeof(address);
+    server_socket = setup_server_socket(&address, &socklen);
+    if (server_socket == INVALID_SOCKET) goto done;
+
+    connector = setup_connector_socket(&address, socklen);
+    if (connector == INVALID_SOCKET) goto done;
+
+    socklen = 0;
+    accepted = WSAAccept(server_socket, (struct sockaddr *)&ss, &socklen, NULL, 0);
+    ok(accepted == INVALID_SOCKET && WSAGetLastError() == WSAEFAULT, "got %d\n", WSAGetLastError());
+    ok(!socklen, "got %d\n", socklen);
+    closesocket(connector);
+    connector = INVALID_SOCKET;
+
+    socklen = sizeof(address);
+    connector = setup_connector_socket(&address, socklen);
+    if (connector == INVALID_SOCKET) goto done;
+
+    accepted = WSAAccept(server_socket, NULL, NULL, NULL, 0);
+    ok(accepted != INVALID_SOCKET, "Failed to accept connection, %d\n", WSAGetLastError());
+    closesocket(accepted);
+    closesocket(connector);
+    accepted = connector = INVALID_SOCKET;
+
+    socklen = sizeof(address);
+    connector = setup_connector_socket(&address, socklen);
+    if (connector == INVALID_SOCKET) goto done;
+
+    socklen = sizeof(ss);
+    memset(&ss, 0, sizeof(ss));
+    accepted = WSAAccept(server_socket, (struct sockaddr *)&ss, &socklen, NULL, 0);
+    ok(accepted != INVALID_SOCKET, "Failed to accept connection, %d\n", WSAGetLastError());
+    ok(socklen != sizeof(ss), "unexpected length\n");
+    ok(ss.ss_family, "family not set\n");
+    closesocket(accepted);
+    closesocket(connector);
+    accepted = connector = INVALID_SOCKET;
+
+    socklen = sizeof(address);
+    connector = setup_connector_socket(&address, socklen);
+    if (connector == INVALID_SOCKET) goto done;
+
+    socklen = 0;
+    accepted = accept(server_socket, (struct sockaddr *)&ss, &socklen);
+    ok(accepted == INVALID_SOCKET && WSAGetLastError() == WSAEFAULT, "got %d\n", WSAGetLastError());
+    ok(!socklen, "got %d\n", socklen);
+    closesocket(connector);
+    accepted = connector = INVALID_SOCKET;
+
+    socklen = sizeof(address);
+    connector = setup_connector_socket(&address, socklen);
+    if (connector == INVALID_SOCKET) goto done;
+
+    accepted = accept(server_socket, NULL, NULL);
+    ok(accepted != INVALID_SOCKET, "Failed to accept connection, %d\n", WSAGetLastError());
+    closesocket(accepted);
+    closesocket(connector);
+    accepted = connector = INVALID_SOCKET;
+
+    socklen = sizeof(address);
+    connector = setup_connector_socket(&address, socklen);
+    if (connector == INVALID_SOCKET) goto done;
+
+    socklen = sizeof(ss);
+    memset(&ss, 0, sizeof(ss));
+    accepted = accept(server_socket, (struct sockaddr *)&ss, &socklen);
+    ok(accepted != INVALID_SOCKET, "Failed to accept connection, %d\n", WSAGetLastError());
+    ok(socklen != sizeof(ss), "unexpected length\n");
+    ok(ss.ss_family, "family not set\n");
 
 done:
     if (accepted != INVALID_SOCKET)
@@ -5092,6 +5205,8 @@ static void test_GetAddrInfoW(void)
     static const WCHAR port[] = {'8','0',0};
     static const WCHAR empty[] = {0};
     static const WCHAR localhost[] = {'l','o','c','a','l','h','o','s','t',0};
+    static const WCHAR nxdomain[] =
+        {'n','x','d','o','m','a','i','n','.','c','o','d','e','w','e','a','v','e','r','s','.','c','o','m',0};
     static const WCHAR zero[] = {'0',0};
     int ret;
     ADDRINFOW *result, hint;
@@ -5103,8 +5218,10 @@ static void test_GetAddrInfoW(void)
     }
     memset(&hint, 0, sizeof(ADDRINFOW));
 
+    result = (ADDRINFOW *)0xdeadbeef;
     ret = pGetAddrInfoW(NULL, NULL, NULL, &result);
     ok(ret == WSAHOST_NOT_FOUND, "got %d expected WSAHOST_NOT_FOUND\n", ret);
+    ok(result == NULL, "got %p\n", result);
 
     result = NULL;
     ret = pGetAddrInfoW(empty, NULL, NULL, &result);
@@ -5145,9 +5262,24 @@ static void test_GetAddrInfoW(void)
     pFreeAddrInfoW(result);
 
     result = NULL;
+    ret = pGetAddrInfoW(localhost, NULL, &hint, &result);
+    ok(!ret, "GetAddrInfoW failed with %d\n", WSAGetLastError());
+    pFreeAddrInfoW(result);
+
+    result = NULL;
     ret = pGetAddrInfoW(localhost, port, &hint, &result);
     ok(!ret, "GetAddrInfoW failed with %d\n", WSAGetLastError());
     pFreeAddrInfoW(result);
+
+    result = (ADDRINFOW *)0xdeadbeef;
+    ret = pGetAddrInfoW(NULL, NULL, NULL, &result);
+    ok(ret == WSAHOST_NOT_FOUND, "got %d expected WSAHOST_NOT_FOUND\n", ret);
+    ok(result == NULL, "got %p\n", result);
+
+    result = (ADDRINFOW *)0xdeadbeef;
+    ret = pGetAddrInfoW(nxdomain, NULL, NULL, &result);
+    ok(ret == WSAHOST_NOT_FOUND, "got %d expected WSAHOST_NOT_FOUND\n", ret);
+    ok(result == NULL, "got %p\n", result);
 }
 
 static void test_getaddrinfo(void)
@@ -5162,8 +5294,10 @@ static void test_getaddrinfo(void)
     }
     memset(&hint, 0, sizeof(ADDRINFOA));
 
+    result = (ADDRINFOA *)0xdeadbeef;
     ret = pgetaddrinfo(NULL, NULL, NULL, &result);
     ok(ret == WSAHOST_NOT_FOUND, "got %d expected WSAHOST_NOT_FOUND\n", ret);
+    ok(result == NULL, "got %p\n", result);
 
     result = NULL;
     ret = pgetaddrinfo("", NULL, NULL, &result);
@@ -5204,9 +5338,19 @@ static void test_getaddrinfo(void)
     pfreeaddrinfo(result);
 
     result = NULL;
+    ret = pgetaddrinfo("localhost", NULL, &hint, &result);
+    ok(!ret, "getaddrinfo failed with %d\n", WSAGetLastError());
+    pfreeaddrinfo(result);
+
+    result = NULL;
     ret = pgetaddrinfo("localhost", "80", &hint, &result);
     ok(!ret, "getaddrinfo failed with %d\n", WSAGetLastError());
     pfreeaddrinfo(result);
+
+    result = (ADDRINFOA *)0xdeadbeef;
+    ret = pgetaddrinfo("nxdomain.codeweavers.com", NULL, NULL, &result);
+    ok(ret == WSAHOST_NOT_FOUND, "got %d expected WSAHOST_NOT_FOUND\n", ret);
+    ok(result == NULL, "got %p\n", result);
 }
 
 static void test_ConnectEx(void)
@@ -5929,6 +6073,7 @@ static void test_getpeername(void)
 {
     SOCKET sock;
     struct sockaddr_in sa, sa_out;
+    SOCKADDR_STORAGE ss;
     int sa_len;
     const char buf[] = "hello world";
     int ret;
@@ -5987,17 +6132,31 @@ static void test_getpeername(void)
            "Expected WSAGetLastError() to return WSAEFAULT, got %d\n", WSAGetLastError());
     }
 
-    sa_len = 0;
-    ret = getpeername(sock, (struct sockaddr*)&sa_out, &sa_len);
-    ok(ret == SOCKET_ERROR, "Expected getpeername to return SOCKET_ERROR, got %d\n", ret);
+    ret = getpeername(sock, (struct sockaddr*)&sa_out, NULL);
+    ok(ret == SOCKET_ERROR, "Expected getpeername to return 0, got %d\n", ret);
     ok(WSAGetLastError() == WSAEFAULT,
        "Expected WSAGetLastError() to return WSAEFAULT, got %d\n", WSAGetLastError());
 
-    sa_len = sizeof(sa_out);
-    ret = getpeername(sock, (struct sockaddr*)&sa_out, &sa_len);
+    sa_len = 0;
+    ret = getpeername(sock, NULL, &sa_len);
+    ok(ret == SOCKET_ERROR, "Expected getpeername to return 0, got %d\n", ret);
+    ok(WSAGetLastError() == WSAEFAULT,
+       "Expected WSAGetLastError() to return WSAEFAULT, got %d\n", WSAGetLastError());
+    ok(!sa_len, "got %d\n", sa_len);
+
+    sa_len = 0;
+    ret = getpeername(sock, (struct sockaddr *)&ss, &sa_len);
+    ok(ret == SOCKET_ERROR, "Expected getpeername to return 0, got %d\n", ret);
+    ok(WSAGetLastError() == WSAEFAULT,
+       "Expected WSAGetLastError() to return WSAEFAULT, got %d\n", WSAGetLastError());
+    ok(!sa_len, "got %d\n", sa_len);
+
+    sa_len = sizeof(ss);
+    ret = getpeername(sock, (struct sockaddr *)&ss, &sa_len);
     ok(ret == 0, "Expected getpeername to return 0, got %d\n", ret);
-    ok(!memcmp(&sa, &sa_out, sizeof(sa)),
+    ok(!memcmp(&sa, &ss, sizeof(sa)),
        "Expected the returned structure to be identical to the connect structure\n");
+    ok(sa_len == sizeof(sa), "got %d\n", sa_len);
 
     closesocket(sock);
 }

@@ -5035,6 +5035,29 @@ static DWORD CALLBACK test_EM_STREAMIN_esCallback(DWORD_PTR dwCookie,
   return 0;
 }
 
+static DWORD CALLBACK test_EM_STREAMIN_esCallback_UTF8Split(DWORD_PTR dwCookie,
+                                         LPBYTE pbBuff,
+                                         LONG cb,
+                                         LONG *pcb)
+{
+    DWORD *phase = (DWORD *)dwCookie;
+
+    if(*phase == 0){
+        static const char first[] = "\xef\xbb\xbf\xc3\x96\xc3";
+        *pcb = sizeof(first) - 1;
+        memcpy(pbBuff, first, *pcb);
+    }else if(*phase == 1){
+        static const char second[] = "\x8f\xc3\x8b";
+        *pcb = sizeof(second) - 1;
+        memcpy(pbBuff, second, *pcb);
+    }else
+        *pcb = 0;
+
+    ++*phase;
+
+    return 0;
+}
+
 struct StringWithLength {
     int length;
     char *buffer;
@@ -5063,6 +5086,7 @@ static DWORD CALLBACK test_EM_STREAMIN_esCallback2(DWORD_PTR dwCookie,
 static void test_EM_STREAMIN(void)
 {
   HWND hwndRichEdit = new_richedit(NULL);
+  DWORD phase;
   LRESULT result;
   EDITSTREAM es;
   char buffer[1024] = {0};
@@ -5203,6 +5227,21 @@ static void test_EM_STREAMIN(void)
   ok(result  == 0,
       "EM_STREAMIN: Test UTF8WithBOM set wrong text: Result: %s\n",buffer);
   ok(es.dwError == 0, "EM_STREAMIN: Test UTF8WithBOM set error %d, expected %d\n", es.dwError, 0);
+
+  phase = 0;
+  es.dwCookie = (DWORD_PTR)&phase;
+  es.dwError = 0;
+  es.pfnCallback = test_EM_STREAMIN_esCallback_UTF8Split;
+  result = SendMessage(hwndRichEdit, EM_STREAMIN, SF_TEXT, (LPARAM)&es);
+  ok(result == 8, "got %ld\n", result);
+
+  result = SendMessage(hwndRichEdit, WM_GETTEXT, 1024, (LPARAM) buffer);
+  ok(result  == 3,
+      "EM_STREAMIN: Test UTF8Split returned %ld\n", result);
+  result = memcmp (buffer,"\xd6\xcf\xcb", 3);
+  ok(result  == 0,
+      "EM_STREAMIN: Test UTF8Split set wrong text: Result: %s\n",buffer);
+  ok(es.dwError == 0, "EM_STREAMIN: Test UTF8Split set error %d, expected %d\n", es.dwError, 0);
 
   es.dwCookie = (DWORD_PTR)&cookieForStream4;
   es.dwError = 0;
@@ -7376,7 +7415,7 @@ START_TEST( editor )
   BOOL ret;
   /* Must explicitly LoadLibrary(). The test has no references to functions in
    * RICHED20.DLL, so the linker doesn't actually link to it. */
-  hmoduleRichEdit = LoadLibrary("RICHED20.DLL");
+  hmoduleRichEdit = LoadLibraryA("riched20.dll");
   ok(hmoduleRichEdit != NULL, "error: %d\n", (int) GetLastError());
 
   test_WM_CHAR();
