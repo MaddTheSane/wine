@@ -17,6 +17,7 @@
  */
 
 #include "config.h"
+#include "wine/port.h"
 #include "wined3d_private.h"
 
 WINE_DEFAULT_DEBUG_CHANNEL(d3d);
@@ -34,6 +35,9 @@ enum wined3d_cs_op
     WINED3D_CS_OP_SET_DEPTH_STENCIL,
     WINED3D_CS_OP_SET_VERTEX_DECLARATION,
     WINED3D_CS_OP_SET_STREAM_SOURCE,
+    WINED3D_CS_OP_SET_STREAM_SOURCE_FREQ,
+    WINED3D_CS_OP_SET_INDEX_BUFFER,
+    WINED3D_CS_OP_SET_TEXTURE,
 };
 
 struct wined3d_cs_present
@@ -106,6 +110,28 @@ struct wined3d_cs_set_stream_source
     struct wined3d_buffer *buffer;
     UINT offset;
     UINT stride;
+};
+
+struct wined3d_cs_set_stream_source_freq
+{
+    enum wined3d_cs_op opcode;
+    UINT stream_idx;
+    UINT frequency;
+    UINT flags;
+};
+
+struct wined3d_cs_set_index_buffer
+{
+    enum wined3d_cs_op opcode;
+    struct wined3d_buffer *buffer;
+    enum wined3d_format_id format_id;
+};
+
+struct wined3d_cs_set_texture
+{
+    enum wined3d_cs_op opcode;
+    UINT stage;
+    struct wined3d_texture *texture;
 };
 
 static void wined3d_cs_exec_present(struct wined3d_cs *cs, const void *data)
@@ -355,6 +381,130 @@ void wined3d_cs_emit_set_stream_source(struct wined3d_cs *cs, UINT stream_idx,
     cs->ops->submit(cs);
 }
 
+static void wined3d_cs_exec_set_stream_source_freq(struct wined3d_cs *cs, const void *data)
+{
+    const struct wined3d_cs_set_stream_source_freq *op = data;
+    struct wined3d_stream_state *stream;
+
+    stream = &cs->state.streams[op->stream_idx];
+    stream->frequency = op->frequency;
+    stream->flags = op->flags;
+
+    device_invalidate_state(cs->device, STATE_STREAMSRC);
+}
+
+void wined3d_cs_emit_set_stream_source_freq(struct wined3d_cs *cs, UINT stream_idx, UINT frequency, UINT flags)
+{
+    struct wined3d_cs_set_stream_source_freq *op;
+
+    op = cs->ops->require_space(cs, sizeof(*op));
+    op->opcode = WINED3D_CS_OP_SET_STREAM_SOURCE_FREQ;
+    op->stream_idx = stream_idx;
+    op->frequency = frequency;
+    op->flags = flags;
+
+    cs->ops->submit(cs);
+}
+
+static void wined3d_cs_exec_set_index_buffer(struct wined3d_cs *cs, const void *data)
+{
+    const struct wined3d_cs_set_index_buffer *op = data;
+    struct wined3d_buffer *prev;
+
+    prev = cs->state.index_buffer;
+    cs->state.index_buffer = op->buffer;
+    cs->state.index_format = op->format_id;
+
+    if (op->buffer)
+        InterlockedIncrement(&op->buffer->resource.bind_count);
+    if (prev)
+        InterlockedDecrement(&prev->resource.bind_count);
+
+    device_invalidate_state(cs->device, STATE_INDEXBUFFER);
+}
+
+void wined3d_cs_emit_set_index_buffer(struct wined3d_cs *cs, struct wined3d_buffer *buffer,
+        enum wined3d_format_id format_id)
+{
+    struct wined3d_cs_set_index_buffer *op;
+
+    op = cs->ops->require_space(cs, sizeof(*op));
+    op->opcode = WINED3D_CS_OP_SET_INDEX_BUFFER;
+    op->buffer = buffer;
+    op->format_id = format_id;
+
+    cs->ops->submit(cs);
+}
+
+static void wined3d_cs_exec_set_texture(struct wined3d_cs *cs, const void *data)
+{
+    const struct wined3d_d3d_info *d3d_info = &cs->device->adapter->d3d_info;
+    const struct wined3d_cs_set_texture *op = data;
+    struct wined3d_texture *prev;
+
+    prev = cs->state.textures[op->stage];
+    cs->state.textures[op->stage] = op->texture;
+
+    if (op->texture)
+    {
+        if (InterlockedIncrement(&op->texture->resource.bind_count) == 1)
+            op->texture->sampler = op->stage;
+
+        if (!prev || op->texture->target != prev->target)
+            device_invalidate_state(cs->device, STATE_PIXELSHADER);
+
+        if (!prev && op->stage < d3d_info->limits.ffp_blend_stages)
+        {
+            /* The source arguments for color and alpha ops have different
+             * meanings when a NULL texture is bound, so the COLOR_OP and
+             * ALPHA_OP have to be dirtified. */
+            device_invalidate_state(cs->device, STATE_TEXTURESTAGE(op->stage, WINED3D_TSS_COLOR_OP));
+            device_invalidate_state(cs->device, STATE_TEXTURESTAGE(op->stage, WINED3D_TSS_ALPHA_OP));
+        }
+    }
+
+    if (prev)
+    {
+        if (InterlockedDecrement(&prev->resource.bind_count) && prev->sampler == op->stage)
+        {
+            unsigned int i;
+
+            /* Search for other stages the texture is bound to. Shouldn't
+             * happen if applications bind textures to a single stage only. */
+            TRACE("Searching for other stages the texture is bound to.\n");
+            for (i = 0; i < MAX_COMBINED_SAMPLERS; ++i)
+            {
+                if (cs->state.textures[i] == prev)
+                {
+                    TRACE("Texture is also bound to stage %u.\n", i);
+                    prev->sampler = i;
+                    break;
+                }
+            }
+        }
+
+        if (!op->texture && op->stage < d3d_info->limits.ffp_blend_stages)
+        {
+            device_invalidate_state(cs->device, STATE_TEXTURESTAGE(op->stage, WINED3D_TSS_COLOR_OP));
+            device_invalidate_state(cs->device, STATE_TEXTURESTAGE(op->stage, WINED3D_TSS_ALPHA_OP));
+        }
+    }
+
+    device_invalidate_state(cs->device, STATE_SAMPLER(op->stage));
+}
+
+void wined3d_cs_emit_set_texture(struct wined3d_cs *cs, UINT stage, struct wined3d_texture *texture)
+{
+    struct wined3d_cs_set_texture *op;
+
+    op = cs->ops->require_space(cs, sizeof(*op));
+    op->opcode = WINED3D_CS_OP_SET_TEXTURE;
+    op->stage = stage;
+    op->texture = texture;
+
+    cs->ops->submit(cs);
+}
+
 static void (* const wined3d_cs_op_handlers[])(struct wined3d_cs *cs, const void *data) =
 {
     /* WINED3D_CS_OP_PRESENT                */ wined3d_cs_exec_present,
@@ -366,6 +516,9 @@ static void (* const wined3d_cs_op_handlers[])(struct wined3d_cs *cs, const void
     /* WINED3D_CS_OP_SET_DEPTH_STENCIL      */ wined3d_cs_exec_set_depth_stencil,
     /* WINED3D_CS_OP_SET_VERTEX_DECLARATION */ wined3d_cs_exec_set_vertex_declaration,
     /* WINED3D_CS_OP_SET_STREAM_SOURCE      */ wined3d_cs_exec_set_stream_source,
+    /* WINED3D_CS_OP_SET_STREAM_SOURCE_FREQ */ wined3d_cs_exec_set_stream_source_freq,
+    /* WINED3D_CS_OP_SET_INDEX_BUFFER       */ wined3d_cs_exec_set_index_buffer,
+    /* WINED3D_CS_OP_SET_TEXTURE            */ wined3d_cs_exec_set_texture,
 };
 
 static void *wined3d_cs_st_require_space(struct wined3d_cs *cs, size_t size)

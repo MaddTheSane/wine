@@ -1308,7 +1308,7 @@ HRESULT CDECL wined3d_device_set_stream_source_freq(struct wined3d_device *devic
     if (device->recording)
         device->recording->changed.streamFreq |= 1 << stream_idx;
     else if (stream->frequency != old_freq || stream->flags != old_flags)
-        device_invalidate_state(device, STATE_STREAMSRC);
+        wined3d_cs_emit_set_stream_source_freq(device->cs, stream_idx, stream->frequency, stream->flags);
 
     return WINED3D_OK;
 }
@@ -1828,42 +1828,30 @@ void CDECL wined3d_device_get_material(const struct wined3d_device *device, stru
 void CDECL wined3d_device_set_index_buffer(struct wined3d_device *device,
         struct wined3d_buffer *buffer, enum wined3d_format_id format_id)
 {
+    enum wined3d_format_id prev_format;
     struct wined3d_buffer *prev_buffer;
 
     TRACE("device %p, buffer %p, format %s.\n",
             device, buffer, debug_d3dformat(format_id));
 
     prev_buffer = device->update_state->index_buffer;
+    prev_format = device->update_state->index_format;
 
     device->update_state->index_buffer = buffer;
     device->update_state->index_format = format_id;
 
-    /* Handle recording of state blocks. */
     if (device->recording)
-    {
-        TRACE("Recording... not performing anything.\n");
         device->recording->changed.indices = TRUE;
-        if (buffer)
-            wined3d_buffer_incref(buffer);
-        if (prev_buffer)
-            wined3d_buffer_decref(prev_buffer);
-        return;
-    }
 
-    if (prev_buffer != buffer)
-    {
-        device_invalidate_state(device, STATE_INDEXBUFFER);
-        if (buffer)
-        {
-            InterlockedIncrement(&buffer->resource.bind_count);
-            wined3d_buffer_incref(buffer);
-        }
-        if (prev_buffer)
-        {
-            InterlockedDecrement(&prev_buffer->resource.bind_count);
-            wined3d_buffer_decref(prev_buffer);
-        }
-    }
+    if (prev_buffer == buffer && prev_format == format_id)
+        return;
+
+    if (buffer)
+        wined3d_buffer_incref(buffer);
+    if (!device->recording)
+        wined3d_cs_emit_set_index_buffer(device->cs, buffer, format_id);
+    if (prev_buffer)
+        wined3d_buffer_decref(prev_buffer);
 }
 
 struct wined3d_buffer * CDECL wined3d_device_get_index_buffer(const struct wined3d_device *device,
@@ -3176,7 +3164,6 @@ DWORD CDECL wined3d_device_get_texture_stage_state(const struct wined3d_device *
 HRESULT CDECL wined3d_device_set_texture(struct wined3d_device *device,
         UINT stage, struct wined3d_texture *texture)
 {
-    const struct wined3d_d3d_info *d3d_info = &device->adapter->d3d_info;
     struct wined3d_texture *prev;
 
     TRACE("device %p, stage %u, texture %p.\n", device, stage, texture);
@@ -3212,70 +3199,12 @@ HRESULT CDECL wined3d_device_set_texture(struct wined3d_device *device,
     TRACE("Setting new texture to %p.\n", texture);
     device->update_state->textures[stage] = texture;
 
-    if (device->recording)
-    {
-        TRACE("Recording... not performing anything\n");
-
-        if (texture) wined3d_texture_incref(texture);
-        if (prev) wined3d_texture_decref(prev);
-
-        return WINED3D_OK;
-    }
-
     if (texture)
-    {
-        LONG bind_count = InterlockedIncrement(&texture->resource.bind_count);
-
         wined3d_texture_incref(texture);
-
-        if (!prev || texture->target != prev->target)
-            device_invalidate_state(device, STATE_PIXELSHADER);
-
-        if (!prev && stage < d3d_info->limits.ffp_blend_stages)
-        {
-            /* The source arguments for color and alpha ops have different
-             * meanings when a NULL texture is bound, so the COLOR_OP and
-             * ALPHA_OP have to be dirtified. */
-            device_invalidate_state(device, STATE_TEXTURESTAGE(stage, WINED3D_TSS_COLOR_OP));
-            device_invalidate_state(device, STATE_TEXTURESTAGE(stage, WINED3D_TSS_ALPHA_OP));
-        }
-
-        if (bind_count == 1)
-            texture->sampler = stage;
-    }
-
+    if (!device->recording)
+        wined3d_cs_emit_set_texture(device->cs, stage, texture);
     if (prev)
-    {
-        LONG bind_count = InterlockedDecrement(&prev->resource.bind_count);
-
-        if (!texture && stage < d3d_info->limits.ffp_blend_stages)
-        {
-            device_invalidate_state(device, STATE_TEXTURESTAGE(stage, WINED3D_TSS_COLOR_OP));
-            device_invalidate_state(device, STATE_TEXTURESTAGE(stage, WINED3D_TSS_ALPHA_OP));
-        }
-
-        if (bind_count && prev->sampler == stage)
-        {
-            unsigned int i;
-
-            /* Search for other stages the texture is bound to. Shouldn't
-             * happen if applications bind textures to a single stage only. */
-            TRACE("Searching for other stages the texture is bound to.\n");
-            for (i = 0; i < MAX_COMBINED_SAMPLERS; ++i)
-            {
-                if (device->update_state->textures[i] == prev)
-                {
-                    TRACE("Texture is also bound to stage %u.\n", i);
-                    prev->sampler = i;
-                    break;
-                }
-            }
-        }
-
         wined3d_texture_decref(prev);
-    }
-
-    device_invalidate_state(device, STATE_SAMPLER(stage));
 
     return WINED3D_OK;
 }
