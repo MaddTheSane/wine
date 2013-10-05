@@ -197,7 +197,6 @@ then
     AC_SUBST([WOW64_DISABLE],[\#])
     enable_fonts=${enable_fonts:-no}
     enable_server=${enable_server:-no}
-    enable_tools=${enable_tools:-no}
 elif test "x$enable_win64" = "xyes"
 then
     test "x$libdir" != "x\${exec_prefix}/lib" || libdir="\${exec_prefix}/lib64"
@@ -219,6 +218,7 @@ AC_CACHE_CHECK([for the directory containing the Wine tools], wine_cv_toolsdir,
        /*) ;;
        *)  wine_cv_toolsdir="\$(top_builddir)/$wine_cv_toolsdir" ;;
      esac
+     enable_tools=${enable_tools:-no}
    else
      AC_MSG_ERROR([could not find Wine tools in $wine_cv_toolsdir])
    fi])
@@ -1976,17 +1976,8 @@ AC_DEFINE([__ASM_STDCALL_FUNC(name,args,code)],[__ASM_DEFINE_FUNC(name,__ASM_STD
 
 dnl **** Platform-specific checks ****
 
-AC_SUBST(LDPATH,"")
 case $build_os in
-  cygwin*|mingw32*)
-    AC_SUBST(TOOLSEXT,".exe")
-    LDPATH="PATH=\"\$(TOOLSDIR)/libs/wine:\$\$PATH\""
-    ;;
-  darwin*|macosx*)
-    ;;
-  *)
-    LDPATH="LD_LIBRARY_PATH=\"\$(TOOLSDIR)/libs/wine:\$\$LD_LIBRARY_PATH\""
-    ;;
+  cygwin*|mingw32*) AC_SUBST(TOOLSEXT,".exe") ;;
 esac
 
 AC_SUBST(MAIN_BINARY,"wine")

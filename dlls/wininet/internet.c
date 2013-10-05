@@ -3901,21 +3901,84 @@ BOOL WINAPI InternetQueryDataAvailable( HINTERNET hFile,
     return res == ERROR_SUCCESS;
 }
 
+DWORD create_req_file(const WCHAR *file_name, req_file_t **ret)
+{
+    req_file_t *req_file;
+
+    req_file = heap_alloc_zero(sizeof(*req_file));
+    if(!req_file)
+        return ERROR_NOT_ENOUGH_MEMORY;
+
+    req_file->ref = 1;
+
+    req_file->file_name = heap_strdupW(file_name);
+    if(!req_file->file_name) {
+        heap_free(req_file);
+        return ERROR_NOT_ENOUGH_MEMORY;
+    }
+
+    req_file->file_handle = CreateFileW(req_file->file_name, GENERIC_READ, FILE_SHARE_READ|FILE_SHARE_WRITE,
+              NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    if(req_file->file_handle == INVALID_HANDLE_VALUE) {
+        req_file_release(req_file);
+        return GetLastError();
+    }
+
+    *ret = req_file;
+    return ERROR_SUCCESS;
+}
+
+void req_file_release(req_file_t *req_file)
+{
+    if(InterlockedDecrement(&req_file->ref))
+        return;
+
+    if(!req_file->is_committed)
+        DeleteFileW(req_file->file_name);
+    if(req_file->file_handle && req_file->file_handle != INVALID_HANDLE_VALUE)
+        CloseHandle(req_file->file_handle);
+    heap_free(req_file->file_name);
+    heap_free(req_file);
+}
 
 /***********************************************************************
  *      InternetLockRequestFile (WININET.@)
  */
-BOOL WINAPI InternetLockRequestFile( HINTERNET hInternet, HANDLE
-*lphLockReqHandle)
+BOOL WINAPI InternetLockRequestFile(HINTERNET hInternet, HANDLE *lphLockReqHandle)
 {
-    FIXME("STUB\n");
-    return FALSE;
+    req_file_t *req_file = NULL;
+    object_header_t *hdr;
+    DWORD res;
+
+    TRACE("(%p %p)\n", hInternet, lphLockReqHandle);
+
+    hdr = get_handle_object(hInternet);
+    if (!hdr) {
+        SetLastError(ERROR_INVALID_HANDLE);
+        return FALSE;
+    }
+
+    if(hdr->vtbl->LockRequestFile) {
+        res = hdr->vtbl->LockRequestFile(hdr, &req_file);
+    }else {
+        WARN("wrong handle\n");
+        res = ERROR_INTERNET_INCORRECT_HANDLE_TYPE;
+    }
+
+    WININET_Release(hdr);
+
+    *lphLockReqHandle = req_file;
+    if(res != ERROR_SUCCESS)
+        SetLastError(res);
+    return res == ERROR_SUCCESS;
 }
 
-BOOL WINAPI InternetUnlockRequestFile( HANDLE hLockHandle)
+BOOL WINAPI InternetUnlockRequestFile(HANDLE hLockHandle)
 {
-    FIXME("STUB\n");
-    return FALSE;
+    TRACE("(%p)\n", hLockHandle);
+
+    req_file_release(hLockHandle);
+    return TRUE;
 }
 
 
