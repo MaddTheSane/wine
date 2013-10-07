@@ -262,16 +262,12 @@ AC_SUBST(ARFLAGS,rc)
 AC_PROG_RANLIB
 AC_PROG_LN_S
 AC_PROG_EGREP
+AC_PROG_MKDIR_P
 AC_PATH_PROG(LDCONFIG, ldconfig, true, [/sbin /usr/sbin $PATH])
 
 dnl Use the correct strip to install programs
-test -z "$INSTALL_PROGRAM" && INSTALL_PROGRAM="env STRIPPROG=\"\$(STRIP)\" \$(top_srcdir)/tools/install-sh"
+test -z "$INSTALL_PROGRAM" && INSTALL_PROGRAM="STRIPPROG=\"\$(STRIP)\" \$(top_srcdir)/tools/install-sh"
 AC_PROG_INSTALL
-dnl Prepend src dir to install path dir if it's a relative path
-case "$INSTALL" in
-  [[\\/$]]* | ?:[[\\/]]* ) ;;
-  *)  INSTALL="\\\$(top_srcdir)/$INSTALL" ;;
-esac
 
 dnl Check for lint
 AC_CHECK_PROGS(LINT, lclint lint)
@@ -691,6 +687,19 @@ LIBEXT="so"
 STATIC_IMPLIBEXT="def.a"
 WINE_PATH_SONAME_TOOLS
 
+wine_binary="wine"
+test "x$enable_win64" != "xyes" || wine_binary="wine64"
+
+AC_SUBST(LOADER_RULES,["
+all: $wine_binary wine-installed
+
+install install-lib:: wine-installed \$(DESTDIR)\$(bindir)
+	\$(INSTALL_PROGRAM) wine-installed \$(DESTDIR)\$(bindir)/$wine_binary
+
+uninstall::
+	\$(RM) \$(DESTDIR)\$(bindir)/$wine_binary
+"])
+
 case $host_os in
   cygwin*|mingw32*)
     AC_CHECK_TOOL(DLLTOOL,dlltool,false)
@@ -754,11 +763,9 @@ clean::
     AC_SUBST(APPLICATIONSERVICESLIB,"-framework ApplicationServices")
     AC_SUBST(CORESERVICESLIB,"-framework CoreServices")
     AC_SUBST(APPKITLIB,"-framework AppKit")
+    LDEXECFLAGS="-image_base 0x7bf00000 -Wl,-segaddr,WINE_DOS,0x00001000,-segaddr,WINE_SHAREDHEAP,0x7f000000,-sectcreate,__TEXT,__info_plist,wine_info.plist"
     case $host_os in
-      darwin11*)
-        AC_SUBST(LDEXECFLAGS,["-image_base 0x7bf00000 -Wl,-macosx_version_min,10.6,-segaddr,WINE_DOS,0x00001000,-segaddr,WINE_SHAREDHEAP,0x7f000000,-sectcreate,__TEXT,__info_plist,wine_info.plist"]) ;;
-      *)
-        AC_SUBST(LDEXECFLAGS,["-image_base 0x7bf00000 -Wl,-segaddr,WINE_DOS,0x00001000,-segaddr,WINE_SHAREDHEAP,0x7f000000,-sectcreate,__TEXT,__info_plist,wine_info.plist"]) ;;
+      darwin11*) LDEXECFLAGS="-Wl,-macosx_version_min,10.6 $LDEXECFLAGS" ;;
     esac
     if test "$ac_cv_header_DiskArbitration_DiskArbitration_h" = "yes"
     then
@@ -872,15 +879,27 @@ uninstall::
 clean::
 	\$(RM) libwine.dylib libwine.\$(VERSION).dylib libwine.\$(SOVERSION).dylib version.c
 "])
+
+    AS_VAR_APPEND([LOADER_RULES],["
+$wine_binary: main.o Makefile.in wine_info.plist
+	\$(CC) -o \$@ $LDEXECFLAGS main.o \$(LIBWINE) \$(LIBPORT) \$(EXTRALIBS) \$(LDFLAGS) \$(LDRPATH_LOCAL)
+
+wine-installed: main.o Makefile.in wine_info.plist
+	\$(CC) -o \$@ $LDEXECFLAGS main.o \$(LIBWINE) \$(LIBPORT) \$(EXTRALIBS) \$(LDFLAGS) \$(LDRPATH_INSTALL)
+
+wine_info.plist: wine_info.plist.in \$(top_builddir)/include/config.h
+	LC_ALL=C sed -e 's,@PACKAGE_VERSION@,$PACKAGE_VERSION,g' \$(srcdir)/wine_info.plist.in >\$@ || (\$(RM) \$@ && false)
+"])
     ;;
 
   linux-android*)
     DLLFLAGS="$DLLFLAGS -fPIC"
     DLLEXT=".so"
     DLLPREFIX="lib"
+    LDEXECFLAGS=""
     dlldir="\${libdir}"
     WINE_TRY_CFLAGS([-fPIC -Wl,--export-dynamic],
-                    [AC_SUBST(LDEXECFLAGS,["-Wl,--export-dynamic"])])
+                    [LDEXECFLAGS="-Wl,--export-dynamic"])
     WINE_TRY_CFLAGS([-fPIC -Wl,--rpath,\$ORIGIN/../lib],
                     [LDRPATH_INSTALL="-Wl,--rpath,\\\$\$ORIGIN/\`\$(RELPATH) \$(bindir) \$(libdir)\`"
                      LDRPATH_LOCAL="-Wl,--rpath,\\\$\$ORIGIN/\$(top_builddir)/libs/wine"],
@@ -913,11 +932,20 @@ uninstall::
 clean::
 	\$(RM) libwine.so version.c
 "])
+
+    AS_VAR_APPEND([LOADER_RULES],["
+$wine_binary: main.o Makefile.in
+	\$(CC) -o \$@ $LDEXECFLAGS main.o \$(LIBWINE) \$(LIBPORT) \$(EXTRALIBS) \$(LDFLAGS) \$(LDRPATH_LOCAL)
+
+wine-installed: main.o Makefile.in
+	\$(CC) -o \$@ $LDEXECFLAGS main.o \$(LIBWINE) \$(LIBPORT) \$(EXTRALIBS) \$(LDFLAGS) \$(LDRPATH_INSTALL)
+"])
     ;;
 
   *)
     DLLFLAGS="$DLLFLAGS -fPIC"
     DLLEXT=".so"
+    LDEXECFLAGS=""
     AC_CACHE_CHECK([whether we can build a GNU style ELF dll], ac_cv_c_dll_gnuelf,
         [WINE_TRY_SHLIB_FLAGS([-fPIC -shared -Wl,-Bsymbolic],
                               ac_cv_c_dll_gnuelf="yes",ac_cv_c_dll_gnuelf="no")])
@@ -935,7 +963,7 @@ clean::
       rm -f conftest.map
 
       WINE_TRY_CFLAGS([-fPIC -Wl,--export-dynamic],
-                      [AC_SUBST(LDEXECFLAGS,["-Wl,--export-dynamic"])])
+                      [LDEXECFLAGS="-Wl,--export-dynamic"])
 
       WINE_TRY_CFLAGS([-fPIC -Wl,--rpath,\$ORIGIN/../lib],
                       [LDRPATH_INSTALL="-Wl,--rpath,\\\$\$ORIGIN/\`\$(RELPATH) \$(bindir) \$(libdir)\`"
@@ -996,6 +1024,14 @@ uninstall::
 
 clean::
 	\$(RM) libwine.so.\$(SOVERSION) libwine.so.\$(VERSION) version.c
+"])
+
+    AS_VAR_APPEND([LOADER_RULES],["
+$wine_binary: main.o Makefile.in
+	\$(CC) -o \$@ $LDEXECFLAGS main.o \$(LIBWINE) \$(LIBPORT) \$(EXTRALIBS) \$(LDFLAGS) \$(LDRPATH_LOCAL)
+
+wine-installed: main.o Makefile.in
+	\$(CC) -o \$@ $LDEXECFLAGS main.o \$(LIBWINE) \$(LIBPORT) \$(EXTRALIBS) \$(LDFLAGS) \$(LDRPATH_INSTALL)
 "])
     ;;
 esac
@@ -1980,14 +2016,22 @@ case $build_os in
   cygwin*|mingw32*) AC_SUBST(TOOLSEXT,".exe") ;;
 esac
 
-AC_SUBST(MAIN_BINARY,"wine")
-test "x$enable_win64" != "xyes" || MAIN_BINARY="wine64"
-
 case $host_os in
   linux*)
     case $host_cpu in
-      *i[[3456789]]86*) AC_SUBST(EXTRA_BINARIES,"wine-preloader") ;;
-      x86_64*) AC_SUBST(EXTRA_BINARIES,"wine64-preloader") ;;
+      *i[[3456789]]86*|x86_64*)
+        AS_VAR_APPEND([LOADER_RULES],["
+all: $wine_binary-preloader
+
+$wine_binary-preloader: preloader.o Makefile.in
+	\$(CC) -o \$@ -static -nostartfiles -nodefaultlibs -Wl,-Ttext=0x7c400000 preloader.o \$(LIBPORT) \$(LDFLAGS)
+
+install install-lib:: $wine_binary-preloader \$(DESTDIR)\$(bindir)
+	\$(INSTALL_PROGRAM) $wine_binary-preloader \$(DESTDIR)\$(bindir)/$wine_binary-preloader
+
+uninstall::
+	\$(RM) \$(DESTDIR)\$(bindir)/$wine_binary-preloader
+"]) ;;
     esac
     ;;
 esac
@@ -2561,7 +2605,7 @@ AH_BOTTOM([#endif /* WINE_CROSSTEST */
 #endif /* __WINE_CONFIG_H */])
 
 AC_CONFIG_COMMANDS([include/stamp-h], [echo timestamp > include/stamp-h])
-_AS_ECHO_N([creating Makefile rules...])
+AS_ECHO_N("creating Makefile rules...") >&AS_MESSAGE_FD
 
 WINE_APPEND_RULE([
 # Rules automatically generated by configure
@@ -2575,8 +2619,8 @@ Makefile: Makefile.in Make.vars.in Make.rules config.status
 WINE_CONFIG_SYMLINK(dlls/shell32,,[AUTHORS])
 WINE_CONFIG_SYMLINK(dlls/wineps.drv,dlls/wineps.drv,[generic.ppd])
 WINE_CONFIG_SYMLINK(fonts,fonts,[marlett.ttf,symbol.ttf,tahoma.ttf,tahomabd.ttf],enable_fonts)
+WINE_CONFIG_SYMLINK(loader,loader,[l_intl.nls])
 WINE_CONFIG_SYMLINK(po,po,[LINGUAS])
-WINE_CONFIG_SYMLINK(tools,tools,[l_intl.nls],enable_tools)
 WINE_CONFIG_SYMLINK(,tools,[wine],,winewrapper)
 WINE_CONFIG_SYMLINK(,tools,[wine64],enable_win64,winewrapper)
 
@@ -3411,7 +3455,7 @@ fi
 
 if test -n "$with_wine64"
 then
-WINE_APPEND_RULE(
+    WINE_APPEND_RULE(
 [all: fonts server tools $with_wine64/loader/wine $with_wine64/loader/wine-preloader
 fonts server tools:
 	\$(RM) \$[@] && \$(LN_S) $with_wine64/\$[@] \$[@]
@@ -3421,9 +3465,23 @@ $with_wine64/loader/wine-preloader:
 	\$(RM) \$[@] && \$(LN_S) $ac_pwd/loader/wine-preloader \$[@]
 clean::
 	\$(RM) fonts server tools $with_wine64/loader/wine $with_wine64/loader/wine-preloader])
+else
+    AS_VAR_APPEND([LOADER_RULES],["
+all: wine.inf
+
+wine.inf: wine.inf.in \$(top_builddir)/include/config.h
+	LC_ALL=C sed -e 's,@PACKAGE_STRING@,$PACKAGE_STRING,g' \$(srcdir)/wine.inf.in >\$@ || (\$(RM) \$@ && false)
+
+install install-lib:: wine.inf \$(DESTDIR)\$(datadir)/wine install-man-pages
+	\$(INSTALL_DATA) wine.inf \$(DESTDIR)\$(datadir)/wine/wine.inf
+	\$(INSTALL_DATA) \$(srcdir)/l_intl.nls \$(DESTDIR)\$(datadir)/wine/l_intl.nls
+
+uninstall::
+	\$(RM) \$(DESTDIR)\$(datadir)/wine/wine.inf \$(DESTDIR)\$(datadir)/wine/l_intl.nls
+"])
 fi
 
-_AS_ECHO([ done])
+AS_ECHO(" done") >&AS_MESSAGE_FD
 AC_OUTPUT
 
 if test "$no_create" = "yes"

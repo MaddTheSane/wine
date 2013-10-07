@@ -1133,16 +1133,6 @@ void CDECL wined3d_stateblock_apply(const struct wined3d_stateblock *stateblock)
         wined3d_device_set_clip_plane(device, i, &stateblock->state.clip_planes[i]);
     }
 
-    stateblock->device->state.lowest_disabled_stage = MAX_TEXTURES - 1;
-    for (i = 0; i < MAX_TEXTURES - 1; ++i)
-    {
-        if (stateblock->device->state.texture_states[i][WINED3D_TSS_COLOR_OP] == WINED3D_TOP_DISABLE)
-        {
-            stateblock->device->state.lowest_disabled_stage = i;
-            break;
-        }
-    }
-
     TRACE("Applied stateblock %p.\n", stateblock);
 }
 
@@ -1328,9 +1318,7 @@ static void state_init_default(struct wined3d_state *state, const struct wined3d
         state->texture_states[i][WINED3D_TSS_ALPHA_ARG0] = WINED3DTA_CURRENT;
         state->texture_states[i][WINED3D_TSS_RESULT_ARG] = WINED3DTA_CURRENT;
     }
-    state->lowest_disabled_stage = 1;
 
-        /* Sampler states*/
     for (i = 0 ; i <  MAX_COMBINED_SAMPLERS; ++i)
     {
         TRACE("Setting up default samplers states for sampler %u.\n", i);
