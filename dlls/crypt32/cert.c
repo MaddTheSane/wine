@@ -184,7 +184,7 @@ PCCERT_CONTEXT WINAPI CertDuplicateCertificateContext(
     if (!pCertContext)
         return NULL;
 
-    Context_AddRef((void *)pCertContext, sizeof(CERT_CONTEXT));
+    Context_AddRef((void *)pCertContext);
     return pCertContext;
 }
 
@@ -203,16 +203,14 @@ BOOL WINAPI CertFreeCertificateContext(PCCERT_CONTEXT pCertContext)
     TRACE("(%p)\n", pCertContext);
 
     if (pCertContext)
-        ret = Context_Release((void *)pCertContext, sizeof(CERT_CONTEXT),
-         CertDataContext_Free);
+        ret = Context_Release((void *)pCertContext, CertDataContext_Free);
     return ret;
 }
 
 DWORD WINAPI CertEnumCertificateContextProperties(PCCERT_CONTEXT pCertContext,
  DWORD dwPropId)
 {
-    CONTEXT_PROPERTY_LIST *properties = Context_GetProperties(
-     pCertContext, sizeof(CERT_CONTEXT));
+    CONTEXT_PROPERTY_LIST *properties = Context_GetProperties(pCertContext);
     DWORD ret;
 
     TRACE("(%p, %d)\n", pCertContext, dwPropId);
@@ -264,8 +262,7 @@ static BOOL CertContext_GetProperty(void *context, DWORD dwPropId,
  void *pvData, DWORD *pcbData)
 {
     PCCERT_CONTEXT pCertContext = context;
-    CONTEXT_PROPERTY_LIST *properties =
-     Context_GetProperties(context, sizeof(CERT_CONTEXT));
+    CONTEXT_PROPERTY_LIST *properties = Context_GetProperties(context);
     BOOL ret;
     CRYPT_DATA_BLOB blob;
 
@@ -515,8 +512,7 @@ static BOOL CertContext_SetKeyProvInfoProperty(CONTEXT_PROPERTY_LIST *properties
 static BOOL CertContext_SetProperty(void *context, DWORD dwPropId,
  DWORD dwFlags, const void *pvData)
 {
-    CONTEXT_PROPERTY_LIST *properties =
-     Context_GetProperties(context, sizeof(CERT_CONTEXT));
+    CONTEXT_PROPERTY_LIST *properties = Context_GetProperties(context);
     BOOL ret;
 
     TRACE("(%p, %d, %08x, %p)\n", context, dwPropId, dwFlags, pvData);

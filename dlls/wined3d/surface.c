@@ -3476,7 +3476,7 @@ HRESULT CDECL wined3d_surface_map(struct wined3d_surface *surface,
 
     ++surface->resource.map_count;
 
-    if (!(surface->flags & SFLAG_LOCKABLE))
+    if (!(surface->resource.access_flags & WINED3D_RESOURCE_ACCESS_CPU))
         WARN("Trying to lock unlockable surface.\n");
 
     /* Performance optimization: Count how often a surface is mapped, if it is
@@ -4984,15 +4984,7 @@ static HRESULT surface_blt_special(struct wined3d_surface *dst_surface, const RE
             fb_copy_to_texture_hwstretch(dst_surface, src_surface, src_rect, dst_rect, filter);
         }
 
-        if (!dst_surface->resource.map_count && !(dst_surface->flags & SFLAG_DONOTFREE))
-        {
-            wined3d_resource_free_sysmem(&dst_surface->resource);
-            dst_surface->resource.allocatedMemory = NULL;
-        }
-        else
-        {
-            dst_surface->flags &= ~SFLAG_INSYSMEM;
-        }
+        surface_evict_sysmem(dst_surface);
 
         return WINED3D_OK;
     }
@@ -6610,7 +6602,7 @@ HRESULT CDECL wined3d_surface_blt(struct wined3d_surface *dst_surface, const REC
     if (dst_surface->flags & SFLAG_CONVERTED)
     {
         WARN_(d3d_perf)("Converted surface, using CPU blit.\n");
-        return surface_cpu_blt(dst_surface, &dst_rect, src_surface, &src_rect, flags, fx, filter);
+        goto cpu;
     }
 
     if (flags & ~simple_blit)
@@ -6687,7 +6679,7 @@ HRESULT CDECL wined3d_surface_blt(struct wined3d_surface *dst_surface, const REC
             else if (convert)
                 TRACE("Not doing sysmem blit because of format conversion.\n");
             else
-                return surface_cpu_blt(dst_surface, &dst_rect, src_surface, &src_rect, flags, fx, filter);
+                goto cpu;
         }
 
         if (flags & WINEDDBLT_COLORFILL)
@@ -6876,7 +6868,8 @@ static HRESULT surface_init(struct wined3d_surface *surface, UINT alignment, UIN
     if (flags & WINED3D_SURFACE_PIN_SYSMEM)
         surface->flags |= SFLAG_PIN_SYSMEM;
     if (lockable || format_id == WINED3DFMT_D16_LOCKABLE)
-        surface->flags |= SFLAG_LOCKABLE;
+        surface->resource.access_flags |= WINED3D_RESOURCE_ACCESS_CPU;
+
     /* I'm not sure if this qualifies as a hack or as an optimization. It
      * seems reasonable to assume that lockable render targets will get
      * locked, so we might as well set SFLAG_DYNLOCK right at surface

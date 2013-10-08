@@ -29,9 +29,6 @@
 
 WINE_DEFAULT_DEBUG_CHANNEL(crypt);
 
-#define CtlContext_CopyProperties(to, from) \
- Context_CopyProperties((to), (from), sizeof(CTL_CONTEXT))
-
 BOOL WINAPI CertAddCTLContextToStore(HCERTSTORE hCertStore,
  PCCTL_CONTEXT pCtlContext, DWORD dwAddDisposition,
  PCCTL_CONTEXT* ppStoreContext)
@@ -91,7 +88,7 @@ BOOL WINAPI CertAddCTLContextToStore(HCERTSTORE hCertStore,
             if (newer < 0)
             {
                 toAdd = CertDuplicateCTLContext(pCtlContext);
-                CtlContext_CopyProperties(existing, pCtlContext);
+                Context_CopyProperties(existing, pCtlContext);
             }
             else
             {
@@ -109,12 +106,12 @@ BOOL WINAPI CertAddCTLContextToStore(HCERTSTORE hCertStore,
     case CERT_STORE_ADD_REPLACE_EXISTING_INHERIT_PROPERTIES:
         toAdd = CertDuplicateCTLContext(pCtlContext);
         if (existing)
-            CtlContext_CopyProperties(toAdd, existing);
+            Context_CopyProperties(toAdd, existing);
         break;
     case CERT_STORE_ADD_USE_EXISTING:
         if (existing)
         {
-            CtlContext_CopyProperties(existing, pCtlContext);
+            Context_CopyProperties(existing, pCtlContext);
             if (ppStoreContext)
                 *ppStoreContext = CertDuplicateCTLContext(existing);
         }
@@ -460,7 +457,7 @@ PCCTL_CONTEXT WINAPI CertDuplicateCTLContext(PCCTL_CONTEXT pCtlContext)
 {
     TRACE("(%p)\n", pCtlContext);
     if (pCtlContext)
-        Context_AddRef((void *)pCtlContext, sizeof(CTL_CONTEXT));
+        Context_AddRef((void *)pCtlContext);
     return pCtlContext;
 }
 
@@ -481,16 +478,14 @@ BOOL WINAPI CertFreeCTLContext(PCCTL_CONTEXT pCTLContext)
     TRACE("(%p)\n", pCTLContext);
 
     if (pCTLContext)
-        ret = Context_Release((void *)pCTLContext, sizeof(CTL_CONTEXT),
-         CTLDataContext_Free);
+        ret = Context_Release((void *)pCTLContext, CTLDataContext_Free);
     return ret;
 }
 
 DWORD WINAPI CertEnumCTLContextProperties(PCCTL_CONTEXT pCTLContext,
  DWORD dwPropId)
 {
-    CONTEXT_PROPERTY_LIST *properties = Context_GetProperties(
-     pCTLContext, sizeof(CTL_CONTEXT));
+    CONTEXT_PROPERTY_LIST *properties = Context_GetProperties(pCTLContext);
     DWORD ret;
 
     TRACE("(%p, %d)\n", pCTLContext, dwPropId);
@@ -523,8 +518,7 @@ static BOOL CTLContext_GetHashProp(PCCTL_CONTEXT context, DWORD dwPropId,
 static BOOL CTLContext_GetProperty(PCCTL_CONTEXT context, DWORD dwPropId,
                                    void *pvData, DWORD *pcbData)
 {
-    CONTEXT_PROPERTY_LIST *properties =
-     Context_GetProperties(context, sizeof(CTL_CONTEXT));
+    CONTEXT_PROPERTY_LIST *properties = Context_GetProperties(context);
     BOOL ret;
     CRYPT_DATA_BLOB blob;
 
@@ -621,7 +615,7 @@ BOOL WINAPI CertGetCTLContextProperty(PCCTL_CONTEXT pCTLContext,
 static BOOL CTLContext_SetProperty(PCCTL_CONTEXT context, DWORD dwPropId,
  DWORD dwFlags, const void *pvData)
 {
-    CONTEXT_PROPERTY_LIST *properties = Context_GetProperties(context, sizeof(CTL_CONTEXT));
+    CONTEXT_PROPERTY_LIST *properties = Context_GetProperties(context);
     BOOL ret;
 
     TRACE("(%p, %d, %08x, %p)\n", context, dwPropId, dwFlags, pvData);

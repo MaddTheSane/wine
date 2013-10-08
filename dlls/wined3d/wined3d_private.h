@@ -2298,26 +2298,25 @@ void flip_surface(struct wined3d_surface *front, struct wined3d_surface *back) D
 #define SFLAG_DISCARD           0x00000002 /* ??? */
 #define SFLAG_NONPOW2           0x00000004 /* Surface sizes are not a power of 2 */
 #define SFLAG_NORMCOORD         0x00000008 /* Set if GL texture coordinates are normalized (non-texture rectangle). */
-#define SFLAG_LOCKABLE          0x00000010 /* Surface can be locked. */
-#define SFLAG_DYNLOCK           0x00000020 /* Surface is often locked by the application. */
-#define SFLAG_PIN_SYSMEM        0x00000040 /* Keep the surface in sysmem, at the same address. */
-#define SFLAG_DCINUSE           0x00000080 /* Set between GetDC and ReleaseDC calls. */
-#define SFLAG_LOST              0x00000100 /* Surface lost flag for ddraw. */
-#define SFLAG_GLCKEY            0x00000200 /* The GL texture was created with a color key. */
-#define SFLAG_CLIENT            0x00000400 /* GL_APPLE_client_storage is used with this surface. */
-#define SFLAG_INOVERLAYDRAW     0x00000800 /* Overlay drawing is in progress. Recursion prevention. */
-#define SFLAG_DIBSECTION        0x00001000 /* Has a DIB section attached for GetDC. */
-#define SFLAG_USERPTR           0x00002000 /* The application allocated the memory for this surface. */
-#define SFLAG_ALLOCATED         0x00004000 /* A GL texture is allocated for this surface. */
-#define SFLAG_SRGBALLOCATED     0x00008000 /* A sRGB GL texture is allocated for this surface. */
-#define SFLAG_PBO               0x00010000 /* The surface has a PBO. */
-#define SFLAG_INSYSMEM          0x00020000 /* The system memory copy is current. */
-#define SFLAG_INTEXTURE         0x00040000 /* The GL texture is current. */
-#define SFLAG_INSRGBTEX         0x00080000 /* The GL sRGB texture is current. */
-#define SFLAG_INDRAWABLE        0x00100000 /* The GL drawable is current. */
-#define SFLAG_INRB_MULTISAMPLE  0x00200000 /* The multisample renderbuffer is current. */
-#define SFLAG_INRB_RESOLVED     0x00400000 /* The resolved renderbuffer is current. */
-#define SFLAG_DISCARDED         0x00800000 /* Surface was discarded, allocating new location is enough. */
+#define SFLAG_DYNLOCK           0x00000010 /* Surface is often locked by the application. */
+#define SFLAG_PIN_SYSMEM        0x00000020 /* Keep the surface in sysmem, at the same address. */
+#define SFLAG_DCINUSE           0x00000040 /* Set between GetDC and ReleaseDC calls. */
+#define SFLAG_LOST              0x00000080 /* Surface lost flag for ddraw. */
+#define SFLAG_GLCKEY            0x00000100 /* The GL texture was created with a color key. */
+#define SFLAG_CLIENT            0x00000200 /* GL_APPLE_client_storage is used with this surface. */
+#define SFLAG_INOVERLAYDRAW     0x00000400 /* Overlay drawing is in progress. Recursion prevention. */
+#define SFLAG_DIBSECTION        0x00000800 /* Has a DIB section attached for GetDC. */
+#define SFLAG_USERPTR           0x00001000 /* The application allocated the memory for this surface. */
+#define SFLAG_ALLOCATED         0x00002000 /* A GL texture is allocated for this surface. */
+#define SFLAG_SRGBALLOCATED     0x00004000 /* A sRGB GL texture is allocated for this surface. */
+#define SFLAG_PBO               0x00008000 /* The surface has a PBO. */
+#define SFLAG_INSYSMEM          0x00010000 /* The system memory copy is current. */
+#define SFLAG_INTEXTURE         0x00020000 /* The GL texture is current. */
+#define SFLAG_INSRGBTEX         0x00040000 /* The GL sRGB texture is current. */
+#define SFLAG_INDRAWABLE        0x00080000 /* The GL drawable is current. */
+#define SFLAG_INRB_MULTISAMPLE  0x00100000 /* The multisample renderbuffer is current. */
+#define SFLAG_INRB_RESOLVED     0x00200000 /* The resolved renderbuffer is current. */
+#define SFLAG_DISCARDED         0x00400000 /* Surface was discarded, allocating new location is enough. */
 
 /* In some conditions the surface memory must not be freed:
  * SFLAG_CONVERTED: Converting the data back would take too long
@@ -2495,12 +2494,18 @@ void wined3d_cs_emit_set_render_state(struct wined3d_cs *cs,
         enum wined3d_render_state state, DWORD value) DECLSPEC_HIDDEN;
 void wined3d_cs_emit_set_render_target(struct wined3d_cs *cs, UINT render_target_idx,
         struct wined3d_surface *render_target) DECLSPEC_HIDDEN;
+void wined3d_cs_emit_set_sampler_state(struct wined3d_cs *cs, UINT sampler_idx,
+        enum wined3d_sampler_state state, DWORD value) DECLSPEC_HIDDEN;
 void wined3d_cs_emit_set_scissor_rect(struct wined3d_cs *cs, const RECT *rect) DECLSPEC_HIDDEN;
 void wined3d_cs_emit_set_stream_source(struct wined3d_cs *cs, UINT stream_idx,
         struct wined3d_buffer *buffer, UINT offset, UINT stride) DECLSPEC_HIDDEN;
 void wined3d_cs_emit_set_stream_source_freq(struct wined3d_cs *cs, UINT stream_idx,
         UINT frequency, UINT flags) DECLSPEC_HIDDEN;
 void wined3d_cs_emit_set_texture(struct wined3d_cs *cs, UINT stage, struct wined3d_texture *texture) DECLSPEC_HIDDEN;
+void wined3d_cs_emit_set_texture_state(struct wined3d_cs *cs, UINT stage,
+        enum wined3d_texture_stage_state state, DWORD value) DECLSPEC_HIDDEN;
+void wined3d_cs_emit_set_transform(struct wined3d_cs *cs, enum wined3d_transform_state state,
+        const struct wined3d_matrix *matrix) DECLSPEC_HIDDEN;
 void wined3d_cs_emit_set_vertex_declaration(struct wined3d_cs *cs,
         struct wined3d_vertex_declaration *declaration) DECLSPEC_HIDDEN;
 void wined3d_cs_emit_set_vertex_shader(struct wined3d_cs *cs, struct wined3d_shader *shader) DECLSPEC_HIDDEN;

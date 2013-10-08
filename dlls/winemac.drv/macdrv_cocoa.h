@@ -185,6 +185,7 @@ enum {
     RELEASE_CAPTURE,
     STATUS_ITEM_MOUSE_BUTTON,
     STATUS_ITEM_MOUSE_MOVE,
+    WINDOW_BROUGHT_FORWARD,
     WINDOW_CLOSE_REQUESTED,
     WINDOW_DID_UNMINIMIZE,
     WINDOW_FRAME_CHANGED,
@@ -287,6 +288,7 @@ enum {
     QUERY_PASTEBOARD_DATA,
     QUERY_RESIZE_END,
     QUERY_RESIZE_START,
+    QUERY_MIN_MAX_INFO,
     NUM_QUERY_TYPES
 };
 
@@ -362,6 +364,7 @@ struct macdrv_window_state {
     unsigned int    excluded_by_expose:1;
     unsigned int    excluded_by_cycle:1;
     unsigned int    minimized:1;
+    unsigned int    minimized_valid:1;
 };
 
 extern macdrv_window macdrv_create_cocoa_window(const struct macdrv_window_features* wf,

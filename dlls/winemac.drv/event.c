@@ -48,6 +48,7 @@ static const char *dbgstr_event(int type)
         "RELEASE_CAPTURE",
         "STATUS_ITEM_MOUSE_BUTTON",
         "STATUS_ITEM_MOUSE_MOVE",
+        "WINDOW_BROUGHT_FORWARD",
         "WINDOW_CLOSE_REQUESTED",
         "WINDOW_DID_UNMINIMIZE",
         "WINDOW_FRAME_CHANGED",
@@ -111,6 +112,7 @@ static macdrv_event_mask get_event_mask(DWORD mask)
     {
         event_mask |= event_mask_for_type(QUERY_EVENT);
         event_mask |= event_mask_for_type(RELEASE_CAPTURE);
+        event_mask |= event_mask_for_type(WINDOW_BROUGHT_FORWARD);
         event_mask |= event_mask_for_type(WINDOW_MINIMIZE_REQUESTED);
     }
 
@@ -157,6 +159,10 @@ static void macdrv_query_event(HWND hwnd, const macdrv_event *event)
         case QUERY_RESIZE_START:
             TRACE("QUERY_RESIZE_START\n");
             success = query_resize_start(hwnd);
+            break;
+        case QUERY_MIN_MAX_INFO:
+            TRACE("QUERY_MIN_MAX_INFO\n");
+            success = query_min_max_info(hwnd);
             break;
         default:
             FIXME("unrecognized query type %d\n", query->type);
@@ -229,6 +235,9 @@ void macdrv_handle_event(const macdrv_event *event)
         break;
     case STATUS_ITEM_MOUSE_MOVE:
         macdrv_status_item_mouse_move(event);
+        break;
+    case WINDOW_BROUGHT_FORWARD:
+        macdrv_window_brought_forward(hwnd);
         break;
     case WINDOW_CLOSE_REQUESTED:
         macdrv_window_close_requested(hwnd);

@@ -115,6 +115,7 @@ static void get_cocoa_window_state(struct macdrv_win_data *data,
     if (IsRectEmpty(&data->window_rect))
         state->excluded_by_expose = TRUE;
     state->minimized = (style & WS_MINIMIZE) != 0;
+    state->minimized_valid = state->minimized != data->minimized;
 }
 
 
@@ -312,7 +313,8 @@ static void set_cocoa_window_properties(struct macdrv_win_data *data)
 
     get_cocoa_window_state(data, style, ex_style, &state);
     macdrv_set_cocoa_window_state(data->cocoa_window, &state);
-    data->minimized = state.minimized;
+    if (state.minimized_valid)
+        data->minimized = state.minimized;
 }
 
 
@@ -477,8 +479,6 @@ static void sync_window_min_max_info(HWND hwnd)
     WINDOWPLACEMENT wpl;
     HMONITOR monitor;
     struct macdrv_win_data *data;
-    RECT min_rect, max_rect;
-    CGSize min_size, max_size;
 
     TRACE("win %p\n", hwnd);
 
@@ -571,12 +571,22 @@ static void sync_window_min_max_info(HWND hwnd)
 
     if ((data = get_win_data(hwnd)) && data->cocoa_window)
     {
+        RECT min_rect, max_rect;
+        CGSize min_size, max_size;
+
         SetRect(&min_rect, 0, 0, minmax.ptMinTrackSize.x, minmax.ptMinTrackSize.y);
-        SetRect(&max_rect, 0, 0, minmax.ptMaxTrackSize.x, minmax.ptMaxTrackSize.y);
         macdrv_window_to_mac_rect(data, style, &min_rect);
-        macdrv_window_to_mac_rect(data, style, &max_rect);
         min_size = CGSizeMake(min_rect.right - min_rect.left, min_rect.bottom - min_rect.top);
-        max_size = CGSizeMake(max_rect.right - max_rect.left, max_rect.bottom - max_rect.top);
+
+        if (minmax.ptMaxTrackSize.x == GetSystemMetrics(SM_CXMAXTRACK) &&
+            minmax.ptMaxTrackSize.y == GetSystemMetrics(SM_CYMAXTRACK))
+            max_size = CGSizeMake(CGFLOAT_MAX, CGFLOAT_MAX);
+        else
+        {
+            SetRect(&max_rect, 0, 0, minmax.ptMaxTrackSize.x, minmax.ptMaxTrackSize.y);
+            macdrv_window_to_mac_rect(data, style, &max_rect);
+            max_size = CGSizeMake(max_rect.right - max_rect.left, max_rect.bottom - max_rect.top);
+        }
 
         TRACE("min_size (%g,%g) max_size (%g,%g)\n", min_size.width, min_size.height, max_size.width, max_size.height);
         macdrv_set_window_min_max_sizes(data->cocoa_window, min_size, max_size);
@@ -1852,6 +1862,18 @@ done:
 }
 
 
+/***********************************************************************
+ *              macdrv_window_brought_forward
+ *
+ * Handler for WINDOW_BROUGHT_FORWARD events.
+ */
+void macdrv_window_brought_forward(HWND hwnd)
+{
+    TRACE("win %p\n", hwnd);
+    SetWindowPos(hwnd, HWND_TOP, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+}
+
+
 struct quit_info {
     HWND               *wins;
     UINT                capacity;
@@ -2044,5 +2066,18 @@ BOOL query_resize_end(HWND hwnd)
 {
     TRACE("hwnd %p\n", hwnd);
     SendMessageW(hwnd, WM_EXITSIZEMOVE, 0, 0);
+    return TRUE;
+}
+
+
+/***********************************************************************
+ *              query_min_max_info
+ *
+ * Handler for QUERY_MIN_MAX_INFO query.
+ */
+BOOL query_min_max_info(HWND hwnd)
+{
+    TRACE("hwnd %p\n", hwnd);
+    sync_window_min_max_info(hwnd);
     return TRUE;
 }

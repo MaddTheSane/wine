@@ -569,8 +569,10 @@ static inline void fix_generic_modifiers_by_device(NSUInteger* modifiers)
 
     - (void) setWindowFeatures:(const struct macdrv_window_features*)wf
     {
+        static const NSUInteger usedStyles = NSTitledWindowMask | NSClosableWindowMask | NSMiniaturizableWindowMask |
+                                             NSResizableWindowMask | NSUtilityWindowMask | NSBorderlessWindowMask;
         NSUInteger currentStyle = [self styleMask];
-        NSUInteger newStyle = style_mask_for_features(wf);
+        NSUInteger newStyle = style_mask_for_features(wf) | (currentStyle & ~usedStyles);
 
         if (newStyle != currentStyle)
         {
@@ -685,23 +687,26 @@ static inline void fix_generic_modifiers_by_device(NSUInteger* modifiers)
         }
         [self setCollectionBehavior:behavior];
 
-        pendingMinimize = FALSE;
-        if (state->minimized && ![self isMiniaturized])
+        if (state->minimized_valid)
         {
-            if ([self isVisible])
-                [super miniaturize:nil];
-            else
-                pendingMinimize = TRUE;
-        }
-        else if (!state->minimized && [self isMiniaturized])
-        {
-            ignore_windowDeminiaturize = TRUE;
-            [self deminiaturize:nil];
-        }
+            pendingMinimize = FALSE;
+            if (state->minimized && ![self isMiniaturized])
+            {
+                if ([self isVisible])
+                    [super miniaturize:nil];
+                else
+                    pendingMinimize = TRUE;
+            }
+            else if (!state->minimized && [self isMiniaturized])
+            {
+                ignore_windowDeminiaturize = TRUE;
+                [self deminiaturize:nil];
+            }
 
-        /* Whatever events regarding minimization might have been in the queue are now stale. */
-        [queue discardEventsMatchingMask:event_mask_for_type(WINDOW_DID_UNMINIMIZE)
-                               forWindow:self];
+            /* Whatever events regarding minimization might have been in the queue are now stale. */
+            [queue discardEventsMatchingMask:event_mask_for_type(WINDOW_DID_UNMINIMIZE)
+                                   forWindow:self];
+        }
     }
 
     - (BOOL) addChildWineWindow:(WineWindow*)child assumeVisible:(BOOL)assumeVisible
@@ -1263,6 +1268,27 @@ static inline void fix_generic_modifiers_by_device(NSUInteger* modifiers)
         }
     }
 
+    - (WineWindow*) ancestorWineWindow
+    {
+        WineWindow* ancestor = self;
+        for (;;)
+        {
+            WineWindow* parent = (WineWindow*)[ancestor parentWindow];
+            if ([parent isKindOfClass:[WineWindow class]])
+                ancestor = parent;
+            else
+                break;
+        }
+        return ancestor;
+    }
+
+    - (void) postBroughtForwardEvent
+    {
+        macdrv_event* event = macdrv_create_event(WINDOW_BROUGHT_FORWARD, self);
+        [queue postEvent:event];
+        macdrv_release_event(event);
+    }
+
 
     /*
      * ---------- NSWindow method overrides ----------
@@ -1308,12 +1334,13 @@ static inline void fix_generic_modifiers_by_device(NSUInteger* modifiers)
     /* We don't call this.  It's the action method of the items in the Window menu. */
     - (void) makeKeyAndOrderFront:(id)sender
     {
-        if (![self isKeyWindow] && !self.disabled && !self.noActivate)
-            [[WineApplicationController sharedController] windowGotFocus:self];
-
         if ([self isMiniaturized])
             [self deminiaturize:nil];
         [self orderBelow:nil orAbove:nil activate:NO];
+        [[self ancestorWineWindow] postBroughtForwardEvent];
+
+        if (![self isKeyWindow] && !self.disabled && !self.noActivate)
+            [[WineApplicationController sharedController] windowGotFocus:self];
     }
 
     - (void) sendEvent:(NSEvent*)event
@@ -1475,6 +1502,9 @@ static inline void fix_generic_modifiers_by_device(NSUInteger* modifiers)
             [controller updateFullscreenWindows];
         [controller adjustWindowLevels];
 
+        if (![self parentWindow])
+            [self postBroughtForwardEvent];
+
         if (!self.disabled && !self.noActivate)
         {
             causing_becomeKeyWindow = self;
@@ -1609,6 +1639,47 @@ static inline void fix_generic_modifiers_by_device(NSUInteger* modifiers)
                                                                       repeats:YES];
         [[NSRunLoop currentRunLoop] addTimer:liveResizeDisplayTimer
                                      forMode:NSRunLoopCommonModes];
+    }
+
+    - (NSRect) windowWillUseStandardFrame:(NSWindow*)window defaultFrame:(NSRect)proposedFrame
+    {
+        macdrv_query* query;
+        NSRect currentContentRect, proposedContentRect, newContentRect, screenRect;
+        NSSize maxSize;
+
+        query = macdrv_create_query();
+        query->type = QUERY_MIN_MAX_INFO;
+        query->window = (macdrv_window)[self retain];
+        [self.queue query:query timeout:0.5];
+        macdrv_release_query(query);
+
+        currentContentRect = [self contentRectForFrameRect:[self frame]];
+        proposedContentRect = [self contentRectForFrameRect:proposedFrame];
+
+        maxSize = [self contentMaxSize];
+        newContentRect.size.width = MIN(NSWidth(proposedContentRect), maxSize.width);
+        newContentRect.size.height = MIN(NSHeight(proposedContentRect), maxSize.height);
+
+        // Try to keep the top-left corner where it is.
+        newContentRect.origin.x = NSMinX(currentContentRect);
+        newContentRect.origin.y = NSMaxY(currentContentRect) - NSHeight(newContentRect);
+
+        // If that pushes the bottom or right off the screen, pull it up and to the left.
+        screenRect = [self contentRectForFrameRect:[[self screen] visibleFrame]];
+        if (NSMaxX(newContentRect) > NSMaxX(screenRect))
+            newContentRect.origin.x = NSMaxX(screenRect) - NSWidth(newContentRect);
+        if (NSMinY(newContentRect) < NSMinY(screenRect))
+            newContentRect.origin.y = NSMinY(screenRect);
+
+        // If that pushes the top or left off the screen, push it down and the right
+        // again.  Do this last because the top-left corner is more important than the
+        // bottom-right.
+        if (NSMinX(newContentRect) < NSMinX(screenRect))
+            newContentRect.origin.x = NSMinX(screenRect);
+        if (NSMaxY(newContentRect) > NSMaxY(screenRect))
+            newContentRect.origin.y = NSMaxY(screenRect) - NSHeight(newContentRect);
+
+        return [self frameRectForContentRect:newContentRect];
     }
 
 

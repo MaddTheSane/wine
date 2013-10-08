@@ -194,7 +194,6 @@ then
         AC_MSG_ERROR([--enable-win64 and --with-wine64 are mutually exclusive.
 --enable-win64 should be used in the 64-bit build tree, --with-wine64 in the 32-bit Wow64 build tree.])
     fi
-    AC_SUBST([WOW64_DISABLE],[\#])
     enable_fonts=${enable_fonts:-no}
     enable_server=${enable_server:-no}
 elif test "x$enable_win64" = "xyes"
@@ -268,15 +267,6 @@ AC_PATH_PROG(LDCONFIG, ldconfig, true, [/sbin /usr/sbin $PATH])
 dnl Use the correct strip to install programs
 test -z "$INSTALL_PROGRAM" && INSTALL_PROGRAM="STRIPPROG=\"\$(STRIP)\" \$(top_srcdir)/tools/install-sh"
 AC_PROG_INSTALL
-
-dnl Check for lint
-AC_CHECK_PROGS(LINT, lclint lint)
-if test "$LINT" = "lint"
-then
-  LINTFLAGS="$LINTFLAGS -errchk=%all,no%longptr64 -errhdr=%user -Ncheck=macro -Nlevel=4"
-  dnl LINTFLAGS='-D_SIZE_T "-Dsize_t=unsigned long" -errchk=longptr64'
-fi
-AC_SUBST(LINTFLAGS)
 
 dnl Check for various programs
 AC_CHECK_PROGS(FONTFORGE, fontforge, false)
@@ -2617,7 +2607,6 @@ Makefile: Makefile.in Make.vars.in Make.rules config.status
 	@./config.status Make.tmp Makefile])
 
 WINE_CONFIG_SYMLINK(dlls/shell32,,[AUTHORS])
-WINE_CONFIG_SYMLINK(dlls/wineps.drv,dlls/wineps.drv,[generic.ppd])
 WINE_CONFIG_SYMLINK(fonts,fonts,[marlett.ttf,symbol.ttf,tahoma.ttf,tahomabd.ttf],enable_fonts)
 WINE_CONFIG_SYMLINK(loader,loader,[l_intl.nls])
 WINE_CONFIG_SYMLINK(po,po,[LINGUAS])
@@ -3198,7 +3187,7 @@ WINE_CONFIG_DLL(winemac.drv)
 WINE_CONFIG_DLL(winemapi)
 WINE_CONFIG_DLL(winemp3.acm)
 WINE_CONFIG_DLL(wineoss.drv)
-WINE_CONFIG_DLL(wineps.drv,,[install-lib,po])
+WINE_CONFIG_DLL(wineps.drv,,[po])
 WINE_CONFIG_DLL(wineps16.drv16,enable_win16)
 WINE_CONFIG_DLL(wineqtdecoder)
 WINE_CONFIG_DLL(winex11.drv)

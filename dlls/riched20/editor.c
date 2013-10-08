@@ -253,7 +253,7 @@ HANDLE me_heap = NULL;
 static BOOL ME_ListBoxRegistered = FALSE;
 static BOOL ME_ComboBoxRegistered = FALSE;
 
-static inline int is_version_nt(void)
+static inline BOOL is_version_nt(void)
 {
     return !(GetVersion() & 0x80000000);
 }
@@ -4039,7 +4039,7 @@ LRESULT ME_HandleMessage(ME_TextEditor *editor, UINT msg, WPARAM wParam,
       if (!(editor->styleFlags & ES_MULTILINE))
       {
         len = 0;
-        while(textW[len] != '0' && textW[len] != '\r' && textW[len] != '\n')
+        while(textW[len] != '\0' && textW[len] != '\r' && textW[len] != '\n')
           len++;
       }
       ME_InsertTextFromCursor(editor, 0, textW, len, editor->pBuffer->pDefaultStyle);

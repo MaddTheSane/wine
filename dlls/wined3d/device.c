@@ -1360,9 +1360,7 @@ void CDECL wined3d_device_set_transform(struct wined3d_device *device,
     }
 
     device->state.transforms[d3dts] = *matrix;
-
-    if (d3dts < WINED3D_TS_WORLD_MATRIX(device->adapter->gl_info.limits.blends))
-        device_invalidate_state(device, STATE_TRANSFORM(d3dts));
+    wined3d_cs_emit_set_transform(device->cs, d3dts, matrix);
 }
 
 void CDECL wined3d_device_get_transform(const struct wined3d_device *device,
@@ -1990,7 +1988,7 @@ void CDECL wined3d_device_set_sampler_state(struct wined3d_device *device,
         return;
     }
 
-    device_invalidate_state(device, STATE_SAMPLER(sampler_idx));
+    wined3d_cs_emit_set_sampler_state(device->cs, sampler_idx, state, value);
 }
 
 DWORD CDECL wined3d_device_get_sampler_state(const struct wined3d_device *device,
@@ -3074,7 +3072,7 @@ void CDECL wined3d_device_set_texture_stage_state(struct wined3d_device *device,
         return;
     }
 
-    device_invalidate_state(device, STATE_TEXTURESTAGE(stage, state));
+    wined3d_cs_emit_set_texture_state(device->cs, stage, state, value);
 }
 
 DWORD CDECL wined3d_device_get_texture_stage_state(const struct wined3d_device *device,

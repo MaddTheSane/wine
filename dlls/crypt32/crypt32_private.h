@@ -348,18 +348,17 @@ void *Context_CreateLinkContext(unsigned int contextSize, void *linked, unsigned
 void *Context_GetExtra(const void *context, size_t contextSize) DECLSPEC_HIDDEN;
 
 /* Gets the context linked to by context, which must be a link context. */
-void *Context_GetLinkedContext(void *context, size_t contextSize) DECLSPEC_HIDDEN;
+void *Context_GetLinkedContext(void *context) DECLSPEC_HIDDEN;
 
 /* Copies properties from fromContext to toContext. */
-void Context_CopyProperties(const void *to, const void *from,
- size_t contextSize) DECLSPEC_HIDDEN;
+void Context_CopyProperties(const void *to, const void *from) DECLSPEC_HIDDEN;
 
 /* Returns context's properties, or the linked context's properties if context
  * is a link context.
  */
-CONTEXT_PROPERTY_LIST *Context_GetProperties(const void *context, size_t contextSize) DECLSPEC_HIDDEN;
+CONTEXT_PROPERTY_LIST *Context_GetProperties(const void *context) DECLSPEC_HIDDEN;
 
-void Context_AddRef(void *context, size_t contextSize) DECLSPEC_HIDDEN;
+void Context_AddRef(void *context) DECLSPEC_HIDDEN;
 
 typedef void (*ContextFreeFunc)(void *context);
 
@@ -368,8 +367,7 @@ typedef void (*ContextFreeFunc)(void *context);
  * If a data context has its ref count reach 0, calls dataContextFree on it.
  * Returns FALSE if the reference count is <= 0 when called.
  */
-BOOL Context_Release(void *context, size_t contextSize,
- ContextFreeFunc dataContextFree) DECLSPEC_HIDDEN;
+BOOL Context_Release(void *context, ContextFreeFunc dataContextFree) DECLSPEC_HIDDEN;
 
 /**
  *  Context property list functions

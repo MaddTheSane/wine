@@ -210,44 +210,40 @@ wine_fn_append_rule ()
 
 wine_fn_has_flag ()
 {
-    expr ",$[2]," : ".*,$[1],.*" >/dev/null
+    expr ",$ac_flags," : ".*,$[1],.*" >/dev/null
 }
 
-wine_fn_all_dir_rules ()
+wine_fn_depend_rules ()
 {
-    ac_dir=$[1]
-    ac_alldeps=$[2]
+    ac_alldeps=$[1]
     ac_makedep="\$(MAKEDEP)"
     ac_input=Make.vars.in:$ac_dir/Makefile.in
     if test $ac_dir != tools
     then
         dnl makedep is in tools so tools makefile cannot depend on it
-        ac_alldeps="$[2] $ac_makedep"
+        ac_alldeps="$[1] $ac_makedep"
     else
-        ac_alldeps="$[2] include/config.h"
+        ac_alldeps="$[1] include/config.h"
     fi
-    case $[2] in
-      *.in) ac_input=$ac_input:$[2] ;;
-      *) ac_makedep="$[2] $ac_makedep" ;;
+    case $[1] in
+      *.in) ac_input=$ac_input:$[1] ;;
+      *) ac_makedep="$[1] $ac_makedep" ;;
     esac
 
     wine_fn_append_rule \
 "$ac_dir/Makefile: $ac_dir/Makefile.in Make.vars.in config.status $ac_alldeps
 	@./config.status --file $ac_dir/Makefile:$ac_input && cd $ac_dir && \$(MAKE) depend
-depend: $ac_dir/__depend__
-.PHONY: $ac_dir/__depend__
-$ac_dir/__depend__: $ac_makedep dummy
+depend: $ac_dir/depend
+.PHONY: $ac_dir/depend
+$ac_dir/depend: $ac_makedep dummy
 	@./config.status --file $ac_dir/Makefile:$ac_input && cd $ac_dir && \$(MAKE) depend"
 }
 
 wine_fn_pot_rules ()
 {
-    ac_dir=$[1]
-    ac_flags=$[2]
-
     test "x$with_gettextpo" = xyes || return
 
-    if wine_fn_has_flag mc $ac_flags
+    if wine_fn_has_flag mc
     then
         wine_fn_append_file ALL_POT_FILES $ac_dir/msg.pot
         wine_fn_append_rule \
@@ -255,7 +251,7 @@ wine_fn_pot_rules ()
 	@cd $ac_dir && \$(MAKE) msg.pot
 $ac_dir/msg.pot: tools/wmc include"
     fi
-    if wine_fn_has_flag po $ac_flags
+    if wine_fn_has_flag po
     then
         wine_fn_append_file ALL_POT_FILES $ac_dir/rsrc.pot
         wine_fn_append_rule \
@@ -265,64 +261,60 @@ $ac_dir/rsrc.pot: tools/wrc include"
     fi
 }
 
-wine_fn_config_all_make_rules ()
+wine_fn_all_rules ()
 {
-    ac_dir=$[1]
-    ac_enable=$[2]
-    ac_flags=$[3]
-    ac_rules=$[4]
-    AS_VAR_IF([$ac_enable],[no],[return 0])
+    ac_rules=$[1]
 
-    wine_fn_all_dir_rules $ac_dir ${ac_rules:-Make.rules}
+    wine_fn_depend_rules ${ac_rules:-Make.rules}
     wine_fn_append_rule \
 "all: $ac_dir
 .PHONY: $ac_dir
 $ac_dir: $ac_dir/Makefile dummy
 	@cd $ac_dir && \$(MAKE)"
+}
 
-    wine_fn_has_flag install-lib $ac_flags || wine_fn_has_flag install-dev $ac_flags || return
+wine_fn_install_rules ()
+{
+    wine_fn_has_flag install-lib || wine_fn_has_flag install-dev || return
 
     wine_fn_append_rule \
-".PHONY: $ac_dir/__install__ $ac_dir/__uninstall__
-$ac_dir/__install__:: $ac_dir
+".PHONY: $ac_dir/install $ac_dir/uninstall
+$ac_dir/install:: $ac_dir
 	@cd $ac_dir && \$(MAKE) install
-$ac_dir/__uninstall__:: $ac_dir/Makefile
+$ac_dir/uninstall:: $ac_dir/Makefile
 	@cd $ac_dir && \$(MAKE) uninstall
-install:: $ac_dir/__install__
-__uninstall__: $ac_dir/__uninstall__"
+install:: $ac_dir/install
+__uninstall__: $ac_dir/uninstall"
 
-    if wine_fn_has_flag install-lib $ac_flags
+    if wine_fn_has_flag install-lib
     then
         wine_fn_append_rule \
-".PHONY: $ac_dir/__install-lib__
-$ac_dir/__install-lib__:: $ac_dir
+".PHONY: $ac_dir/install-lib
+$ac_dir/install-lib:: $ac_dir
 	@cd $ac_dir && \$(MAKE) install-lib
-install-lib:: $ac_dir/__install-lib__"
+install-lib:: $ac_dir/install-lib"
     fi
 
-    if wine_fn_has_flag install-dev $ac_flags
+    if wine_fn_has_flag install-dev
     then
         wine_fn_append_rule \
-".PHONY: $ac_dir/__install-dev
-$ac_dir/__install-dev__:: $ac_dir
+".PHONY: $ac_dir/install-dev
+$ac_dir/install-dev:: $ac_dir
 	@cd $ac_dir && \$(MAKE) install-dev
-install-dev:: $ac_dir/__install-dev__"
+install-dev:: $ac_dir/install-dev"
     fi
 }
 
 wine_fn_clean_rules ()
 {
-    ac_dir=$[1]
-    ac_flags=$[2]
-    shift; shift
     ac_clean=$[@]
 
-    if wine_fn_has_flag clean $ac_flags
+    if wine_fn_has_flag clean
     then
         wine_fn_append_rule \
-"__clean__: $ac_dir/__clean__
-.PHONY: $ac_dir/__clean__
-$ac_dir/__clean__: $ac_dir/Makefile
+"__clean__: $ac_dir/clean
+.PHONY: $ac_dir/clean
+$ac_dir/clean: $ac_dir/Makefile
 	@cd $ac_dir && \$(MAKE) clean
 	\$(RM) $ac_dir/Makefile"
     else
@@ -332,14 +324,25 @@ $ac_dir/__clean__: $ac_dir/Makefile
     fi
 }
 
+wine_fn_disabled_rules ()
+{
+    ac_clean=$[@]
+
+    wine_fn_append_rule \
+"clean::
+	\$(RM) \$(CLEAN_FILES:%=$ac_dir/%) $ac_clean $ac_dir/Makefile"
+}
+
 wine_fn_config_makefile ()
 {
     ac_dir=$[1]
     ac_enable=$[2]
     ac_flags=$[3]
 
-    wine_fn_config_all_make_rules $ac_dir $ac_enable $ac_flags
-    wine_fn_clean_rules $ac_dir $ac_flags
+    AS_VAR_IF([$ac_enable],[no],[wine_fn_disabled_rules; return])
+    wine_fn_all_rules
+    wine_fn_install_rules
+    wine_fn_clean_rules
 }
 
 wine_fn_config_lib ()
@@ -347,24 +350,19 @@ wine_fn_config_lib ()
     ac_name=$[1]
     ac_flags=$[2]
     ac_dir=dlls/$ac_name
-    wine_fn_config_all_make_rules $ac_dir enable_$ac_name "$ac_flags" dlls/Makeimplib.rules
-    wine_fn_clean_rules $ac_dir $ac_flags
 
-    if wine_fn_has_flag install-dev $ac_flags
-    then :
-    else
-        wine_fn_append_rule \
-".PHONY: $ac_dir/__install__ $ac_dir/__uninstall__
-$ac_dir/__install__:: $ac_dir \$(DESTDIR)\$(dlldir)
-	\$(INSTALL_DATA) $ac_dir/lib$ac_name.a \$(DESTDIR)\$(dlldir)/lib$ac_name.a
-$ac_dir/__uninstall__::
-	\$(RM) \$(DESTDIR)\$(dlldir)/lib$ac_name.a
-install install-dev:: $ac_dir/__install__
-__uninstall__: $ac_dir/__uninstall__"
-    fi
+    wine_fn_all_rules dlls/Makeimplib.rules
+    wine_fn_clean_rules
 
     wine_fn_append_rule \
-"__builddeps__: $ac_dir
+".PHONY: $ac_dir/install $ac_dir/uninstall
+$ac_dir/install:: $ac_dir \$(DESTDIR)\$(dlldir)
+	\$(INSTALL_DATA) $ac_dir/lib$ac_name.a \$(DESTDIR)\$(dlldir)/lib$ac_name.a
+$ac_dir/uninstall::
+	\$(RM) \$(DESTDIR)\$(dlldir)/lib$ac_name.a
+install install-dev:: $ac_dir/install
+__uninstall__: $ac_dir/uninstall
+__builddeps__: $ac_dir
 $ac_dir: tools/widl tools/winebuild tools/winegcc include"
 }
 
@@ -386,51 +384,50 @@ wine_fn_config_dll ()
       *)   ac_dll=$ac_dll.dll ;;
     esac
 
-    wine_fn_config_all_make_rules $ac_dir $ac_enable "$ac_flags" dlls/Makedll.rules
-
     ac_clean=
-    wine_fn_has_flag implib $ac_flags && ac_clean="$ac_clean $ac_file.$IMPLIBEXT"
-    wine_fn_has_flag mc $ac_flags && ac_clean="$ac_clean $ac_dir/msg.pot"
-    wine_fn_has_flag po $ac_flags && ac_clean="$ac_clean $ac_dir/rsrc.pot"
-    wine_fn_clean_rules $ac_dir "$ac_flags" $ac_clean
+    wine_fn_has_flag implib && ac_clean="$ac_clean $ac_file.$IMPLIBEXT"
+    wine_fn_has_flag mc && ac_clean="$ac_clean $ac_dir/msg.pot"
+    wine_fn_has_flag po && ac_clean="$ac_clean $ac_dir/rsrc.pot"
 
     AS_VAR_IF([$ac_enable],[no],
               dnl enable_win16 is special in that it disables import libs too
-              [test "$ac_enable" != enable_win16 || return 0
-               wine_fn_has_flag implib $ac_flags && wine_fn_all_dir_rules $ac_dir dlls/Makedll.rules],
+              [if wine_fn_has_flag implib && test "$ac_enable" != enable_win16
+               then
+                   wine_fn_depend_rules dlls/Makedll.rules
+                   wine_fn_clean_rules $ac_clean
+               else
+                   wine_fn_disabled_rules $ac_clean
+                   return
+               fi],
 
-              [wine_fn_append_rule \
+              [wine_fn_all_rules dlls/Makedll.rules
+               wine_fn_clean_rules $ac_clean
+               wine_fn_append_rule \
 "$ac_dir: __builddeps__
 manpages htmlpages sgmlpages xmlpages:: $ac_dir/Makefile
-	@cd $ac_dir && \$(MAKE) \$[@]"
-
-        if wine_fn_has_flag install-lib $ac_flags
-        then :
-        else
-            wine_fn_append_rule \
-".PHONY: $ac_dir/__install-lib__ $ac_dir/__uninstall__
-install install-lib:: $ac_dir/__install-lib__
-__uninstall__: $ac_dir/__uninstall__"
-            if test -n "$DLLEXT"
-            then
-                wine_fn_append_rule \
-"$ac_dir/__install-lib__:: $ac_dir \$(DESTDIR)\$(dlldir) \$(DESTDIR)\$(fakedlldir)
+	@cd $ac_dir && \$(MAKE) \$[@]
+.PHONY: $ac_dir/install-lib $ac_dir/uninstall
+install install-lib:: $ac_dir/install-lib
+__uninstall__: $ac_dir/uninstall"
+                if test -n "$DLLEXT"
+                then
+                    wine_fn_append_rule \
+"$ac_dir/install-lib:: $ac_dir \$(DESTDIR)\$(dlldir) \$(DESTDIR)\$(fakedlldir)
 	\$(INSTALL_PROGRAM) $ac_dir/$ac_dll$DLLEXT \$(DESTDIR)\$(dlldir)/$DLLPREFIX$ac_dll$DLLEXT
 	\$(INSTALL_DATA) $ac_dir/$ac_dll.fake \$(DESTDIR)\$(fakedlldir)/$ac_dll
-$ac_dir/__uninstall__::
+$ac_dir/uninstall::
 	\$(RM) \$(DESTDIR)\$(dlldir)/$DLLPREFIX$ac_dll$DLLEXT \$(DESTDIR)\$(fakedlldir)/$ac_dll"
-            else
-                wine_fn_append_rule \
-"$ac_dir/__install-lib__:: $ac_dir \$(DESTDIR)\$(dlldir)
+                else
+                    wine_fn_append_rule \
+"$ac_dir/install-lib:: $ac_dir \$(DESTDIR)\$(dlldir)
 	\$(INSTALL_PROGRAM) $ac_dir/$ac_dll \$(DESTDIR)\$(dlldir)/$ac_dll
-$ac_dir/__uninstall__::
+$ac_dir/uninstall::
 	\$(RM) \$(DESTDIR)\$(dlldir)/$ac_dll"
-            fi
-        fi
+                fi
 
-        wine_fn_pot_rules $ac_dir $ac_flags])
+                wine_fn_pot_rules])
 
-    if wine_fn_has_flag staticimplib $ac_flags
+    if wine_fn_has_flag staticimplib
     then
         wine_fn_append_rule \
 "__builddeps__: $ac_file.$IMPLIBEXT $ac_file.$STATIC_IMPLIBEXT
@@ -439,20 +436,20 @@ $ac_file.def: $ac_dir/$ac_name.spec $ac_dir/Makefile
 	@cd $ac_dir && \$(MAKE) lib$ac_implib.def
 $ac_file.$STATIC_IMPLIBEXT: $ac_dir/Makefile dummy
 	@cd $ac_dir && \$(MAKE) lib$ac_implib.$STATIC_IMPLIBEXT
-.PHONY: $ac_dir/__install-dev__ $ac_dir/__uninstall__
-$ac_dir/__install-dev__:: $ac_file.$IMPLIBEXT \$(DESTDIR)\$(dlldir)
+.PHONY: $ac_dir/install-dev $ac_dir/uninstall
+$ac_dir/install-dev:: $ac_file.$IMPLIBEXT \$(DESTDIR)\$(dlldir)
 	\$(INSTALL_DATA) $ac_file.$IMPLIBEXT \$(DESTDIR)\$(dlldir)/lib$ac_implib.$IMPLIBEXT
-$ac_dir/__uninstall__::
+$ac_dir/uninstall::
 	\$(RM) \$(DESTDIR)\$(dlldir)/lib$ac_implib.$IMPLIBEXT
-install install-dev:: $ac_dir/__install-dev__
-__uninstall__: $ac_dir/__uninstall__"
+install install-dev:: $ac_dir/install-dev
+__uninstall__: $ac_dir/uninstall"
 
         if test "$IMPLIBEXT" != "$STATIC_IMPLIBEXT"
         then
             wine_fn_append_rule \
-"$ac_dir/__install-dev__:: $ac_file.$STATIC_IMPLIBEXT \$(DESTDIR)\$(dlldir) __builddeps__
+"$ac_dir/install-dev:: $ac_file.$STATIC_IMPLIBEXT \$(DESTDIR)\$(dlldir) __builddeps__
 	\$(INSTALL_DATA) $ac_file.$STATIC_IMPLIBEXT \$(DESTDIR)\$(dlldir)/lib$ac_implib.$STATIC_IMPLIBEXT
-$ac_dir/__uninstall__::
+$ac_dir/uninstall::
 	\$(RM) \$(DESTDIR)\$(dlldir)/lib$ac_implib.$STATIC_IMPLIBEXT"
         fi
 
@@ -464,7 +461,7 @@ $ac_file.cross.a: $ac_dir/Makefile dummy
 	@cd $ac_dir && \$(MAKE) lib$ac_implib.cross.a"
         fi
 
-    elif wine_fn_has_flag implib $ac_flags
+    elif wine_fn_has_flag implib
     then
         wine_fn_append_rule \
 "__builddeps__: $ac_file.$IMPLIBEXT
@@ -472,13 +469,13 @@ $ac_file.def: $ac_dir/$ac_name.spec $ac_dir/Makefile \$(WINEBUILD)
 	\$(WINEBUILD) \$(TARGETFLAGS)$ac_implibflags -w --def -o \$[@] --export \$(srcdir)/$ac_dir/$ac_name.spec
 $ac_file.a: $ac_dir/$ac_name.spec $ac_dir/Makefile \$(WINEBUILD)
 	\$(WINEBUILD) \$(TARGETFLAGS)$ac_implibflags -w --implib -o \$[@] --export \$(srcdir)/$ac_dir/$ac_name.spec
-.PHONY: $ac_dir/__install-dev__ $ac_dir/__uninstall__
-$ac_dir/__install-dev__:: $ac_file.$IMPLIBEXT \$(DESTDIR)\$(dlldir)
+.PHONY: $ac_dir/install-dev $ac_dir/uninstall
+$ac_dir/install-dev:: $ac_file.$IMPLIBEXT \$(DESTDIR)\$(dlldir)
 	\$(INSTALL_DATA) $ac_file.$IMPLIBEXT \$(DESTDIR)\$(dlldir)/lib$ac_implib.$IMPLIBEXT
-$ac_dir/__uninstall__::
+$ac_dir/uninstall::
 	\$(RM) \$(DESTDIR)\$(dlldir)/lib$ac_implib.$IMPLIBEXT
-install install-dev:: $ac_dir/__install-dev__
-__uninstall__: $ac_dir/__uninstall__"
+install install-dev:: $ac_dir/install-dev
+__uninstall__: $ac_dir/uninstall"
         if test "x$CROSSTEST_DISABLE" = x
         then
             wine_fn_append_rule \
@@ -519,58 +516,58 @@ wine_fn_config_program ()
       *)   ac_program=$ac_program.exe ;;
     esac
 
-    wine_fn_config_all_make_rules $ac_dir $ac_enable "$ac_flags" programs/Makeprog.rules
-
     ac_clean=
-    wine_fn_has_flag mc $ac_flags && ac_clean="$ac_clean $ac_dir/msg.pot"
-    wine_fn_has_flag po $ac_flags && ac_clean="$ac_clean $ac_dir/rsrc.pot"
-    wine_fn_has_flag manpage $ac_flags && ac_clean="$ac_clean $ac_dir/$ac_name.man"
+    wine_fn_has_flag mc && ac_clean="$ac_clean $ac_dir/msg.pot"
+    wine_fn_has_flag po && ac_clean="$ac_clean $ac_dir/rsrc.pot"
+    wine_fn_has_flag manpage && ac_clean="$ac_clean $ac_dir/$ac_name.man"
     test -n "$DLLEXT" || ac_clean="$ac_clean $ac_dir/$ac_program"
-    wine_fn_clean_rules $ac_dir "$ac_flags" $ac_clean
 
-    AS_VAR_IF([$ac_enable],[no],,[wine_fn_append_rule "$ac_dir: __builddeps__"
+    AS_VAR_IF([$ac_enable],[no],[wine_fn_disabled_rules $ac_clean; return])
 
-    wine_fn_pot_rules $ac_dir $ac_flags
+    wine_fn_all_rules programs/Makeprog.rules
+    wine_fn_clean_rules $ac_clean
+    wine_fn_append_rule "$ac_dir: __builddeps__"
+    wine_fn_pot_rules
 
-    wine_fn_has_flag install $ac_flags || return
+    wine_fn_has_flag install || return
     wine_fn_append_rule \
-".PHONY: $ac_dir/__install__ $ac_dir/__uninstall__
-install install-lib:: $ac_dir/__install__
-__uninstall__: $ac_dir/__uninstall__"
+".PHONY: $ac_dir/install $ac_dir/uninstall
+install install-lib:: $ac_dir/install
+__uninstall__: $ac_dir/uninstall"
 
     if test -n "$DLLEXT"
     then
         wine_fn_append_rule \
-"$ac_dir/__install__:: $ac_dir \$(DESTDIR)\$(dlldir) \$(DESTDIR)\$(fakedlldir)
+"$ac_dir/install:: $ac_dir \$(DESTDIR)\$(dlldir) \$(DESTDIR)\$(fakedlldir)
 	\$(INSTALL_PROGRAM) $ac_dir/$ac_program$DLLEXT \$(DESTDIR)\$(dlldir)/$DLLPREFIX$ac_program$DLLEXT
 	\$(INSTALL_DATA) $ac_dir/$ac_program.fake \$(DESTDIR)\$(fakedlldir)/$ac_program
-$ac_dir/__uninstall__::
+$ac_dir/uninstall::
 	\$(RM) \$(DESTDIR)\$(dlldir)/$DLLPREFIX$ac_program$DLLEXT \$(DESTDIR)\$(fakedlldir)/$ac_program"
 
-        if test "x$enable_tools" != xno && wine_fn_has_flag installbin $ac_flags
+        if test -z "$with_wine64" && wine_fn_has_flag installbin
         then
             wine_fn_append_rule \
-"$ac_dir/__install__:: tools \$(DESTDIR)\$(bindir)
-	\$(INSTALL_SCRIPT) tools/wineapploader \$(DESTDIR)\$(bindir)/$ac_name
-$ac_dir/__uninstall__::
+"$ac_dir/install:: __tooldeps__ \$(DESTDIR)\$(bindir)
+	\$(INSTALL_SCRIPT) \$(TOOLSDIR)/tools/wineapploader \$(DESTDIR)\$(bindir)/$ac_name
+$ac_dir/uninstall::
 	\$(RM) \$(DESTDIR)\$(bindir)/$ac_name"
         fi
     else
         wine_fn_append_rule \
-"$ac_dir/__install-lib__:: $ac_dir \$(DESTDIR)\$(dlldir)
-	\$(INSTALL_PROGRAM) $ac_dir/$ac_program \$(DESTDIR)\$(dlldir)/$ac_program
-$ac_dir/__uninstall__::
-	\$(RM) \$(DESTDIR)\$(dlldir)/$ac_program"
+"$ac_dir/install:: $ac_dir \$(DESTDIR)\$(bindir)
+	\$(INSTALL_PROGRAM) $ac_dir/$ac_program \$(DESTDIR)\$(bindir)/$ac_program
+$ac_dir/uninstall::
+	\$(RM) \$(DESTDIR)\$(bindir)/$ac_program"
     fi
 
-    if test "x$enable_tools" != xno && wine_fn_has_flag manpage $ac_flags
+    if test -z "$with_wine64" && wine_fn_has_flag manpage
     then
         wine_fn_append_rule \
-"$ac_dir/__install__:: $ac_dir \$(DESTDIR)\$(mandir)/man\$(prog_manext)
+"$ac_dir/install:: $ac_dir \$(DESTDIR)\$(mandir)/man\$(prog_manext)
 	\$(INSTALL_DATA) $ac_dir/$ac_name.man \$(DESTDIR)\$(mandir)/man\$(prog_manext)/$ac_name.\$(prog_manext)
-$ac_dir/__uninstall__::
+$ac_dir/uninstall::
 	\$(RM) \$(DESTDIR)\$(mandir)/man\$(prog_manext)/$ac_name.\$(prog_manext)"
-    fi])
+    fi
 }
 
 wine_fn_config_test ()
@@ -582,21 +579,20 @@ wine_fn_config_test ()
     ac_clean=
     test "x$CROSSTEST_DISABLE" = x && ac_clean=`expr $ac_dir/${ac_name} : "\\(.*\\)_test"`_crosstest.exe
     test -n "$DLLEXT" || ac_clean=$ac_dir/${ac_name}.exe
-    ac_clean="$ac_clean $ac_dir/*.ok $ac_dir/testlist.c"
+    ac_clean="$ac_clean $ac_dir/testlist.c"
+
+    AS_VAR_IF([enable_tests],[no],[wine_fn_disabled_rules $ac_clean; return])
 
     wine_fn_append_file ALL_TEST_RESOURCES $ac_name.res
-    wine_fn_all_dir_rules $ac_dir Maketest.rules
-    wine_fn_clean_rules $ac_dir "$ac_flags" $ac_clean
+    wine_fn_all_rules Maketest.rules
+    wine_fn_clean_rules $ac_clean
 
-    AS_VAR_IF([enable_tests],[no],,[wine_fn_append_rule \
-"all: $ac_dir
-.PHONY: $ac_dir
-$ac_dir: $ac_dir/Makefile programs/winetest/Makefile __builddeps__ dummy
-	@cd $ac_dir && \$(MAKE)
+    wine_fn_append_rule \
+"$ac_dir: programs/winetest/Makefile __builddeps__
 programs/winetest: $ac_dir
-check test: $ac_dir/__test__
-.PHONY: $ac_dir/__test__
-$ac_dir/__test__: dummy
+check test: $ac_dir/test
+.PHONY: $ac_dir/test
+$ac_dir/test: dummy
 	@cd $ac_dir && \$(MAKE) test
 testclean::
 	\$(RM) $ac_dir/*.ok"
@@ -604,21 +600,22 @@ testclean::
         if test "x$CROSSTEST_DISABLE" = x
         then
             wine_fn_append_rule \
-"crosstest: $ac_dir/__crosstest__
-.PHONY: $ac_dir/__crosstest__
-$ac_dir/__crosstest__: $ac_dir/Makefile __builddeps__ dummy
+"crosstest: $ac_dir/crosstest
+.PHONY: $ac_dir/crosstest
+$ac_dir/crosstest: $ac_dir/Makefile __builddeps__ dummy
 	@cd $ac_dir && \$(MAKE) crosstest"
-        fi])
+        fi
 }
 
 wine_fn_config_tool ()
 {
     ac_dir=$[1]
     ac_flags=$[2]
-    AS_VAR_IF([enable_tools],[no],[return 0])
+    AS_VAR_IF([enable_tools],[no],[return])
 
-    wine_fn_config_all_make_rules $ac_dir enable_tools $ac_flags
-    wine_fn_clean_rules $ac_dir $ac_flags
+    wine_fn_all_rules
+    wine_fn_install_rules
+    wine_fn_clean_rules
 
     wine_fn_append_rule "__tooldeps__: $ac_dir"
     wine_fn_append_rule "$ac_dir: libs/port"
@@ -653,7 +650,7 @@ wine_fn_config_symlink ()
 distclean::
 	\$(RM) $ac_links"
     test -n "$ac_linkdir" || return
-    wine_fn_append_rule "$ac_linkdir/Makefile $ac_linkdir/__depend__: $ac_links"
+    wine_fn_append_rule "$ac_linkdir/Makefile $ac_linkdir/depend: $ac_links"
 }
 
 if test "x$CROSSTEST_DISABLE" != x
