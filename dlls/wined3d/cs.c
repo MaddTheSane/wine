@@ -45,6 +45,8 @@ enum wined3d_cs_op
     WINED3D_CS_OP_SET_TEXTURE_STATE,
     WINED3D_CS_OP_SET_SAMPLER_STATE,
     WINED3D_CS_OP_SET_TRANSFORM,
+    WINED3D_CS_OP_SET_CLIP_PLANE,
+    WINED3D_CS_OP_SET_MATERIAL,
 };
 
 struct wined3d_cs_present
@@ -175,6 +177,19 @@ struct wined3d_cs_set_transform
     enum wined3d_cs_op opcode;
     enum wined3d_transform_state state;
     const struct wined3d_matrix *matrix;
+};
+
+struct wined3d_cs_set_clip_plane
+{
+    enum wined3d_cs_op opcode;
+    UINT plane_idx;
+    const struct wined3d_vec4 *plane;
+};
+
+struct wined3d_cs_set_material
+{
+    enum wined3d_cs_op opcode;
+    const struct wined3d_material *material;
 };
 
 static void wined3d_cs_exec_present(struct wined3d_cs *cs, const void *data)
@@ -494,7 +509,7 @@ static void wined3d_cs_exec_set_texture(struct wined3d_cs *cs, const void *data)
             op->texture->sampler = op->stage;
 
         if (!prev || op->texture->target != prev->target)
-            device_invalidate_state(cs->device, STATE_PIXELSHADER);
+            device_invalidate_state(cs->device, STATE_SHADER(WINED3D_SHADER_TYPE_PIXEL));
 
         if (!prev && op->stage < d3d_info->limits.ffp_blend_stages)
         {
@@ -553,7 +568,7 @@ static void wined3d_cs_exec_set_vertex_shader(struct wined3d_cs *cs, const void 
     const struct wined3d_cs_set_shader *op = data;
 
     cs->state.vertex_shader = op->shader;
-    device_invalidate_state(cs->device, STATE_VSHADER);
+    device_invalidate_state(cs->device, STATE_SHADER(WINED3D_SHADER_TYPE_VERTEX));
 }
 
 void wined3d_cs_emit_set_vertex_shader(struct wined3d_cs *cs, struct wined3d_shader *shader)
@@ -572,7 +587,7 @@ static void wined3d_cs_exec_set_geometry_shader(struct wined3d_cs *cs, const voi
     const struct wined3d_cs_set_shader *op = data;
 
     cs->state.geometry_shader = op->shader;
-    device_invalidate_state(cs->device, STATE_GEOMETRY_SHADER);
+    device_invalidate_state(cs->device, STATE_SHADER(WINED3D_SHADER_TYPE_GEOMETRY));
 }
 
 void wined3d_cs_emit_set_geometry_shader(struct wined3d_cs *cs, struct wined3d_shader *shader)
@@ -591,7 +606,7 @@ static void wined3d_cs_exec_set_pixel_shader(struct wined3d_cs *cs, const void *
     const struct wined3d_cs_set_shader *op = data;
 
     cs->state.pixel_shader = op->shader;
-    device_invalidate_state(cs->device, STATE_PIXELSHADER);
+    device_invalidate_state(cs->device, STATE_SHADER(WINED3D_SHADER_TYPE_PIXEL));
 }
 
 void wined3d_cs_emit_set_pixel_shader(struct wined3d_cs *cs, struct wined3d_shader *shader)
@@ -691,6 +706,45 @@ void wined3d_cs_emit_set_transform(struct wined3d_cs *cs, enum wined3d_transform
     cs->ops->submit(cs);
 }
 
+static void wined3d_cs_exec_set_clip_plane(struct wined3d_cs *cs, const void *data)
+{
+    const struct wined3d_cs_set_clip_plane *op = data;
+
+    cs->state.clip_planes[op->plane_idx] = *op->plane;
+    device_invalidate_state(cs->device, STATE_CLIPPLANE(op->plane_idx));
+}
+
+void wined3d_cs_emit_set_clip_plane(struct wined3d_cs *cs, UINT plane_idx, const struct wined3d_vec4 *plane)
+{
+    struct wined3d_cs_set_clip_plane *op;
+
+    op = cs->ops->require_space(cs, sizeof(*op));
+    op->opcode = WINED3D_CS_OP_SET_CLIP_PLANE;
+    op->plane_idx = plane_idx;
+    op->plane = plane;
+
+    cs->ops->submit(cs);
+}
+
+static void wined3d_cs_exec_set_material(struct wined3d_cs *cs, const void *data)
+{
+    const struct wined3d_cs_set_material *op = data;
+
+    cs->state.material = *op->material;
+    device_invalidate_state(cs->device, STATE_MATERIAL);
+}
+
+void wined3d_cs_emit_set_material(struct wined3d_cs *cs, const struct wined3d_material *material)
+{
+    struct wined3d_cs_set_material *op;
+
+    op = cs->ops->require_space(cs, sizeof(*op));
+    op->opcode = WINED3D_CS_OP_SET_MATERIAL;
+    op->material = material;
+
+    cs->ops->submit(cs);
+}
+
 static void (* const wined3d_cs_op_handlers[])(struct wined3d_cs *cs, const void *data) =
 {
     /* WINED3D_CS_OP_PRESENT                */ wined3d_cs_exec_present,
@@ -712,6 +766,8 @@ static void (* const wined3d_cs_op_handlers[])(struct wined3d_cs *cs, const void
     /* WINED3D_CS_OP_SET_TEXTURE_STATE      */ wined3d_cs_exec_set_texture_state,
     /* WINED3D_CS_OP_SET_SAMPLER_STATE      */ wined3d_cs_exec_set_sampler_state,
     /* WINED3D_CS_OP_SET_TRANSFORM          */ wined3d_cs_exec_set_transform,
+    /* WINED3D_CS_OP_SET_CLIP_PLANE         */ wined3d_cs_exec_set_clip_plane,
+    /* WINED3D_CS_OP_SET_MATERIAL           */ wined3d_cs_exec_set_material,
 };
 
 static void *wined3d_cs_st_require_space(struct wined3d_cs *cs, size_t size)
