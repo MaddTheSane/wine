@@ -765,7 +765,8 @@ static void test_foregroundwindow(void)
     int thread_desk_id, input_desk_id, hwnd_id;
     WNDCLASSA wclass;
     wnd_param param;
-    DWORD ret;
+    DWORD ret, timeout, timeout_old;
+    char win_text[1024];
 
 #define DESKTOPS 2
 
@@ -802,6 +803,16 @@ static void test_foregroundwindow(void)
 
     trace("hwnd0 %p hwnd1 %p partner0 %p partner1 %p\n", hwnds[0], hwnds[1], partners[0], partners[1]);
 
+    ret = SystemParametersInfo(SPI_GETFOREGROUNDLOCKTIMEOUT, 0, &timeout_old, 0);
+    ok(ret, "get foreground lock timeout failed!\n");
+    trace("old timeout %d\n", timeout_old);
+    timeout = 0;
+    ret = SystemParametersInfo(SPI_SETFOREGROUNDLOCKTIMEOUT, 0, 0, SPIF_SENDCHANGE | SPIF_UPDATEINIFILE);
+    ok(ret, "set foreground lock timeout failed!\n");
+    ret = SystemParametersInfo(SPI_GETFOREGROUNDLOCKTIMEOUT, 0, &timeout, 0);
+    ok(ret, "get foreground lock timeout failed!\n");
+    ok(timeout == 0, "unexpected timeout %d\n", timeout);
+
     for (hwnd_id = 0; hwnd_id < DESKTOPS; hwnd_id++)
         for (thread_desk_id = 0; thread_desk_id < DESKTOPS; thread_desk_id++)
             for (input_desk_id = 0; input_desk_id < DESKTOPS; input_desk_id++)
@@ -820,6 +831,8 @@ static void test_foregroundwindow(void)
                 ret = SetForegroundWindow(hwnd_test);
                 Sleep(250);
                 hwnd = GetForegroundWindow();
+                GetWindowText(hwnd, win_text, 1024);
+                trace("hwnd %p name %s\n", hwnd, win_text);
                 if (input_desk_id == hwnd_id)
                 {
                     if (input_desk_id == thread_desk_id)
@@ -861,6 +874,12 @@ static void test_foregroundwindow(void)
     ret = SwitchDesktop(hdesks[0]);
     ok(ret, "switch desktop failed!\n");
     CloseDesktop(hdesks[1]);
+
+    ret = SystemParametersInfo(SPI_SETFOREGROUNDLOCKTIMEOUT, 0, UlongToPtr(timeout_old), SPIF_SENDCHANGE | SPIF_UPDATEINIFILE);
+    ok(ret, "set foreground lock timeout failed!\n");
+    ret = SystemParametersInfo(SPI_GETFOREGROUNDLOCKTIMEOUT, 0, &timeout, 0);
+    ok(ret, "get foreground lock timeout failed!\n");
+    ok(timeout == timeout_old, "unexpected timeout %d\n", timeout);
 }
 
 START_TEST(winstation)

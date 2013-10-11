@@ -36,8 +36,11 @@ enum wined3d_cs_op
     WINED3D_CS_OP_SET_VERTEX_DECLARATION,
     WINED3D_CS_OP_SET_STREAM_SOURCE,
     WINED3D_CS_OP_SET_STREAM_SOURCE_FREQ,
+    WINED3D_CS_OP_SET_STREAM_OUTPUT,
     WINED3D_CS_OP_SET_INDEX_BUFFER,
+    WINED3D_CS_OP_SET_CONSTANT_BUFFER,
     WINED3D_CS_OP_SET_TEXTURE,
+    WINED3D_CS_OP_SET_SAMPLER,
     WINED3D_CS_OP_SET_SHADER,
     WINED3D_CS_OP_SET_RENDER_STATE,
     WINED3D_CS_OP_SET_TEXTURE_STATE,
@@ -127,6 +130,14 @@ struct wined3d_cs_set_stream_source_freq
     UINT flags;
 };
 
+struct wined3d_cs_set_stream_output
+{
+    enum wined3d_cs_op opcode;
+    UINT stream_idx;
+    struct wined3d_buffer *buffer;
+    UINT offset;
+};
+
 struct wined3d_cs_set_index_buffer
 {
     enum wined3d_cs_op opcode;
@@ -134,11 +145,27 @@ struct wined3d_cs_set_index_buffer
     enum wined3d_format_id format_id;
 };
 
+struct wined3d_cs_set_constant_buffer
+{
+    enum wined3d_cs_op opcode;
+    enum wined3d_shader_type type;
+    UINT cb_idx;
+    struct wined3d_buffer *buffer;
+};
+
 struct wined3d_cs_set_texture
 {
     enum wined3d_cs_op opcode;
     UINT stage;
     struct wined3d_texture *texture;
+};
+
+struct wined3d_cs_set_sampler
+{
+    enum wined3d_cs_op opcode;
+    enum wined3d_shader_type type;
+    UINT sampler_idx;
+    struct wined3d_sampler *sampler;
 };
 
 struct wined3d_cs_set_shader
@@ -463,6 +490,37 @@ void wined3d_cs_emit_set_stream_source_freq(struct wined3d_cs *cs, UINT stream_i
     cs->ops->submit(cs);
 }
 
+static void wined3d_cs_exec_set_stream_output(struct wined3d_cs *cs, const void *data)
+{
+    const struct wined3d_cs_set_stream_output *op = data;
+    struct wined3d_stream_output *stream;
+    struct wined3d_buffer *prev;
+
+    stream = &cs->state.stream_output[op->stream_idx];
+    prev = stream->buffer;
+    stream->buffer = op->buffer;
+    stream->offset = op->offset;
+
+    if (op->buffer)
+        InterlockedIncrement(&op->buffer->resource.bind_count);
+    if (prev)
+        InterlockedDecrement(&prev->resource.bind_count);
+}
+
+void wined3d_cs_emit_set_stream_output(struct wined3d_cs *cs, UINT stream_idx,
+        struct wined3d_buffer *buffer, UINT offset)
+{
+    struct wined3d_cs_set_stream_output *op;
+
+    op = cs->ops->require_space(cs, sizeof(*op));
+    op->opcode = WINED3D_CS_OP_SET_STREAM_OUTPUT;
+    op->stream_idx = stream_idx;
+    op->buffer = buffer;
+    op->offset = offset;
+
+    cs->ops->submit(cs);
+}
+
 static void wined3d_cs_exec_set_index_buffer(struct wined3d_cs *cs, const void *data)
 {
     const struct wined3d_cs_set_index_buffer *op = data;
@@ -489,6 +547,34 @@ void wined3d_cs_emit_set_index_buffer(struct wined3d_cs *cs, struct wined3d_buff
     op->opcode = WINED3D_CS_OP_SET_INDEX_BUFFER;
     op->buffer = buffer;
     op->format_id = format_id;
+
+    cs->ops->submit(cs);
+}
+
+static void wined3d_cs_exec_set_constant_buffer(struct wined3d_cs *cs, const void *data)
+{
+    const struct wined3d_cs_set_constant_buffer *op = data;
+    struct wined3d_buffer *prev;
+
+    prev = cs->state.cb[op->type][op->cb_idx];
+    cs->state.cb[op->type][op->cb_idx] = op->buffer;
+
+    if (op->buffer)
+        InterlockedIncrement(&op->buffer->resource.bind_count);
+    if (prev)
+        InterlockedDecrement(&prev->resource.bind_count);
+}
+
+void wined3d_cs_emit_set_constant_buffer(struct wined3d_cs *cs, enum wined3d_shader_type type,
+        UINT cb_idx, struct wined3d_buffer *buffer)
+{
+    struct wined3d_cs_set_constant_buffer *op;
+
+    op = cs->ops->require_space(cs, sizeof(*op));
+    op->opcode = WINED3D_CS_OP_SET_CONSTANT_BUFFER;
+    op->type = type;
+    op->cb_idx = cb_idx;
+    op->buffer = buffer;
 
     cs->ops->submit(cs);
 }
@@ -558,6 +644,27 @@ void wined3d_cs_emit_set_texture(struct wined3d_cs *cs, UINT stage, struct wined
     op->opcode = WINED3D_CS_OP_SET_TEXTURE;
     op->stage = stage;
     op->texture = texture;
+
+    cs->ops->submit(cs);
+}
+
+static void wined3d_cs_exec_set_sampler(struct wined3d_cs *cs, const void *data)
+{
+    const struct wined3d_cs_set_sampler *op = data;
+
+    cs->state.sampler[op->type][op->sampler_idx] = op->sampler;
+}
+
+void wined3d_cs_emit_set_sampler(struct wined3d_cs *cs, enum wined3d_shader_type type,
+        UINT sampler_idx, struct wined3d_sampler *sampler)
+{
+    struct wined3d_cs_set_sampler *op;
+
+    op = cs->ops->require_space(cs, sizeof(*op));
+    op->opcode = WINED3D_CS_OP_SET_SAMPLER;
+    op->type = type;
+    op->sampler_idx = sampler_idx;
+    op->sampler = sampler;
 
     cs->ops->submit(cs);
 }
@@ -719,8 +826,11 @@ static void (* const wined3d_cs_op_handlers[])(struct wined3d_cs *cs, const void
     /* WINED3D_CS_OP_SET_VERTEX_DECLARATION */ wined3d_cs_exec_set_vertex_declaration,
     /* WINED3D_CS_OP_SET_STREAM_SOURCE      */ wined3d_cs_exec_set_stream_source,
     /* WINED3D_CS_OP_SET_STREAM_SOURCE_FREQ */ wined3d_cs_exec_set_stream_source_freq,
+    /* WINED3D_CS_OP_SET_STREAM_OUTPUT      */ wined3d_cs_exec_set_stream_output,
     /* WINED3D_CS_OP_SET_INDEX_BUFFER       */ wined3d_cs_exec_set_index_buffer,
+    /* WINED3D_CS_OP_SET_CONSTANT_BUFFER    */ wined3d_cs_exec_set_constant_buffer,
     /* WINED3D_CS_OP_SET_TEXTURE            */ wined3d_cs_exec_set_texture,
+    /* WINED3D_CS_OP_SET_SAMPLER            */ wined3d_cs_exec_set_sampler,
     /* WINED3D_CS_OP_SET_SHADER             */ wined3d_cs_exec_set_shader,
     /* WINED3D_CS_OP_SET_RENDER_STATE       */ wined3d_cs_exec_set_render_state,
     /* WINED3D_CS_OP_SET_TEXTURE_STATE      */ wined3d_cs_exec_set_texture_state,

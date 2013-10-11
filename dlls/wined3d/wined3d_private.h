@@ -2475,6 +2475,8 @@ void wined3d_cs_emit_present(struct wined3d_cs *cs, struct wined3d_swapchain *sw
         const RGNDATA *dirty_region, DWORD flags) DECLSPEC_HIDDEN;
 void wined3d_cs_emit_set_clip_plane(struct wined3d_cs *cs, UINT plane_idx,
         const struct wined3d_vec4 *plane) DECLSPEC_HIDDEN;
+void wined3d_cs_emit_set_constant_buffer(struct wined3d_cs *cs, enum wined3d_shader_type type,
+        UINT cb_idx, struct wined3d_buffer *buffer) DECLSPEC_HIDDEN;
 void wined3d_cs_emit_set_depth_stencil(struct wined3d_cs *cs, struct wined3d_surface *depth_stencil) DECLSPEC_HIDDEN;
 void wined3d_cs_emit_set_index_buffer(struct wined3d_cs *cs, struct wined3d_buffer *buffer,
         enum wined3d_format_id format_id) DECLSPEC_HIDDEN;
@@ -2483,11 +2485,15 @@ void wined3d_cs_emit_set_render_state(struct wined3d_cs *cs,
         enum wined3d_render_state state, DWORD value) DECLSPEC_HIDDEN;
 void wined3d_cs_emit_set_render_target(struct wined3d_cs *cs, UINT render_target_idx,
         struct wined3d_surface *render_target) DECLSPEC_HIDDEN;
+void wined3d_cs_emit_set_sampler(struct wined3d_cs *cs, enum wined3d_shader_type type,
+        UINT sampler_idx, struct wined3d_sampler *sampler) DECLSPEC_HIDDEN;
 void wined3d_cs_emit_set_sampler_state(struct wined3d_cs *cs, UINT sampler_idx,
         enum wined3d_sampler_state state, DWORD value) DECLSPEC_HIDDEN;
 void wined3d_cs_emit_set_scissor_rect(struct wined3d_cs *cs, const RECT *rect) DECLSPEC_HIDDEN;
 void wined3d_cs_emit_set_shader(struct wined3d_cs *cs, enum wined3d_shader_type type,
         struct wined3d_shader *shader) DECLSPEC_HIDDEN;
+void wined3d_cs_emit_set_stream_output(struct wined3d_cs *cs, UINT stream_idx,
+        struct wined3d_buffer *buffer, UINT offset) DECLSPEC_HIDDEN;
 void wined3d_cs_emit_set_stream_source(struct wined3d_cs *cs, UINT stream_idx,
         struct wined3d_buffer *buffer, UINT offset, UINT stride) DECLSPEC_HIDDEN;
 void wined3d_cs_emit_set_stream_source_freq(struct wined3d_cs *cs, UINT stream_idx,
