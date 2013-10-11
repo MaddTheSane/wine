@@ -25,10 +25,6 @@ use strict;
 my %makerules =
 (
  "MAKE_RULES" => "Make.rules",
- "MAKE_DLL_RULES" => "dlls/Makedll.rules",
- "MAKE_IMPLIB_RULES" => "dlls/Makeimplib.rules",
- "MAKE_TEST_RULES" => "Maketest.rules",
- "MAKE_PROG_RULES" => "programs/Makeprog.rules",
 );
 
 # Programs that we want to install in the bin directory too
@@ -312,7 +308,7 @@ sub parse_makefile($)
         if (/^\@(MAKE.*RULES)\@/)
         {
             my $var = $1;
-            $make{"=rules"} = $makerules{$var};
+            $make{"=rules"} = $makerules{$var} || $var;
             next;
         }
         if (/^\s*(MODULE|IMPORTLIB|TESTDLL|MANPAGE)\s*=\s*(.*)/)
@@ -352,8 +348,8 @@ sub parse_makefile($)
     }
 
     if (defined $make{"=flags"} && defined $make{"=rules"} &&
-        ($make{"=rules"} eq $makerules{"MAKE_DLL_RULES"} ||
-         $make{"=rules"} eq $makerules{"MAKE_PROG_RULES"}))
+        ($make{"=rules"} eq "MAKE_DLL_RULES" ||
+         $make{"=rules"} eq "MAKE_PROG_RULES"))
     {
         die "Custom install-lib rule not allowed in $file" if defined ${$make{"=flags"}}{"install-lib"};
         die "Custom install-dev rule not allowed in $file" if defined ${$make{"=flags"}}{"install-dev"};
@@ -377,6 +373,14 @@ sub assign_sources_to_makefiles(@)
         $subdir =~ s/^$dir\/?//;
         $subdirs{"$dir/ $subdir"} = 1 if $subdir;
         next unless $dir;
+
+        my $basedir = dirname( $dir );
+        if ($basedir && !defined $makefiles{"$basedir/Makefile"})
+        {
+            $subdir = $basedir;
+            $basedir = dirname( $basedir );
+            $subdirs{"$basedir/ $subdir"} = 1;
+        }
 
         die "no makefile found for $file\n" unless defined $makefiles{"$dir/Makefile"};
 
@@ -448,7 +452,7 @@ sub update_makefiles(@)
         my $args = "";
         my $is_win16 = $make{"MODULE"} && ($make{"MODULE"} =~ /16$/ || $modules16{$make{"MODULE"}});
         my $flag_args = defined $make{"=flags"} ? ",[" . join(",",sort keys %{$make{"=flags"}}) ."]" : "";
-        if ($rules eq $makerules{"MAKE_DLL_RULES"})
+        if ($rules eq "MAKE_DLL_RULES")
         {
             (my $name = $file) =~ s/^dlls\/(.*)\/Makefile/$1/;
             if ($name =~ /\./)
@@ -466,7 +470,7 @@ sub update_makefiles(@)
             $args .= ",[$implib]" if $implib && $implib ne $name;
             push @lines, "WINE_CONFIG_DLL($name$args)\n";
         }
-        elsif ($rules eq $makerules{"MAKE_PROG_RULES"})
+        elsif ($rules eq "MAKE_PROG_RULES")
         {
             (my $name = $file) =~ s/^programs\/(.*)\/Makefile/$1/;
             if ($name =~ /\./)
@@ -481,12 +485,12 @@ sub update_makefiles(@)
             $args .= "enable_win16" if $is_win16;
             push @lines, "WINE_CONFIG_PROGRAM($name$args$flag_args)\n";
         }
-        elsif ($rules eq $makerules{"MAKE_TEST_RULES"})
+        elsif ($rules eq "MAKE_TEST_RULES")
         {
             (my $dir = $file) =~ s/^(.*)\/Makefile/$1/;
             push @lines, "WINE_CONFIG_TEST($dir$flag_args)\n";
         }
-        elsif ($rules eq $makerules{"MAKE_IMPLIB_RULES"})
+        elsif ($rules eq "MAKE_IMPLIB_RULES")
         {
             (my $name = $file) =~ s/^dlls\/(.*)\/Makefile/$1/;
             push @lines, "WINE_CONFIG_LIB($name$flag_args)\n";
@@ -547,7 +551,7 @@ sub update_ignores(@)
         {
             my @pattern = @{$src};
             next unless defined $makefile{$pattern[0]};
-            next if $pattern[0] eq "IDL_TLB_SRCS" && $makefile{"=rules"} eq "dlls/Makedll.rules";
+            next if $pattern[0] eq "IDL_TLB_SRCS" && $makefile{"=rules"} eq "MAKE_DLL_RULES";
             push @list, map { (my $ret = $_) =~ s/$pattern[1]$/$pattern[2]/; $ret; } @{$makefile{$pattern[0]}};
         }
         foreach my $f (@list)

@@ -351,7 +351,7 @@ wine_fn_config_lib ()
     ac_flags=$[2]
     ac_dir=dlls/$ac_name
 
-    wine_fn_all_rules dlls/Makeimplib.rules
+    wine_fn_all_rules Make.rules.in
     wine_fn_clean_rules
 
     wine_fn_append_rule \
@@ -393,14 +393,14 @@ wine_fn_config_dll ()
               dnl enable_win16 is special in that it disables import libs too
               [if wine_fn_has_flag implib && test "$ac_enable" != enable_win16
                then
-                   wine_fn_depend_rules dlls/Makedll.rules
+                   wine_fn_depend_rules Make.rules.in
                    wine_fn_clean_rules $ac_clean
                else
                    wine_fn_disabled_rules $ac_clean
                    return
                fi],
 
-              [wine_fn_all_rules dlls/Makedll.rules
+              [wine_fn_all_rules Make.rules.in
                wine_fn_clean_rules $ac_clean
                wine_fn_append_rule \
 "$ac_dir: __builddeps__
@@ -453,7 +453,7 @@ $ac_dir/uninstall::
 	\$(RM) \$(DESTDIR)\$(dlldir)/lib$ac_implib.$STATIC_IMPLIBEXT"
         fi
 
-        if test "x$CROSSTEST_DISABLE" = x
+        if test -n "$CROSSTARGET"
         then
             wine_fn_append_rule \
 "__builddeps__: $ac_file.cross.a
@@ -476,7 +476,7 @@ $ac_dir/uninstall::
 	\$(RM) \$(DESTDIR)\$(dlldir)/lib$ac_implib.$IMPLIBEXT
 install install-dev:: $ac_dir/install-dev
 __uninstall__: $ac_dir/uninstall"
-        if test "x$CROSSTEST_DISABLE" = x
+        if test -n "$CROSSTARGET"
         then
             wine_fn_append_rule \
 "__builddeps__: $ac_file.cross.a
@@ -492,7 +492,7 @@ dlls/lib$ac_implib.$IMPLIBEXT: $ac_file.$IMPLIBEXT
 	\$(RM) \$[@] && \$(LN_S) $ac_name/lib$ac_implib.$IMPLIBEXT \$[@]
 clean::
 	\$(RM) dlls/lib$ac_implib.$IMPLIBEXT"
-            if test "x$CROSSTEST_DISABLE" = x
+            if test -n "$CROSSTARGET"
             then
                 wine_fn_append_rule \
 "__builddeps__: dlls/lib$ac_implib.cross.a
@@ -524,7 +524,7 @@ wine_fn_config_program ()
 
     AS_VAR_IF([$ac_enable],[no],[wine_fn_disabled_rules $ac_clean; return])
 
-    wine_fn_all_rules programs/Makeprog.rules
+    wine_fn_all_rules Make.rules.in
     wine_fn_clean_rules $ac_clean
     wine_fn_append_rule "$ac_dir: __builddeps__"
     wine_fn_pot_rules
@@ -577,14 +577,14 @@ wine_fn_config_test ()
     ac_flags=$[3]
 
     ac_clean=
-    test "x$CROSSTEST_DISABLE" = x && ac_clean=`expr $ac_dir/${ac_name} : "\\(.*\\)_test"`_crosstest.exe
+    test -n "$CROSSTARGET" && ac_clean=`expr $ac_dir/${ac_name} : "\\(.*\\)_test"`_crosstest.exe
     test -n "$DLLEXT" || ac_clean=$ac_dir/${ac_name}.exe
     ac_clean="$ac_clean $ac_dir/testlist.c"
 
     AS_VAR_IF([enable_tests],[no],[wine_fn_disabled_rules $ac_clean; return])
 
     wine_fn_append_file ALL_TEST_RESOURCES $ac_name.res
-    wine_fn_all_rules Maketest.rules
+    wine_fn_all_rules Make.rules.in
     wine_fn_clean_rules $ac_clean
 
     wine_fn_append_rule \
@@ -597,7 +597,7 @@ $ac_dir/test: dummy
 testclean::
 	\$(RM) $ac_dir/*.ok"
 
-        if test "x$CROSSTEST_DISABLE" = x
+        if test -n "$CROSSTARGET"
         then
             wine_fn_append_rule \
 "crosstest: $ac_dir/crosstest
@@ -653,7 +653,7 @@ distclean::
     wine_fn_append_rule "$ac_linkdir/Makefile $ac_linkdir/depend: $ac_links"
 }
 
-if test "x$CROSSTEST_DISABLE" != x
+if test -z "$CROSSTARGET"
 then
     wine_fn_append_rule \
 "crosstest:
