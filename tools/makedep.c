@@ -37,35 +37,35 @@
 /* Max first-level includes per file */
 #define MAX_INCLUDES 200
 
-typedef struct _INCL_FILE
+struct incl_file
 {
     struct list        entry;
     char              *name;
     char              *filename;
     char              *sourcename;    /* source file name for generated headers */
-    struct _INCL_FILE *included_by;   /* file that included this one */
+    struct incl_file  *included_by;   /* file that included this one */
     int                included_line; /* line where this file was included */
     int                system;        /* is it a system include (#include <name>) */
-    struct _INCL_FILE *owner;
-    struct _INCL_FILE *files[MAX_INCLUDES];
-} INCL_FILE;
+    struct incl_file  *owner;
+    struct incl_file  *files[MAX_INCLUDES];
+};
 
 static struct list sources = LIST_INIT(sources);
 static struct list includes = LIST_INIT(includes);
 
-typedef struct _OBJECT_EXTENSION
+struct object_extension
 {
     struct list entry;
     const char *extension;
-} OBJECT_EXTENSION;
+};
 
 static struct list object_extensions = LIST_INIT(object_extensions);
 
-typedef struct _INCL_PATH
+struct incl_path
 {
     struct list entry;
     const char *name;
-} INCL_PATH;
+};
 
 static struct list paths = LIST_INIT(paths);
 
@@ -74,11 +74,12 @@ static const char *top_src_dir;
 static const char *top_obj_dir;
 static const char *OutputFileName = "Makefile";
 static const char *Separator = "### Dependencies";
-static const char *ProgramName;
+static const char *input_file_name;
 static int input_line;
+static FILE *output_file;
 
 static const char Usage[] =
-    "Usage: %s [options] [files]\n"
+    "Usage: makedep [options] [files]\n"
     "Options:\n"
     "   -Idir   Search for include files in directory 'dir'\n"
     "   -Cdir   Search for source files in directory 'dir'\n"
@@ -88,6 +89,14 @@ static const char Usage[] =
     "   -sxxx   Use 'xxx' as separator (default: \"### Dependencies\")\n";
 
 
+#ifndef __GNUC__
+#define __attribute__(x)
+#endif
+
+static void fatal_error( const char *msg, ... ) __attribute__ ((__format__ (__printf__, 1, 2)));
+static void fatal_perror( const char *msg, ... ) __attribute__ ((__format__ (__printf__, 1, 2)));
+static int output( const char *format, ... ) __attribute__ ((__format__ (__printf__, 1, 2)));
+
 /*******************************************************************
  *         fatal_error
  */
@@ -95,7 +104,34 @@ static void fatal_error( const char *msg, ... )
 {
     va_list valist;
     va_start( valist, msg );
+    if (input_file_name)
+    {
+        fprintf( stderr, "%s:", input_file_name );
+        if (input_line) fprintf( stderr, "%d:", input_line );
+        fprintf( stderr, " error: " );
+    }
+    else fprintf( stderr, "makedep: error: " );
     vfprintf( stderr, msg, valist );
+    va_end( valist );
+    exit(1);
+}
+
+
+/*******************************************************************
+ *         fatal_perror
+ */
+static void fatal_perror( const char *msg, ... )
+{
+    va_list valist;
+    va_start( valist, msg );
+    if (input_file_name)
+    {
+        fprintf( stderr, "%s:", input_file_name );
+        if (input_line) fprintf( stderr, "%d:", input_line );
+        fprintf( stderr, " error:" );
+    }
+    else fprintf( stderr, "makedep: error:" );
+    perror( " " );
     va_end( valist );
     exit(1);
 }
@@ -108,7 +144,7 @@ static void *xmalloc( size_t size )
 {
     void *res;
     if (!(res = malloc (size ? size : 1)))
-        fatal_error( "%s: error: Virtual memory exhausted.\n", ProgramName );
+        fatal_error( "Virtual memory exhausted.\n" );
     return res;
 }
 
@@ -121,7 +157,7 @@ static void *xrealloc (void *ptr, size_t size)
     void *res;
     assert( size );
     if (!(res = realloc( ptr, size )))
-        fatal_error( "%s: error: Virtual memory exhausted.\n", ProgramName );
+        fatal_error( "Virtual memory exhausted.\n" );
     return res;
 }
 
@@ -131,7 +167,7 @@ static void *xrealloc (void *ptr, size_t size)
 static char *xstrdup( const char *str )
 {
     char *res = strdup( str );
-    if (!res) fatal_error( "%s: error: Virtual memory exhausted.\n", ProgramName );
+    if (!res) fatal_error( "Virtual memory exhausted.\n" );
     return res;
 }
 
@@ -169,6 +205,37 @@ static int strendswith( const char* str, const char* end )
 
     return l >= m && strcmp(str + l - m, end) == 0;
 }
+
+
+/*******************************************************************
+ *         output
+ */
+static int output( const char *format, ... )
+{
+    int ret;
+    va_list valist;
+
+    va_start( valist, format );
+    ret = vfprintf( output_file, format, valist );
+    va_end( valist );
+    if (ret < 0) fatal_perror( "output" );
+    return ret;
+}
+
+
+/*******************************************************************
+ *         output_filename
+ */
+static void output_filename( const char *name, int *column )
+{
+    if (*column + strlen(name) + 1 > 100)
+    {
+        output( " \\\n" );
+        *column = 0;
+    }
+    *column += output( " %s", name );
+}
+
 
 /*******************************************************************
  *         get_extension
@@ -232,7 +299,7 @@ static char *get_line( FILE *file )
  */
 static void add_object_extension( const char *ext )
 {
-    OBJECT_EXTENSION *object_extension = xmalloc( sizeof(*object_extension) );
+    struct object_extension *object_extension = xmalloc( sizeof(*object_extension) );
     list_add_tail( &object_extensions, &object_extension->entry );
     object_extension->extension = ext;
 }
@@ -244,7 +311,7 @@ static void add_object_extension( const char *ext )
  */
 static void add_include_path( const char *name )
 {
-    INCL_PATH *path = xmalloc( sizeof(*path) );
+    struct incl_path *path = xmalloc( sizeof(*path) );
     list_add_tail( &paths, &path->entry );
     path->name = name;
 }
@@ -252,11 +319,11 @@ static void add_include_path( const char *name )
 /*******************************************************************
  *         find_src_file
  */
-static INCL_FILE *find_src_file( const char *name )
+static struct incl_file *find_src_file( const char *name )
 {
-    INCL_FILE *file;
+    struct incl_file *file;
 
-    LIST_FOR_EACH_ENTRY( file, &sources, INCL_FILE, entry )
+    LIST_FOR_EACH_ENTRY( file, &sources, struct incl_file, entry )
         if (!strcmp( name, file->name )) return file;
     return NULL;
 }
@@ -264,11 +331,11 @@ static INCL_FILE *find_src_file( const char *name )
 /*******************************************************************
  *         find_include_file
  */
-static INCL_FILE *find_include_file( const char *name )
+static struct incl_file *find_include_file( const char *name )
 {
-    INCL_FILE *file;
+    struct incl_file *file;
 
-    LIST_FOR_EACH_ENTRY( file, &includes, INCL_FILE, entry )
+    LIST_FOR_EACH_ENTRY( file, &includes, struct incl_file, entry )
         if (!strcmp( name, file->name )) return file;
     return NULL;
 }
@@ -278,55 +345,47 @@ static INCL_FILE *find_include_file( const char *name )
  *
  * Add an include file if it doesn't already exists.
  */
-static INCL_FILE *add_include( INCL_FILE *pFile, const char *name, int line, int system )
+static struct incl_file *add_include( struct incl_file *pFile, const char *name, int system )
 {
-    INCL_FILE *include;
+    struct incl_file *include;
     char *ext;
     int pos;
 
     for (pos = 0; pos < MAX_INCLUDES; pos++) if (!pFile->files[pos]) break;
     if (pos >= MAX_INCLUDES)
-        fatal_error( "%s: %s: error: too many included files, please fix MAX_INCLUDES\n",
-                     ProgramName, pFile->name );
+        fatal_error( "too many included files, please fix MAX_INCLUDES\n" );
 
     /* enforce some rules for the Wine tree */
 
     if (!memcmp( name, "../", 3 ))
-        fatal_error( "%s:%d: error: #include directive with relative path not allowed\n",
-                     pFile->filename, line );
+        fatal_error( "#include directive with relative path not allowed\n" );
 
     if (!strcmp( name, "config.h" ))
     {
         if ((ext = strrchr( pFile->filename, '.' )) && !strcmp( ext, ".h" ))
-            fatal_error( "%s:%d: error: config.h must not be included by a header file\n",
-                         pFile->filename, line );
+            fatal_error( "config.h must not be included by a header file\n" );
         if (pos)
-            fatal_error( "%s:%d: error: config.h must be included before anything else\n",
-                         pFile->filename, line );
+            fatal_error( "config.h must be included before anything else\n" );
     }
     else if (!strcmp( name, "wine/port.h" ))
     {
         if ((ext = strrchr( pFile->filename, '.' )) && !strcmp( ext, ".h" ))
-            fatal_error( "%s:%d: error: wine/port.h must not be included by a header file\n",
-                         pFile->filename, line );
-        if (!pos) fatal_error( "%s:%d: error: config.h must be included before wine/port.h\n",
-                               pFile->filename, line );
+            fatal_error( "wine/port.h must not be included by a header file\n" );
+        if (!pos) fatal_error( "config.h must be included before wine/port.h\n" );
         if (pos > 1)
-            fatal_error( "%s:%d: error: wine/port.h must be included before everything except config.h\n",
-                         pFile->filename, line );
+            fatal_error( "wine/port.h must be included before everything except config.h\n" );
         if (strcmp( pFile->files[0]->name, "config.h" ))
-            fatal_error( "%s:%d: error: config.h must be included before wine/port.h\n",
-                         pFile->filename, line );
+            fatal_error( "config.h must be included before wine/port.h\n" );
     }
 
-    LIST_FOR_EACH_ENTRY( include, &includes, INCL_FILE, entry )
+    LIST_FOR_EACH_ENTRY( include, &includes, struct incl_file, entry )
         if (!strcmp( name, include->name )) goto found;
 
-    include = xmalloc( sizeof(INCL_FILE) );
-    memset( include, 0, sizeof(INCL_FILE) );
+    include = xmalloc( sizeof(*include) );
+    memset( include, 0, sizeof(*include) );
     include->name = xstrdup(name);
     include->included_by = pFile;
-    include->included_line = line;
+    include->included_line = input_line;
     include->system = system;
     list_add_tail( &includes, &include->entry );
 found:
@@ -338,7 +397,7 @@ found:
 /*******************************************************************
  *         open_src_file
  */
-static FILE *open_src_file( INCL_FILE *pFile )
+static FILE *open_src_file( struct incl_file *pFile )
 {
     FILE *file;
 
@@ -354,12 +413,7 @@ static FILE *open_src_file( INCL_FILE *pFile )
         pFile->filename = strmake( "%s/%s", src_dir, pFile->name );
         file = fopen( pFile->filename, "r" );
     }
-    if (!file)
-    {
-        fprintf( stderr, "%s: error: ", ProgramName );
-        perror( pFile->name );
-        exit(1);
-    }
+    if (!file) fatal_perror( "open %s", pFile->name );
     return file;
 }
 
@@ -367,11 +421,11 @@ static FILE *open_src_file( INCL_FILE *pFile )
 /*******************************************************************
  *         open_include_file
  */
-static FILE *open_include_file( INCL_FILE *pFile )
+static FILE *open_include_file( struct incl_file *pFile )
 {
     FILE *file = NULL;
     char *filename, *p;
-    INCL_PATH *path;
+    struct incl_path *path;
 
     errno = ENOENT;
 
@@ -509,7 +563,7 @@ static FILE *open_include_file( INCL_FILE *pFile )
     }
 
     /* now search in include paths */
-    LIST_FOR_EACH_ENTRY( path, &paths, INCL_PATH, entry )
+    LIST_FOR_EACH_ENTRY( path, &paths, struct incl_path, entry )
     {
         filename = strmake( "%s/%s", path->name, pFile->name );
         if ((file = fopen( filename, "r" ))) goto found;
@@ -553,18 +607,18 @@ found:
  * If for_h_file is non-zero, it means we are not interested in the idl file
  * itself, but only in the contents of the .h file that will be generated from it.
  */
-static void parse_idl_file( INCL_FILE *pFile, FILE *file, int for_h_file )
+static void parse_idl_file( struct incl_file *pFile, FILE *file, int for_h_file )
 {
     char *buffer, *include;
 
+    input_line = 0;
     if (for_h_file)
     {
         /* generated .h file always includes these */
-        add_include( pFile, "rpc.h", 0, 1 );
-        add_include( pFile, "rpcndr.h", 0, 1 );
+        add_include( pFile, "rpc.h", 1 );
+        add_include( pFile, "rpcndr.h", 1 );
     }
 
-    input_line = 0;
     while ((buffer = get_line( file )))
     {
         char quote;
@@ -578,11 +632,10 @@ static void parse_idl_file( INCL_FILE *pFile, FILE *file, int for_h_file )
             if (*p != '"') continue;
             include = ++p;
             while (*p && (*p != '"')) p++;
-            if (!*p) fatal_error( "%s:%d: error: Malformed import directive\n",
-                                  pFile->filename, input_line );
+            if (!*p) fatal_error( "malformed import directive\n" );
             *p = 0;
             if (for_h_file && strendswith( include, ".idl" )) strcpy( p - 4, ".h" );
-            add_include( pFile, include, input_line, 0 );
+            add_include( pFile, include, 0 );
             continue;
         }
 
@@ -612,11 +665,10 @@ static void parse_idl_file( INCL_FILE *pFile, FILE *file, int for_h_file )
             include = p;
             while (*p && (*p != quote)) p++;
             if (!*p || (quote == '"' && p[-1] != '\\'))
-                fatal_error( "%s:%d: error: Malformed #include directive inside cpp_quote\n",
-                             pFile->filename, input_line );
+                fatal_error( "malformed #include directive inside cpp_quote\n" );
             if (quote == '"') p--;  /* remove backslash */
             *p = 0;
-            add_include( pFile, include, input_line, (quote == '>') );
+            add_include( pFile, include, (quote == '>') );
             continue;
         }
 
@@ -631,17 +683,16 @@ static void parse_idl_file( INCL_FILE *pFile, FILE *file, int for_h_file )
         if (quote == '<') quote = '>';
         include = p;
         while (*p && (*p != quote)) p++;
-        if (!*p) fatal_error( "%s:%d: error: Malformed #include directive\n",
-                              pFile->filename, input_line );
+        if (!*p) fatal_error( "malformed #include directive\n" );
         *p = 0;
-        add_include( pFile, include, input_line, (quote == '>') );
+        add_include( pFile, include, (quote == '>') );
     }
 }
 
 /*******************************************************************
  *         parse_c_file
  */
-static void parse_c_file( INCL_FILE *pFile, FILE *file )
+static void parse_c_file( struct incl_file *pFile, FILE *file )
 {
     char *buffer, *include;
 
@@ -662,10 +713,9 @@ static void parse_c_file( INCL_FILE *pFile, FILE *file )
         if (quote == '<') quote = '>';
         include = p;
         while (*p && (*p != quote)) p++;
-        if (!*p) fatal_error( "%s:%d: error: Malformed #include directive\n",
-                              pFile->filename, input_line );
+        if (!*p) fatal_error( "malformed #include directive\n" );
         *p = 0;
-        add_include( pFile, include, input_line, (quote == '>') );
+        add_include( pFile, include, (quote == '>') );
     }
 }
 
@@ -673,7 +723,7 @@ static void parse_c_file( INCL_FILE *pFile, FILE *file )
 /*******************************************************************
  *         parse_rc_file
  */
-static void parse_rc_file( INCL_FILE *pFile, FILE *file )
+static void parse_rc_file( struct incl_file *pFile, FILE *file )
 {
     char *buffer, *include;
 
@@ -703,7 +753,7 @@ static void parse_rc_file( INCL_FILE *pFile, FILE *file )
                 while (*p && !isspace(*p) && *p != '*') p++;
             }
             if (!*p)
-                fatal_error( "%s:%d: error: Malformed makedep comment\n", pFile->filename, input_line );
+                fatal_error( "malformed makedep comment\n" );
             *p = 0;
         }
         else  /* check for #include */
@@ -718,11 +768,10 @@ static void parse_rc_file( INCL_FILE *pFile, FILE *file )
             if (quote == '<') quote = '>';
             include = p;
             while (*p && (*p != quote)) p++;
-            if (!*p) fatal_error( "%s:%d: error: Malformed #include directive\n",
-                                  pFile->filename, input_line );
+            if (!*p) fatal_error( "malformed #include directive\n" );
             *p = 0;
         }
-        add_include( pFile, include, input_line, (quote == '>') );
+        add_include( pFile, include, (quote == '>') );
     }
 }
 
@@ -730,7 +779,7 @@ static void parse_rc_file( INCL_FILE *pFile, FILE *file )
 /*******************************************************************
  *         parse_generated_idl
  */
-static void parse_generated_idl( INCL_FILE *source )
+static void parse_generated_idl( struct incl_file *source )
 {
     char *header, *basename;
 
@@ -741,30 +790,25 @@ static void parse_generated_idl( INCL_FILE *source )
 
     if (strendswith( source->name, "_c.c" ))
     {
-        add_include( source, header, 0, 0 );
+        add_include( source, header, 0 );
     }
     else if (strendswith( source->name, "_i.c" ))
     {
-        add_include( source, "rpc.h", 0, 1 );
-        add_include( source, "rpcndr.h", 0, 1 );
-        add_include( source, "guiddef.h", 0, 1 );
+        add_include( source, "rpc.h", 1 );
+        add_include( source, "rpcndr.h", 1 );
+        add_include( source, "guiddef.h", 1 );
     }
     else if (strendswith( source->name, "_p.c" ))
     {
-        add_include( source, "objbase.h", 0, 1 );
-        add_include( source, "rpcproxy.h", 0, 1 );
-        add_include( source, "wine/exception.h", 0, 1 );
-        add_include( source, header, 0, 0 );
+        add_include( source, "objbase.h", 1 );
+        add_include( source, "rpcproxy.h", 1 );
+        add_include( source, "wine/exception.h", 1 );
+        add_include( source, header, 0 );
     }
     else if (strendswith( source->name, "_s.c" ))
     {
-        add_include( source, "wine/exception.h", 0, 1 );
-        add_include( source, header, 0, 0 );
-    }
-    else if (!strcmp( source->name, "dlldata.c" ))
-    {
-        add_include( source, "objbase.h", 0, 1 );
-        add_include( source, "rpcproxy.h", 0, 1 );
+        add_include( source, "wine/exception.h", 1 );
+        add_include( source, header, 0 );
     }
 
     free( header );
@@ -774,46 +818,70 @@ static void parse_generated_idl( INCL_FILE *source )
 /*******************************************************************
  *         parse_file
  */
-static void parse_file( INCL_FILE *pFile, int src )
+static void parse_file( struct incl_file *source, int src )
 {
     FILE *file;
 
     /* special case for source files generated from idl */
-    if (strendswith( pFile->name, "_c.c" ) ||
-        strendswith( pFile->name, "_i.c" ) ||
-        strendswith( pFile->name, "_p.c" ) ||
-        strendswith( pFile->name, "_s.c" ) ||
-        !strcmp( pFile->name, "dlldata.c" ))
+    if (strendswith( source->name, "_c.c" ) ||
+        strendswith( source->name, "_i.c" ) ||
+        strendswith( source->name, "_p.c" ) ||
+        strendswith( source->name, "_s.c" ))
     {
-        parse_generated_idl( pFile );
+        parse_generated_idl( source );
+        return;
+    }
+
+    if (!strcmp( source->name, "dlldata.o" ))
+    {
+        source->filename = xstrdup( "dlldata.c" );
+        add_include( source, "objbase.h", 1 );
+        add_include( source, "rpcproxy.h", 1 );
+        return;
+    }
+
+    if (!strcmp( source->name, "testlist.o" ))
+    {
+        source->filename = xstrdup( "testlist.c" );
+        add_include( source, "wine/test.h", 1 );
+        return;
+    }
+
+    if (strendswith( source->name, ".o" ))
+    {
+        /* default to .c for unknown extra object files */
+        source->filename = xstrdup( source->name );
+        source->filename[strlen(source->filename) - 1] = 'c';
         return;
     }
 
     /* don't try to open certain types of files */
-    if (strendswith( pFile->name, ".tlb" ) ||
-        strendswith( pFile->name, ".res" ) ||
-        strendswith( pFile->name, ".x" ))
+    if (strendswith( source->name, ".tlb" ) ||
+        strendswith( source->name, ".res" ) ||
+        strendswith( source->name, ".x" ))
     {
-        pFile->filename = xstrdup( pFile->name );
+        source->filename = xstrdup( source->name );
         return;
     }
 
-    file = src ? open_src_file( pFile ) : open_include_file( pFile );
+    file = src ? open_src_file( source ) : open_include_file( source );
     if (!file) return;
+    input_file_name = source->filename;
 
-    if (pFile->sourcename && strendswith( pFile->sourcename, ".idl" ))
-        parse_idl_file( pFile, file, 1 );
-    else if (strendswith( pFile->filename, ".idl" ))
-        parse_idl_file( pFile, file, 0 );
-    else if (strendswith( pFile->filename, ".c" ) ||
-             strendswith( pFile->filename, ".m" ) ||
-             strendswith( pFile->filename, ".h" ) ||
-             strendswith( pFile->filename, ".l" ) ||
-             strendswith( pFile->filename, ".y" ))
-        parse_c_file( pFile, file );
-    else if (strendswith( pFile->filename, ".rc" ))
-        parse_rc_file( pFile, file );
+    if (source->sourcename && strendswith( source->sourcename, ".idl" ))
+        parse_idl_file( source, file, 1 );
+    else if (strendswith( source->filename, ".idl" ))
+        parse_idl_file( source, file, 0 );
+    else if (strendswith( source->filename, ".c" ) ||
+             strendswith( source->filename, ".m" ) ||
+             strendswith( source->filename, ".h" ) ||
+             strendswith( source->filename, ".l" ) ||
+             strendswith( source->filename, ".y" ))
+        parse_c_file( source, file );
+    else if (strendswith( source->filename, ".rc" ))
+        parse_rc_file( source, file );
     fclose(file);
+    input_file_name = NULL;
 }
 
 
@@ -822,9 +890,9 @@ static void parse_file( INCL_FILE *pFile, int src )
  *
  * Add a source file to the list.
  */
-static INCL_FILE *add_src_file( const char *name )
+static struct incl_file *add_src_file( const char *name )
 {
-    INCL_FILE *file;
+    struct incl_file *file;
 
     if (find_src_file( name )) return NULL;  /* we already have it */
     file = xmalloc( sizeof(*file) );
@@ -839,56 +907,55 @@ static INCL_FILE *add_src_file( const char *name )
 /*******************************************************************
  *         output_include
  */
-static void output_include( FILE *file, INCL_FILE *pFile,
-                            INCL_FILE *owner, int *column )
+static void output_include( struct incl_file *pFile, struct incl_file *owner, int *column )
 {
     int i;
 
     if (pFile->owner == owner) return;
     if (!pFile->filename) return;
     pFile->owner = owner;
-    if (*column + strlen(pFile->filename) + 1 > 70)
-    {
-        fprintf( file, " \\\n" );
-        *column = 0;
-    }
-    fprintf( file, " %s", pFile->filename );
-    *column += strlen(pFile->filename) + 1;
+    output_filename( pFile->filename, column );
     for (i = 0; i < MAX_INCLUDES; i++)
-        if (pFile->files[i]) output_include( file, pFile->files[i],
-                                             owner, column );
+        if (pFile->files[i]) output_include( pFile->files[i], owner, column );
 }
 
 
 /*******************************************************************
- *         output_src
+ *         output_sources
  */
-static int output_src( FILE *file, INCL_FILE *pFile, int *column )
+static void output_sources(void)
 {
-    char *obj = xstrdup( pFile->name );
-    char *ext = get_extension( obj );
-    if (ext)
+    struct incl_file *source;
+    int i, column;
+
+    LIST_FOR_EACH_ENTRY( source, &sources, struct incl_file, entry )
     {
+        char *obj = xstrdup( source->name );
+        char *ext = get_extension( obj );
+
+        if (!ext) fatal_error( "unsupported file type %s\n", source->name );
         *ext++ = 0;
+        column = 0;
+
         if (!strcmp( ext, "y" ))  /* yacc file */
         {
             /* add source file dependency for parallel makes */
             char *header = strmake( "%s.tab.h", obj );
-            if (find_include_file( header )) fprintf( file, "%s.tab.c: %s\n", obj, header );
+            if (find_include_file( header )) output( "%s.tab.c: %s\n", obj, header );
             free( header );
-            *column += fprintf( file, "%s.tab.o: %s.tab.c", obj, obj );
+            column += output( "%s.tab.o: %s.tab.c", obj, obj );
         }
         else if (!strcmp( ext, "l" ))  /* lex file */
         {
-            *column += fprintf( file, "%s.yy.o: %s.yy.c", obj, obj );
+            column += output( "%s.yy.o: %s.yy.c", obj, obj );
         }
         else if (!strcmp( ext, "rc" ))  /* resource file */
         {
-            *column += fprintf( file, "rsrc.pot %s.res: %s", obj, pFile->filename );
+            column += output( "rsrc.pot %s.res: %s", obj, source->filename );
         }
         else if (!strcmp( ext, "mc" ))  /* message file */
         {
-            *column += fprintf( file, "msg.pot %s.res: %s", obj, pFile->filename );
+            column += output( "msg.pot %s.res: %s", obj, source->filename );
         }
         else if (!strcmp( ext, "idl" ))  /* IDL file */
         {
@@ -897,11 +964,11 @@ static int output_src( FILE *file, INCL_FILE *pFile, int *column )
             const char *suffix = "cips";
 
             name = strmake( "%s.tlb", obj );
-            if (find_src_file( name )) *column += fprintf( file, "%s %s_t.res", name, obj );
+            if (find_src_file( name )) column += output( "%s %s_t.res", name, obj );
             else
             {
                 got_header = 1;
-                *column += fprintf( file, "%s.h", obj );
+                column += output( "%s.h", obj );
             }
             free( name );
 
@@ -910,33 +977,36 @@ static int output_src( FILE *file, INCL_FILE *pFile, int *column )
                 name = strmake( "%s_%c.c", obj, *suffix );
                 if (find_src_file( name ))
                 {
-                    if (!got_header++) *column += fprintf( file, " %s.h", obj );
-                    *column += fprintf( file, " %s", name );
+                    if (!got_header++) column += output( " %s.h", obj );
+                    column += output( " %s", name );
                 }
                 free( name );
                 suffix++;
             }
 
             name = strmake( "%s_r.res", obj );
-            if (find_src_file( name )) *column += fprintf( file, " %s", name );
+            if (find_src_file( name )) column += output( " %s", name );
             free( name );
 
-            *column += fprintf( file, ": %s", pFile->filename );
+            column += output( ": %s", source->filename );
         }
         else if (!strcmp( ext, "tlb" ) || !strcmp( ext, "res" ))
         {
-            return 0;  /* nothing to do for typelib files */
+            continue;  /* nothing to do for typelib files */
         }
         else
         {
-            OBJECT_EXTENSION *ext;
-            LIST_FOR_EACH_ENTRY( ext, &object_extensions, OBJECT_EXTENSION, entry )
-                *column += fprintf( file, "%s.%s ", obj, ext->extension );
-            *column += fprintf( file, ": %s", pFile->filename );
+            struct object_extension *ext;
+            LIST_FOR_EACH_ENTRY( ext, &object_extensions, struct object_extension, entry )
+                column += output( "%s.%s ", obj, ext->extension );
+            column += output( ": %s", source->filename );
         }
+        free( obj );
+
+        for (i = 0; i < MAX_INCLUDES; i++)
+            if (source->files[i]) output_include( source->files[i], source, &column );
+        output( "\n" );
     }
-    free( obj );
-    return 1;
 }
 
 
@@ -961,8 +1031,7 @@ static FILE *create_temp_file( char **tmp_name )
         if (errno != EEXIST) break;
         id += 7777;
     }
-    if (!ret) fatal_error( "%s: error: failed to create output file for '%s'\n",
-                           ProgramName, OutputFileName );
+    if (!ret) fatal_error( "failed to create output file for '%s'\n", OutputFileName );
     *tmp_name = name;
     return ret;
 }
@@ -973,45 +1042,34 @@ static FILE *create_temp_file( char **tmp_name )
  */
 static void output_dependencies(void)
 {
-    INCL_FILE *pFile;
-    int i, column;
-    FILE *file = NULL;
     char *tmp_name = NULL;
 
-    if (Separator && ((file = fopen( OutputFileName, "r" ))))
+    if (Separator && ((output_file = fopen( OutputFileName, "r" ))))
     {
         char buffer[1024];
         FILE *tmp_file = create_temp_file( &tmp_name );
         int found = 0;
 
-        while (fgets( buffer, sizeof(buffer), file ) && !found)
+        while (fgets( buffer, sizeof(buffer), output_file ) && !found)
         {
             if (fwrite( buffer, 1, strlen(buffer), tmp_file ) != strlen(buffer))
-                fatal_error( "%s: error: failed to write to %s\n", ProgramName, tmp_name );
+                fatal_error( "failed to write to %s\n", tmp_name );
             found = !strncmp( buffer, Separator, strlen(Separator) );
         }
-        fclose( file );
-        file = tmp_file;
-        if (!found && list_head(&sources)) fprintf( file, "\n%s\n", Separator );
+        fclose( output_file );
+        output_file = tmp_file;
+        if (!found && list_head(&sources)) output( "\n%s\n", Separator );
     }
     else
     {
-        if (!(file = fopen( OutputFileName, Separator ? "a" : "w" )))
-        {
-            perror( OutputFileName );
-            exit(1);
-        }
+        if (!(output_file = fopen( OutputFileName, Separator ? "a" : "w" )))
+            fatal_perror( "%s", OutputFileName );
     }
-    LIST_FOR_EACH_ENTRY( pFile, &sources, INCL_FILE, entry )
-    {
-        column = 0;
-        if (!output_src( file, pFile, &column )) continue;
-        for (i = 0; i < MAX_INCLUDES; i++)
-            if (pFile->files[i]) output_include( file, pFile->files[i],
-                                                 pFile, &column );
-        fprintf( file, "\n" );
-    }
-    fclose( file );
+
+    output_sources();
+
+    fclose( output_file );
+    output_file = NULL;
 
     if (tmp_name)
     {
@@ -1025,8 +1083,7 @@ static void output_dependencies(void)
         if (ret == -1)
         {
             unlink( tmp_name );
-            fatal_error( "%s: error: failed to rename output file to '%s'\n",
-                         ProgramName, OutputFileName );
+            fatal_error( "failed to rename output file to '%s'\n", OutputFileName );
         }
         free( tmp_name );
     }
@@ -1063,8 +1120,7 @@ static void parse_option( const char *opt )
         if (opt[2]) add_object_extension( opt + 2 );
         break;
     default:
-        fprintf( stderr, "Unknown option '%s'\n", opt );
-        fprintf( stderr, Usage, ProgramName );
+        fprintf( stderr, "Unknown option '%s'\n%s", opt, Usage );
         exit(1);
     }
 }
@@ -1075,12 +1131,9 @@ static void parse_option( const char *opt )
  */
 int main( int argc, char *argv[] )
 {
-    INCL_FILE *pFile;
-    INCL_PATH *path, *next;
+    struct incl_file *pFile;
+    struct incl_path *path, *next;
     int i, j;
-
-    if ((ProgramName = strrchr( argv[0], '/' ))) ProgramName++;
-    else ProgramName = argv[0];
 
     i = 1;
     while (i < argc)
@@ -1103,7 +1156,7 @@ int main( int argc, char *argv[] )
         add_object_extension( "o" );
 
     /* get rid of absolute paths that don't point into the source dir */
-    LIST_FOR_EACH_ENTRY_SAFE( path, next, &paths, INCL_PATH, entry )
+    LIST_FOR_EACH_ENTRY_SAFE( path, next, &paths, struct incl_path, entry )
     {
         if (path->name[0] != '/') continue;
         if (top_src_dir)
@@ -1115,12 +1168,9 @@ int main( int argc, char *argv[] )
         free( path );
     }
 
-    for (i = 1; i < argc; i++)
-    {
-        add_src_file( argv[i] );
-        if (strendswith( argv[i], "_p.c" )) add_src_file( "dlldata.c" );
-    }
-    LIST_FOR_EACH_ENTRY( pFile, &includes, INCL_FILE, entry ) parse_file( pFile, 0 );
+    for (i = 1; i < argc; i++) add_src_file( argv[i] );
+
+    LIST_FOR_EACH_ENTRY( pFile, &includes, struct incl_file, entry ) parse_file( pFile, 0 );
     output_dependencies();
     return 0;
 }

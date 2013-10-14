@@ -157,6 +157,61 @@ void crypt_sip_free(void) DECLSPEC_HIDDEN;
 void root_store_free(void) DECLSPEC_HIDDEN;
 void default_chain_engine_free(void) DECLSPEC_HIDDEN;
 
+typedef struct _CONTEXT_PROPERTY_LIST CONTEXT_PROPERTY_LIST;
+
+typedef struct _context_t context_t;
+
+typedef struct {
+    void (*free)(context_t*);
+} context_vtbl_t;
+
+typedef struct _context_t {
+    const context_vtbl_t *vtbl;
+    LONG ref;
+    struct _context_t *linked;
+    CONTEXT_PROPERTY_LIST *properties;
+} BASE_CONTEXT;
+
+static inline context_t *context_from_ptr(const void *ptr)
+{
+    return (context_t*)ptr-1;
+}
+
+static inline void *context_ptr(context_t *context)
+{
+    return context+1;
+}
+
+typedef struct {
+    context_t base;
+    CERT_CONTEXT ctx;
+} cert_t;
+
+static inline cert_t *cert_from_ptr(const CERT_CONTEXT *ptr)
+{
+    return CONTAINING_RECORD(ptr, cert_t, ctx);
+}
+
+typedef struct {
+    context_t base;
+    CRL_CONTEXT ctx;
+} crl_t;
+
+static inline crl_t *crl_from_ptr(const CRL_CONTEXT *ptr)
+{
+    return CONTAINING_RECORD(ptr, crl_t, ctx);
+}
+
+typedef struct {
+    context_t base;
+    CTL_CONTEXT ctx;
+} ctl_t;
+
+static inline ctl_t *ctl_from_ptr(const CTL_CONTEXT *ptr)
+{
+    return CONTAINING_RECORD(ptr, ctl_t, ctx);
+}
+
 /* Some typedefs that make it easier to abstract which type of context we're
  * working with.
  */
@@ -167,7 +222,6 @@ typedef BOOL (WINAPI *AddContextToStoreFunc)(HCERTSTORE hCertStore,
 typedef BOOL (WINAPI *AddEncodedContextToStoreFunc)(HCERTSTORE hCertStore,
  DWORD dwCertEncodingType, const BYTE *pbEncoded, DWORD cbEncoded,
  DWORD dwAddDisposition, const void **ppContext);
-typedef const void *(WINAPI *DuplicateContextFunc)(const void *context);
 typedef const void *(WINAPI *EnumContextsInStoreFunc)(HCERTSTORE hCertStore,
  const void *pPrevContext);
 typedef DWORD (WINAPI *EnumPropertiesFunc)(const void *context, DWORD dwPropId);
@@ -177,7 +231,6 @@ typedef BOOL (WINAPI *SetContextPropertyFunc)(const void *context,
  DWORD dwPropID, DWORD dwFlags, const void *pvData);
 typedef BOOL (WINAPI *SerializeElementFunc)(const void *context, DWORD dwFlags,
  BYTE *pbElement, DWORD *pcbElement);
-typedef BOOL (WINAPI *FreeContextFunc)(const void *context);
 typedef BOOL (WINAPI *DeleteContextFunc)(const void *contex);
 
 /* An abstract context (certificate, CRL, or CTL) interface */
@@ -186,13 +239,11 @@ typedef struct _WINE_CONTEXT_INTERFACE
     CreateContextFunc            create;
     AddContextToStoreFunc        addContextToStore;
     AddEncodedContextToStoreFunc addEncodedToStore;
-    DuplicateContextFunc         duplicate;
     EnumContextsInStoreFunc      enumContextsInStore;
     EnumPropertiesFunc           enumProps;
     GetContextPropertyFunc       getProp;
     SetContextPropertyFunc       setProp;
     SerializeElementFunc         serialize;
-    FreeContextFunc              free;
     DeleteContextFunc            deleteFromStore;
 } WINE_CONTEXT_INTERFACE;
 
@@ -231,9 +282,8 @@ typedef enum _CertStoreType {
     StoreTypeMem,
     StoreTypeCollection,
     StoreTypeProvider,
+    StoreTypeEmpty
 } CertStoreType;
-
-typedef struct _CONTEXT_PROPERTY_LIST CONTEXT_PROPERTY_LIST;
 
 #define WINE_CRYPTCERTSTORE_MAGIC 0x74726563
 
@@ -246,8 +296,12 @@ typedef struct _CONTEXT_PROPERTY_LIST CONTEXT_PROPERTY_LIST;
  */
 
 typedef struct {
-    void (*closeStore)(struct WINE_CRYPTCERTSTORE*,DWORD);
+    void (*addref)(struct WINE_CRYPTCERTSTORE*);
+    DWORD (*release)(struct WINE_CRYPTCERTSTORE*,DWORD);
     BOOL (*control)(struct WINE_CRYPTCERTSTORE*,DWORD,DWORD,void const*);
+    CONTEXT_FUNCS certs;
+    CONTEXT_FUNCS crls;
+    CONTEXT_FUNCS ctls;
 } store_vtbl_t;
 
 typedef struct WINE_CRYPTCERTSTORE
@@ -257,10 +311,6 @@ typedef struct WINE_CRYPTCERTSTORE
     DWORD                       dwOpenFlags;
     CertStoreType               type;
     const store_vtbl_t         *vtbl;
-    /* FIXME: Move to vtbl (requires collections clean up) */
-    CONTEXT_FUNCS               certs;
-    CONTEXT_FUNCS               crls;
-    CONTEXT_FUNCS               ctls;
     CONTEXT_PROPERTY_LIST      *properties;
 } WINECRYPT_CERTSTORE;
 
@@ -338,15 +388,14 @@ DWORD cert_name_to_str_with_indent(DWORD dwCertEncodingType, DWORD indent,
  * which should be one of CERT_CONTEXT, CRL_CONTEXT, or CTL_CONTEXT.
  * Free with Context_Release.
  */
-void *Context_CreateDataContext(size_t contextSize) DECLSPEC_HIDDEN;
+void *Context_CreateDataContext(size_t contextSize, const context_vtbl_t *vtbl) DECLSPEC_HIDDEN;
 
 /* Creates a new link context with extra bytes.  The context refers to linked
  * rather than owning its own properties.  If addRef is TRUE (which ordinarily
  * it should be) linked is addref'd.
  * Free with Context_Release.
  */
-void *Context_CreateLinkContext(unsigned int contextSize, void *linked, unsigned int extra,
- BOOL addRef) DECLSPEC_HIDDEN;
+context_t *Context_CreateLinkContext(unsigned contextSize, context_t *linked, unsigned extra) DECLSPEC_HIDDEN;
 
 /* Returns a pointer to the extra bytes allocated with context, which must be
  * a link context.
@@ -354,7 +403,7 @@ void *Context_CreateLinkContext(unsigned int contextSize, void *linked, unsigned
 void *Context_GetExtra(const void *context, size_t contextSize) DECLSPEC_HIDDEN;
 
 /* Gets the context linked to by context, which must be a link context. */
-void *Context_GetLinkedContext(void *context) DECLSPEC_HIDDEN;
+void *Context_GetLinkedContext(void*) DECLSPEC_HIDDEN;
 
 /* Copies properties from fromContext to toContext. */
 void Context_CopyProperties(const void *to, const void *from) DECLSPEC_HIDDEN;
@@ -364,16 +413,14 @@ void Context_CopyProperties(const void *to, const void *from) DECLSPEC_HIDDEN;
  */
 CONTEXT_PROPERTY_LIST *Context_GetProperties(const void *context) DECLSPEC_HIDDEN;
 
-void Context_AddRef(void *context) DECLSPEC_HIDDEN;
-
-typedef void (*ContextFreeFunc)(void *context);
+void Context_AddRef(context_t*) DECLSPEC_HIDDEN;
 
 /* Decrements context's ref count.  If context is a link context, releases its
  * linked context as well.
  * If a data context has its ref count reach 0, calls dataContextFree on it.
  * Returns FALSE if the reference count is <= 0 when called.
  */
-BOOL Context_Release(void *context, ContextFreeFunc dataContextFree) DECLSPEC_HIDDEN;
+BOOL Context_Release(context_t *context) DECLSPEC_HIDDEN;
 
 /**
  *  Context property list functions
@@ -419,6 +466,9 @@ void *ContextList_Enum(struct ContextList *list, void *pPrev) DECLSPEC_HIDDEN;
 BOOL ContextList_Remove(struct ContextList *list, void *context) DECLSPEC_HIDDEN;
 
 void ContextList_Free(struct ContextList *list) DECLSPEC_HIDDEN;
+
+extern WINECRYPT_CERTSTORE empty_store;
+void init_empty_store(void) DECLSPEC_HIDDEN;
 
 /**
  *  Utilities.

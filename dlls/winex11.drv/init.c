@@ -36,8 +36,6 @@ Display *gdi_display;  /* display to use for all GDI functions */
 /* a few dynamic device caps */
 static int log_pixels_x;  /* pixels per logical inch in x direction */
 static int log_pixels_y;  /* pixels per logical inch in y direction */
-static int horz_size;     /* horz. size of screen in millimeters */
-static int vert_size;     /* vert. size of screen in millimeters */
 static int palette_size;
 
 static Pixmap stock_bitmap_pixmap;  /* phys bitmap for the default stock bitmap */
@@ -94,8 +92,6 @@ static BOOL WINAPI device_init( INIT_ONCE *once, void *param, void **context )
 
     /* Initialize device caps */
     log_pixels_x = log_pixels_y = get_dpi();
-    horz_size = MulDiv( screen_width, 254, log_pixels_x * 10 );
-    vert_size = MulDiv( screen_height, 254, log_pixels_y * 10 );
     return TRUE;
 }
 
@@ -128,8 +124,8 @@ static BOOL X11DRV_CreateDC( PHYSDEV *pdev, LPCWSTR driver, LPCWSTR device,
 
     physDev->depth         = default_visual.depth;
     physDev->color_shifts  = &X11DRV_PALETTE_default_shifts;
-    SetRect( &physDev->dc_rect, 0, 0, virtual_screen_rect.right - virtual_screen_rect.left,
-             virtual_screen_rect.bottom - virtual_screen_rect.top );
+    physDev->dc_rect       = get_virtual_screen_rect();
+    OffsetRect( &physDev->dc_rect, -physDev->dc_rect.left, -physDev->dc_rect.top );
     push_dc_driver( pdev, &physDev->dev, &x11drv_funcs );
     if (xrender_funcs && !xrender_funcs->pCreateDC( pdev, driver, device, output, initData )) return FALSE;
     return TRUE;
@@ -204,17 +200,35 @@ static INT X11DRV_GetDeviceCaps( PHYSDEV dev, INT cap )
     case TECHNOLOGY:
         return DT_RASDISPLAY;
     case HORZSIZE:
-        return horz_size;
+    {
+        RECT primary_rect = get_primary_monitor_rect();
+        return MulDiv( primary_rect.right - primary_rect.left, 254, log_pixels_x * 10 );
+    }
     case VERTSIZE:
-        return vert_size;
+    {
+        RECT primary_rect = get_primary_monitor_rect();
+        return MulDiv( primary_rect.bottom - primary_rect.top, 254, log_pixels_y * 10 );
+    }
     case HORZRES:
-        return screen_width;
+    {
+        RECT primary_rect = get_primary_monitor_rect();
+        return primary_rect.right - primary_rect.left;
+    }
     case VERTRES:
-        return screen_height;
+    {
+        RECT primary_rect = get_primary_monitor_rect();
+        return primary_rect.bottom - primary_rect.top;
+    }
     case DESKTOPHORZRES:
-        return virtual_screen_rect.right - virtual_screen_rect.left;
+    {
+        RECT virtual_rect = get_virtual_screen_rect();
+        return virtual_rect.right - virtual_rect.left;
+    }
     case DESKTOPVERTRES:
-        return virtual_screen_rect.bottom - virtual_screen_rect.top;
+    {
+        RECT virtual_rect = get_virtual_screen_rect();
+        return virtual_rect.bottom - virtual_rect.top;
+    }
     case BITSPIXEL:
         return screen_bpp;
     case PLANES:
