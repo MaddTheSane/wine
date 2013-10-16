@@ -36,7 +36,7 @@ CROSSOBJS = $(OBJS:.o=.cross.o)
 
 # Implicit rules
 
-.SUFFIXES: .mc .rc .res .idl .tlb .h .y .l .tab.c .tab.h .yy.c .ok .man.in .man _c.c _i.c _p.c _s.c _r.res _t.res .cross.o .po .mo @MAINTAINER_MODE@ .sfd .ttf .svg .ico .bmp
+.SUFFIXES: .ok .man.in .man .cross.o .po .mo @MAINTAINER_MODE@ .sfd .ttf .svg .ico .bmp
 
 .c.o:
 	$(CC) -c $(ALLCFLAGS) -o $@ $<
@@ -46,45 +46,6 @@ CROSSOBJS = $(OBJS:.o=.cross.o)
 
 .c.cross.o:
 	$(CROSSCC) -c $(INCLUDES) $(DEFS) -DWINE_CROSSTEST $(CPPFLAGS) $(CFLAGS) -o $@ $<
-
-.y.tab.c:
-	$(BISON) $(BISONFLAGS) -p $*_ -o $@ $<
-
-.y.tab.h:
-	$(BISON) $(BISONFLAGS) -p $*_ -o $*.tab.c -d $<
-
-.l.yy.c:
-	$(FLEX) $(LEXFLAGS) -o$@ $<
-
-.mc.res:
-	$(WMC) -U -O res $(PORCFLAGS) -o $@ $<
-
-.rc.res:
-	$(WRC) $(RCFLAGS) -o $@ $<
-
-.idl.h:
-	$(WIDL) $(IDLFLAGS) -h -o $@ $<
-
-.idl_c.c:
-	$(WIDL) $(IDLFLAGS) -c -o $@ $<
-
-.idl_i.c:
-	$(WIDL) $(IDLFLAGS) -u -o $@ $<
-
-.idl_p.c:
-	$(WIDL) $(IDLFLAGS) -p -o $@ $<
-
-.idl_r.res:
-	$(WIDL) $(IDLFLAGS) -r -o $@ $<
-
-.idl_s.c:
-	$(WIDL) $(IDLFLAGS) -s -o $@ $<
-
-.idl.tlb:
-	$(WIDL) $(TARGETFLAGS) $(IDLFLAGS) -t -o $@ $<
-
-.idl_t.res:
-	$(WIDL) $(TARGETFLAGS) $(IDLFLAGS) -t -o $@ $<
 
 .c.ok:
 	$(RUNTEST) $(RUNTESTFLAGS) $< && touch $@
@@ -103,11 +64,6 @@ CROSSOBJS = $(OBJS:.o=.cross.o)
 
 .po.mo:
 	$(MSGFMT) -o $@ $<
-
-# Rules for IDL files
-
-dlldata.c: $(WIDL) Makefile.in
-	$(WIDL) $(IDLFLAGS) --dlldata-only -o $@ $(IDL_P_SRCS)
 
 # Rules for main module
 
@@ -143,8 +99,8 @@ $(IMPORTLIB:%=lib%.cross.a): $(MAINSPEC) $(IMPLIB_SRCS:.c=.cross.o)
 
 # Rules for dependencies
 
-DEPEND_SRCS = $(C_SRCS) $(OBJC_SRCS) $(RC_SRCS) $(MC_SRCS) \
-              $(IDL_H_SRCS) $(IDL_C_SRCS) $(IDL_I_SRCS) $(IDL_P_SRCS) $(IDL_S_SRCS) \
+DEPEND_SRCS = $(C_SRCS) $(OBJC_SRCS) $(RC_SRCS) $(MC_SRCS) $(PO_SRCS:.rc=.pot) \
+              $(IDL_H_SRCS) $(IDL_C_SRCS) $(IDL_I_SRCS) $(IDL_P_SRCS) $(IDL_R_SRCS) $(IDL_S_SRCS) \
               $(IDL_GEN_C_SRCS) $(IDL_R_SRCS:.idl=_r.res) $(IDL_TLB_SRCS) $(IDL_TLB_SRCS:.idl=.tlb) \
               $(BISON_SRCS) $(LEX_SRCS) $(EXTRA_OBJS)
 
@@ -166,9 +122,6 @@ $(CROSSTESTMODULE): $(CROSSOBJS) Makefile.in
 
 $(WINETEST_RES): $(TESTMODULE_STRIPPED)
 	echo "$(TESTMODULE) TESTRES \"$(TESTMODULE_STRIPPED)\"" | $(WRC) $(RCFLAGS) -o $@
-
-testlist.c: Makefile.in $(MAKECTESTS)
-	$(MAKECTESTS) -o $@ $(C_SRCS)
 
 testclean::
 	$(RM) *.ok
@@ -221,21 +174,5 @@ $(INSTALLDIRS):
 install install-lib install-dev uninstall::
 
 .PHONY: install install-lib install-dev uninstall
-
-# Rules for resources
-
-rsrc.pot: $(WRC)
-	$(WRC) $(RCFLAGS) -O pot -o $@ $(PO_SRCS)
-
-msg.pot: $(WMC)
-	$(WMC) -O pot -o $@ $(MC_SRCS)
-
-$(MC_SRCS:.mc=.res): $(WMC) $(ALL_MO_FILES)
-$(RC_SRCS:.rc=.res): $(WRC)
-$(PO_SRCS:.rc=.res): $(ALL_MO_FILES)
-
-# Misc. rules
-
-$(IDL_GEN_HEADERS) $(IDL_GEN_C_SRCS) $(IDL_TLB_SRCS:.idl=.tlb) $(IDL_TLB_RES) $(IDL_R_SRCS:.idl=_r.res): $(WIDL)
 
 # End of global rules

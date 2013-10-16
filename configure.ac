@@ -2130,6 +2130,7 @@ AC_CHECK_FUNCS(\
 	getprotobyname \
 	getprotobynumber \
 	getservbyport \
+	inet_addr \
 	inet_network \
 	inet_ntop \
 	inet_pton \
@@ -2715,6 +2716,7 @@ WINE_CONFIG_TEST(dlls/atl100/tests)
 WINE_CONFIG_DLL(atl110)
 WINE_CONFIG_DLL(atl80,,[implib])
 WINE_CONFIG_TEST(dlls/atl80/tests)
+WINE_CONFIG_DLL(atl90)
 WINE_CONFIG_DLL(authz)
 WINE_CONFIG_DLL(avicap32,,[implib])
 WINE_CONFIG_DLL(avifil32,,[clean,implib,po])

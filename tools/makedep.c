@@ -96,6 +96,7 @@ static const char Usage[] =
 static void fatal_error( const char *msg, ... ) __attribute__ ((__format__ (__printf__, 1, 2)));
 static void fatal_perror( const char *msg, ... ) __attribute__ ((__format__ (__printf__, 1, 2)));
 static int output( const char *format, ... ) __attribute__ ((__format__ (__printf__, 1, 2)));
+static char *strmake( const char* fmt, ... ) __attribute__ ((__format__ (__printf__, 1, 2)));
 
 /*******************************************************************
  *         fatal_error
@@ -338,6 +339,24 @@ static struct incl_file *find_include_file( const char *name )
     LIST_FOR_EACH_ENTRY( file, &includes, struct incl_file, entry )
         if (!strcmp( name, file->name )) return file;
     return NULL;
+}
+
+/*******************************************************************
+ *         find_target_src_file
+ *
+ * Check if we have a source file as a target for the specified source with a different extension.
+ */
+static struct incl_file *find_target_src_file( const char *name, const char *ext )
+{
+    struct incl_file *ret;
+    char *p, *match = xmalloc( strlen( name ) + strlen( ext ) + 1 );
+
+    strcpy( match, name );
+    if ((p = get_extension( match ))) strcpy( p, ext );
+    else strcat( match, ext );
+    ret = find_src_file( match );
+    free( match );
+    return ret;
 }
 
 /*******************************************************************
@@ -816,6 +835,17 @@ static void parse_generated_idl( struct incl_file *source )
 }
 
 /*******************************************************************
+ *         is_generated_idl
+ */
+static int is_generated_idl( struct incl_file *source )
+{
+    return (strendswith( source->name, "_c.c" ) ||
+            strendswith( source->name, "_i.c" ) ||
+            strendswith( source->name, "_p.c" ) ||
+            strendswith( source->name, "_s.c" ));
+}
+
+/*******************************************************************
  *         parse_file
  */
 static void parse_file( struct incl_file *source, int src )
@@ -823,10 +853,7 @@ static void parse_file( struct incl_file *source, int src )
     FILE *file;
 
     /* special case for source files generated from idl */
-    if (strendswith( source->name, "_c.c" ) ||
-        strendswith( source->name, "_i.c" ) ||
-        strendswith( source->name, "_p.c" ) ||
-        strendswith( source->name, "_s.c" ))
+    if (is_generated_idl( source ))
     {
         parse_generated_idl( source );
         return;
@@ -858,6 +885,7 @@ static void parse_file( struct incl_file *source, int src )
     /* don't try to open certain types of files */
     if (strendswith( source->name, ".tlb" ) ||
         strendswith( source->name, ".res" ) ||
+        strendswith( source->name, ".pot" ) ||
         strendswith( source->name, ".x" ))
     {
         source->filename = xstrdup( source->name );
@@ -926,7 +954,7 @@ static void output_include( struct incl_file *pFile, struct incl_file *owner, in
 static void output_sources(void)
 {
     struct incl_file *source;
-    int i, column;
+    int i, column, po_srcs = 0, mc_srcs = 0;
 
     LIST_FOR_EACH_ENTRY( source, &sources, struct incl_file, entry )
     {
@@ -941,56 +969,97 @@ static void output_sources(void)
         {
             /* add source file dependency for parallel makes */
             char *header = strmake( "%s.tab.h", obj );
-            if (find_include_file( header )) output( "%s.tab.c: %s\n", obj, header );
-            free( header );
+            if (find_include_file( header ))
+            {
+                output( "%s.tab.h: %s\n", obj, source->filename );
+                output( "\t$(BISON) $(BISONFLAGS) -p %s_ -o %s.tab.c -d %s\n",
+                        obj, obj, source->filename );
+                output( "%s.tab.c: %s %s\n", obj, source->filename, header );
+            }
+            else output( "%s.tab.c: %s\n", obj, source->filename );
+
+            output( "\t$(BISON) $(BISONFLAGS) -p %s_ -o $@ %s\n", obj, source->filename );
             column += output( "%s.tab.o: %s.tab.c", obj, obj );
+            free( header );
         }
         else if (!strcmp( ext, "l" ))  /* lex file */
         {
+            output( "%s.yy.c: %s\n", obj, source->filename );
+            output( "\t$(FLEX) $(LEXFLAGS) -o$@ %s\n", source->filename );
             column += output( "%s.yy.o: %s.yy.c", obj, obj );
         }
         else if (!strcmp( ext, "rc" ))  /* resource file */
         {
-            column += output( "rsrc.pot %s.res: %s", obj, source->filename );
+            if (find_target_src_file( source->name, ".pot" ))
+            {
+                output( "%s.res: $(WRC) $(ALL_MO_FILES) %s\n", obj, source->filename );
+                output( "\t$(WRC) $(RCFLAGS) -o $@ %s\n", source->filename );
+                column += output( "%s.res rsrc.pot:", obj );
+                po_srcs++;
+            }
+            else
+            {
+                output( "%s.res: $(WRC) %s\n", obj, source->filename );
+                output( "\t$(WRC) $(RCFLAGS) -o $@ %s\n", source->filename );
+                column += output( "%s.res:", obj );
+            }
         }
         else if (!strcmp( ext, "mc" ))  /* message file */
         {
-            column += output( "msg.pot %s.res: %s", obj, source->filename );
+            output( "%s.res: $(WMC) $(ALL_MO_FILES) %s\n", obj, source->filename );
+            output( "\t$(WMC) -U -O res $(PORCFLAGS) -o $@ %s\n", source->filename );
+            mc_srcs++;
+            column += output( "msg.pot %s.res:", obj );
         }
         else if (!strcmp( ext, "idl" ))  /* IDL file */
         {
-            char *name;
-            int got_header = 0;
-            const char *suffix = "cips";
+            char *targets[8];
+            int nb_targets = 0;
+            char ending[] = "_?.c";
+            const char *suffix;
+            char *header = strmake( "%s.h", obj );
 
-            name = strmake( "%s.tlb", obj );
-            if (find_src_file( name )) column += output( "%s %s_t.res", name, obj );
-            else
+            if (find_target_src_file( source->name, ".tlb" ))
             {
-                got_header = 1;
-                column += output( "%s.h", obj );
-            }
-            free( name );
-
-            while (*suffix)
-            {
-                name = strmake( "%s_%c.c", obj, *suffix );
-                if (find_src_file( name ))
-                {
-                    if (!got_header++) column += output( " %s.h", obj );
-                    column += output( " %s", name );
-                }
-                free( name );
-                suffix++;
+                output( "%s.tlb %s_t.res: $(WIDL)\n", obj, obj );
+                output( "\t$(WIDL) $(TARGETFLAGS) $(IDLFLAGS) -t -o $@ %s\n", source->filename );
+                targets[nb_targets++] = strmake( "%s.tlb", obj );
+                targets[nb_targets++] = strmake( "%s_t.res", obj );
             }
 
-            name = strmake( "%s_r.res", obj );
-            if (find_src_file( name )) column += output( " %s", name );
-            free( name );
+            for (suffix = "cips"; *suffix; suffix++)
+            {
+                ending[1] = *suffix;
+                if (!find_target_src_file( source->name, ending )) continue;
+                output( "%s%s: $(WIDL)\n", obj, ending );
+                output( "\t$(WIDL) $(IDLFLAGS) -%c -o $@ %s\n",
+                        *suffix == 'i' ? 'u' : *suffix, source->filename );
+                targets[nb_targets++] = strmake( "%s%s", obj, ending );
+            }
 
-            column += output( ": %s", source->filename );
+            if (find_target_src_file( source->name, "_r.res" ))
+            {
+                output( "%s_r.res: $(WIDL)\n", obj );
+                output( "\t$(WIDL) $(IDLFLAGS) -r -o $@ %s\n", source->filename );
+                targets[nb_targets++] = strmake( "%s_r.res", obj );
+            }
+
+            if (!nb_targets || find_include_file( header ))
+            {
+                output( "%s.h: $(WIDL)\n", obj );
+                output( "\t$(WIDL) $(IDLFLAGS) -h -o $@ %s\n", source->filename );
+                targets[nb_targets++] = header;
+            }
+            else free( header );
+
+            for (i = 0; i < nb_targets; i++)
+            {
+                column += output( "%s%c", targets[i], i < nb_targets - 1 ? ' ' : ':' );
+                free( targets[i] );
+            }
+            column += output( " %s", source->filename );
         }
-        else if (!strcmp( ext, "tlb" ) || !strcmp( ext, "res" ))
+        else if (!strcmp( ext, "tlb" ) || !strcmp( ext, "res" ) || !strcmp( ext, "pot" ))
         {
             continue;  /* nothing to do for typelib files */
         }
@@ -1005,6 +1074,54 @@ static void output_sources(void)
 
         for (i = 0; i < MAX_INCLUDES; i++)
             if (source->files[i]) output_include( source->files[i], source, &column );
+        output( "\n" );
+    }
+
+    /* rules for files that depend on multiple sources */
+
+    if (po_srcs)
+    {
+        column = output( "rsrc.pot: $(WRC)" );
+        LIST_FOR_EACH_ENTRY( source, &sources, struct incl_file, entry )
+            if (strendswith( source->name, ".rc" ) && find_target_src_file( source->name, ".pot" ))
+                output_filename( source->filename, &column );
+        output( "\n" );
+        column = output( "\t$(WRC) $(RCFLAGS) -O pot -o $@" );
+        LIST_FOR_EACH_ENTRY( source, &sources, struct incl_file, entry )
+            if (strendswith( source->name, ".rc" ) && find_target_src_file( source->name, ".pot" ))
+                output_filename( source->filename, &column );
+        output( "\n" );
+    }
+
+    if (mc_srcs)
+    {
+        column = output( "msg.pot: $(WMC)" );
+        LIST_FOR_EACH_ENTRY( source, &sources, struct incl_file, entry )
+            if (strendswith( source->name, ".mc" )) output_filename( source->filename, &column );
+        output( "\n" );
+        column = output( "\t$(WMC) -O pot -o $@" );
+        LIST_FOR_EACH_ENTRY( source, &sources, struct incl_file, entry )
+            if (strendswith( source->name, ".mc" )) output_filename( source->filename, &column );
+        output( "\n" );
+    }
+
+    if (find_src_file( "dlldata.o" ))
+    {
+        output( "dlldata.c: $(WIDL) Makefile.in\n" );
+        column = output( "\t$(WIDL) $(IDLFLAGS) --dlldata-only -o $@" );
+        LIST_FOR_EACH_ENTRY( source, &sources, struct incl_file, entry )
+            if (strendswith( source->name, ".idl" ) && find_target_src_file( source->name, "_p.c" ))
+                output_filename( source->filename, &column );
+        output( "\n" );
+    }
+
+    if (find_src_file( "testlist.o" ))
+    {
+        output( "testlist.c: $(MAKECTESTS) Makefile.in\n" );
+        column = output( "\t$(MAKECTESTS) -o $@" );
+        LIST_FOR_EACH_ENTRY( source, &sources, struct incl_file, entry )
+            if (strendswith( source->name, ".c" ) && !is_generated_idl( source ))
+                output_filename( source->filename, &column );
         output( "\n" );
     }
 }

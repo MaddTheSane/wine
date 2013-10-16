@@ -662,8 +662,16 @@ static void test_inputdesktop2(void)
     ok(thread_desk != NULL, "GetThreadDesktop failed!\n");
     w1 = GetProcessWindowStation();
     ok(w1 != NULL, "GetProcessWindowStation failed!\n");
+    SetLastError(0xdeadbeef);
     w2 = CreateWindowStation("winsta_test", 0, WINSTA_ALL_ACCESS, NULL);
-    ok(w2 != NULL, "CreateWindowStation failed!\n");
+    ret = GetLastError();
+    ok(w2 != NULL || ret == ERROR_ACCESS_DENIED, "CreateWindowStation failed (%u)\n", ret);
+    if (!w2)
+    {
+        win_skip("Not enough privileges for CreateWindowStation\n");
+        return;
+    }
+
     ret = EnumDesktopsA(GetProcessWindowStation(), desktop_callbackA, 0);
     ok(!ret, "EnumDesktopsA failed!\n");
     input_desk = OpenInputDesktop(0, FALSE, DESKTOP_ALL_ACCESS);
@@ -804,8 +812,30 @@ static void test_foregroundwindow(void)
 
     hdesks[0] = GetThreadDesktop(GetCurrentThreadId());
     ok(hdesks[0] != NULL, "OpenDesktop failed!\n");
+    SetLastError(0xdeadbeef);
     hdesks[1] = CreateDesktop("desk2", NULL, NULL, 0, DESKTOP_ALL_ACCESS, NULL);
-    ok(hdesks[1] != NULL, "CreateDesktop failed!\n");
+    ret = GetLastError();
+    ok(hdesks[1] != NULL || ret == ERROR_ACCESS_DENIED, "CreateDesktop failed (%u)\n", ret);
+    if(!hdesks[1])
+    {
+        win_skip("Not enough privileges for CreateDesktop\n");
+        return;
+    }
+
+    ret = SystemParametersInfo(SPI_GETFOREGROUNDLOCKTIMEOUT, 0, &timeout_old, 0);
+    if(!ret)
+    {
+        win_skip("Skip tests on NT4\n");
+        CloseDesktop(hdesks[1]);
+        return;
+    }
+    trace("old timeout %d\n", timeout_old);
+    timeout = 0;
+    ret = SystemParametersInfo(SPI_SETFOREGROUNDLOCKTIMEOUT, 0, 0, SPIF_SENDCHANGE | SPIF_UPDATEINIFILE);
+    ok(ret, "set foreground lock timeout failed!\n");
+    ret = SystemParametersInfo(SPI_GETFOREGROUNDLOCKTIMEOUT, 0, &timeout, 0);
+    ok(ret, "get foreground lock timeout failed!\n");
+    ok(timeout == 0, "unexpected timeout %d\n", timeout);
 
     for (thread_desk_id = 0; thread_desk_id < DESKTOPS; thread_desk_id++)
     {
@@ -828,16 +858,6 @@ static void test_foregroundwindow(void)
     }
 
     trace("hwnd0 %p hwnd1 %p partner0 %p partner1 %p\n", hwnds[0], hwnds[1], partners[0], partners[1]);
-
-    ret = SystemParametersInfo(SPI_GETFOREGROUNDLOCKTIMEOUT, 0, &timeout_old, 0);
-    ok(ret, "get foreground lock timeout failed!\n");
-    trace("old timeout %d\n", timeout_old);
-    timeout = 0;
-    ret = SystemParametersInfo(SPI_SETFOREGROUNDLOCKTIMEOUT, 0, 0, SPIF_SENDCHANGE | SPIF_UPDATEINIFILE);
-    ok(ret, "set foreground lock timeout failed!\n");
-    ret = SystemParametersInfo(SPI_GETFOREGROUNDLOCKTIMEOUT, 0, &timeout, 0);
-    ok(ret, "get foreground lock timeout failed!\n");
-    ok(timeout == 0, "unexpected timeout %d\n", timeout);
 
     for (hwnd_id = 0; hwnd_id < DESKTOPS; hwnd_id++)
         for (thread_desk_id = 0; thread_desk_id < DESKTOPS; thread_desk_id++)

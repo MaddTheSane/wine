@@ -19,6 +19,8 @@
 #ifndef __CRYPT32_PRIVATE_H__
 #define __CRYPT32_PRIVATE_H__
 
+#include "wine/list.h"
+
 /* a few asn.1 tags we need */
 #define ASN_BOOL            (ASN_UNIVERSAL | ASN_PRIMITIVE | 0x01)
 #define ASN_BITSTRING       (ASN_UNIVERSAL | ASN_PRIMITIVE | 0x03)
@@ -157,12 +159,16 @@ void crypt_sip_free(void) DECLSPEC_HIDDEN;
 void root_store_free(void) DECLSPEC_HIDDEN;
 void default_chain_engine_free(void) DECLSPEC_HIDDEN;
 
+/* (Internal) certificate store types and functions */
+struct WINE_CRYPTCERTSTORE;
+
 typedef struct _CONTEXT_PROPERTY_LIST CONTEXT_PROPERTY_LIST;
 
 typedef struct _context_t context_t;
 
 typedef struct {
     void (*free)(context_t*);
+    struct _context_t *(*clone)(context_t*,struct WINE_CRYPTCERTSTORE*);
 } context_vtbl_t;
 
 typedef struct _context_t {
@@ -170,6 +176,10 @@ typedef struct _context_t {
     LONG ref;
     struct _context_t *linked;
     CONTEXT_PROPERTY_LIST *properties;
+    union {
+        struct list entry;
+        void *ptr;
+    } u;
 } BASE_CONTEXT;
 
 static inline context_t *context_from_ptr(const void *ptr)
@@ -251,9 +261,6 @@ extern const WINE_CONTEXT_INTERFACE *pCertInterface DECLSPEC_HIDDEN;
 extern const WINE_CONTEXT_INTERFACE *pCRLInterface DECLSPEC_HIDDEN;
 extern const WINE_CONTEXT_INTERFACE *pCTLInterface DECLSPEC_HIDDEN;
 
-/* (Internal) certificate store types and functions */
-struct WINE_CRYPTCERTSTORE;
-
 typedef struct WINE_CRYPTCERTSTORE * (*StoreOpenFunc)(HCRYPTPROV hCryptProv,
  DWORD dwFlags, const void *pvPara);
 
@@ -269,13 +276,11 @@ typedef void * (*EnumFunc)(struct WINE_CRYPTCERTSTORE *store, void *pPrev);
 typedef BOOL (*AddFunc)(struct WINE_CRYPTCERTSTORE *store, void *context,
  void *toReplace, const void **ppStoreContext);
 
-typedef BOOL (*DeleteFunc)(struct WINE_CRYPTCERTSTORE *store, void *context);
-
 typedef struct _CONTEXT_FUNCS
 {
     AddFunc    addContext;
     EnumFunc   enumContext;
-    DeleteFunc deleteContext;
+    BOOL (*delete)(struct WINE_CRYPTCERTSTORE*,context_t*);
 } CONTEXT_FUNCS;
 
 typedef enum _CertStoreType {
@@ -390,20 +395,12 @@ DWORD cert_name_to_str_with_indent(DWORD dwCertEncodingType, DWORD indent,
  */
 void *Context_CreateDataContext(size_t contextSize, const context_vtbl_t *vtbl) DECLSPEC_HIDDEN;
 
-/* Creates a new link context with extra bytes.  The context refers to linked
+/* Creates a new link context.  The context refers to linked
  * rather than owning its own properties.  If addRef is TRUE (which ordinarily
  * it should be) linked is addref'd.
  * Free with Context_Release.
  */
-context_t *Context_CreateLinkContext(unsigned contextSize, context_t *linked, unsigned extra) DECLSPEC_HIDDEN;
-
-/* Returns a pointer to the extra bytes allocated with context, which must be
- * a link context.
- */
-void *Context_GetExtra(const void *context, size_t contextSize) DECLSPEC_HIDDEN;
-
-/* Gets the context linked to by context, which must be a link context. */
-void *Context_GetLinkedContext(void*) DECLSPEC_HIDDEN;
+context_t *Context_CreateLinkContext(unsigned contextSize, context_t *linked) DECLSPEC_HIDDEN;
 
 /* Copies properties from fromContext to toContext. */
 void Context_CopyProperties(const void *to, const void *from) DECLSPEC_HIDDEN;
@@ -455,7 +452,7 @@ struct ContextList;
 struct ContextList *ContextList_Create(
  const WINE_CONTEXT_INTERFACE *contextInterface, size_t contextSize) DECLSPEC_HIDDEN;
 
-void *ContextList_Add(struct ContextList *list, void *toLink, void *toReplace) DECLSPEC_HIDDEN;
+void *ContextList_Add(struct ContextList *list, void *toLink, void *toReplace, struct WINE_CRYPTCERTSTORE *store) DECLSPEC_HIDDEN;
 
 void *ContextList_Enum(struct ContextList *list, void *pPrev) DECLSPEC_HIDDEN;
 
@@ -463,7 +460,7 @@ void *ContextList_Enum(struct ContextList *list, void *pPrev) DECLSPEC_HIDDEN;
  * or FALSE if not.  (The context may have been duplicated, so subsequent
  * removes have no effect.)
  */
-BOOL ContextList_Remove(struct ContextList *list, void *context) DECLSPEC_HIDDEN;
+BOOL ContextList_Remove(struct ContextList *list, context_t *context) DECLSPEC_HIDDEN;
 
 void ContextList_Free(struct ContextList *list) DECLSPEC_HIDDEN;
 
