@@ -168,10 +168,10 @@ typedef struct _context_t context_t;
 
 typedef struct {
     void (*free)(context_t*);
-    struct _context_t *(*clone)(context_t*,struct WINE_CRYPTCERTSTORE*);
+    struct _context_t *(*clone)(context_t*,struct WINE_CRYPTCERTSTORE*,BOOL);
 } context_vtbl_t;
 
-typedef struct _context_t {
+struct _context_t {
     const context_vtbl_t *vtbl;
     LONG ref;
     struct _context_t *linked;
@@ -180,7 +180,7 @@ typedef struct _context_t {
         struct list entry;
         void *ptr;
     } u;
-} BASE_CONTEXT;
+};
 
 static inline context_t *context_from_ptr(const void *ptr)
 {
@@ -264,22 +264,16 @@ extern const WINE_CONTEXT_INTERFACE *pCTLInterface DECLSPEC_HIDDEN;
 typedef struct WINE_CRYPTCERTSTORE * (*StoreOpenFunc)(HCRYPTPROV hCryptProv,
  DWORD dwFlags, const void *pvPara);
 
-/* Called to enumerate the next context in a store. */
-typedef void * (*EnumFunc)(struct WINE_CRYPTCERTSTORE *store, void *pPrev);
-
-/* Called to add a context to a store.  If toReplace is not NULL,
- * context replaces toReplace in the store, and access checks should not be
- * performed.  Otherwise context is a new context, and it should only be
- * added if the store allows it.  If ppStoreContext is not NULL, the added
- * context should be returned in *ppStoreContext.
- */
-typedef BOOL (*AddFunc)(struct WINE_CRYPTCERTSTORE *store, void *context,
- void *toReplace, const void **ppStoreContext);
-
 typedef struct _CONTEXT_FUNCS
 {
-    AddFunc    addContext;
-    EnumFunc   enumContext;
+  /* Called to add a context to a store.  If toReplace is not NULL,
+   * context replaces toReplace in the store, and access checks should not be
+   * performed.  Otherwise context is a new context, and it should only be
+   * added if the store allows it.  If ppStoreContext is not NULL, the added
+   * context should be returned in *ppStoreContext.
+   */
+    BOOL (*addContext)(struct WINE_CRYPTCERTSTORE*,context_t*,context_t*,context_t**,BOOL);
+    context_t *(*enumContext)(struct WINE_CRYPTCERTSTORE *store, context_t *prev);
     BOOL (*delete)(struct WINE_CRYPTCERTSTORE*,context_t*);
 } CONTEXT_FUNCS;
 
@@ -405,11 +399,6 @@ context_t *Context_CreateLinkContext(unsigned contextSize, context_t *linked) DE
 /* Copies properties from fromContext to toContext. */
 void Context_CopyProperties(const void *to, const void *from) DECLSPEC_HIDDEN;
 
-/* Returns context's properties, or the linked context's properties if context
- * is a link context.
- */
-CONTEXT_PROPERTY_LIST *Context_GetProperties(const void *context) DECLSPEC_HIDDEN;
-
 void Context_AddRef(context_t*) DECLSPEC_HIDDEN;
 
 /* Decrements context's ref count.  If context is a link context, releases its
@@ -443,26 +432,6 @@ void ContextPropertyList_Copy(CONTEXT_PROPERTY_LIST *to,
  CONTEXT_PROPERTY_LIST *from) DECLSPEC_HIDDEN;
 
 void ContextPropertyList_Free(CONTEXT_PROPERTY_LIST *list) DECLSPEC_HIDDEN;
-
-/**
- *  Context list functions.  A context list is a simple list of link contexts.
- */
-struct ContextList;
-
-struct ContextList *ContextList_Create(
- const WINE_CONTEXT_INTERFACE *contextInterface, size_t contextSize) DECLSPEC_HIDDEN;
-
-void *ContextList_Add(struct ContextList *list, void *toLink, void *toReplace, struct WINE_CRYPTCERTSTORE *store) DECLSPEC_HIDDEN;
-
-void *ContextList_Enum(struct ContextList *list, void *pPrev) DECLSPEC_HIDDEN;
-
-/* Removes a context from the list.  Returns TRUE if the context was removed,
- * or FALSE if not.  (The context may have been duplicated, so subsequent
- * removes have no effect.)
- */
-BOOL ContextList_Remove(struct ContextList *list, context_t *context) DECLSPEC_HIDDEN;
-
-void ContextList_Free(struct ContextList *list) DECLSPEC_HIDDEN;
 
 extern WINECRYPT_CERTSTORE empty_store;
 void init_empty_store(void) DECLSPEC_HIDDEN;

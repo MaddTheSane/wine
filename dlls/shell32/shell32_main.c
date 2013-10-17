@@ -1272,9 +1272,6 @@ BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID fImpLoad)
         GetModuleFileNameW(hinstDLL, swShell32Name, MAX_PATH);
         swShell32Name[MAX_PATH - 1] = '\0';
 
-        InitCommonControlsEx(NULL);
-
-        SIC_Initialize();
         InitChangeNotifications();
         break;
 
