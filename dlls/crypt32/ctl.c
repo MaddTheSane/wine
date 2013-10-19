@@ -48,7 +48,7 @@ static context_t *CTL_clone(context_t *context, WINECRYPT_CERTSTORE *store, BOOL
         return NULL;
     }
 
-    ctl = (ctl_t*)Context_CreateLinkContext(sizeof(CTL_CONTEXT), context);
+    ctl = (ctl_t*)Context_CreateLinkContext(sizeof(CTL_CONTEXT), context, store);
     if(!ctl)
         return NULL;
 
@@ -440,7 +440,7 @@ PCCTL_CONTEXT WINAPI CertCreateCTLContext(DWORD dwMsgAndCertEncodingType,
              &ctlInfo, &size);
             if (ret)
             {
-                ctl = Context_CreateDataContext(sizeof(CTL_CONTEXT), &ctl_vtbl);
+                ctl = Context_CreateDataContext(sizeof(CTL_CONTEXT), &ctl_vtbl, &empty_store);
                 if (ctl)
                 {
                     BYTE *data = CryptMemAlloc(cbCtlEncoded);
@@ -453,7 +453,7 @@ PCCTL_CONTEXT WINAPI CertCreateCTLContext(DWORD dwMsgAndCertEncodingType,
                         ctl->pbCtlEncoded             = data;
                         ctl->cbCtlEncoded             = cbCtlEncoded;
                         ctl->pCtlInfo                 = ctlInfo;
-                        ctl->hCertStore               = NULL;
+                        ctl->hCertStore               = &empty_store;
                         ctl->hCryptMsg                = msg;
                         ctl->pbCtlContext             = content;
                         ctl->cbCtlContext             = contentSize;
@@ -500,13 +500,11 @@ PCCTL_CONTEXT WINAPI CertDuplicateCTLContext(PCCTL_CONTEXT pCtlContext)
 
 BOOL WINAPI CertFreeCTLContext(PCCTL_CONTEXT pCTLContext)
 {
-    BOOL ret = TRUE;
-
     TRACE("(%p)\n", pCTLContext);
 
     if (pCTLContext)
-        ret = Context_Release(&ctl_from_ptr(pCTLContext)->base);
-    return ret;
+        Context_Release(&ctl_from_ptr(pCTLContext)->base);
+    return TRUE;
 }
 
 DWORD WINAPI CertEnumCTLContextProperties(PCCTL_CONTEXT pCTLContext,
