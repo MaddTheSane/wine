@@ -949,24 +949,17 @@ PCCERT_CONTEXT WINAPI CertEnumCertificatesInStore(HCERTSTORE hCertStore, PCCERT_
 
 BOOL WINAPI CertDeleteCertificateFromStore(PCCERT_CONTEXT pCertContext)
 {
-    BOOL ret;
+    WINECRYPT_CERTSTORE *hcs = pCertContext->hCertStore;
 
     TRACE("(%p)\n", pCertContext);
 
     if (!pCertContext)
-        ret = TRUE;
-    else if (!pCertContext->hCertStore)
-        ret = CertFreeCertificateContext(pCertContext);
-    else
-    {
-        WINECRYPT_CERTSTORE *hcs = pCertContext->hCertStore;
+        return TRUE;
 
-        if (hcs->dwMagic != WINE_CRYPTCERTSTORE_MAGIC)
-            ret = FALSE;
-        else
-            ret = hcs->vtbl->certs.delete(hcs, &cert_from_ptr(pCertContext)->base);
-    }
-    return ret;
+    if (hcs->dwMagic != WINE_CRYPTCERTSTORE_MAGIC)
+        return FALSE;
+
+    return hcs->vtbl->certs.delete(hcs, &cert_from_ptr(pCertContext)->base);
 }
 
 BOOL WINAPI CertAddCRLContextToStore(HCERTSTORE hCertStore,
@@ -1074,7 +1067,7 @@ BOOL WINAPI CertAddCRLContextToStore(HCERTSTORE hCertStore,
         if (store) {
             context_t *ret_context;
             ret = store->vtbl->crls.addContext(store, context_from_ptr(toAdd),
-             existing ? context_from_ptr(existing) : NULL, ppStoreContext ? &ret_context : NULL, TRUE);
+             existing ? context_from_ptr(existing) : NULL, ppStoreContext ? &ret_context : NULL, FALSE);
             if (ret && ppStoreContext)
                 *ppStoreContext = context_ptr(ret_context);
         }else if (ppStoreContext) {
@@ -1091,25 +1084,20 @@ BOOL WINAPI CertAddCRLContextToStore(HCERTSTORE hCertStore,
 
 BOOL WINAPI CertDeleteCRLFromStore(PCCRL_CONTEXT pCrlContext)
 {
+    WINECRYPT_CERTSTORE *hcs = pCrlContext->hCertStore;
     BOOL ret;
 
     TRACE("(%p)\n", pCrlContext);
 
     if (!pCrlContext)
-        ret = TRUE;
-    else if (!pCrlContext->hCertStore)
-        ret = CertFreeCRLContext(pCrlContext);
-    else
-    {
-        WINECRYPT_CERTSTORE *hcs = pCrlContext->hCertStore;
+        return TRUE;
 
-        if (hcs->dwMagic != WINE_CRYPTCERTSTORE_MAGIC)
-            ret = FALSE;
-        else
-            ret = hcs->vtbl->crls.delete(hcs, &crl_from_ptr(pCrlContext)->base);
-        if (ret)
-            ret = CertFreeCRLContext(pCrlContext);
-    }
+    if (hcs->dwMagic != WINE_CRYPTCERTSTORE_MAGIC)
+        return FALSE;
+
+    ret = hcs->vtbl->crls.delete(hcs, &crl_from_ptr(pCrlContext)->base);
+    if (ret)
+        ret = CertFreeCRLContext(pCrlContext);
     return ret;
 }
 
