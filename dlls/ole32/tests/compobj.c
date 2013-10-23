@@ -309,19 +309,14 @@ static void test_ProgIDFromCLSID(void)
         static const WCHAR customfontW[] = {'C','u','s','t','o','m','F','o','n','t',0};
 
         hr = ProgIDFromCLSID(&CLSID_non_existent, &progid);
-todo_wine
         ok(hr == S_OK, "got 0x%08x\n", hr);
-        if (hr == S_OK)
-        {
-            ok(!lstrcmpiW(progid, progidW), "got %s\n", wine_dbgstr_w(progid));
-            CoTaskMemFree(progid);
-        }
+        ok(!lstrcmpiW(progid, progidW), "got %s\n", wine_dbgstr_w(progid));
+        CoTaskMemFree(progid);
 
         /* try something registered and redirected */
         progid = NULL;
         hr = ProgIDFromCLSID(&CLSID_StdFont, &progid);
         ok(hr == S_OK, "got 0x%08x\n", hr);
-todo_wine
         ok(!lstrcmpiW(progid, customfontW), "got wrong progid %s\n", wine_dbgstr_w(progid));
         CoTaskMemFree(progid);
 
@@ -1031,7 +1026,6 @@ static void test_CoGetPSClsid(void)
 
     if ((handle = activate_context(actctx_manifest, &cookie)))
     {
-todo_wine {
         memset(&clsid, 0, sizeof(clsid));
         hr = CoGetPSClsid(&IID_Testiface, &clsid);
         ok(hr == S_OK, "got 0x%08x\n", hr);
@@ -1051,7 +1045,15 @@ todo_wine {
         hr = CoGetPSClsid(&IID_Testiface4, &clsid);
         ok(hr == S_OK, "got 0x%08x\n", hr);
         ok(IsEqualGUID(&clsid, &GUID_NULL), "got clsid %s\n", debugstr_guid(&clsid));
-}
+
+        /* register same interface and try to get CLSID back */
+        hr = CoRegisterPSClsid(&IID_Testiface, &IID_Testiface4);
+        ok(hr == S_OK, "got 0x%08x\n", hr);
+        memset(&clsid, 0, sizeof(clsid));
+        hr = CoGetPSClsid(&IID_Testiface, &clsid);
+        ok(hr == S_OK, "got 0x%08x\n", hr);
+        ok(IsEqualGUID(&clsid, &IID_Testiface4), "got clsid %s\n", debugstr_guid(&clsid));
+
         pDeactivateActCtx(0, cookie);
         pReleaseActCtx(handle);
     }

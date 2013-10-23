@@ -1318,6 +1318,9 @@ static void test_demangle(void)
 /* 125 */ {"?_dispatch@_impl_Engine@SalomeApp@@$R4CE@BA@PPPPPPPM@7AE_NAAVomniCallHandle@@@Z",
            "[thunk]:public: virtual bool __thiscall SalomeApp::_impl_Engine::_dispatch`vtordispex{36,16,4294967292,8}' (class omniCallHandle &)",
            "?_dispatch@_impl_Engine@SalomeApp@@$R4CE@BA@PPPPPPPM@7AE_NAAVomniCallHandle@@@Z"},
+/* 126 */ {"?_Doraise@bad_cast@std@@MEBAXXZ", "protected: virtual void __cdecl std::bad_cast::_Doraise(void)", NULL, 0x60},
+/* 127 */ {"??Xstd@@YAAEAV?$complex@M@0@AEAV10@AEBV10@@Z", "class std::complex<float> & ptr64 cdecl std::operator*=(class std::complex<float> & ptr64,class std::complex<float> const & ptr64)", NULL, 1},
+/* 128 */ {"??Xstd@@YAAEAV?$complex@M@0@AEAV10@AEBV10@@Z", "class std::complex<float> & std::operator*=(class std::complex<float> &,class std::complex<float> const &)", NULL, 2},
     };
     int i, num_test = (sizeof(test)/sizeof(test[0]));
     char* name;

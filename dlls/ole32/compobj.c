@@ -123,6 +123,18 @@ struct comclassredirect_data
     DWORD miscstatusdocprint;
 };
 
+struct ifacepsredirect_data
+{
+    ULONG size;
+    DWORD mask;
+    GUID  iid;
+    ULONG nummethods;
+    GUID  tlbid;
+    GUID  base;
+    ULONG name_len;
+    ULONG name_offset;
+};
+
 struct class_reg_data
 {
     union
@@ -2215,6 +2227,7 @@ HRESULT COM_OpenKeyForAppIdFromCLSID(REFCLSID clsid, REGSAM access, HKEY *subkey
 HRESULT WINAPI ProgIDFromCLSID(REFCLSID clsid, LPOLESTR *ppszProgID)
 {
     static const WCHAR wszProgID[] = {'P','r','o','g','I','D',0};
+    ACTCTX_SECTION_KEYED_DATA data;
     HKEY     hkey;
     HRESULT  ret;
     LONG progidlen = 0;
@@ -2226,6 +2239,27 @@ HRESULT WINAPI ProgIDFromCLSID(REFCLSID clsid, LPOLESTR *ppszProgID)
     }
 
     *ppszProgID = NULL;
+
+    data.cbSize = sizeof(data);
+    if (FindActCtxSectionGuid(0, NULL, ACTIVATION_CONTEXT_SECTION_COM_SERVER_REDIRECTION,
+                              clsid, &data))
+    {
+        struct comclassredirect_data *comclass = (struct comclassredirect_data*)data.lpData;
+        if (comclass->progid_len)
+        {
+            WCHAR *ptrW;
+
+            *ppszProgID = CoTaskMemAlloc(comclass->progid_len + sizeof(WCHAR));
+            if (!*ppszProgID) return E_OUTOFMEMORY;
+
+            ptrW = (WCHAR*)((BYTE*)comclass + comclass->progid_offset);
+            memcpy(*ppszProgID, ptrW, comclass->progid_len + sizeof(WCHAR));
+            return S_OK;
+        }
+        else
+            return REGDB_E_CLASSNOTREG;
+    }
+
     ret = COM_OpenKeyForCLSID(clsid, wszProgID, KEY_READ, &hkey);
     if (FAILED(ret))
         return ret;
@@ -2359,6 +2393,7 @@ HRESULT WINAPI CoGetPSClsid(REFIID riid, CLSID *pclsid)
     HKEY hkey;
     APARTMENT *apt = COM_CurrentApt();
     struct registered_psclsid *registered_psclsid;
+    ACTCTX_SECTION_KEYED_DATA data;
 
     TRACE("() riid=%s, pclsid=%p\n", debugstr_guid(riid), pclsid);
 
@@ -2385,6 +2420,15 @@ HRESULT WINAPI CoGetPSClsid(REFIID riid, CLSID *pclsid)
         }
 
     LeaveCriticalSection(&apt->cs);
+
+    data.cbSize = sizeof(data);
+    if (FindActCtxSectionGuid(0, NULL, ACTIVATION_CONTEXT_SECTION_COM_INTERFACE_REDIRECTION,
+                              riid, &data))
+    {
+        struct ifacepsredirect_data *ifaceps = (struct ifacepsredirect_data*)data.lpData;
+        *pclsid = ifaceps->iid;
+        return S_OK;
+    }
 
     /* Interface\\{string form of riid}\\ProxyStubClsid32 */
     strcpyW(path, wszInterface);

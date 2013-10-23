@@ -38,6 +38,7 @@
 extern BOOL skip_single_buffer_flushes DECLSPEC_HIDDEN;
 extern BOOL allow_vsync DECLSPEC_HIDDEN;
 extern BOOL allow_set_gamma DECLSPEC_HIDDEN;
+extern BOOL allow_software_rendering DECLSPEC_HIDDEN;
 extern HMODULE macdrv_module DECLSPEC_HIDDEN;
 
 
@@ -209,8 +210,6 @@ extern void macdrv_status_item_mouse_move(const macdrv_event *event) DECLSPEC_HI
 /**************************************************************************
  * Mac IME driver
  */
-
-extern void IME_RegisterClasses(HINSTANCE hImeInst) DECLSPEC_HIDDEN;
 
 extern BOOL macdrv_process_text_input(UINT vkey, UINT scan, UINT repeat, const BYTE *key_state,
                                       void *himc) DECLSPEC_HIDDEN;

@@ -406,7 +406,12 @@ static BOOL get_modifier(struct parsed_symbol *sym, const char **ret, const char
     *ptr_modif = NULL;
     if (*sym->current == 'E')
     {
-        *ptr_modif = "__ptr64";
+        if (!(sym->flags & UNDNAME_NO_MS_KEYWORDS))
+        {
+            *ptr_modif = "__ptr64";
+            if (sym->flags & UNDNAME_NO_LEADING_UNDERSCORES)
+                *ptr_modif = *ptr_modif + 2;
+        }
         sym->current++;
     }
     switch (*sym->current++)
@@ -429,7 +434,13 @@ static BOOL get_modified_type(struct datatype_t *ct, struct parsed_symbol* sym,
 
     if (*sym->current == 'E')
     {
-        ptr_modif = " __ptr64";
+        if (!(sym->flags & UNDNAME_NO_MS_KEYWORDS))
+        {
+            if (sym->flags & UNDNAME_NO_LEADING_UNDERSCORES)
+                ptr_modif = " ptr64";
+            else
+                ptr_modif = " __ptr64";
+        }
         sym->current++;
     }
 
@@ -1235,6 +1246,7 @@ static BOOL handle_method(struct parsed_symbol* sym, BOOL cast_op)
     mark = sym->stack.num;
     if (has_args && !(args_str = get_args(sym, &array_pmt, TRUE, '(', ')'))) goto done;
     if (sym->flags & UNDNAME_NAME_ONLY) args_str = modifier = NULL;
+    if (sym->flags & UNDNAME_NO_THISTYPE) modifier = NULL;
     sym->stack.num = mark;
 
     /* Note: '()' after 'Z' means 'throws', but we don't care here
