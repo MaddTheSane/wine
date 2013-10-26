@@ -840,10 +840,9 @@ static void test_waittxempty(void)
     SetLastError(0xdeadbeef);
     res = WriteFile(hcom, tbuf, sizeof(tbuf), &bytes, &ovl_write);
     after = GetTickCount();
-todo_wine
-    ok(!res && GetLastError() == ERROR_IO_PENDING, "WriteFile returned %d, error %d\n", res, GetLastError());
-todo_wine
-    ok(!bytes, "expected 0, got %u\n", bytes);
+    ok((!res && GetLastError() == ERROR_IO_PENDING) || (res && bytes == sizeof(tbuf)),
+       "WriteFile returned %d, written %u bytes, error %d\n", res, bytes, GetLastError());
+    if (!res) ok(!bytes, "expected 0, got %u\n", bytes);
     ok(after - before < 30, "WriteFile took %d ms to write %d Bytes at %d Baud\n",
        after - before, bytes, baud);
     /* don't wait for WriteFile completion */
@@ -856,8 +855,7 @@ todo_wine
     SetLastError(0xdeadbeef);
     res = WaitCommEvent(hcom, &evtmask, &ovl_wait);
     ok(!res && GetLastError() == ERROR_IO_PENDING, "WaitCommEvent error %d\n", GetLastError());
-    res = WaitForSingleObject(ovl_wait.hEvent, TIMEOUT);
-todo_wine
+    res = WaitForSingleObject(ovl_wait.hEvent, 1500);
     ok(res == WAIT_OBJECT_0, "WaitCommEvent failed with a timeout\n");
     if (res == WAIT_OBJECT_0)
     {
@@ -879,16 +877,13 @@ todo_wine
         res = FALSE;
     }
     after = GetTickCount();
-todo_wine
     ok(res, "WaitCommEvent error %d\n", GetLastError());
-todo_wine
     ok(evtmask & EV_TXEMPTY, "WaitCommEvent: expected EV_TXEMPTY, got %#x\n", evtmask);
     CloseHandle(ovl_wait.hEvent);
 
     timediff = after - before;
     trace("WaitCommEvent for EV_TXEMPTY took %d ms (timeout %d)\n", timediff, TIMEOUT);
-todo_wine
-    ok(timediff < 900, "WaitCommEvent used %d ms for waiting\n", timediff);
+    ok(timediff < 1200, "WaitCommEvent used %d ms for waiting\n", timediff);
 
     res = WaitForSingleObject(ovl_write.hEvent, 0);
     ok(res == WAIT_OBJECT_0, "WriteFile failed with a timeout\n");
@@ -915,10 +910,9 @@ todo_wine
             before = GetTickCount();
             SetLastError(0xdeadbeef);
             res = WriteFile(hcom, tbuf, sizeof(tbuf), &bytes, &ovl_write);
-todo_wine
-            ok(!res && GetLastError() == ERROR_IO_PENDING, "WriteFile returned %d, error %d\n", res, GetLastError());
-todo_wine
-            ok(!bytes, "expected 0, got %u\n", bytes);
+            ok((!res && GetLastError() == ERROR_IO_PENDING) || (res && bytes == sizeof(tbuf)),
+               "WriteFile returned %d, written %u bytes, error %d\n", res, bytes, GetLastError());
+            if (!res) ok(!bytes, "expected 0, got %u\n", bytes);
 
             ClearCommError(hcom, &errors, &stat);
             ok(stat.cbInQue == 0, "InQueue should be empty, got %d bytes\n", stat.cbInQue);
@@ -945,11 +939,10 @@ todo_wine
         evtmask = 0;
         SetLastError(0xdeadbeef);
         res = WaitCommEvent(hcom, &evtmask, &ovl_wait);
-        ok(!res && GetLastError() == ERROR_IO_PENDING, "%d: WaitCommEvent error %d\n", i, GetLastError());
+        ok((!res && GetLastError() == ERROR_IO_PENDING) || res /* busy system */, "%d: WaitCommEvent error %d\n", i, GetLastError());
 
         res = WaitForSingleObject(ovl_wait.hEvent, TIMEOUT);
         if (i == 0)
-todo_wine
             ok(res == WAIT_OBJECT_0, "WaitCommEvent failed with a timeout\n");
         else
             ok(res == WAIT_TIMEOUT, "WaitCommEvent should fail with a timeout\n");
@@ -2089,8 +2082,7 @@ static void test_read_write(void)
     iob.Information = -1;
     offset.QuadPart = 0;
     status = pNtWriteFile(hcom, 0, NULL, NULL, &iob, atz, sizeof(atz), &offset, NULL);
-todo_wine
-    ok(status == STATUS_PENDING, "expected STATUS_PENDING, got %#x\n", status);
+    ok(status == STATUS_PENDING || status == STATUS_SUCCESS, "expected STATUS_PENDING or STATUS_SUCCESS, got %#x\n", status);
     /* Under Windows checking IO_STATUS_BLOCK right after the call leads
      * to races, iob.Status is either -1 or STATUS_SUCCESS, which means
      * that it's set only when the operation completes.

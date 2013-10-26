@@ -368,14 +368,20 @@ static void test_CLSIDFromProgID(void)
     {
         GUID clsid1;
 
+        memset(&clsid, 0xcc, sizeof(clsid));
+        hr = CLSIDFromProgID(wszNonExistent, &clsid);
+        ok(hr == CO_E_CLASSSTRING, "got 0x%08x\n", hr);
+        ok(IsEqualCLSID(&clsid, &CLSID_NULL), "should have zero CLSID on failure\n");
+
+        /* CLSIDFromString() doesn't check activation context */
+        hr = CLSIDFromString(progidW, &clsid);
+        ok(hr == CO_E_CLASSSTRING, "got 0x%08x\n", hr);
+
         clsid = CLSID_NULL;
         hr = CLSIDFromProgID(progidW, &clsid);
-todo_wine
-        ok(hr == S_OK, "got 0x%08x\n", hr);
-        if (hr == S_OK)
-            /* it returns generated CLSID here */
-            ok(!IsEqualCLSID(&clsid, &CLSID_non_existent) && !IsEqualCLSID(&clsid, &CLSID_NULL),
-                "got wrong clsid %s\n", debugstr_guid(&clsid));
+        /* it returns generated CLSID here */
+        ok(!IsEqualCLSID(&clsid, &CLSID_non_existent) && !IsEqualCLSID(&clsid, &CLSID_NULL),
+                 "got wrong clsid %s\n", debugstr_guid(&clsid));
 
         /* duplicate progid present in context - returns generated guid here too */
         clsid = CLSID_NULL;
@@ -384,7 +390,6 @@ todo_wine
         clsid1 = CLSID_StdFont;
         /* that's where it differs from StdFont */
         clsid1.Data4[7] = 0x52;
-todo_wine
         ok(!IsEqualCLSID(&clsid, &CLSID_StdFont) && !IsEqualCLSID(&clsid, &CLSID_NULL) && !IsEqualCLSID(&clsid, &clsid1),
             "got %s\n", debugstr_guid(&clsid));
 

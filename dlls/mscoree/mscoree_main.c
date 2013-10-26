@@ -249,8 +249,7 @@ __int32 WINAPI _CorExeMain2(PBYTE ptrMemory, DWORD cntMemory, LPWSTR imageName, 
 void WINAPI CorExitProcess(int exitCode)
 {
     TRACE("(%x)\n", exitCode);
-    unload_all_runtimes();
-    ExitProcess(exitCode);
+    CLRMetaHost_ExitProcess(0, exitCode);
 }
 
 VOID WINAPI _CorImageUnloading(PVOID imageBase)
@@ -648,7 +647,7 @@ static void parse_msi_version_string(const char *version, int *parts)
 
 static BOOL install_wine_mono(void)
 {
-    BOOL is_wow64=0;
+    BOOL is_wow64 = FALSE;
     HMODULE hmsi;
     UINT (WINAPI *pMsiGetProductInfoA)(LPCSTR,LPCSTR,LPSTR,DWORD*);
     char versionstringbuf[15];

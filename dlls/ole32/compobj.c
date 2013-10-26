@@ -135,6 +135,13 @@ struct ifacepsredirect_data
     ULONG name_offset;
 };
 
+struct progidredirect_data
+{
+    ULONG size;
+    DWORD reserved;
+    ULONG clsid_offset;
+};
+
 struct class_reg_data
 {
     union
@@ -2066,6 +2073,36 @@ static HRESULT __CLSIDFromString(LPCWSTR s, LPCLSID id)
 
 /*****************************************************************************/
 
+static HRESULT clsid_from_string_reg(LPCOLESTR progid, CLSID *clsid)
+{
+    static const WCHAR clsidW[] = { '\\','C','L','S','I','D',0 };
+    WCHAR buf2[CHARS_IN_GUID];
+    LONG buf2len = sizeof(buf2);
+    HKEY xhkey;
+    WCHAR *buf;
+
+    memset(clsid, 0, sizeof(*clsid));
+    buf = HeapAlloc( GetProcessHeap(),0,(strlenW(progid)+8) * sizeof(WCHAR) );
+    strcpyW( buf, progid );
+    strcatW( buf, clsidW );
+    if (open_classes_key(HKEY_CLASSES_ROOT, buf, MAXIMUM_ALLOWED, &xhkey))
+    {
+        HeapFree(GetProcessHeap(),0,buf);
+        WARN("couldn't open key for ProgID %s\n", debugstr_w(progid));
+        return CO_E_CLASSSTRING;
+    }
+    HeapFree(GetProcessHeap(),0,buf);
+
+    if (RegQueryValueW(xhkey,NULL,buf2,&buf2len))
+    {
+        RegCloseKey(xhkey);
+        WARN("couldn't query clsid value for ProgID %s\n", debugstr_w(progid));
+        return CO_E_CLASSSTRING;
+    }
+    RegCloseKey(xhkey);
+    return __CLSIDFromString(buf2,clsid);
+}
+
 HRESULT WINAPI CLSIDFromString(LPCOLESTR idstr, LPCLSID id )
 {
     HRESULT ret;
@@ -2076,7 +2113,7 @@ HRESULT WINAPI CLSIDFromString(LPCOLESTR idstr, LPCLSID id )
     ret = __CLSIDFromString(idstr, id);
     if(ret != S_OK) { /* It appears a ProgID is also valid */
         CLSID tmp_id;
-        ret = CLSIDFromProgID(idstr, &tmp_id);
+        ret = clsid_from_string_reg(idstr, &tmp_id);
         if(SUCCEEDED(ret))
             *id = tmp_id;
     }
@@ -2301,11 +2338,7 @@ HRESULT WINAPI ProgIDFromCLSID(REFCLSID clsid, LPOLESTR *ppszProgID)
  */
 HRESULT WINAPI CLSIDFromProgID(LPCOLESTR progid, LPCLSID clsid)
 {
-    static const WCHAR clsidW[] = { '\\','C','L','S','I','D',0 };
-    WCHAR buf2[CHARS_IN_GUID];
-    LONG buf2len = sizeof(buf2);
-    HKEY xhkey;
-    WCHAR *buf;
+    ACTCTX_SECTION_KEYED_DATA data;
 
     if (!progid || !clsid)
     {
@@ -2313,28 +2346,17 @@ HRESULT WINAPI CLSIDFromProgID(LPCOLESTR progid, LPCLSID clsid)
         return E_INVALIDARG;
     }
 
-    /* initialise clsid in case of failure */
-    memset(clsid, 0, sizeof(*clsid));
-
-    buf = HeapAlloc( GetProcessHeap(),0,(strlenW(progid)+8) * sizeof(WCHAR) );
-    strcpyW( buf, progid );
-    strcatW( buf, clsidW );
-    if (open_classes_key(HKEY_CLASSES_ROOT, buf, MAXIMUM_ALLOWED, &xhkey))
+    data.cbSize = sizeof(data);
+    if (FindActCtxSectionStringW(0, NULL, ACTIVATION_CONTEXT_SECTION_COM_PROGID_REDIRECTION,
+                                 progid, &data))
     {
-        HeapFree(GetProcessHeap(),0,buf);
-        WARN("couldn't open key for ProgID %s\n", debugstr_w(progid));
-        return CO_E_CLASSSTRING;
+        struct progidredirect_data *progiddata = (struct progidredirect_data*)data.lpData;
+        CLSID *alias = (CLSID*)((BYTE*)data.lpSectionBase + progiddata->clsid_offset);
+        *clsid = *alias;
+        return S_OK;
     }
-    HeapFree(GetProcessHeap(),0,buf);
 
-    if (RegQueryValueW(xhkey,NULL,buf2,&buf2len))
-    {
-        RegCloseKey(xhkey);
-        WARN("couldn't query clsid value for ProgID %s\n", debugstr_w(progid));
-        return CO_E_CLASSSTRING;
-    }
-    RegCloseKey(xhkey);
-    return __CLSIDFromString(buf2,clsid);
+    return clsid_from_string_reg(progid, clsid);
 }
 
 /******************************************************************************
