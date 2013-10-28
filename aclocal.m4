@@ -218,20 +218,13 @@ wine_fn_depend_rules ()
     ac_alldeps=$[1]
     ac_makedep="\$(MAKEDEP)"
     ac_input=Make.vars.in:$ac_dir/Makefile.in
-    if test $ac_dir != tools
-    then
-        dnl makedep is in tools so tools makefile cannot depend on it
-        ac_alldeps="$[1] $ac_makedep"
-    else
-        ac_alldeps="$[1] include/config.h"
-    fi
     case $[1] in
       *.in) ac_input=$ac_input:$[1] ;;
       *) ac_makedep="$[1] $ac_makedep" ;;
     esac
 
     wine_fn_append_rule \
-"$ac_dir/Makefile: $ac_dir/Makefile.in Make.vars.in config.status $ac_alldeps
+"$ac_dir/Makefile: $ac_dir/Makefile.in Make.vars.in config.status $ac_alldeps \$(MAKEDEP)
 	@./config.status --file $ac_dir/Makefile:$ac_input && cd $ac_dir && \$(MAKE) depend
 depend: $ac_dir/depend
 .PHONY: $ac_dir/depend
@@ -433,7 +426,7 @@ $ac_dir/uninstall::
 "__builddeps__: $ac_file.$IMPLIBEXT $ac_file.$STATIC_IMPLIBEXT
 $ac_file.$IMPLIBEXT $ac_file.$STATIC_IMPLIBEXT $ac_file.cross.a: $ac_deps
 $ac_file.def: $ac_dir/$ac_name.spec $ac_dir/Makefile \$(WINEBUILD)
-	\$(WINEBUILD) \$(TARGETFLAGS)$ac_implibflags -w --def -o \$[@] --export \$(srcdir)/$ac_dir/$ac_name.spec
+	\$(WINEBUILD) \$(TARGETFLAGS)$ac_implibflags -w --def -o \$[@] --export $srcdir/$ac_dir/$ac_name.spec
 $ac_file.$STATIC_IMPLIBEXT: $ac_dir/Makefile dummy
 	@cd $ac_dir && \$(MAKE) lib$ac_implib.$STATIC_IMPLIBEXT
 .PHONY: $ac_dir/install-dev $ac_dir/uninstall
@@ -466,9 +459,9 @@ $ac_file.cross.a: $ac_dir/Makefile dummy
         wine_fn_append_rule \
 "__builddeps__: $ac_file.$IMPLIBEXT
 $ac_file.def: $ac_dir/$ac_name.spec $ac_dir/Makefile \$(WINEBUILD)
-	\$(WINEBUILD) \$(TARGETFLAGS)$ac_implibflags -w --def -o \$[@] --export \$(srcdir)/$ac_dir/$ac_name.spec
+	\$(WINEBUILD) \$(TARGETFLAGS)$ac_implibflags -w --def -o \$[@] --export $srcdir/$ac_dir/$ac_name.spec
 $ac_file.a: $ac_dir/$ac_name.spec $ac_dir/Makefile \$(WINEBUILD)
-	\$(WINEBUILD) \$(TARGETFLAGS)$ac_implibflags -w --implib -o \$[@] --export \$(srcdir)/$ac_dir/$ac_name.spec
+	\$(WINEBUILD) \$(TARGETFLAGS)$ac_implibflags -w --implib -o \$[@] --export $srcdir/$ac_dir/$ac_name.spec
 .PHONY: $ac_dir/install-dev $ac_dir/uninstall
 $ac_dir/install-dev:: $ac_file.$IMPLIBEXT \$(DESTDIR)\$(dlldir)
 	\$(INSTALL_DATA) $ac_file.$IMPLIBEXT \$(DESTDIR)\$(dlldir)/lib$ac_implib.$IMPLIBEXT
@@ -481,7 +474,7 @@ __uninstall__: $ac_dir/uninstall"
             wine_fn_append_rule \
 "__builddeps__: $ac_file.cross.a
 $ac_file.cross.a: $ac_dir/$ac_name.spec $ac_dir/Makefile \$(WINEBUILD)
-	\$(WINEBUILD) \$(CROSSTARGET:%=-b %)$ac_implibflags -w --implib -o \$[@] --export \$(srcdir)/$ac_dir/$ac_name.spec"
+	\$(WINEBUILD) \$(CROSSTARGET:%=-b %)$ac_implibflags -w --implib -o \$[@] --export $srcdir/$ac_dir/$ac_name.spec"
         fi
 
         if test "$ac_name" != "$ac_implib"
