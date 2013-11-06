@@ -358,6 +358,11 @@ static inline NSUInteger adjusted_modifiers_for_option_behavior(NSUInteger modif
         [[self inputContext] discardMarkedText];
     }
 
+    - (NSFocusRingType) focusRingType
+    {
+        return NSFocusRingTypeNone;
+    }
+
     /*
      * ---------- NSTextInputClient methods ----------
      */
@@ -1634,12 +1639,9 @@ static inline NSUInteger adjusted_modifiers_for_option_behavior(NSUInteger modif
 
     - (void) windowDidEndLiveResize:(NSNotification *)notification
     {
-        macdrv_query* query = macdrv_create_query();
-        query->type = QUERY_RESIZE_END;
-        query->window = (macdrv_window)[self retain];
-
-        [self.queue query:query timeout:0.3];
-        macdrv_release_query(query);
+        macdrv_event* event = macdrv_create_event(WINDOW_RESIZE_ENDED, self);
+        [queue postEvent:event];
+        macdrv_release_event(event);
 
         self.liveResizeDisplayTimer = nil;
     }
@@ -1713,6 +1715,7 @@ static inline NSUInteger adjusted_modifiers_for_option_behavior(NSUInteger modif
         event = macdrv_create_event(WINDOW_FRAME_CHANGED, self);
         event->window_frame_changed.frame = NSRectToCGRect(frame);
         event->window_frame_changed.fullscreen = ([self styleMask] & NSFullScreenWindowMask) != 0;
+        event->window_frame_changed.in_resize = [self inLiveResize];
         [queue postEvent:event];
         macdrv_release_event(event);
 

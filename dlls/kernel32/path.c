@@ -358,6 +358,17 @@ DWORD WINAPI GetLongPathNameW( LPCWSTR shortpath, LPWSTR longpath, DWORD longlen
         for (; *p && *p != '/' && *p != '\\'; p++);
         tmplen = p - (shortpath + sp);
         lstrcpynW(tmplongpath + lp, shortpath + sp, tmplen + 1);
+
+        if (tmplongpath[lp] == '.')
+        {
+            if (tmplen == 1 || (tmplen == 2 && tmplongpath[lp + 1] == '.'))
+            {
+                lp += tmplen;
+                sp += tmplen;
+                continue;
+            }
+        }
+
         /* Check if the file exists and use the existing file name */
         goit = FindFirstFileW(tmplongpath, &wfd);
         if (goit == INVALID_HANDLE_VALUE)
@@ -488,6 +499,16 @@ DWORD WINAPI GetShortPathNameW( LPCWSTR longpath, LPWSTR shortpath, DWORD shortl
         for (; *p && *p != '/' && *p != '\\'; p++);
         tmplen = p - (longpath + lp);
         lstrcpynW(tmpshortpath + sp, longpath + lp, tmplen + 1);
+
+        if (tmpshortpath[sp] == '.')
+        {
+            if (tmplen == 1 || (tmplen == 2 && tmpshortpath[sp + 1] == '.'))
+            {
+                sp += tmplen;
+                lp += tmplen;
+                continue;
+            }
+        }
 
         /* Check if the file exists and use the existing short file name */
         goit = FindFirstFileW(tmpshortpath, &wfd);

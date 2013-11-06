@@ -1689,8 +1689,9 @@ void macdrv_window_frame_changed(HWND hwnd, const macdrv_event *event)
 
     parent = GetAncestor(hwnd, GA_PARENT);
 
-    TRACE("win %p/%p new Cocoa frame %s\n", hwnd, data->cocoa_window,
-          wine_dbgstr_cgrect(event->window_frame_changed.frame));
+    TRACE("win %p/%p new Cocoa frame %s fullscreen %d in_resize %d\n", hwnd, data->cocoa_window,
+          wine_dbgstr_cgrect(event->window_frame_changed.frame),
+          event->window_frame_changed.fullscreen, event->window_frame_changed.in_resize);
 
     rect = rect_from_cgrect(event->window_frame_changed.frame);
     macdrv_mac_to_window_rect(data, &rect);
@@ -1718,7 +1719,13 @@ void macdrv_window_frame_changed(HWND hwnd, const macdrv_event *event)
     if (event->window_frame_changed.fullscreen)
         flags |= SWP_NOSENDCHANGING;
     if (!(flags & SWP_NOSIZE) || !(flags & SWP_NOMOVE))
+    {
+        if (!event->window_frame_changed.in_resize)
+            SendMessageW(hwnd, WM_ENTERSIZEMOVE, 0, 0);
         SetWindowPos(hwnd, 0, rect.left, rect.top, width, height, flags);
+        if (!event->window_frame_changed.in_resize)
+            SendMessageW(hwnd, WM_EXITSIZEMOVE, 0, 0);
+    }
 }
 
 
@@ -1889,6 +1896,18 @@ void macdrv_window_brought_forward(HWND hwnd)
 {
     TRACE("win %p\n", hwnd);
     SetWindowPos(hwnd, HWND_TOP, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+}
+
+
+/***********************************************************************
+ *              macdrv_window_resize_ended
+ *
+ * Handler for WINDOW_RESIZE_ENDED events.
+ */
+void macdrv_window_resize_ended(HWND hwnd)
+{
+    TRACE("hwnd %p\n", hwnd);
+    SendMessageW(hwnd, WM_EXITSIZEMOVE, 0, 0);
 }
 
 
@@ -2071,19 +2090,6 @@ BOOL query_resize_start(HWND hwnd)
     sync_window_min_max_info(hwnd);
     SendMessageW(hwnd, WM_ENTERSIZEMOVE, 0, 0);
 
-    return TRUE;
-}
-
-
-/***********************************************************************
- *              query_resize_end
- *
- * Handler for QUERY_RESIZE_END query.
- */
-BOOL query_resize_end(HWND hwnd)
-{
-    TRACE("hwnd %p\n", hwnd);
-    SendMessageW(hwnd, WM_EXITSIZEMOVE, 0, 0);
     return TRUE;
 }
 

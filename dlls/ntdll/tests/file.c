@@ -89,7 +89,7 @@ static inline BOOL is_signaled( HANDLE obj )
 
 static BOOL create_pipe( HANDLE *read, HANDLE *write, ULONG flags, ULONG size )
 {
-    *read = CreateNamedPipe(PIPENAME, PIPE_ACCESS_INBOUND | flags, PIPE_TYPE_BYTE | PIPE_WAIT,
+    *read = CreateNamedPipeA(PIPENAME, PIPE_ACCESS_INBOUND | flags, PIPE_TYPE_BYTE | PIPE_WAIT,
                             1, size, size, NMPWAIT_USE_DEFAULT_WAIT, NULL);
     ok(*read != INVALID_HANDLE_VALUE, "CreateNamedPipe failed\n");
 
@@ -836,9 +836,9 @@ static void read_file_test(void)
     ResetEvent( event );
     status = pNtReadFile( handle, event, apc, &apc_count, &iosb, buffer, 2, &offset, NULL );
     ok( status == STATUS_END_OF_FILE, "wrong status %x\n", status );
-    todo_wine ok( U(iosb).Status == STATUS_END_OF_FILE, "wrong status %x\n", U(iosb).Status );
-    todo_wine ok( iosb.Information == 0, "wrong info %lu\n", iosb.Information );
-    todo_wine ok( is_signaled( event ), "event is not signaled\n" );
+    ok( U(iosb).Status == STATUS_END_OF_FILE, "wrong status %x\n", U(iosb).Status );
+    ok( iosb.Information == 0, "wrong info %lu\n", iosb.Information );
+    ok( is_signaled( event ), "event is not signaled\n" );
     ok( !apc_count, "apc was called\n" );
     SleepEx( 1, TRUE ); /* alertable sleep */
     ok( !apc_count, "apc was called\n" );
@@ -861,7 +861,7 @@ static void append_file_test(void)
     GetTempPathA( MAX_PATH, path );
     GetTempFileNameA( path, "foo", 0, buffer );
 
-    handle = CreateFile(buffer, FILE_WRITE_DATA, 0, NULL, CREATE_ALWAYS, 0, 0);
+    handle = CreateFileA(buffer, FILE_WRITE_DATA, 0, NULL, CREATE_ALWAYS, 0, 0);
     ok(handle != INVALID_HANDLE_VALUE, "CreateFile error %d\n", GetLastError());
 
     U(iosb).Status = -1;
@@ -875,7 +875,7 @@ static void append_file_test(void)
 
     /* It is possible to open a file with only FILE_APPEND_DATA access flags.
        It matches the O_WRONLY|O_APPEND open() posix behavior */
-    handle = CreateFile(buffer, FILE_APPEND_DATA, 0, NULL, OPEN_EXISTING, 0, 0);
+    handle = CreateFileA(buffer, FILE_APPEND_DATA, 0, NULL, OPEN_EXISTING, 0, 0);
     ok(handle != INVALID_HANDLE_VALUE, "CreateFile error %d\n", GetLastError());
 
     U(iosb).Status = -1;
@@ -902,7 +902,7 @@ static void append_file_test(void)
 
     CloseHandle(handle);
 
-    handle = CreateFile(buffer, FILE_READ_DATA | FILE_WRITE_DATA | FILE_APPEND_DATA, 0, NULL, OPEN_EXISTING, 0, 0);
+    handle = CreateFileA(buffer, FILE_READ_DATA | FILE_WRITE_DATA | FILE_APPEND_DATA, 0, NULL, OPEN_EXISTING, 0, 0);
     ok(handle != INVALID_HANDLE_VALUE, "CreateFile error %d\n", GetLastError());
 
     memset(buf, 0, sizeof(buf));
@@ -936,7 +936,7 @@ static void append_file_test(void)
     ok(memcmp(buf, "barbar", 6) == 0, "wrong file contents: %s\n", buf);
 
     CloseHandle(handle);
-    DeleteFile(buffer);
+    DeleteFileA(buffer);
 }
 
 static void nt_mailslot_test(void)
@@ -2094,9 +2094,7 @@ static void test_read_write(void)
     iob.Information = -1;
     status = pNtReadFile(hfile, 0, NULL, NULL, &iob, buf, sizeof(buf), NULL, NULL);
     ok(status == STATUS_END_OF_FILE, "expected STATUS_END_OF_FILE, got %#x\n", status);
-todo_wine
     ok(U(iob).Status == STATUS_END_OF_FILE, "expected STATUS_END_OF_FILE, got %#x\n", U(iob).Status);
-todo_wine
     ok(iob.Information == 0, "expected 0, got %lu\n", iob.Information);
 
     SetFilePointer(hfile, 0, NULL, FILE_BEGIN);
@@ -2156,7 +2154,6 @@ todo_wine
     ok(!ret, "ReadFile should fail\n");
     ok(GetLastError() == ERROR_HANDLE_EOF, "expected ERROR_HANDLE_EOF, got %d\n", GetLastError());
     ok(bytes == 0, "bytes %u\n", bytes);
-todo_wine
     ok((NTSTATUS)ovl.Internal == STATUS_END_OF_FILE, "expected STATUS_END_OF_FILE, got %#lx\n", ovl.Internal);
     ok(ovl.InternalHigh == 0, "expected 0, got %lu\n", ovl.InternalHigh);
 
@@ -2168,12 +2165,9 @@ todo_wine
     bytes = -1;
     SetLastError(0xdeadbeef);
     ret = ReadFile(hfile, buf, 0, &bytes, &ovl);
-todo_wine
     ok(ret, "ReadFile error %d\n", GetLastError());
-todo_wine
     ok(GetLastError() == 0xdeadbeef, "expected 0xdeadbeef, got %d\n", GetLastError());
     ok(bytes == 0, "bytes %u\n", bytes);
-todo_wine
     ok((NTSTATUS)ovl.Internal == STATUS_SUCCESS, "expected STATUS_SUCCESS, got %#lx\n", ovl.Internal);
     ok(ovl.InternalHigh == 0, "expected 0, got %lu\n", ovl.InternalHigh);
 
@@ -2181,19 +2175,14 @@ todo_wine
     iob.Information = -1;
     status = pNtReadFile(hfile, 0, NULL, NULL, &iob, buf, sizeof(buf), NULL, NULL);
     ok(status == STATUS_END_OF_FILE, "expected STATUS_END_OF_FILE, got %#x\n", status);
-todo_wine
     ok(U(iob).Status == STATUS_END_OF_FILE, "expected STATUS_END_OF_FILE, got %#x\n", U(iob).Status);
-todo_wine
     ok(iob.Information == 0, "expected 0, got %lu\n", iob.Information);
 
     U(iob).Status = -1;
     iob.Information = -1;
     status = pNtReadFile(hfile, 0, NULL, NULL, &iob, buf, 0, NULL, NULL);
-todo_wine
     ok(status == STATUS_SUCCESS, "NtReadFile error %#x\n", status);
-todo_wine
     ok(U(iob).Status == STATUS_SUCCESS, "expected STATUS_SUCCESS, got %#x\n", U(iob).Status);
-todo_wine
     ok(iob.Information == 0, "expected 0, got %lu\n", iob.Information);
 
     U(iob).Status = -1;
@@ -2201,20 +2190,15 @@ todo_wine
     offset.QuadPart = sizeof(contents);
     status = pNtReadFile(hfile, 0, NULL, NULL, &iob, buf, sizeof(buf), &offset, NULL);
     ok(status == STATUS_END_OF_FILE, "expected STATUS_END_OF_FILE, got %#x\n", status);
-todo_wine
     ok(U(iob).Status == STATUS_END_OF_FILE, "expected STATUS_END_OF_FILE, got %#x\n", U(iob).Status);
-todo_wine
     ok(iob.Information == 0, "expected 0, got %lu\n", iob.Information);
 
     U(iob).Status = -1;
     iob.Information = -1;
     offset.QuadPart = sizeof(contents);
     status = pNtReadFile(hfile, 0, NULL, NULL, &iob, buf, 0, &offset, NULL);
-todo_wine
     ok(status == STATUS_SUCCESS, "NtReadFile error %#x\n", status);
-todo_wine
     ok(U(iob).Status == STATUS_SUCCESS, "expected STATUS_SUCCESS, got %#x\n", U(iob).Status);
-todo_wine
     ok(iob.Information == 0, "expected 0, got %lu\n", iob.Information);
 
     U(iob).Status = -1;
@@ -2222,20 +2206,15 @@ todo_wine
     offset.QuadPart = (LONGLONG)-2 /* FILE_USE_FILE_POINTER_POSITION */;
     status = pNtReadFile(hfile, 0, NULL, NULL, &iob, buf, sizeof(buf), &offset, NULL);
     ok(status == STATUS_END_OF_FILE, "expected STATUS_END_OF_FILE, got %#x\n", status);
-todo_wine
     ok(U(iob).Status == STATUS_END_OF_FILE, "expected STATUS_END_OF_FILE, got %#x\n", U(iob).Status);
-todo_wine
     ok(iob.Information == 0, "expected 0, got %lu\n", iob.Information);
 
     U(iob).Status = -1;
     iob.Information = -1;
     offset.QuadPart = (LONGLONG)-2 /* FILE_USE_FILE_POINTER_POSITION */;
     status = pNtReadFile(hfile, 0, NULL, NULL, &iob, buf, 0, &offset, NULL);
-todo_wine
     ok(status == STATUS_SUCCESS, "NtReadFile error %#x\n", status);
-todo_wine
     ok(U(iob).Status == STATUS_SUCCESS, "expected STATUS_SUCCESS, got %#x\n", U(iob).Status);
-todo_wine
     ok(iob.Information == 0, "expected 0, got %lu\n", iob.Information);
 
     for (i = -20; i < 0; i++)
@@ -2351,7 +2330,6 @@ todo_wine
     /* ReadFile return value depends on Windows version and testing it is not practical */
     ReadFile(hfile, buf, 0, &bytes, &ovl);
     ok(bytes == 0, "bytes %u\n", bytes);
-todo_wine
     ok((NTSTATUS)ovl.Internal == STATUS_SUCCESS, "expected STATUS_SUCCESS, got %#lx\n", ovl.Internal);
     ok(ovl.InternalHigh == 0, "expected 0, got %lu\n", ovl.InternalHigh);
 
@@ -2547,11 +2525,8 @@ todo_wine
     }
     else
     {
-todo_wine
         ok(status == STATUS_SUCCESS, "expected STATUS_SUCCESS, got %#x\n", status);
-todo_wine
         ok(U(iob).Status == STATUS_SUCCESS, "expected STATUS_SUCCESS, got %#x\n", U(iob).Status);
-todo_wine
         ok(iob.Information == 0, "expected 0, got %lu\n", iob.Information);
     }
 
