@@ -938,7 +938,8 @@ static void test_EnumLanguageProfiles(void)
             {
                 found = TRUE;
                 ok(profile.langid == gLangid, "LangId Incorrect\n");
-                ok(IsEqualGUID(&profile.catid,&GUID_TFCAT_TIP_KEYBOARD), "CatId Incorrect\n");
+                ok(IsEqualGUID(&profile.catid,&GUID_TFCAT_TIP_KEYBOARD) ||
+                   broken(IsEqualGUID(&profile.catid,&GUID_NULL) /* Win8 */), "CatId Incorrect\n");
                 ok(IsEqualGUID(&profile.guidProfile,&CLSID_FakeService), "guidProfile Incorrect\n");
             }
         }
@@ -2075,20 +2076,15 @@ static void test_AssociateFocus(void)
     processPendingMessages();
 
     ITfThreadMgr_GetFocus(g_tm, &dmcheck);
-    if (dmcheck != NULL)
-    {
-        ok(dmcheck == dm1, "Expected DocumentMgr not focused\n");
-        ITfDocumentMgr_Release(dmcheck);
-    }
-    else
-    {
-        /* Sometimes we need to explicitly set focus on Win7 */
-        test_CurrentFocus = dm1;
-        test_PrevFocus = FOCUS_IGNORE;
-        test_OnSetFocus = SINK_EXPECTED;
-        ITfThreadMgr_SetFocus(g_tm, dm1);
-        sink_check_ok(&test_OnSetFocus,"OnSetFocus");
-    }
+    ok(dmcheck == dm1 || broken(dmcheck == dmorig /* Win7+ */), "Expected DocumentMgr not focused\n");
+    ITfDocumentMgr_Release(dmcheck);
+
+    /* We need to explicitly set focus on Win7+ */
+    test_CurrentFocus = dm1;
+    test_PrevFocus = FOCUS_IGNORE;
+    test_OnSetFocus = SINK_OPTIONAL; /* Doesn't always fire on Win7+ */
+    ITfThreadMgr_SetFocus(g_tm, dm1);
+    sink_check_ok(&test_OnSetFocus, "OnSetFocus");
 
     hr = ITfThreadMgr_AssociateFocus(g_tm,wnd2,dm2,&olddm);
     ok(SUCCEEDED(hr),"AssociateFocus failed\n");
@@ -2133,7 +2129,7 @@ static void test_AssociateFocus(void)
 
     test_CurrentFocus = dmorig;
     test_PrevFocus = dm1;
-    test_OnSetFocus  = SINK_EXPECTED;
+    test_OnSetFocus  = SINK_OPTIONAL; /* Doesn't always fire on Win7+ */
     test_ACP_GetStatus = SINK_IGNORE;
     ITfThreadMgr_SetFocus(g_tm,dmorig);
     sink_check_ok(&test_OnSetFocus,"OnSetFocus");
