@@ -827,6 +827,7 @@ with_hal
 with_jpeg
 with_ldap
 with_mpg123
+with_netapi
 with_openal
 with_opencl
 with_opengl
@@ -2038,6 +2039,7 @@ Optional Packages:
   --without-jpeg          do not use JPEG
   --without-ldap          do not use LDAP
   --without-mpg123        do not use the mpg123 library
+  --without-netapi        do not use the Samba NetAPI library
   --without-openal        do not use OpenAL
   --without-opencl        do not use OpenCL
   --without-opengl        do not use OpenGL
@@ -3229,6 +3231,12 @@ fi
 # Check whether --with-mpg123 was given.
 if test "${with_mpg123+set}" = set; then :
   withval=$with_mpg123;
+fi
+
+
+# Check whether --with-netapi was given.
+if test "${with_netapi+set}" = set; then :
+  withval=$with_netapi;
 fi
 
 
@@ -7284,7 +7292,7 @@ clean::
     LIBEXT="dylib"
     DLLFLAGS="$DLLFLAGS -fPIC"
     LIBWINE_LDFLAGS="-multiply_defined suppress"
-    LDRPATH_INSTALL="-Wl,-rpath,@loader_path/\`\$(RELPATH) \$(bindir) \$(libdir)\`"
+    LDRPATH_INSTALL="-Wl,-rpath,@loader_path/\`\$(MAKEDEP) -R \$(bindir) \$(libdir)\`"
     LDRPATH_LOCAL="-Wl,-rpath,@loader_path/\$(top_builddir)/libs/wine"
         COREFOUNDATIONLIB="-framework CoreFoundation"
 
@@ -7454,7 +7462,7 @@ fi
     LIBWINE_RULES="
 all: libwine.dylib
 
-libwine.\$(VERSION).dylib: \$(OBJS) \$(RELPATH) Makefile.in
+libwine.\$(VERSION).dylib: \$(OBJS) Makefile.in
 	\$(CC) -dynamiclib -install_name @rpath/libwine.\$(SOVERSION).dylib -Wl,-rpath,@loader_path/ -compatibility_version \$(SOVERSION) -current_version \$(VERSION) \$(OBJS) \$(EXTRALIBS) \$(LDFLAGS) \$(LIBS) -o \$@
 
 libwine.\$(SOVERSION).dylib: libwine.\$(VERSION).dylib
@@ -7545,7 +7553,7 @@ eval ac_res=\$$as_ac_var
 	       { $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_res" >&5
 $as_echo "$ac_res" >&6; }
 if test `eval 'as_val=${'$as_ac_var'};$as_echo "$as_val"'` = yes; then :
-  LDRPATH_INSTALL="-Wl,--rpath,\\\$\$ORIGIN/\`\$(RELPATH) \$(bindir) \$(libdir)\`"
+  LDRPATH_INSTALL="-Wl,--rpath,\\\$\$ORIGIN/\`\$(MAKEDEP) -R \$(bindir) \$(libdir)\`"
                      LDRPATH_LOCAL="-Wl,--rpath,\\\$\$ORIGIN/\$(top_builddir)/libs/wine"
 else
   as_ac_var=`$as_echo "ac_cv_cflags_-fPIC -Wl,-R,\\$ORIGIN/../lib" | $as_tr_sh`
@@ -7573,7 +7581,7 @@ eval ac_res=\$$as_ac_var
 	       { $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_res" >&5
 $as_echo "$ac_res" >&6; }
 if test `eval 'as_val=${'$as_ac_var'};$as_echo "$as_val"'` = yes; then :
-  LDRPATH_INSTALL="-Wl,-R,\\\$\$ORIGIN/\`\$(RELPATH) \$(bindir) \$(libdir)\`"
+  LDRPATH_INSTALL="-Wl,-R,\\\$\$ORIGIN/\`\$(MAKEDEP) -R \$(bindir) \$(libdir)\`"
                           LDRPATH_LOCAL="-Wl,-R,\\\$\$ORIGIN/\$(top_builddir)/libs/wine"
 fi
 fi
@@ -7819,7 +7827,7 @@ eval ac_res=\$$as_ac_var
 	       { $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_res" >&5
 $as_echo "$ac_res" >&6; }
 if test `eval 'as_val=${'$as_ac_var'};$as_echo "$as_val"'` = yes; then :
-  LDRPATH_INSTALL="-Wl,--rpath,\\\$\$ORIGIN/\`\$(RELPATH) \$(bindir) \$(libdir)\`"
+  LDRPATH_INSTALL="-Wl,--rpath,\\\$\$ORIGIN/\`\$(MAKEDEP) -R \$(bindir) \$(libdir)\`"
                        LDRPATH_LOCAL="-Wl,--rpath,\\\$\$ORIGIN/\$(top_builddir)/libs/wine"
 else
   as_ac_var=`$as_echo "ac_cv_cflags_-fPIC -Wl,-R,\\$ORIGIN/../lib" | $as_tr_sh`
@@ -7847,7 +7855,7 @@ eval ac_res=\$$as_ac_var
 	       { $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_res" >&5
 $as_echo "$ac_res" >&6; }
 if test `eval 'as_val=${'$as_ac_var'};$as_echo "$as_val"'` = yes; then :
-  LDRPATH_INSTALL="-Wl,-R,\\\$\$ORIGIN/\`\$(RELPATH) \$(bindir) \$(libdir)\`"
+  LDRPATH_INSTALL="-Wl,-R,\\\$\$ORIGIN/\`\$(MAKEDEP) -R \$(bindir) \$(libdir)\`"
                             LDRPATH_LOCAL="-Wl,-R,\\\$\$ORIGIN/\$(top_builddir)/libs/wine"
 fi
 fi
@@ -12987,6 +12995,66 @@ _ACEOF
 
 fi
 
+if test "x$with_netapi" != "xno"
+then
+    { $as_echo "$as_me:${as_lineno-$LINENO}: checking for -lnetapi" >&5
+$as_echo_n "checking for -lnetapi... " >&6; }
+if ${ac_cv_lib_soname_netapi+:} false; then :
+  $as_echo_n "(cached) " >&6
+else
+  ac_check_soname_save_LIBS=$LIBS
+LIBS="-lnetapi  $LIBS"
+  cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+
+/* Override any GCC internal prototype to avoid an error.
+   Use char because int might match the return type of a GCC
+   builtin and then its argument prototype would still apply.  */
+#ifdef __cplusplus
+extern "C"
+#endif
+char libnetapi_init ();
+int
+main ()
+{
+return libnetapi_init ();
+  ;
+  return 0;
+}
+_ACEOF
+if ac_fn_c_try_link "$LINENO"; then :
+  case "$LIBEXT" in
+    dll) ac_cv_lib_soname_netapi=`$ac_cv_path_LDD conftest.exe | grep "netapi" | sed -e "s/dll.*/dll/"';2,$d'` ;;
+    dylib) ac_cv_lib_soname_netapi=`otool -L conftest$ac_exeext | grep "libnetapi\\.[0-9A-Za-z.]*dylib" | sed -e "s/^.*\/\(libnetapi\.[0-9A-Za-z.]*dylib\).*$/\1/"';2,$d'` ;;
+    *) ac_cv_lib_soname_netapi=`$READELF -d conftest$ac_exeext | grep "NEEDED.*libnetapi\\.$LIBEXT" | sed -e "s/^.*\\[\\(libnetapi\\.$LIBEXT[^	 ]*\\)\\].*$/\1/"';2,$d'`
+       if test "x$ac_cv_lib_soname_netapi" = x; then :
+  ac_cv_lib_soname_netapi=`$LDD conftest$ac_exeext | grep "libnetapi\\.$LIBEXT" | sed -e "s/^.*\(libnetapi\.$LIBEXT[^	 ]*\).*$/\1/"';2,$d'`
+fi ;;
+  esac
+fi
+rm -f core conftest.err conftest.$ac_objext \
+    conftest$ac_exeext conftest.$ac_ext
+  LIBS=$ac_check_soname_save_LIBS
+fi
+if test "x$ac_cv_lib_soname_netapi" = "x"; then :
+  { $as_echo "$as_me:${as_lineno-$LINENO}: result: not found" >&5
+$as_echo "not found" >&6; }
+       cat >>confdefs.h <<_ACEOF
+#define SONAME_LIBNETAPI "libnetapi.$LIBEXT"
+_ACEOF
+
+else
+  { $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_cv_lib_soname_netapi" >&5
+$as_echo "$ac_cv_lib_soname_netapi" >&6; }
+
+cat >>confdefs.h <<_ACEOF
+#define SONAME_LIBNETAPI "$ac_cv_lib_soname_netapi"
+_ACEOF
+
+
+fi
+fi
+
 test -n "$ALSALIBS" || enable_winealsa_drv=${enable_winealsa_drv:-no}
 test -n "$COREAUDIO" || enable_winecoreaudio_drv=${enable_winecoreaudio_drv:-no}
 test "x$ac_cv_member_oss_sysinfo_numaudioengines" = xyes || enable_wineoss_drv=${enable_wineoss_drv:-no}
@@ -16300,6 +16368,7 @@ wine_fn_config_dll ()
     wine_fn_has_flag implib && ac_clean="$ac_clean $ac_file.$IMPLIBEXT"
     wine_fn_has_flag mc && ac_clean="$ac_clean $ac_dir/msg.pot"
     wine_fn_has_flag po && ac_clean="$ac_clean $ac_dir/rsrc.pot"
+    test -n "$DLLEXT" || ac_clean="$ac_clean $ac_dir/$ac_dll"
 
     if eval test \"x\$"$ac_enable"\" = x"no"; then :
                 if wine_fn_has_flag implib && test "$ac_enable" != enable_win16
@@ -16409,7 +16478,9 @@ clean::
                 wine_fn_append_rule \
 "__builddeps__: dlls/lib$ac_implib.cross.a
 dlls/lib$ac_implib.cross.a: $ac_file.cross.a
-	\$(RM) \$@ && \$(LN_S) $ac_name/lib$ac_implib.cross.a \$@"
+	\$(RM) \$@ && \$(LN_S) $ac_name/lib$ac_implib.cross.a \$@
+clean::
+	\$(RM) dlls/lib$ac_implib.cross.a"
             fi
         fi
     fi
@@ -16492,7 +16563,7 @@ wine_fn_config_test ()
 
     ac_clean=
     test -n "$CROSSTARGET" && ac_clean=`expr $ac_dir/${ac_name} : "\\(.*\\)_test"`_crosstest.exe
-    test -n "$DLLEXT" || ac_clean=$ac_dir/${ac_name}.exe
+    test -n "$DLLEXT" || ac_clean="$ac_dir/${ac_name}.exe $ac_dir/${ac_name}-stripped.exe"
     ac_clean="$ac_clean $ac_dir/testlist.c"
 
     if test "x$enable_tests" = xno; then :
@@ -16607,33 +16678,19 @@ wine_fn_config_symlink wine64
 fi
 
 ac_config_commands="$ac_config_commands dlls/gdi32/dibdrv"
-wine_fn_append_rule \
-"clean::
-	\$(RM) \$(CLEAN_FILES:%=dlls/gdi32/dibdrv/%)"
+
 ac_config_commands="$ac_config_commands dlls/gdi32/enhmfdrv"
-wine_fn_append_rule \
-"clean::
-	\$(RM) \$(CLEAN_FILES:%=dlls/gdi32/enhmfdrv/%)"
+
 ac_config_commands="$ac_config_commands dlls/gdi32/mfdrv"
-wine_fn_append_rule \
-"clean::
-	\$(RM) \$(CLEAN_FILES:%=dlls/gdi32/mfdrv/%)"
+
 ac_config_commands="$ac_config_commands dlls/kernel32/nls"
-wine_fn_append_rule \
-"clean::
-	\$(RM) \$(CLEAN_FILES:%=dlls/kernel32/nls/%)"
+
 ac_config_commands="$ac_config_commands dlls/user32/resources"
-wine_fn_append_rule \
-"clean::
-	\$(RM) \$(CLEAN_FILES:%=dlls/user32/resources/%)"
+
 ac_config_commands="$ac_config_commands dlls/wineps.drv/data"
-wine_fn_append_rule \
-"clean::
-	\$(RM) \$(CLEAN_FILES:%=dlls/wineps.drv/data/%)"
+
 ac_config_commands="$ac_config_commands include/wine"
-wine_fn_append_rule \
-"clean::
-	\$(RM) \$(CLEAN_FILES:%=include/wine/%)"
+
 
 wine_fn_config_makerules Make.rules
 MAKE_RULES=Make.rules
@@ -16849,7 +16906,7 @@ wine_fn_config_dll fwpuclnt enable_fwpuclnt
 wine_fn_config_dll gameux enable_gameux clean
 wine_fn_config_test dlls/gameux/tests gameux_test
 wine_fn_config_dll gdi.exe16 enable_win16
-wine_fn_config_dll gdi32 enable_gdi32 implib,po
+wine_fn_config_dll gdi32 enable_gdi32 clean,implib,po
 wine_fn_config_test dlls/gdi32/tests gdi32_test
 wine_fn_config_dll gdiplus enable_gdiplus implib
 wine_fn_config_test dlls/gdiplus/tests gdiplus_test
@@ -16892,7 +16949,7 @@ wine_fn_config_test dlls/itss/tests itss_test
 wine_fn_config_dll joy.cpl enable_joy_cpl po
 wine_fn_config_dll jscript enable_jscript clean,po
 wine_fn_config_test dlls/jscript/tests jscript_test
-wine_fn_config_dll kernel32 enable_kernel32 implib,mc
+wine_fn_config_dll kernel32 enable_kernel32 clean,implib,mc
 wine_fn_config_test dlls/kernel32/tests kernel32_test
 wine_fn_config_dll keyboard.drv16 enable_win16
 wine_fn_config_dll krnl386.exe16 enable_win16 implib kernel
@@ -17149,7 +17206,7 @@ wine_fn_config_dll urlmon enable_urlmon clean,implib,po
 wine_fn_config_test dlls/urlmon/tests urlmon_test
 wine_fn_config_dll usbd.sys enable_usbd_sys implib
 wine_fn_config_dll user.exe16 enable_win16
-wine_fn_config_dll user32 enable_user32 implib,po
+wine_fn_config_dll user32 enable_user32 clean,implib,po
 wine_fn_config_test dlls/user32/tests user32_test
 wine_fn_config_dll userenv enable_userenv implib
 wine_fn_config_test dlls/userenv/tests userenv_test
@@ -17201,7 +17258,7 @@ wine_fn_config_dll winemac.drv enable_winemac_drv
 wine_fn_config_dll winemapi enable_winemapi
 wine_fn_config_dll winemp3.acm enable_winemp3_acm
 wine_fn_config_dll wineoss.drv enable_wineoss_drv
-wine_fn_config_dll wineps.drv enable_wineps_drv po
+wine_fn_config_dll wineps.drv enable_wineps_drv clean,po
 wine_fn_config_dll wineps16.drv16 enable_win16
 wine_fn_config_dll wineqtdecoder enable_wineqtdecoder
 wine_fn_config_dll winex11.drv enable_winex11_drv
@@ -17436,7 +17493,17 @@ if test "$MSGFMT" != false
 then
     PORCFLAGS="--po-dir=\$(top_builddir)/po"
 
-    wine_fn_append_rule "__builddeps__: \$(ALL_MO_FILES)"
+    wine_fn_append_rule "__builddeps__: \$(ALL_MO_FILES)
+clean::
+	\$(RM) \$(ALL_MO_FILES)"
+
+    posrc="po"
+    test "$srcdir" = . || posrc="$srcdir/po"
+    for i in $LINGUAS
+    do
+        wine_fn_append_rule "po/$i.mo: $posrc/$i.po
+	\$(MSGFMT) -o \$@ $posrc/$i.po"
+    done
 else
     LINGUAS=
 fi

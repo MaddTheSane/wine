@@ -322,7 +322,7 @@ sub parse_makefile($)
             $make{"=rules"} = $makerules{$var} || $var;
             next;
         }
-        if (/^\s*(MODULE|IMPORTLIB|TESTDLL|MANPAGE)\s*=\s*(.*)/)
+        if (/^\s*(MODULE|IMPORTLIB|TESTDLL|MANPAGE|PARENTSRC)\s*=\s*(.*)/)
         {
             my $var = $1;
             $make{$var} = $2;
@@ -335,9 +335,7 @@ sub parse_makefile($)
             my $var = $1;
             my @list = split(/\s+/, $2);
             $make{$var} = \@list;
-            ${$make{"=flags"}}{"mc"} = 1 if $var eq "MC_SRCS";
-            ${$make{"=flags"}}{"staticimplib"} = 1 if $var eq "IMPLIB_SRCS";
-            ${$make{"=flags"}}{"clean"} = 1 if $var =~ /IDL_[CHIPRS]_SRCS|IDL_TLB_SRCS|PROGRAMS/;
+            ${$make{"=flags"}}{"clean"} = 1 if $var eq "PROGRAMS";
             next;
         }
         if (/(install-lib|install-dev|clean)\s*:/)
@@ -388,11 +386,41 @@ sub get_makedep_flags($)
     return %flags;
 }
 
+sub get_parent_makefile($)
+{
+    my $file = shift;
+    my %make = %{$makefiles{$file}};
+    my $reldir = $make{"PARENTSRC"} || "";
+    return "" unless $reldir;
+    (my $path = $file) =~ s/\/Makefile$/\//;
+    while ($reldir =~ /^\.\.\//)
+    {
+        $reldir =~ s/^\.\.\///;
+        $path =~ s/[^\/]+\/$//;
+    }
+    return "$path$reldir/Makefile";
+}
+
+# preserve shared source files that are listed in the existing makefile
+sub preserve_shared_source_files($$$)
+{
+    my ($make, $parent, $var) = @_;
+    my %srcs;
+
+    return unless defined ${$parent}{"=$var"};
+    foreach my $file (@{${$parent}{"=$var"}}) { $srcs{$file} = 1; }
+    foreach my $file (@{${$make}{"=$var"}}) { $srcs{$file} = 0; }
+
+    foreach my $file (@{${$make}{$var}})
+    {
+        next unless defined $srcs{$file} && $srcs{$file} == 1;
+        push @{${$make}{"=$var"}}, $file;
+    }
+}
+
 # assign source files to their respective makefile
 sub assign_sources_to_makefiles(@)
 {
-    my %subdirs;
-
     foreach my $file (@_)
     {
         next if defined $ignored_source_files{$file};
@@ -401,21 +429,14 @@ sub assign_sources_to_makefiles(@)
 
         while ($dir && !defined $makefiles{"$dir/Makefile"}) { $dir = dirname( $dir ); }
         $subdir =~ s/^$dir\/?//;
-        $subdirs{"$dir/ $subdir"} = 1 if $subdir;
         next unless $dir;
-
-        my $basedir = dirname( $dir );
-        if ($basedir && !defined $makefiles{"$basedir/Makefile"})
-        {
-            $subdir = $basedir;
-            $basedir = dirname( $basedir );
-            $subdirs{"$basedir/ $subdir"} = 1;
-        }
 
         die "no makefile found for $file\n" unless defined $makefiles{"$dir/Makefile"};
 
         my $make = $makefiles{"$dir/Makefile"};
         my $name = substr( $file, length($dir) + 1 );
+
+        ${$make}{"=flags"}{"clean"} = 1 if $subdir;
 
         if ($dir eq "include")
         {
@@ -436,12 +457,20 @@ sub assign_sources_to_makefiles(@)
         }
         else
         {
-            if ($name =~ /\.c$/) { push @{${$make}{"=C_SRCS"}}, $name; }
-            elsif ($name =~ /\.m$/) { push @{${$make}{"=OBJC_SRCS"}}, $name; }
+            if ($name =~ /\.m$/) { push @{${$make}{"=OBJC_SRCS"}}, $name; }
             elsif ($name =~ /\.l$/) { push @{${$make}{"=LEX_SRCS"}}, $name; }
             elsif ($name =~ /\.y$/) { push @{${$make}{"=BISON_SRCS"}}, $name; }
-            elsif ($name =~ /\.mc$/) { push @{${$make}{"=MC_SRCS"}}, $name; }
             elsif ($name =~ /\.svg$/) { push @{${$make}{"=SVG_SRCS"}}, $name; }
+            elsif ($name =~ /\.c$/)
+            {
+                my %flags = get_makedep_flags( $file );
+                if (defined $flags{"implib"})
+                {
+                    push @{${$make}{"=IMPLIB_SRCS"}}, $name;
+                    ${${$make}{"=flags"}}{"staticimplib"} = 1;
+                }
+                push @{${$make}{"=C_SRCS"}}, $name;
+            }
             elsif ($name =~ /\.rc$/)
             {
                 my %flags = get_makedep_flags( $file );
@@ -451,6 +480,11 @@ sub assign_sources_to_makefiles(@)
                     ${${$make}{"=flags"}}{"po"} = 1;
                 }
                 push @{${$make}{"=RC_SRCS"}}, $name;
+            }
+            elsif ($name =~ /\.mc$/)
+            {
+                push @{${$make}{"=MC_SRCS"}}, $name;
+                ${${$make}{"=flags"}}{"mc"} = 1;
             }
             elsif ($name =~ /\.idl$/)
             {
@@ -462,14 +496,9 @@ sub assign_sources_to_makefiles(@)
                 push @{${$make}{"=IDL_R_SRCS"}}, $name if defined $flags{"register"};
                 push @{${$make}{"=IDL_S_SRCS"}}, $name if defined $flags{"server"};
                 push @{${$make}{"=IDL_TLB_SRCS"}}, $name if defined $flags{"typelib"};
+                ${${$make}{"=flags"}}{"clean"} = 1;
             }
         }
-    }
-    foreach my $key (keys %subdirs)
-    {
-        my ($dir, $subdir) = split " ", $key;
-        if ($dir eq "/") { $dir = ""; }
-        push @{${$makefiles{"${dir}Makefile"}}{"=EXTRASUBDIRS"}}, $subdir;
     }
 
     # add extra variables to include source list
@@ -477,6 +506,17 @@ sub assign_sources_to_makefiles(@)
     unshift @{${$make}{"=SRCDIR_INCLUDES"}}, "\$(XTEMPLATE_SRCS)";
     unshift @{${$make}{"=SRCDIR_INCLUDES"}}, "\$(PUBLIC_IDL_H_SRCS)";
     unshift @{${$make}{"=SRCDIR_INCLUDES"}}, "\$(IDL_TLB_SRCS)";
+
+    # preserve shared source files from the parent makefile
+    foreach my $file (@makefiles)
+    {
+        my %make = %{$makefiles{$file}};
+        my $parent = get_parent_makefile( $file );
+        next unless $parent;
+        preserve_shared_source_files( $makefiles{$file}, $makefiles{$parent}, "C_SRCS" );
+        preserve_shared_source_files( $makefiles{$file}, $makefiles{$parent}, "LEX_SRCS" );
+        preserve_shared_source_files( $makefiles{$file}, $makefiles{$parent}, "BISON_SRCS" );
+    }
 }
 
 ################################################################
@@ -582,8 +622,8 @@ sub update_makefiles(@)
         replace_makefile_variable( $file, "IDL_S_SRCS" );
         replace_makefile_variable( $file, "IDL_TLB_SRCS" );
         replace_makefile_variable( $file, "XTEMPLATE_SRCS" );
+        replace_makefile_variable( $file, "IMPLIB_SRCS" );
         replace_makefile_variable( $file, "SRCDIR_INCLUDES" );
-        replace_makefile_variable( $file, "EXTRASUBDIRS" );
     }
 
     push @lines, "dnl End of auto-generated output commands\n";

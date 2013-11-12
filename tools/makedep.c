@@ -59,6 +59,7 @@ struct incl_file
 #define FLAG_IDL_TYPELIB  0x0040  /* generates a typelib (.tlb) file */
 #define FLAG_IDL_HEADER   0x0080  /* generates a header (.h) file */
 #define FLAG_RC_PO        0x0100  /* rc file contains translations */
+#define FLAG_C_IMPLIB     0x0200  /* file is part of an import library */
 
 static const struct
 {
@@ -96,24 +97,35 @@ struct incl_path
 
 static struct list paths = LIST_INIT(paths);
 
+struct strarray
+{
+    unsigned int count;  /* strings in use */
+    unsigned int size;   /* total allocated size */
+    const char **str;
+};
+
 static const char *src_dir;
 static const char *top_src_dir;
 static const char *top_obj_dir;
+static const char *parent_dir;
 static const char *OutputFileName = "Makefile";
 static const char *Separator = "### Dependencies";
 static const char *input_file_name;
+static int relative_dir_mode;
 static int input_line;
 static FILE *output_file;
 
 static const char Usage[] =
     "Usage: makedep [options] [files]\n"
     "Options:\n"
-    "   -Idir   Search for include files in directory 'dir'\n"
-    "   -Cdir   Search for source files in directory 'dir'\n"
-    "   -Sdir   Set the top source directory\n"
-    "   -Tdir   Set the top object directory\n"
-    "   -fxxx   Store output in file 'xxx' (default: Makefile)\n"
-    "   -sxxx   Use 'xxx' as separator (default: \"### Dependencies\")\n";
+    "   -Idir      Search for include files in directory 'dir'\n"
+    "   -Cdir      Search for source files in directory 'dir'\n"
+    "   -Sdir      Set the top source directory\n"
+    "   -Tdir      Set the top object directory\n"
+    "   -Pdir      Set the parent source directory\n"
+    "   -R from to Compute the relative path between two directories\n"
+    "   -fxxx      Store output in file 'xxx' (default: Makefile)\n"
+    "   -sxxx      Use 'xxx' as separator (default: \"### Dependencies\")\n";
 
 
 #ifndef __GNUC__
@@ -253,6 +265,32 @@ static int output( const char *format, ... )
 
 
 /*******************************************************************
+ *         strarray_init
+ */
+static void strarray_init( struct strarray *array )
+{
+    array->count = 0;
+    array->size  = 0;
+    array->str   = NULL;
+}
+
+
+/*******************************************************************
+ *         strarray_add
+ */
+static void strarray_add( struct strarray *array, const char *str )
+{
+    if (array->count == array->size)
+    {
+	if (array->size) array->size *= 2;
+        else array->size = 16;
+	array->str = xrealloc( array->str, sizeof(array->str[0]) * array->size );
+    }
+    array->str[array->count++] = str;
+}
+
+
+/*******************************************************************
  *         output_filename
  */
 static void output_filename( const char *name, int *column )
@@ -285,6 +323,52 @@ static char *replace_extension( const char *name, unsigned int old_len, const ch
     char *ret = xmalloc( strlen( name ) + strlen( new_ext ) + 1 );
     strcpy( ret, name );
     strcpy( ret + strlen( ret ) - old_len, new_ext );
+    return ret;
+}
+
+
+/*******************************************************************
+ *         get_relative_path
+ *
+ * Determine where the destination path is located relative to the 'from' path.
+ */
+static char *get_relative_path( const char *from, const char *dest )
+{
+    const char *start;
+    char *ret, *p;
+    unsigned int dotdots = 0;
+
+    /* a path of "." is equivalent to an empty path */
+    if (!strcmp( from, "." )) from = "";
+
+    for (;;)
+    {
+        while (*from == '/') from++;
+        while (*dest == '/') dest++;
+        start = dest;  /* save start of next path element */
+        if (!*from) break;
+
+        while (*from && *from != '/' && *from == *dest) { from++; dest++; }
+        if ((!*from || *from == '/') && (!*dest || *dest == '/')) continue;
+
+        /* count remaining elements in 'from' */
+        do
+        {
+            dotdots++;
+            while (*from && *from != '/') from++;
+            while (*from == '/') from++;
+        }
+        while (*from);
+        break;
+    }
+
+    if (!start[0] && !dotdots) return NULL;  /* empty path */
+
+    ret = xmalloc( 3 * dotdots + strlen( start ) + 1 );
+    for (p = ret; dotdots; dotdots--, p += 3) memcpy( p, "../", 3 );
+
+    if (start[0]) strcpy( p, start );
+    else p[-1] = 0;  /* remove trailing slash */
     return ret;
 }
 
@@ -454,6 +538,16 @@ static FILE *open_src_file( struct incl_file *pFile )
         pFile->filename = strmake( "%s/%s", src_dir, pFile->name );
         file = fopen( pFile->filename, "r" );
     }
+    /* now try parent dir */
+    if (!file && parent_dir)
+    {
+        if (src_dir)
+            pFile->filename = strmake( "%s/%s/%s", src_dir, parent_dir, pFile->name );
+        else
+            pFile->filename = strmake( "%s/%s", parent_dir, pFile->name );
+        if ((file = fopen( pFile->filename, "r" ))) return file;
+        file = fopen( pFile->filename, "r" );
+    }
     if (!file) fatal_perror( "open %s", pFile->name );
     return file;
 }
@@ -515,6 +609,17 @@ static FILE *open_include_file( struct incl_file *pFile )
     if (src_dir)
     {
         filename = strmake( "%s/%s", src_dir, pFile->name );
+        if ((file = fopen( filename, "r" ))) goto found;
+        free( filename );
+    }
+
+    /* now try in parent source dir */
+    if (parent_dir)
+    {
+        if (src_dir)
+            filename = strmake( "%s/%s/%s", src_dir, parent_dir, pFile->name );
+        else
+            filename = strmake( "%s/%s", parent_dir, pFile->name );
         if ((file = fopen( filename, "r" ))) goto found;
         free( filename );
     }
@@ -666,6 +771,7 @@ static void parse_pragma_directive( struct incl_file *source, char *str )
         {
             if (!strcmp( flag, "po" )) source->flags |= FLAG_RC_PO;
         }
+        else if (!strcmp( flag, "implib" )) source->flags |= FLAG_C_IMPLIB;
     }
 }
 
@@ -1041,7 +1147,10 @@ static void output_include( struct incl_file *pFile, struct incl_file *owner, in
 static void output_sources(void)
 {
     struct incl_file *source;
+    struct strarray clean_files;
     int i, column, po_srcs = 0, mc_srcs = 0;
+
+    strarray_init( &clean_files );
 
     LIST_FOR_EACH_ENTRY( source, &sources, struct incl_file, entry )
     {
@@ -1056,18 +1165,22 @@ static void output_sources(void)
         {
             /* add source file dependency for parallel makes */
             char *header = strmake( "%s.tab.h", obj );
+
             if (find_include_file( header ))
             {
                 output( "%s.tab.h: %s\n", obj, source->filename );
                 output( "\t$(BISON) $(BISONFLAGS) -p %s_ -o %s.tab.c -d %s\n",
                         obj, obj, source->filename );
                 output( "%s.tab.c: %s %s\n", obj, source->filename, header );
+                strarray_add( &clean_files, strmake( "%s.tab.h", obj ));
             }
             else output( "%s.tab.c: %s\n", obj, source->filename );
 
             output( "\t$(BISON) $(BISONFLAGS) -p %s_ -o $@ %s\n", obj, source->filename );
             output( "%s.tab.o: %s.tab.c\n", obj, obj );
             output( "\t$(CC) -c $(ALLCFLAGS) -o $@ %s.tab.c\n", obj );
+            strarray_add( &clean_files, strmake( "%s.tab.c", obj ));
+            strarray_add( &clean_files, strmake( "%s.tab.o", obj ));
             column += output( "%s.tab.o:", obj );
             free( header );
         }
@@ -1077,6 +1190,8 @@ static void output_sources(void)
             output( "\t$(FLEX) $(LEXFLAGS) -o$@ %s\n", source->filename );
             output( "%s.yy.o: %s.yy.c\n", obj, obj );
             output( "\t$(CC) -c $(ALLCFLAGS) -o $@ %s.yy.c\n", obj );
+            strarray_add( &clean_files, strmake( "%s.yy.c", obj ));
+            strarray_add( &clean_files, strmake( "%s.yy.o", obj ));
             column += output( "%s.yy.o:", obj );
         }
         else if (!strcmp( ext, "rc" ))  /* resource file */
@@ -1094,11 +1209,13 @@ static void output_sources(void)
                 output( "\t$(WRC) $(RCFLAGS) -o $@ %s\n", source->filename );
                 column += output( "%s.res:", obj );
             }
+            strarray_add( &clean_files, strmake( "%s.res", obj ));
         }
         else if (!strcmp( ext, "mc" ))  /* message file */
         {
             output( "%s.res: $(WMC) $(ALL_MO_FILES) %s\n", obj, source->filename );
             output( "\t$(WMC) -U -O res $(PORCFLAGS) -o $@ %s\n", source->filename );
+            strarray_add( &clean_files, strmake( "%s.res", obj ));
             mc_srcs++;
             column += output( "msg.pot %s.res:", obj );
         }
@@ -1120,7 +1237,7 @@ static void output_sources(void)
             for (i = 0; i < nb_targets; i++)
             {
                 column += output( "%s%c", targets[i], i < nb_targets - 1 ? ' ' : ':' );
-                free( targets[i] );
+                strarray_add( &clean_files, targets[i] );
             }
             column += output( " %s", source->filename );
         }
@@ -1133,19 +1250,22 @@ static void output_sources(void)
             struct object_extension *ext;
             LIST_FOR_EACH_ENTRY( ext, &object_extensions, struct object_extension, entry )
             {
+                strarray_add( &clean_files, strmake( "%s.%s", obj, ext->extension ));
+                output( "%s.%s: %s\n", obj, ext->extension, source->filename );
                 if (strstr( ext->extension, "cross" ))
-                {
-                    output( "%s.%s: %s\n", obj, ext->extension, source->filename );
                     output( "\t$(CROSSCC) -c $(ALLCROSSCFLAGS) -o $@ %s\n", source->filename );
-                }
                 else
-                {
-                    output( "%s.%s: %s\n", obj, ext->extension, source->filename );
                     output( "\t$(CC) -c $(ALLCFLAGS) -o $@ %s\n", source->filename );
-                }
+            }
+            if (source->flags & FLAG_C_IMPLIB)
+            {
+                strarray_add( &clean_files, strmake( "%s.cross.o", obj ));
+                output( "%s.cross.o: %s\n", obj, source->filename );
+                output( "\t$(CROSSCC) -c $(ALLCROSSCFLAGS) -o $@ %s\n", source->filename );
             }
             LIST_FOR_EACH_ENTRY( ext, &object_extensions, struct object_extension, entry )
                 column += output( "%s.%s ", obj, ext->extension );
+            if (source->flags & FLAG_C_IMPLIB) column += output( "%s.cross.o", obj );
             column += output( ":" );
         }
         free( obj );
@@ -1167,6 +1287,7 @@ static void output_sources(void)
         LIST_FOR_EACH_ENTRY( source, &sources, struct incl_file, entry )
             if (source->flags & FLAG_RC_PO) output_filename( source->filename, &column );
         output( "\n" );
+        strarray_add( &clean_files, "rsrc.pot" );
     }
 
     if (mc_srcs)
@@ -1179,6 +1300,7 @@ static void output_sources(void)
         LIST_FOR_EACH_ENTRY( source, &sources, struct incl_file, entry )
             if (strendswith( source->name, ".mc" )) output_filename( source->filename, &column );
         output( "\n" );
+        strarray_add( &clean_files, "msg.pot" );
     }
 
     if (find_src_file( "dlldata.o" ))
@@ -1188,6 +1310,7 @@ static void output_sources(void)
         LIST_FOR_EACH_ENTRY( source, &sources, struct incl_file, entry )
             if (source->flags & FLAG_IDL_PROXY) output_filename( source->filename, &column );
         output( "\n" );
+        strarray_add( &clean_files, "dlldata.c" );
     }
 
     if (find_src_file( "testlist.o" ))
@@ -1197,6 +1320,15 @@ static void output_sources(void)
         LIST_FOR_EACH_ENTRY( source, &sources, struct incl_file, entry )
             if (strendswith( source->name, ".c" ) && !is_generated_idl( source ))
                 output_filename( source->filename, &column );
+        output( "\n" );
+        strarray_add( &clean_files, "testlist.c" );
+    }
+
+    if (clean_files.count)
+    {
+        output( "clean::\n" );
+        column = output( "\t$(RM)" );
+        for (i = 0; i < clean_files.count; i++) output_filename( clean_files.str[i], &column );
         output( "\n" );
     }
 }
@@ -1301,8 +1433,14 @@ static void parse_option( const char *opt )
     case 'T':
         top_obj_dir = opt + 2;
         break;
+    case 'P':
+        parent_dir = opt + 2;
+        break;
     case 'f':
         if (opt[2]) OutputFileName = opt + 2;
+        break;
+    case 'R':
+        relative_dir_mode = 1;
         break;
     case 's':
         if (opt[2]) Separator = opt + 2;
@@ -1337,6 +1475,20 @@ int main( int argc, char *argv[] )
             argc--;
         }
         else i++;
+    }
+
+    if (relative_dir_mode)
+    {
+        char *relpath;
+
+        if (argc != 3)
+        {
+            fprintf( stderr, "Option -r needs two directories\n%s", Usage );
+            exit( 1 );
+        }
+        relpath = get_relative_path( argv[1], argv[2] );
+        printf( "%s\n", relpath ? relpath : "." );
+        exit( 0 );
     }
 
     /* ignore redundant source paths */

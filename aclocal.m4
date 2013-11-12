@@ -381,6 +381,7 @@ wine_fn_config_dll ()
     wine_fn_has_flag implib && ac_clean="$ac_clean $ac_file.$IMPLIBEXT"
     wine_fn_has_flag mc && ac_clean="$ac_clean $ac_dir/msg.pot"
     wine_fn_has_flag po && ac_clean="$ac_clean $ac_dir/rsrc.pot"
+    test -n "$DLLEXT" || ac_clean="$ac_clean $ac_dir/$ac_dll"
 
     AS_VAR_IF([$ac_enable],[no],
               dnl enable_win16 is special in that it disables import libs too
@@ -490,7 +491,9 @@ clean::
                 wine_fn_append_rule \
 "__builddeps__: dlls/lib$ac_implib.cross.a
 dlls/lib$ac_implib.cross.a: $ac_file.cross.a
-	\$(RM) \$[@] && \$(LN_S) $ac_name/lib$ac_implib.cross.a \$[@]"
+	\$(RM) \$[@] && \$(LN_S) $ac_name/lib$ac_implib.cross.a \$[@]
+clean::
+	\$(RM) dlls/lib$ac_implib.cross.a"
             fi
         fi
     fi
@@ -571,7 +574,7 @@ wine_fn_config_test ()
 
     ac_clean=
     test -n "$CROSSTARGET" && ac_clean=`expr $ac_dir/${ac_name} : "\\(.*\\)_test"`_crosstest.exe
-    test -n "$DLLEXT" || ac_clean=$ac_dir/${ac_name}.exe
+    test -n "$DLLEXT" || ac_clean="$ac_dir/${ac_name}.exe $ac_dir/${ac_name}-stripped.exe"
     ac_clean="$ac_clean $ac_dir/testlist.c"
 
     AS_VAR_IF([enable_tests],[no],[wine_fn_disabled_rules $ac_clean; return])
@@ -670,10 +673,7 @@ dnl
 dnl Usage: WINE_CONFIG_EXTRA_DIR(dirname)
 dnl
 AC_DEFUN([WINE_CONFIG_EXTRA_DIR],
-[AC_CONFIG_COMMANDS([$1],[test -d "$1" || { AC_MSG_NOTICE([creating $1]); AS_MKDIR_P("$1"); }])dnl
-wine_fn_append_rule \
-"clean::
-	\$(RM) \$(CLEAN_FILES:%=[$1]/%)"])
+[AC_CONFIG_COMMANDS([$1],[test -d "$1" || { AC_MSG_NOTICE([creating $1]); AS_MKDIR_P("$1"); }])])
 
 dnl **** Create symlinks from config.status ****
 dnl
