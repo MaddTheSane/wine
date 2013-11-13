@@ -75,10 +75,15 @@ static void *libnetapi_ctx;
 static DWORD (*plibnetapi_init)(void **);
 static DWORD (*plibnetapi_free)(void *);
 static DWORD (*plibnetapi_set_debuglevel)(void *, const char *);
+static DWORD (*plibnetapi_set_username)(void *, const char *);
+static DWORD (*plibnetapi_set_password)(void *, const char *);
 
 static NET_API_STATUS (*pNetApiBufferAllocate)(unsigned int, void **);
 static NET_API_STATUS (*pNetApiBufferFree)(void *);
 static NET_API_STATUS (*pNetServerGetInfo)(const char *, unsigned int, unsigned char **);
+static NET_API_STATUS (*pNetShareAdd)(const char *, unsigned int, unsigned char *, unsigned int *);
+static NET_API_STATUS (*pNetShareDel)(const char *, const char *, unsigned int);
+static NET_API_STATUS (*pNetWkstaGetInfo)(const char *, unsigned int, unsigned char **);
 
 static BOOL libnetapi_init(void)
 {
@@ -102,10 +107,15 @@ static BOOL libnetapi_init(void)
     LOAD_FUNCPTR(libnetapi_init)
     LOAD_FUNCPTR(libnetapi_free)
     LOAD_FUNCPTR(libnetapi_set_debuglevel)
+    LOAD_FUNCPTR(libnetapi_set_username)
+    LOAD_FUNCPTR(libnetapi_set_password)
 
     LOAD_FUNCPTR(NetApiBufferAllocate)
     LOAD_FUNCPTR(NetApiBufferFree)
     LOAD_FUNCPTR(NetServerGetInfo)
+    LOAD_FUNCPTR(NetShareAdd)
+    LOAD_FUNCPTR(NetShareDel)
+    LOAD_FUNCPTR(NetWkstaGetInfo)
 #undef LOAD_FUNCPTR
 
     if ((status = plibnetapi_init( &libnetapi_ctx )))
@@ -116,6 +126,17 @@ static BOOL libnetapi_init(void)
     if (TRACE_ON( netapi32 ) && (status = plibnetapi_set_debuglevel( libnetapi_ctx, "10" )))
     {
         ERR( "Failed to set debug level %u\n", status );
+        goto error;
+    }
+    /* perform an anonymous login by default (avoids a password prompt) */
+    if ((status = plibnetapi_set_username( libnetapi_ctx, "Guest" )))
+    {
+        ERR( "Failed to set username %u\n", status );
+        goto error;
+    }
+    if ((status = plibnetapi_set_password( libnetapi_ctx, "" )))
+    {
+        ERR( "Failed to set password %u\n", status );
         goto error;
     }
     return TRUE;
@@ -202,6 +223,185 @@ static NET_API_STATUS server_getinfo( LMSTR servername, DWORD level, LPBYTE *buf
     return status;
 }
 
+struct share_info_2
+{
+    const char  *shi2_netname;
+    unsigned int shi2_type;
+    const char  *shi2_remark;
+    unsigned int shi2_permissions;
+    unsigned int shi2_max_uses;
+    unsigned int shi2_current_uses;
+    const char  *shi2_path;
+    const char  *shi2_passwd;
+};
+
+static NET_API_STATUS share_info_2_to_samba( const BYTE *buf, unsigned char **bufptr )
+{
+    struct share_info_2 *ret;
+    SHARE_INFO_2 *info = (SHARE_INFO_2 *)buf;
+    DWORD len = 0;
+    char *ptr;
+
+    if (info->shi2_netname)
+        len += WideCharToMultiByte( CP_UNIXCP, 0, info->shi2_netname, -1, NULL, 0, NULL, NULL );
+    if (info->shi2_remark)
+        len += WideCharToMultiByte( CP_UNIXCP, 0, info->shi2_remark, -1, NULL, 0, NULL, NULL );
+    if (info->shi2_path)
+        len += WideCharToMultiByte( CP_UNIXCP, 0, info->shi2_path, -1, NULL, 0, NULL, NULL );
+    if (info->shi2_passwd)
+        len += WideCharToMultiByte( CP_UNIXCP, 0, info->shi2_passwd, -1, NULL, 0, NULL, NULL );
+    if (!(ret = HeapAlloc( GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(*ret) + len )))
+        return ERROR_OUTOFMEMORY;
+
+    ptr = (char *)(ret + 1);
+    if (!info->shi2_netname) ret->shi2_netname = NULL;
+    else
+    {
+        ret->shi2_netname = ptr;
+        ptr += WideCharToMultiByte( CP_UNIXCP, 0, info->shi2_netname, -1, ptr, len, NULL, NULL );
+    }
+    ret->shi2_type = info->shi2_type;
+    if (!info->shi2_remark) ret->shi2_remark = NULL;
+    else
+    {
+        ret->shi2_remark = ptr;
+        ptr += WideCharToMultiByte( CP_UNIXCP, 0, info->shi2_remark, -1, ptr, len, NULL, NULL );
+    }
+    ret->shi2_permissions  = info->shi2_permissions;
+    ret->shi2_max_uses     = info->shi2_max_uses;
+    ret->shi2_current_uses = info->shi2_current_uses;
+    if (!info->shi2_path) ret->shi2_path = NULL;
+    else
+    {
+        ret->shi2_path = ptr;
+        ptr += WideCharToMultiByte( CP_UNIXCP, 0, info->shi2_path, -1, ptr, len, NULL, NULL );
+    }
+    if (!info->shi2_passwd) ret->shi2_passwd = NULL;
+    else
+    {
+        ret->shi2_passwd = ptr;
+        WideCharToMultiByte( CP_UNIXCP, 0, info->shi2_passwd, -1, ptr, len, NULL, NULL );
+    }
+    *bufptr = (unsigned char *)ret;
+    return NERR_Success;
+}
+
+static NET_API_STATUS share_info_to_samba( DWORD level, const BYTE *buf, unsigned char **bufptr )
+{
+    switch (level)
+    {
+    case 2:     return share_info_2_to_samba( buf, bufptr );
+    default:
+        FIXME( "level %u not supported\n", level );
+        return ERROR_NOT_SUPPORTED;
+    }
+}
+
+static NET_API_STATUS share_add( LMSTR servername, DWORD level, LPBYTE buf, LPDWORD parm_err )
+{
+    char *server = NULL;
+    unsigned char *info;
+    NET_API_STATUS status;
+
+    if (servername && !(server = strdup_unixcp( servername ))) return ERROR_OUTOFMEMORY;
+    status = share_info_to_samba( level, buf, &info );
+    if (!status)
+    {
+        status = pNetShareAdd( server, level, info, parm_err );
+        HeapFree( GetProcessHeap(), 0, info );
+    }
+    HeapFree( GetProcessHeap(), 0, server );
+    return status;
+}
+
+static NET_API_STATUS WINAPI share_del( LMSTR servername, LMSTR netname, DWORD reserved )
+{
+    char *server = NULL, *share;
+    NET_API_STATUS status;
+
+    if (servername && !(server = strdup_unixcp( servername ))) return ERROR_OUTOFMEMORY;
+    if (!(share = strdup_unixcp( netname )))
+    {
+        HeapFree( GetProcessHeap(), 0, server );
+        return ERROR_OUTOFMEMORY;
+    }
+    status = pNetShareDel( server, share, reserved );
+    HeapFree( GetProcessHeap(), 0, server );
+    HeapFree( GetProcessHeap(), 0, share );
+    return status;
+}
+
+struct wksta_info_100
+{
+    unsigned int wki100_platform_id;
+    const char  *wki100_computername;
+    const char  *wki100_langroup;
+    unsigned int wki100_ver_major;
+    unsigned int wki100_ver_minor;
+};
+
+static NET_API_STATUS wksta_info_100_from_samba( const unsigned char *buf, BYTE **bufptr )
+{
+    WKSTA_INFO_100 *ret;
+    struct wksta_info_100 *info = (struct wksta_info_100 *)buf;
+    DWORD len = 0;
+    WCHAR *ptr;
+
+    if (info->wki100_computername)
+        len += MultiByteToWideChar( CP_UNIXCP, 0, info->wki100_computername, -1, NULL, 0 );
+    if (info->wki100_langroup)
+        len += MultiByteToWideChar( CP_UNIXCP, 0, info->wki100_langroup, -1, NULL, 0 );
+    if (!(ret = HeapAlloc( GetProcessHeap(), 0, sizeof(*ret) + (len * sizeof(WCHAR) ))))
+        return ERROR_OUTOFMEMORY;
+
+    ptr = (WCHAR *)(ret + 1);
+    ret->wki100_platform_id = info->wki100_platform_id;
+    if (!info->wki100_computername) ret->wki100_computername = NULL;
+    else
+    {
+        ret->wki100_computername = ptr;
+        ptr += MultiByteToWideChar( CP_UNIXCP, 0, info->wki100_computername, -1, ptr, len );
+    }
+    if (!info->wki100_langroup) ret->wki100_langroup = NULL;
+    else
+    {
+        ret->wki100_langroup = ptr;
+        MultiByteToWideChar( CP_UNIXCP, 0, info->wki100_langroup, -1, ptr, len );
+    }
+    ret->wki100_ver_major = info->wki100_ver_major;
+    ret->wki100_ver_minor = info->wki100_ver_minor;
+    *bufptr = (BYTE *)ret;
+    return NERR_Success;
+}
+
+static NET_API_STATUS wksta_info_from_samba( DWORD level, const unsigned char *buf, BYTE **bufptr )
+{
+    switch (level)
+    {
+    case 100: return wksta_info_100_from_samba( buf, bufptr );
+    default:
+        FIXME( "level %u not supported\n", level );
+        return ERROR_NOT_SUPPORTED;
+    }
+}
+
+static NET_API_STATUS wksta_getinfo( LMSTR servername, DWORD level, LPBYTE *bufptr )
+{
+    NET_API_STATUS status;
+    char *wksta = NULL;
+    unsigned char *buf = NULL;
+
+    if (servername && !(wksta = strdup_unixcp( servername ))) return ERROR_OUTOFMEMORY;
+    status = pNetWkstaGetInfo( wksta, level, &buf );
+    HeapFree( GetProcessHeap(), 0, wksta );
+    if (!status)
+    {
+        status = wksta_info_from_samba( level, buf, bufptr );
+        pNetApiBufferFree( buf );
+    }
+    return status;
+}
+
 #else
 
 static BOOL libnetapi_init(void)
@@ -210,6 +410,21 @@ static BOOL libnetapi_init(void)
 }
 
 static NET_API_STATUS server_getinfo( LMSTR servername, DWORD level, LPBYTE *bufptr )
+{
+    ERR( "\n" );
+    return ERROR_NOT_SUPPORTED;
+}
+static NET_API_STATUS share_add( LMSTR servername, DWORD level, LPBYTE buf, LPDWORD parm_err )
+{
+    ERR( "\n" );
+    return ERROR_NOT_SUPPORTED;
+}
+NET_API_STATUS WINAPI share_del( LMSTR servername, LMSTR netname, DWORD reserved )
+{
+    ERR( "\n" );
+    return ERROR_NOT_SUPPORTED;
+}
+static NET_API_STATUS wksta_getinfo(  LMSTR servername, DWORD level, LPBYTE *bufptr )
 {
     ERR( "\n" );
     return ERROR_NOT_SUPPORTED;
@@ -553,7 +768,17 @@ NET_API_STATUS WINAPI NetShareEnum( LMSTR servername, DWORD level, LPBYTE* bufpt
  */
 NET_API_STATUS WINAPI NetShareDel(LMSTR servername, LMSTR netname, DWORD reserved)
 {
-    FIXME("Stub (%s %s %d)\n", debugstr_w(servername), debugstr_w(netname), reserved);
+    BOOL local = NETAPI_IsLocalComputer( servername );
+
+    TRACE("%s %s %d\n", debugstr_w(servername), debugstr_w(netname), reserved);
+
+    if (!local)
+    {
+        if (libnetapi_init()) return share_del( servername, netname, reserved );
+        FIXME( "remote computers not supported\n" );
+    }
+
+    FIXME("%s %s %d\n", debugstr_w(servername), debugstr_w(netname), reserved);
     return NERR_Success;
 }
 
@@ -574,7 +799,17 @@ NET_API_STATUS WINAPI NetShareGetInfo(LMSTR servername, LMSTR netname,
 NET_API_STATUS WINAPI NetShareAdd(LMSTR servername,
     DWORD level, LPBYTE buf, LPDWORD parm_err)
 {
-    FIXME("Stub (%s %d %p %p)\n", debugstr_w(servername), level, buf, parm_err);
+    BOOL local = NETAPI_IsLocalComputer( servername );
+
+    TRACE("%s %d %p %p\n", debugstr_w(servername), level, buf, parm_err);
+
+    if (!local)
+    {
+        if (libnetapi_init()) return share_add( servername, level, buf, parm_err );
+        FIXME( "remote computers not supported\n" );
+    }
+
+    FIXME("%s %d %p %p\n", debugstr_w(servername), level, buf, parm_err);
     return ERROR_NOT_SUPPORTED;
 }
 
@@ -1015,15 +1250,15 @@ NET_API_STATUS WINAPI NetWkstaGetInfo( LMSTR servername, DWORD level,
                                        LPBYTE* bufptr)
 {
     NET_API_STATUS ret;
+    BOOL local = NETAPI_IsLocalComputer( servername );
 
     TRACE("%s %d %p\n", debugstr_w( servername ), level, bufptr );
-    if (servername)
+
+    if (!local)
     {
-        if (!NETAPI_IsLocalComputer(servername))
-        {
-            FIXME("remote computers not supported\n");
-            return ERROR_INVALID_LEVEL;
-        }
+        if (libnetapi_init()) return wksta_getinfo( servername, level, bufptr );
+        FIXME( "remote computers not supported\n" );
+        return ERROR_INVALID_LEVEL;
     }
     if (!bufptr) return ERROR_INVALID_PARAMETER;
 

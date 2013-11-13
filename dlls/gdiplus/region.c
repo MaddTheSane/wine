@@ -96,8 +96,10 @@ static BOOL is_integer_path(const GpPath *path)
 
     for (i = 0; i < path->pathdata.Count; i++)
     {
-        if (path->pathdata.Points[i].X != gdip_round(path->pathdata.Points[i].X) ||
-            path->pathdata.Points[i].Y != gdip_round(path->pathdata.Points[i].Y))
+        short x, y;
+        x = gdip_round(path->pathdata.Points[i].X);
+        y = gdip_round(path->pathdata.Points[i].Y);
+        if (path->pathdata.Points[i].X != (REAL)x || path->pathdata.Points[i].Y != (REAL)y)
             return FALSE;
     }
     return TRUE;
@@ -828,11 +830,21 @@ GpStatus WINGDIPAPI GdipGetRegionData(GpRegion *region, BYTE *buffer, UINT size,
         DWORD num_children;
     } *region_header;
     INT filled = 0;
+    UINT required;
+    GpStatus status;
 
     TRACE("%p, %p, %d, %p\n", region, buffer, size, needed);
 
-    if (!(region && buffer && size))
+    if (!region || !buffer || !size)
         return InvalidParameter;
+
+    status = GdipGetRegionDataSize(region, &required);
+    if (status != Ok) return status;
+    if (size < required)
+    {
+        if (needed) *needed = size;
+        return InsufficientBuffer;
+    }
 
     region_header = (struct _region_header *)buffer;
     region_header->size = sizeheader_size + get_element_size(&region->node);

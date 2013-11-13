@@ -3116,17 +3116,9 @@ static HRESULT CreateSurface(struct ddraw *ddraw, DDSURFACEDESC2 *DDSD,
         }
     }
 
-    if (desc2.ddsCaps.dwCaps & DDSCAPS_TEXTURE)
+    if (FAILED(hr = ddraw_surface_create_texture(ddraw, &desc2, version, flags, &object)))
     {
-        if (FAILED(hr = ddraw_surface_create_texture(ddraw, &desc2, version, flags, &object)))
-        {
-            WARN("Failed to create texture, hr %#x.\n", hr);
-            return hr;
-        }
-    }
-    else if (FAILED(hr = ddraw_create_surface(ddraw, &desc2, flags, &object, version)))
-    {
-        WARN("ddraw_create_surface failed, hr %#x.\n", hr);
+        WARN("Failed to create texture, hr %#x.\n", hr);
         return hr;
     }
     object->is_complex_root = TRUE;
@@ -3151,7 +3143,7 @@ static HRESULT CreateSurface(struct ddraw *ddraw, DDSURFACEDESC2 *DDSD,
         {
             struct ddraw_surface *object2 = NULL;
 
-            if (FAILED(hr = ddraw_create_surface(ddraw, &desc2, flags, &object2, version)))
+            if (FAILED(hr = ddraw_surface_create_texture(ddraw, &desc2, version, flags, &object2)))
             {
                 if (version == 7)
                     IDirectDrawSurface7_Release(&object->IDirectDrawSurface7_iface);
@@ -5143,14 +5135,23 @@ static HRESULT CDECL device_parent_create_texture_surface(struct wined3d_device_
         DWORD flags, struct wined3d_surface **surface)
 {
     struct ddraw *ddraw = ddraw_from_device_parent(device_parent);
-    struct ddraw_texture *texture = container_parent;
-    DDSURFACEDESC2 desc = texture->surface_desc;
     struct ddraw_surface *ddraw_surface;
+    struct ddraw_texture *texture;
+    DDSURFACEDESC2 desc;
     HRESULT hr;
 
     TRACE("device_parent %p, container_parent %p, wined3d_desc %p, sub_resource_idx %u, flags %#x, surface %p.\n",
             device_parent, container_parent, wined3d_desc, sub_resource_idx, flags, surface);
 
+    /* We have a swapchain texture. */
+    if (container_parent == ddraw)
+        return wined3d_surface_create(ddraw->wined3d_device, wined3d_desc->width, wined3d_desc->height,
+                wined3d_desc->format, wined3d_desc->usage, wined3d_desc->pool, wined3d_desc->multisample_type,
+                wined3d_desc->multisample_quality, WINED3D_SURFACE_MAPPABLE, NULL,
+                &ddraw_null_wined3d_parent_ops, surface);
+
+    texture = container_parent;
+    desc = texture->surface_desc;
     desc.dwWidth = wined3d_desc->width;
     desc.dwHeight = wined3d_desc->height;
 
@@ -5179,6 +5180,8 @@ static HRESULT CDECL device_parent_create_swapchain_surface(struct wined3d_devic
         void *container_parent, const struct wined3d_resource_desc *desc, struct wined3d_surface **surface)
 {
     struct ddraw *ddraw = ddraw_from_device_parent(device_parent);
+    struct wined3d_resource_desc texture_desc;
+    struct wined3d_texture *texture;
     HRESULT hr;
 
     TRACE("device_parent %p, container_parent %p, desc %p, surface %p.\n",
@@ -5190,10 +5193,19 @@ static HRESULT CDECL device_parent_create_swapchain_surface(struct wined3d_devic
         return E_FAIL;
     }
 
-    if (SUCCEEDED(hr = wined3d_surface_create(ddraw->wined3d_device, desc->width, desc->height, desc->format,
-            desc->usage, desc->pool, desc->multisample_type, desc->multisample_quality, WINED3D_SURFACE_MAPPABLE,
-            ddraw, &ddraw_frontbuffer_parent_ops, surface)))
-        ddraw->wined3d_frontbuffer = *surface;
+    texture_desc = *desc;
+    texture_desc.resource_type = WINED3D_RTYPE_TEXTURE;
+    if (FAILED(hr = wined3d_texture_create_2d(ddraw->wined3d_device, &texture_desc, 1,
+            WINED3D_SURFACE_MAPPABLE, ddraw, &ddraw_frontbuffer_parent_ops, &texture)))
+    {
+        WARN("Failed to create texture, hr %#x.\n", hr);
+        return hr;
+    }
+
+    *surface = wined3d_surface_from_resource(wined3d_texture_get_sub_resource(texture, 0));
+    ddraw->wined3d_frontbuffer = *surface;
+    wined3d_surface_incref(*surface);
+    wined3d_texture_decref(texture);
 
     return hr;
 }
