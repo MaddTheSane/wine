@@ -702,14 +702,15 @@ static inline void write_packed_point(DWORD* location, INT* offset,
 static inline void write_path_types(DWORD* location, INT* offset,
         const GpPath* path)
 {
+    INT rounded_size = get_pathtypes_size(path);
+
     memcpy(location + *offset, path->pathdata.Types, path->pathdata.Count);
 
     /* The unwritten parts of the DWORD (if any) must be cleared */
-    if (path->pathdata.Count % sizeof(DWORD))
+    if (rounded_size - path->pathdata.Count)
         ZeroMemory(((BYTE*)location) + (*offset * sizeof(DWORD)) +
-                path->pathdata.Count,
-                sizeof(DWORD) - path->pathdata.Count % sizeof(DWORD));
-    *offset += (get_pathtypes_size(path) / sizeof(DWORD));
+                path->pathdata.Count, rounded_size - path->pathdata.Count);
+    *offset += rounded_size / sizeof(DWORD);
 }
 
 static void write_element(const region_element* element, DWORD *buffer,
@@ -1296,7 +1297,7 @@ static GpStatus transform_region_element(region_element* element, GpMatrix *matr
             {
                 /* Steal the element from the created region. */
                 memcpy(element, &new_region->node, sizeof(region_element));
-                HeapFree(GetProcessHeap(), 0, new_region);
+                GdipFree(new_region);
             }
             else
                 return stat;

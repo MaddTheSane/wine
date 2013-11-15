@@ -484,8 +484,7 @@ static void ddraw_surface_cleanup(struct ddraw_surface *surface)
                 surface, surface->ref7, surface->ref4, surface->ref3, surface->ref2, surface->ref1);
     }
 
-    if (surface->wined3d_texture
-            && !(surface->surface_desc.ddsCaps.dwCaps & DDSCAPS_TEXTURE))
+    if (surface->wined3d_texture)
         wined3d_texture_decref(surface->wined3d_texture);
     if (surface->wined3d_surface)
         wined3d_surface_decref(surface->wined3d_surface);
@@ -508,11 +507,7 @@ ULONG ddraw_surface_release_iface(struct ddraw_surface *This)
             wined3d_mutex_unlock();
             return iface_count;
         }
-        /* If it's a texture, destroy the wined3d texture. */
-        if (This->surface_desc.ddsCaps.dwCaps & DDSCAPS_TEXTURE)
-            wined3d_texture_decref(This->wined3d_texture);
-        else
-            ddraw_surface_cleanup(This);
+        ddraw_surface_cleanup(This);
         wined3d_mutex_unlock();
 
         if (release_iface)
@@ -5579,12 +5574,8 @@ static const struct wined3d_parent_ops ddraw_surface_wined3d_parent_ops =
 
 static void STDMETHODCALLTYPE ddraw_texture_wined3d_object_destroyed(void *parent)
 {
-    struct ddraw_texture *texture = parent;
+    TRACE("parent %p.\n", parent);
 
-    TRACE("texture %p.\n", texture);
-
-    if (texture->surface_desc.ddsCaps.dwCaps & DDSCAPS_TEXTURE)
-        ddraw_surface_cleanup(texture->root);
     HeapFree(GetProcessHeap(), 0, parent);
 }
 
@@ -5593,6 +5584,11 @@ static const struct wined3d_parent_ops ddraw_texture_wined3d_parent_ops =
     ddraw_texture_wined3d_object_destroyed,
 };
 
+static HRESULT CDECL ddraw_reset_enum_callback(struct wined3d_resource *resource)
+{
+    return DD_OK;
+}
+
 HRESULT ddraw_surface_create_texture(struct ddraw *ddraw, DDSURFACEDESC2 *desc,
         unsigned int version, struct ddraw_surface **surface)
 {
@@ -5600,6 +5596,7 @@ HRESULT ddraw_surface_create_texture(struct ddraw *ddraw, DDSURFACEDESC2 *desc,
     struct wined3d_resource_desc wined3d_desc;
     struct wined3d_texture *wined3d_texture;
     struct wined3d_resource *resource;
+    struct wined3d_display_mode mode;
     struct ddraw_texture *texture;
     UINT layers, levels, i, j;
     DDSURFACEDESC2 *mip_desc;
@@ -5611,6 +5608,61 @@ HRESULT ddraw_surface_create_texture(struct ddraw *ddraw, DDSURFACEDESC2 *desc,
         DDRAW_dump_surface_desc(desc);
     }
 
+    if (FAILED(hr = wined3d_get_adapter_display_mode(ddraw->wined3d, WINED3DADAPTER_DEFAULT, &mode, NULL)))
+    {
+        ERR("Failed to get display mode, hr %#x.\n", hr);
+        return hr;
+    }
+
+    /* No pixelformat given? Use the current screen format. */
+    if (!(desc->dwFlags & DDSD_PIXELFORMAT))
+    {
+        desc->dwFlags |= DDSD_PIXELFORMAT;
+        desc->u4.ddpfPixelFormat.dwSize = sizeof(desc->u4.ddpfPixelFormat);
+        ddrawformat_from_wined3dformat(&desc->u4.ddpfPixelFormat, mode.format_id);
+    }
+
+    wined3d_desc.format = wined3dformat_from_ddrawformat(&desc->u4.ddpfPixelFormat);
+    if (wined3d_desc.format == WINED3DFMT_UNKNOWN)
+    {
+        WARN("Unsupported / unknown pixelformat.\n");
+        return DDERR_INVALIDPIXELFORMAT;
+    }
+
+    /* No width or no height? Use the screen size. */
+    if (!(desc->dwFlags & DDSD_WIDTH) || !(desc->dwFlags & DDSD_HEIGHT))
+    {
+        if (!(desc->ddsCaps.dwCaps & DDSCAPS_PRIMARYSURFACE))
+        {
+            WARN("No width / height specified.\n");
+            return DDERR_INVALIDPARAMS;
+        }
+
+        desc->dwFlags |= DDSD_WIDTH | DDSD_HEIGHT;
+        desc->dwWidth = mode.width;
+        desc->dwHeight = mode.height;
+    }
+
+    if (!desc->dwWidth || !desc->dwHeight)
+        return DDERR_INVALIDPARAMS;
+
+    if ((desc->ddsCaps.dwCaps & DDSCAPS_PRIMARYSURFACE) && (ddraw->cooperative_level & DDSCL_EXCLUSIVE))
+    {
+        struct wined3d_swapchain_desc swapchain_desc;
+
+        wined3d_swapchain_get_desc(ddraw->wined3d_swapchain, &swapchain_desc);
+        swapchain_desc.backbuffer_width = mode.width;
+        swapchain_desc.backbuffer_height = mode.height;
+        swapchain_desc.backbuffer_format = mode.format_id;
+
+        if (FAILED(hr = wined3d_device_reset(ddraw->wined3d_device,
+                &swapchain_desc, NULL, ddraw_reset_enum_callback, TRUE)))
+        {
+            ERR("Failed to reset device.\n");
+            return hr;
+        }
+    }
+
     wined3d_desc.multisample_type = WINED3D_MULTISAMPLE_NONE;
     wined3d_desc.multisample_quality = 0;
     wined3d_desc.usage = 0;
@@ -5620,26 +5672,81 @@ HRESULT ddraw_surface_create_texture(struct ddraw *ddraw, DDSURFACEDESC2 *desc,
     wined3d_desc.depth = 1;
     wined3d_desc.size = 0;
 
-    wined3d_desc.format = wined3dformat_from_ddrawformat(&desc->u4.ddpfPixelFormat);
-    if (wined3d_desc.format == WINED3DFMT_UNKNOWN)
-    {
-        WARN("Unsupported / unknown pixelformat.\n");
-        return DDERR_INVALIDPIXELFORMAT;
-    }
-
     if ((desc->ddsCaps.dwCaps & DDSCAPS_3DDEVICE) && (ddraw->flags & DDRAW_NO3D))
     {
         WARN("The application requests a 3D capable surface, but the ddraw object was created without 3D support.\n");
         /* Do not fail surface creation, only fail 3D device creation. */
     }
 
-    if (!(desc->ddsCaps.dwCaps & (DDSCAPS_VIDEOMEMORY | DDSCAPS_SYSTEMMEMORY))
-            && !((desc->ddsCaps.dwCaps & DDSCAPS_TEXTURE)
-            && (desc->ddsCaps.dwCaps2 & (DDSCAPS2_TEXTUREMANAGE | DDSCAPS2_D3DTEXTUREMANAGE))))
+    /* Mipmap count fixes */
+    if (desc->ddsCaps.dwCaps & DDSCAPS_MIPMAP)
     {
-        /* Tests show surfaces without memory flags get these flags added
-         * right after creation. */
-        desc->ddsCaps.dwCaps |= DDSCAPS_LOCALVIDMEM | DDSCAPS_VIDEOMEMORY;
+        if (desc->ddsCaps.dwCaps & DDSCAPS_COMPLEX)
+        {
+            if (desc->dwFlags & DDSD_MIPMAPCOUNT)
+            {
+                /* Mipmap count is given, should not be 0. */
+                if (!desc->u2.dwMipMapCount)
+                    return DDERR_INVALIDPARAMS;
+            }
+            else
+            {
+                /* Undocumented feature: Create sublevels until either the
+                 * width or the height is 1. */
+                DWORD min = desc->dwWidth < desc->dwHeight ? desc->dwWidth : desc->dwHeight;
+
+                desc->u2.dwMipMapCount = 0;
+                while (min)
+                {
+                    ++desc->u2.dwMipMapCount;
+                    min >>= 1;
+                }
+            }
+        }
+        else
+        {
+            desc->u2.dwMipMapCount = 1;
+        }
+
+        desc->dwFlags |= DDSD_MIPMAPCOUNT;
+        levels = desc->u2.dwMipMapCount;
+    }
+    else
+    {
+        levels = 1;
+    }
+
+    if (!(desc->ddsCaps.dwCaps & (DDSCAPS_VIDEOMEMORY | DDSCAPS_SYSTEMMEMORY)))
+    {
+        if (!(desc->ddsCaps.dwCaps2 & (DDSCAPS2_TEXTUREMANAGE | DDSCAPS2_D3DTEXTUREMANAGE)))
+        {
+            enum wined3d_resource_type rtype;
+            DWORD usage = 0;
+
+            if (desc->ddsCaps.dwCaps2 & DDSCAPS2_CUBEMAP)
+                rtype = WINED3D_RTYPE_CUBE_TEXTURE;
+            else if (desc->ddsCaps.dwCaps & DDSCAPS_TEXTURE)
+                rtype = WINED3D_RTYPE_TEXTURE;
+            else
+                rtype = WINED3D_RTYPE_SURFACE;
+
+            if (desc->ddsCaps.dwCaps & DDSCAPS_ZBUFFER)
+                usage = WINED3DUSAGE_DEPTHSTENCIL;
+            else if (desc->ddsCaps.dwCaps & DDSCAPS_3DDEVICE)
+                usage = WINED3DUSAGE_RENDERTARGET;
+
+            if (SUCCEEDED(hr = wined3d_check_device_format(ddraw->wined3d, WINED3DADAPTER_DEFAULT,
+                    WINED3D_DEVICE_TYPE_HAL, mode.format_id, usage, rtype, wined3d_desc.format)))
+                desc->ddsCaps.dwCaps |= DDSCAPS_VIDEOMEMORY;
+            else
+                desc->ddsCaps.dwCaps |= DDSCAPS_SYSTEMMEMORY;
+        }
+        else if (!(desc->ddsCaps.dwCaps & DDSCAPS_TEXTURE))
+        {
+            /* Tests show surfaces without memory flags get these flags added
+             * right after creation. */
+            desc->ddsCaps.dwCaps |= DDSCAPS_LOCALVIDMEM | DDSCAPS_VIDEOMEMORY;
+        }
     }
 
     if (desc->ddsCaps.dwCaps & DDSCAPS_PRIMARYSURFACE)
@@ -5685,16 +5792,6 @@ HRESULT ddraw_surface_create_texture(struct ddraw *ddraw, DDSURFACEDESC2 *desc,
     texture->version = version;
     copy_to_surfacedesc2(&texture->surface_desc, desc);
 
-    if (desc->ddsCaps.dwCaps & DDSCAPS_MIPMAP)
-        levels = desc->u2.dwMipMapCount;
-    else
-        levels = 1;
-
-    if (desc->ddsCaps.dwCaps2 & DDSCAPS2_CUBEMAP)
-        layers = 6;
-    else
-        layers = 1;
-
     /* Some applications assume surfaces will always be mapped at the same
      * address. Some of those also assume that this address is valid even when
      * the surface isn't mapped, and that updates done this way will be
@@ -5706,12 +5803,14 @@ HRESULT ddraw_surface_create_texture(struct ddraw *ddraw, DDSURFACEDESC2 *desc,
         wined3d_desc.resource_type = WINED3D_RTYPE_CUBE_TEXTURE;
         hr = wined3d_texture_create_cube(ddraw->wined3d_device, &wined3d_desc, levels,
                 WINED3D_SURFACE_PIN_SYSMEM, texture, &ddraw_texture_wined3d_parent_ops, &wined3d_texture);
+        layers = 6;
     }
     else
     {
         wined3d_desc.resource_type = WINED3D_RTYPE_TEXTURE;
         hr = wined3d_texture_create_2d(ddraw->wined3d_device, &wined3d_desc, levels,
                 WINED3D_SURFACE_PIN_SYSMEM, texture, &ddraw_texture_wined3d_parent_ops, &wined3d_texture);
+        layers = 1;
     }
 
     if (FAILED(hr))
@@ -5793,9 +5892,10 @@ HRESULT ddraw_surface_create_texture(struct ddraw *ddraw, DDSURFACEDESC2 *desc,
 }
 
 HRESULT ddraw_surface_init(struct ddraw_surface *surface, struct ddraw *ddraw, struct ddraw_texture *texture,
-        const struct wined3d_resource_desc *wined3d_desc, DWORD flags)
+        struct wined3d_surface *wined3d_surface, const struct wined3d_parent_ops **parent_ops)
 {
     DDSURFACEDESC2 *desc = &surface->surface_desc;
+    struct wined3d_resource_desc wined3d_desc;
     unsigned int version = texture->version;
     HRESULT hr;
 
@@ -5828,27 +5928,19 @@ HRESULT ddraw_surface_init(struct ddraw_surface *surface, struct ddraw *ddraw, s
     }
 
     *desc = texture->surface_desc;
-    desc->dwWidth = wined3d_desc->width;
-    desc->dwHeight = wined3d_desc->height;
+    wined3d_resource_get_desc(wined3d_surface_get_resource(wined3d_surface), &wined3d_desc);
+    desc->dwWidth = wined3d_desc.width;
+    desc->dwHeight = wined3d_desc.height;
     surface->first_attached = surface;
-
-    if (FAILED(hr = wined3d_surface_create(ddraw->wined3d_device, wined3d_desc->width, wined3d_desc->height,
-            wined3d_desc->format, wined3d_desc->usage, wined3d_desc->pool, wined3d_desc->multisample_type,
-            wined3d_desc->multisample_quality, flags, surface, &ddraw_surface_wined3d_parent_ops,
-            &surface->wined3d_surface)))
-    {
-        WARN("Failed to create wined3d surface, hr %#x.\n", hr);
-        return hr;
-    }
 
     /* Anno 1602 stores the pitch right after surface creation, so make sure
      * it's there. TODO: Test other fourcc formats. */
-    if (wined3d_desc->format == WINED3DFMT_DXT1 || wined3d_desc->format == WINED3DFMT_DXT2
-            || wined3d_desc->format == WINED3DFMT_DXT3 || wined3d_desc->format == WINED3DFMT_DXT4
-            || wined3d_desc->format == WINED3DFMT_DXT5)
+    if (wined3d_desc.format == WINED3DFMT_DXT1 || wined3d_desc.format == WINED3DFMT_DXT2
+            || wined3d_desc.format == WINED3DFMT_DXT3 || wined3d_desc.format == WINED3DFMT_DXT4
+            || wined3d_desc.format == WINED3DFMT_DXT5)
     {
         surface->surface_desc.dwFlags |= DDSD_LINEARSIZE;
-        if (wined3d_desc->format == WINED3DFMT_DXT1)
+        if (wined3d_desc.format == WINED3DFMT_DXT1)
             surface->surface_desc.u1.dwLinearSize = max(4, desc->dwWidth) * max(4, desc->dwHeight) / 2;
         else
             surface->surface_desc.u1.dwLinearSize = max(4, desc->dwWidth) * max(4, desc->dwHeight);
@@ -5856,27 +5948,27 @@ HRESULT ddraw_surface_init(struct ddraw_surface *surface, struct ddraw *ddraw, s
     else
     {
         surface->surface_desc.dwFlags |= DDSD_PITCH;
-        surface->surface_desc.u1.lPitch = wined3d_surface_get_pitch(surface->wined3d_surface);
+        surface->surface_desc.u1.lPitch = wined3d_surface_get_pitch(wined3d_surface);
     }
 
     if (desc->dwFlags & DDSD_CKDESTOVERLAY)
     {
-        wined3d_surface_set_color_key(surface->wined3d_surface, DDCKEY_DESTOVERLAY,
+        wined3d_surface_set_color_key(wined3d_surface, DDCKEY_DESTOVERLAY,
                 (struct wined3d_color_key *)&desc->u3.ddckCKDestOverlay);
     }
     if (desc->dwFlags & DDSD_CKDESTBLT)
     {
-        wined3d_surface_set_color_key(surface->wined3d_surface, DDCKEY_DESTBLT,
+        wined3d_surface_set_color_key(wined3d_surface, DDCKEY_DESTBLT,
                 (struct wined3d_color_key *)&desc->ddckCKDestBlt);
     }
     if (desc->dwFlags & DDSD_CKSRCOVERLAY)
     {
-        wined3d_surface_set_color_key(surface->wined3d_surface, DDCKEY_SRCOVERLAY,
+        wined3d_surface_set_color_key(wined3d_surface, DDCKEY_SRCOVERLAY,
                 (struct wined3d_color_key *)&desc->ddckCKSrcOverlay);
     }
     if (desc->dwFlags & DDSD_CKSRCBLT)
     {
-        wined3d_surface_set_color_key(surface->wined3d_surface, DDCKEY_SRCBLT,
+        wined3d_surface_set_color_key(wined3d_surface, DDCKEY_SRCBLT,
                 (struct wined3d_color_key *)&desc->ddckCKSrcBlt);
     }
     if (desc->dwFlags & DDSD_LPSURFACE)
@@ -5889,13 +5981,16 @@ HRESULT ddraw_surface_init(struct ddraw_surface *surface, struct ddraw *ddraw, s
             surface->surface_desc.u1.lPitch = pitch;
         }
 
-        if (FAILED(hr = wined3d_surface_set_mem(surface->wined3d_surface, desc->lpSurface, pitch)))
+        if (FAILED(hr = wined3d_surface_set_mem(wined3d_surface, desc->lpSurface, pitch)))
         {
             ERR("Failed to set surface memory, hr %#x.\n", hr);
-            wined3d_surface_decref(surface->wined3d_surface);
             return hr;
         }
     }
+
+    wined3d_surface_incref(wined3d_surface);
+    surface->wined3d_surface = wined3d_surface;
+    *parent_ops = &ddraw_surface_wined3d_parent_ops;
 
     return DD_OK;
 }

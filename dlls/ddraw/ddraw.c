@@ -1474,9 +1474,18 @@ static HRESULT WINAPI ddraw7_GetCaps(IDirectDraw7 *iface, DDCAPS *DriverCaps, DD
     }
 
     hr = IDirectDraw7_GetAvailableVidMem(iface, &ddscaps, &caps.dwVidMemTotal, &caps.dwVidMemFree);
-    wined3d_mutex_unlock();
-    if(FAILED(hr)) {
+    if (FAILED(hr))
+    {
         WARN("IDirectDraw7::GetAvailableVidMem failed\n");
+        wined3d_mutex_unlock();
+        return hr;
+    }
+
+    hr = IDirectDraw7_GetFourCCCodes(iface, &caps.dwNumFourCCCodes, NULL);
+    wined3d_mutex_unlock();
+    if (FAILED(hr))
+    {
+        WARN("IDirectDraw7::GetFourCCCodes failed\n");
         return hr;
     }
 
@@ -2722,42 +2731,6 @@ static HRESULT WINAPI ddraw7_StartModeTest(IDirectDraw7 *iface, SIZE *Modes, DWO
     return DD_OK;
 }
 
-static HRESULT ddraw_create_surface(struct ddraw *ddraw, struct ddraw_texture *texture,
-        const struct wined3d_resource_desc *wined3d_desc, DWORD flags, struct ddraw_surface **surface)
-{
-    HRESULT hr;
-
-    TRACE("ddraw %p, texture %p, wined3d_desc %p, flags %#x, surface %p.\n",
-            ddraw, texture, wined3d_desc, flags, surface);
-
-    /* Create the Surface object */
-    *surface = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(**surface));
-    if (!*surface)
-    {
-        ERR("Failed to allocate surface memory.\n");
-        return DDERR_OUTOFVIDEOMEMORY;
-    }
-
-    if (FAILED(hr = ddraw_surface_init(*surface, ddraw, texture, wined3d_desc, flags)))
-    {
-        WARN("Failed to initialize surface, hr %#x.\n", hr);
-        HeapFree(GetProcessHeap(), 0, *surface);
-        return hr;
-    }
-
-    /* Increase the surface counter, and attach the surface */
-    list_add_head(&ddraw->surface_list, &(*surface)->surface_list_entry);
-
-    TRACE("Created surface %p.\n", *surface);
-
-    return DD_OK;
-}
-
-static HRESULT CDECL ddraw_reset_enum_callback(struct wined3d_resource *resource)
-{
-    return DD_OK;
-}
-
 /*****************************************************************************
  * IDirectDraw7::CreateSurface
  *
@@ -2839,7 +2812,6 @@ static HRESULT CreateSurface(struct ddraw *ddraw, DDSURFACEDESC2 *DDSD,
         struct ddraw_surface **surface, IUnknown *UnkOuter, UINT version)
 {
     struct ddraw_surface *object = NULL;
-    struct wined3d_display_mode mode;
     HRESULT hr;
     DDSURFACEDESC2 desc2;
     const DWORD sysvidmem = DDSCAPS_VIDEOMEMORY | DDSCAPS_SYSTEMMEMORY;
@@ -2954,128 +2926,10 @@ static HRESULT CreateSurface(struct ddraw *ddraw, DDSURFACEDESC2 *DDSD,
     copy_to_surfacedesc2(&desc2, DDSD);
     desc2.u4.ddpfPixelFormat.dwSize=sizeof(DDPIXELFORMAT); /* Just to be sure */
 
-    if (FAILED(hr = wined3d_get_adapter_display_mode(ddraw->wined3d, WINED3DADAPTER_DEFAULT, &mode, NULL)))
-    {
-        ERR("Failed to get display mode, hr %#x.\n", hr);
-        return hr;
-    }
-
-    /* No pixelformat given? Use the current screen format */
-    if(!(desc2.dwFlags & DDSD_PIXELFORMAT))
-    {
-        desc2.dwFlags |= DDSD_PIXELFORMAT;
-        desc2.u4.ddpfPixelFormat.dwSize=sizeof(DDPIXELFORMAT);
-
-        ddrawformat_from_wined3dformat(&desc2.u4.ddpfPixelFormat, mode.format_id);
-    }
-
-    if (!(desc2.ddsCaps.dwCaps & (DDSCAPS_VIDEOMEMORY | DDSCAPS_SYSTEMMEMORY))
-            && !(desc2.ddsCaps.dwCaps2 & (DDSCAPS2_TEXTUREMANAGE | DDSCAPS2_D3DTEXTUREMANAGE)))
-    {
-        enum wined3d_format_id format = wined3dformat_from_ddrawformat(&desc2.u4.ddpfPixelFormat);
-        enum wined3d_resource_type rtype;
-        DWORD usage = 0;
-
-        if (desc2.ddsCaps.dwCaps & DDSCAPS_TEXTURE)
-            rtype = WINED3D_RTYPE_TEXTURE;
-        else if (desc2.ddsCaps.dwCaps2 & DDSCAPS2_CUBEMAP)
-            rtype = WINED3D_RTYPE_CUBE_TEXTURE;
-        else
-            rtype = WINED3D_RTYPE_SURFACE;
-
-        if (desc2.ddsCaps.dwCaps & DDSCAPS_ZBUFFER)
-            usage = WINED3DUSAGE_DEPTHSTENCIL;
-        else if (desc2.ddsCaps.dwCaps & DDSCAPS_3DDEVICE)
-            usage = WINED3DUSAGE_RENDERTARGET;
-
-        hr = wined3d_check_device_format(ddraw->wined3d, WINED3DADAPTER_DEFAULT, WINED3D_DEVICE_TYPE_HAL,
-                mode.format_id, usage, rtype, format);
-        if (SUCCEEDED(hr))
-            desc2.ddsCaps.dwCaps |= DDSCAPS_VIDEOMEMORY;
-        else
-            desc2.ddsCaps.dwCaps |= DDSCAPS_SYSTEMMEMORY;
-    }
-
-    /* No Width or no Height? Use the original screen size
-     */
-    if(!(desc2.dwFlags & DDSD_WIDTH) ||
-       !(desc2.dwFlags & DDSD_HEIGHT) )
-    {
-        /* Invalid for non-render targets */
-        if(!(desc2.ddsCaps.dwCaps & DDSCAPS_PRIMARYSURFACE))
-        {
-            WARN("Creating a non-Primary surface without Width or Height info, returning DDERR_INVALIDPARAMS\n");
-            *surface = NULL;
-            return DDERR_INVALIDPARAMS;
-        }
-
-        desc2.dwFlags |= DDSD_WIDTH | DDSD_HEIGHT;
-        desc2.dwWidth = mode.width;
-        desc2.dwHeight = mode.height;
-    }
-
-    if (!desc2.dwWidth || !desc2.dwHeight)
-        return DDERR_INVALIDPARAMS;
-
-    /* Mipmap count fixes */
-    if(desc2.ddsCaps.dwCaps & DDSCAPS_MIPMAP)
-    {
-        if(desc2.ddsCaps.dwCaps & DDSCAPS_COMPLEX)
-        {
-            if(desc2.dwFlags & DDSD_MIPMAPCOUNT)
-            {
-                /* Mipmap count is given, should not be 0 */
-                if( desc2.u2.dwMipMapCount == 0 )
-                    return DDERR_INVALIDPARAMS;
-            }
-            else
-            {
-                /* Undocumented feature: Create sublevels until
-                 * either the width or the height is 1
-                 */
-                DWORD min = desc2.dwWidth < desc2.dwHeight ?
-                            desc2.dwWidth : desc2.dwHeight;
-                desc2.u2.dwMipMapCount = 0;
-                while( min )
-                {
-                    desc2.u2.dwMipMapCount += 1;
-                    min >>= 1;
-                }
-            }
-        }
-        else
-        {
-            /* Not-complex mipmap -> Mipmapcount = 1 */
-            desc2.u2.dwMipMapCount = 1;
-        }
-
-        /* There's a mipmap count in the created surface in any case */
-        desc2.dwFlags |= DDSD_MIPMAPCOUNT;
-    }
-    /* If no mipmap is given, the texture has only one level */
-
     /* The first surface is a front buffer, the back buffer is created afterwards */
     if( (desc2.dwFlags & DDSD_CAPS) && (desc2.ddsCaps.dwCaps & DDSCAPS_PRIMARYSURFACE) )
     {
         desc2.ddsCaps.dwCaps |= DDSCAPS_FRONTBUFFER;
-    }
-
-    if ((desc2.ddsCaps.dwCaps & DDSCAPS_PRIMARYSURFACE) && (ddraw->cooperative_level & DDSCL_EXCLUSIVE))
-    {
-        struct wined3d_swapchain_desc swapchain_desc;
-
-        wined3d_swapchain_get_desc(ddraw->wined3d_swapchain, &swapchain_desc);
-        swapchain_desc.backbuffer_width = mode.width;
-        swapchain_desc.backbuffer_height = mode.height;
-        swapchain_desc.backbuffer_format = mode.format_id;
-
-        hr = wined3d_device_reset(ddraw->wined3d_device,
-                &swapchain_desc, NULL, ddraw_reset_enum_callback, TRUE);
-        if (FAILED(hr))
-        {
-            ERR("Failed to reset device.\n");
-            return hr;
-        }
     }
 
     if (FAILED(hr = ddraw_surface_create_texture(ddraw, &desc2, version, &object)))
@@ -5092,30 +4946,43 @@ static void CDECL device_parent_mode_changed(struct wined3d_device_parent *devic
         ERR("Failed to resize window.\n");
 }
 
-static HRESULT CDECL device_parent_create_texture_surface(struct wined3d_device_parent *device_parent,
-        void *container_parent, const struct wined3d_resource_desc *wined3d_desc, UINT sub_resource_idx,
-        DWORD flags, struct wined3d_surface **surface)
+static HRESULT CDECL device_parent_surface_created(struct wined3d_device_parent *device_parent,
+        void *container_parent, struct wined3d_surface *surface,
+        void **parent, const struct wined3d_parent_ops **parent_ops)
 {
     struct ddraw *ddraw = ddraw_from_device_parent(device_parent);
     struct ddraw_surface *ddraw_surface;
     HRESULT hr;
 
-    TRACE("device_parent %p, container_parent %p, wined3d_desc %p, sub_resource_idx %u, flags %#x, surface %p.\n",
-            device_parent, container_parent, wined3d_desc, sub_resource_idx, flags, surface);
+    TRACE("device_parent %p, container_parent %p, surface %p, parent %p, parent_ops %p.\n",
+            device_parent, container_parent, surface, parent, parent_ops);
 
     /* We have a swapchain texture. */
     if (container_parent == ddraw)
-        return wined3d_surface_create(ddraw->wined3d_device, wined3d_desc->width, wined3d_desc->height,
-                wined3d_desc->format, wined3d_desc->usage, wined3d_desc->pool, wined3d_desc->multisample_type,
-                wined3d_desc->multisample_quality, WINED3D_SURFACE_MAPPABLE, NULL,
-                &ddraw_null_wined3d_parent_ops, surface);
+    {
+        *parent = NULL;
+        *parent_ops = &ddraw_null_wined3d_parent_ops;
 
-    /* FIXME: Validate that format, usage, pool, etc. really make sense. */
-    if (FAILED(hr = ddraw_create_surface(ddraw, container_parent, wined3d_desc, flags, &ddraw_surface)))
+        return DD_OK;
+    }
+
+    if (!(ddraw_surface = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(*ddraw_surface))))
+    {
+        ERR("Failed to allocate surface memory.\n");
+        return DDERR_OUTOFVIDEOMEMORY;
+    }
+
+    if (FAILED(hr = ddraw_surface_init(ddraw_surface, ddraw, container_parent, surface, parent_ops)))
+    {
+        WARN("Failed to initialize surface, hr %#x.\n", hr);
+        HeapFree(GetProcessHeap(), 0, ddraw_surface);
         return hr;
+    }
 
-    *surface = ddraw_surface->wined3d_surface;
-    wined3d_surface_incref(*surface);
+    *parent = ddraw_surface;
+    list_add_head(&ddraw->surface_list, &ddraw_surface->surface_list_entry);
+
+    TRACE("Created ddraw surface %p.\n", ddraw_surface);
 
     return DD_OK;
 }
@@ -5205,8 +5072,8 @@ static const struct wined3d_device_parent_ops ddraw_wined3d_device_parent_ops =
 {
     device_parent_wined3d_device_created,
     device_parent_mode_changed,
+    device_parent_surface_created,
     device_parent_create_swapchain_surface,
-    device_parent_create_texture_surface,
     device_parent_create_volume,
     device_parent_create_swapchain,
 };

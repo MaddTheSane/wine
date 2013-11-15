@@ -6766,13 +6766,13 @@ cpu:
     return surface_cpu_blt(dst_surface, &dst_rect, src_surface, &src_rect, flags, fx, filter);
 }
 
-static HRESULT surface_init(struct wined3d_surface *surface, UINT alignment, UINT width, UINT height,
-        enum wined3d_multisample_type multisample_type, UINT multisample_quality,
-        struct wined3d_device *device, DWORD usage, enum wined3d_format_id format_id,
-        enum wined3d_pool pool, DWORD flags, void *parent, const struct wined3d_parent_ops *parent_ops)
+static HRESULT surface_init(struct wined3d_surface *surface, struct wined3d_texture *container,
+        const struct wined3d_resource_desc *desc, DWORD flags)
 {
+    struct wined3d_device *device = container->resource.device;
     const struct wined3d_gl_info *gl_info = &device->adapter->gl_info;
-    const struct wined3d_format *format = wined3d_get_format(gl_info, format_id);
+    const struct wined3d_format *format = wined3d_get_format(gl_info, desc->format);
+    UINT multisample_quality = desc->multisample_quality;
     BOOL lockable = flags & WINED3D_SURFACE_MAPPABLE;
     unsigned int resource_size;
     HRESULT hr;
@@ -6787,15 +6787,16 @@ static HRESULT surface_init(struct wined3d_surface *surface, UINT alignment, UIN
      * TODO: remove this after surfaces, usage and lockability have been debugged properly
      * this function is too deep to need to care about things like this.
      * Levels need to be checked too, since they all affect what can be done. */
-    switch (pool)
+    switch (desc->pool)
     {
         case WINED3D_POOL_MANAGED:
-            if (usage & WINED3DUSAGE_DYNAMIC)
+            if (desc->usage & WINED3DUSAGE_DYNAMIC)
                 FIXME("Called with a pool of MANAGED and a usage of DYNAMIC which are mutually exclusive.\n");
             break;
 
         case WINED3D_POOL_DEFAULT:
-            if (lockable && !(usage & (WINED3DUSAGE_DYNAMIC | WINED3DUSAGE_RENDERTARGET | WINED3DUSAGE_DEPTHSTENCIL)))
+            if (lockable && !(desc->usage & (WINED3DUSAGE_DYNAMIC
+                    | WINED3DUSAGE_RENDERTARGET | WINED3DUSAGE_DEPTHSTENCIL)))
                 WARN("Creating a lockable surface with a POOL of DEFAULT, that doesn't specify DYNAMIC usage.\n");
             break;
 
@@ -6804,16 +6805,16 @@ static HRESULT surface_init(struct wined3d_surface *surface, UINT alignment, UIN
             break;
 
         default:
-            FIXME("Unknown pool %#x.\n", pool);
+            FIXME("Unknown pool %#x.\n", desc->pool);
             break;
     };
 
-    if (usage & WINED3DUSAGE_RENDERTARGET && pool != WINED3D_POOL_DEFAULT)
+    if (desc->usage & WINED3DUSAGE_RENDERTARGET && desc->pool != WINED3D_POOL_DEFAULT)
         FIXME("Trying to create a render target that isn't in the default pool.\n");
 
     /* FIXME: Check that the format is supported by the device. */
 
-    resource_size = wined3d_format_calculate_size(format, alignment, width, height, 1);
+    resource_size = wined3d_format_calculate_size(format, device->surface_alignment, desc->width, desc->height, 1);
     if (!resource_size)
         return WINED3DERR_INVALIDCALL;
 
@@ -6822,18 +6823,15 @@ static HRESULT surface_init(struct wined3d_surface *surface, UINT alignment, UIN
     else
         surface->surface_ops = &surface_ops;
 
-    hr = resource_init(&surface->resource, device, WINED3D_RTYPE_SURFACE, format,
-            multisample_type, multisample_quality, usage, pool, width, height, 1,
-            resource_size, parent, parent_ops, &surface_resource_ops);
-    if (FAILED(hr))
+    if (FAILED(hr = resource_init(&surface->resource, device, WINED3D_RTYPE_SURFACE, format,
+            desc->multisample_type, multisample_quality, desc->usage, desc->pool, desc->width, desc->height, 1,
+            resource_size, NULL, &wined3d_null_parent_ops, &surface_resource_ops)))
     {
         WARN("Failed to initialize resource, returning %#x.\n", hr);
         return hr;
     }
 
-    /* "Standalone" surface. */
-    surface_set_container(surface, NULL);
-
+    surface_set_container(surface, container);
     list_init(&surface->overlays);
 
     /* Flags */
@@ -6842,7 +6840,7 @@ static HRESULT surface_init(struct wined3d_surface *surface, UINT alignment, UIN
         surface->flags |= SFLAG_DISCARD;
     if (flags & WINED3D_SURFACE_PIN_SYSMEM)
         surface->flags |= SFLAG_PIN_SYSMEM;
-    if (lockable || format_id == WINED3DFMT_D16_LOCKABLE)
+    if (lockable || desc->format == WINED3DFMT_D16_LOCKABLE)
         surface->resource.access_flags |= WINED3D_RESOURCE_ACCESS_CPU;
 
     /* I'm not sure if this qualifies as a hack or as an optimization. It
@@ -6852,7 +6850,7 @@ static HRESULT surface_init(struct wined3d_surface *surface, UINT alignment, UIN
      * ddraw applications access surface memory while the surface isn't
      * mapped. The SFLAG_DYNLOCK behaviour of keeping SYSMEM around for
      * future locks prevents these from crashing. */
-    if (lockable && (usage & WINED3DUSAGE_RENDERTARGET))
+    if (lockable && (desc->usage & WINED3DUSAGE_RENDERTARGET))
         surface->flags |= SFLAG_DYNLOCK;
 
     /* Mark the texture as dirty so that it gets loaded first time around. */
@@ -6867,6 +6865,7 @@ static HRESULT surface_init(struct wined3d_surface *surface, UINT alignment, UIN
     if (FAILED(hr))
     {
         ERR("Private setup failed, returning %#x\n", hr);
+        surface_set_container(surface, NULL);
         surface_cleanup(surface);
         return hr;
     }
@@ -6874,7 +6873,7 @@ static HRESULT surface_init(struct wined3d_surface *surface, UINT alignment, UIN
     /* Similar to lockable rendertargets above, creating the DIB section
      * during surface initialization prevents the sysmem pointer from changing
      * after a wined3d_surface_getdc() call. */
-    if ((usage & WINED3DUSAGE_OWNDC) && !surface->hDC
+    if ((desc->usage & WINED3DUSAGE_OWNDC) && !surface->hDC
             && SUCCEEDED(surface_create_dib_section(surface)))
     {
         wined3d_resource_free_sysmem(&surface->resource);
@@ -6884,33 +6883,44 @@ static HRESULT surface_init(struct wined3d_surface *surface, UINT alignment, UIN
     return hr;
 }
 
-HRESULT CDECL wined3d_surface_create(struct wined3d_device *device, UINT width, UINT height,
-        enum wined3d_format_id format_id, DWORD usage, enum wined3d_pool pool,
-        enum wined3d_multisample_type multisample_type, DWORD multisample_quality, DWORD flags,
-        void *parent, const struct wined3d_parent_ops *parent_ops, struct wined3d_surface **surface)
+HRESULT CDECL wined3d_surface_create(struct wined3d_texture *container,
+        const struct wined3d_resource_desc *desc, DWORD flags, struct wined3d_surface **surface)
 {
+    struct wined3d_device_parent *device_parent = container->resource.device->device_parent;
+    const struct wined3d_parent_ops *parent_ops;
     struct wined3d_surface *object;
+    void *parent;
     HRESULT hr;
 
-    TRACE("device %p, width %u, height %u, format %s\n",
-            device, width, height, debug_d3dformat(format_id));
-    TRACE("surface %p, usage %s (%#x), pool %s, multisample_type %#x, multisample_quality %u\n",
-            surface, debug_d3dusage(usage), usage, debug_d3dpool(pool), multisample_type, multisample_quality);
-    TRACE("flags %#x, parent %p, parent_ops %p.\n", flags, parent, parent_ops);
+    TRACE("container %p, width %u, height %u, format %s, usage %s (%#x), "
+            "pool %s, multisample_type %#x, multisample_quality %u, flags %#x, surface %p.\n",
+            container, desc->width, desc->height, debug_d3dformat(desc->format),
+            debug_d3dusage(desc->usage), desc->usage, debug_d3dpool(desc->pool),
+            desc->multisample_type, desc->multisample_quality, flags, surface);
 
-    object = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(*object));
-    if (!object)
-        return WINED3DERR_OUTOFVIDEOMEMORY;
+    if (!(object = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(*object))))
+        return E_OUTOFMEMORY;
 
-    if (FAILED(hr = surface_init(object, device->surface_alignment, width, height, multisample_type,
-            multisample_quality, device, usage, format_id, pool, flags, parent, parent_ops)))
+    if (FAILED(hr = surface_init(object, container, desc, flags)))
     {
         WARN("Failed to initialize surface, returning %#x.\n", hr);
         HeapFree(GetProcessHeap(), 0, object);
         return hr;
     }
 
-    TRACE("Created surface %p.\n", object);
+    if (FAILED(hr = device_parent->ops->surface_created(device_parent,
+            wined3d_texture_get_parent(container), object, &parent, &parent_ops)))
+    {
+        WARN("Failed to create surface parent, hr %#x.\n", hr);
+        surface_set_container(object, NULL);
+        wined3d_surface_decref(object);
+        return hr;
+    }
+
+    TRACE("Created surface %p, parent %p, parent_ops %p.\n", object, parent, parent_ops);
+
+    object->resource.parent = parent;
+    object->resource.parent_ops = parent_ops;
     *surface = object;
 
     return hr;
