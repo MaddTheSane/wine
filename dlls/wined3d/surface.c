@@ -96,7 +96,8 @@ static void surface_cleanup(struct wined3d_surface *surface)
     }
 
     if (surface->flags & SFLAG_USERPTR)
-        wined3d_surface_set_mem(surface, NULL, 0);
+        surface->resource.allocatedMemory = NULL;
+
     if (surface->overlay_dest)
         list_remove(&surface->overlay_entry);
 
@@ -332,6 +333,7 @@ void draw_textured_quad(const struct wined3d_surface *src_surface, struct wined3
         const RECT *src_rect, const RECT *dst_rect, enum wined3d_texture_filter_type filter)
 {
     const struct wined3d_gl_info *gl_info = context->gl_info;
+    struct wined3d_texture *texture = src_surface->container;
     struct blt_info info;
 
     surface_get_blt_info(src_surface->texture_target, src_rect, src_surface->pow2Width, src_surface->pow2Height, &info);
@@ -375,14 +377,10 @@ void draw_textured_quad(const struct wined3d_surface *src_surface, struct wined3
 
     /* We changed the filtering settings on the texture. Inform the
      * container about this to get the filters reset properly next draw. */
-    if (src_surface->container)
-    {
-        struct wined3d_texture *texture = src_surface->container;
-        texture->texture_rgb.states[WINED3DTEXSTA_MAGFILTER] = WINED3D_TEXF_POINT;
-        texture->texture_rgb.states[WINED3DTEXSTA_MINFILTER] = WINED3D_TEXF_POINT;
-        texture->texture_rgb.states[WINED3DTEXSTA_MIPFILTER] = WINED3D_TEXF_NONE;
-        texture->texture_rgb.states[WINED3DTEXSTA_SRGBTEXTURE] = FALSE;
-    }
+    texture->texture_rgb.states[WINED3DTEXSTA_MAGFILTER] = WINED3D_TEXF_POINT;
+    texture->texture_rgb.states[WINED3DTEXSTA_MINFILTER] = WINED3D_TEXF_POINT;
+    texture->texture_rgb.states[WINED3DTEXSTA_MIPFILTER] = WINED3D_TEXF_NONE;
+    texture->texture_rgb.states[WINED3DTEXSTA_SRGBTEXTURE] = FALSE;
 }
 
 /* Works correctly only for <= 4 bpp formats. */
@@ -606,48 +604,12 @@ static void surface_evict_sysmem(struct wined3d_surface *surface)
 /* Context activation is done by the caller. */
 static void surface_bind(struct wined3d_surface *surface, struct wined3d_context *context, BOOL srgb)
 {
+    struct wined3d_texture *texture = surface->container;
+
     TRACE("surface %p, context %p, srgb %#x.\n", surface, context, srgb);
 
-    if (surface->container)
-    {
-        struct wined3d_texture *texture = surface->container;
-
-        TRACE("Passing to container (%p).\n", texture);
-        texture->texture_ops->texture_bind(texture, context, srgb);
-    }
-    else
-    {
-        const struct wined3d_gl_info *gl_info = context->gl_info;
-
-        if (surface->texture_level)
-        {
-            ERR("Standalone surface %p is non-zero texture level %u.\n",
-                    surface, surface->texture_level);
-        }
-
-        if (srgb)
-            ERR("Trying to bind standalone surface %p as sRGB.\n", surface);
-
-        if (!surface->texture_name)
-        {
-            gl_info->gl_ops.gl.p_glGenTextures(1, &surface->texture_name);
-            checkGLcall("glGenTextures");
-
-            TRACE("Surface %p given name %u.\n", surface, surface->texture_name);
-
-            context_bind_texture(context, surface->texture_target, surface->texture_name);
-            gl_info->gl_ops.gl.p_glTexParameteri(surface->texture_target, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-            gl_info->gl_ops.gl.p_glTexParameteri(surface->texture_target, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-            gl_info->gl_ops.gl.p_glTexParameteri(surface->texture_target, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
-            gl_info->gl_ops.gl.p_glTexParameteri(surface->texture_target, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-            gl_info->gl_ops.gl.p_glTexParameteri(surface->texture_target, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-            checkGLcall("glTexParameteri");
-        }
-        else
-        {
-            context_bind_texture(context, surface->texture_target, surface->texture_name);
-        }
-    }
+    TRACE("Passing to container (%p).\n", texture);
+    texture->texture_ops->texture_bind(texture, context, srgb);
 }
 
 /* Context activation is done by the caller. */
@@ -1536,15 +1498,6 @@ static void surface_unload(struct wined3d_resource *resource)
     list_init(&surface->renderbuffers);
     surface->current_renderbuffer = NULL;
 
-    /* If we're in a texture, the texture name belongs to the texture.
-     * Otherwise, destroy it. */
-    if (!surface->container)
-    {
-        gl_info->gl_ops.gl.p_glDeleteTextures(1, &surface->texture_name);
-        surface->texture_name = 0;
-        gl_info->gl_ops.gl.p_glDeleteTextures(1, &surface->texture_name_srgb);
-        surface->texture_name_srgb = 0;
-    }
     if (surface->rb_multisample)
     {
         gl_info->fbo_ops.glDeleteRenderbuffers(1, &surface->rb_multisample);

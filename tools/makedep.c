@@ -929,6 +929,29 @@ static void parse_rc_file( struct incl_file *pFile, FILE *file )
 
 
 /*******************************************************************
+ *         parse_man_page
+ */
+static void parse_man_page( struct incl_file *source, FILE *file )
+{
+    char *p, *buffer;
+
+    /* make sure it gets rebuilt when the version changes */
+    add_include( source, "config.h", 1 );
+
+    input_line = 0;
+    while ((buffer = get_line( file )))
+    {
+        if (strncmp( buffer, ".TH", 3 )) continue;
+        if (!(p = strtok( buffer, " \t" ))) continue;  /* .TH */
+        if (!(p = strtok( NULL, " \t" ))) continue;  /* program name */
+        if (!(p = strtok( NULL, " \t" ))) continue;  /* man section */
+        source->sourcename = xstrdup( p );  /* abuse source name to store section */
+        return;
+    }
+}
+
+
+/*******************************************************************
  *         parse_generated_idl
  */
 static void parse_generated_idl( struct incl_file *source )
@@ -1005,6 +1028,8 @@ static void parse_file( struct incl_file *source, int src )
         parse_c_file( source, file );
     else if (strendswith( source->filename, ".rc" ))
         parse_rc_file( source, file );
+    else if (strendswith( source->filename, ".man.in" ))
+        parse_man_page( source, file );
     fclose(file);
     input_file_name = NULL;
 }
@@ -1147,10 +1172,12 @@ static void output_include( struct incl_file *pFile, struct incl_file *owner, in
 static void output_sources(void)
 {
     struct incl_file *source;
-    struct strarray clean_files;
+    struct strarray clean_files, subdirs;
     int i, column, po_srcs = 0, mc_srcs = 0;
+    int is_test = find_src_file( "testlist.o" ) != NULL;
 
     strarray_init( &clean_files );
+    strarray_init( &subdirs );
 
     LIST_FOR_EACH_ENTRY( source, &sources, struct incl_file, entry )
     {
@@ -1241,18 +1268,44 @@ static void output_sources(void)
             }
             column += output( " %s", source->filename );
         }
+        else if (!strcmp( ext, "in" ))  /* man page */
+        {
+            if (strendswith( obj, ".man" ) && source->sourcename)
+            {
+                char *dir, *dest = replace_extension( obj, 4, "" );
+                char *lang = strchr( dest, '.' );
+                if (lang)
+                {
+                    *lang++ = 0;
+                    dir = strmake( "$(DESTDIR)$(mandir)/%s/man%s", lang, source->sourcename );
+                }
+                else dir = strmake( "$(DESTDIR)$(mandir)/man%s", source->sourcename );
+                output( "install-man-pages:: %s %s\n", obj, dir );
+                output( "\t$(INSTALL_DATA) %s %s/%s.%s\n",
+                        obj, dir, dest, source->sourcename );
+                output( "uninstall::\n" );
+                output( "\t$(RM) %s/%s.%s\n",
+                        dir, dest, source->sourcename );
+                free( dest );
+                strarray_add( &subdirs, dir );
+            }
+            strarray_add( &clean_files, xstrdup(obj) );
+            output( "%s: %s\n", obj, source->filename );
+            output( "\t$(SED_CMD) %s >$@ || ($(RM) $@ && false)\n", source->filename );
+            column += output( "%s:", obj );
+        }
         else if (!strcmp( ext, "tlb" ) || !strcmp( ext, "res" ) || !strcmp( ext, "pot" ))
         {
             continue;  /* nothing to do for typelib files */
         }
         else
         {
-            struct object_extension *ext;
-            LIST_FOR_EACH_ENTRY( ext, &object_extensions, struct object_extension, entry )
+            struct object_extension *obj_ext;
+            LIST_FOR_EACH_ENTRY( obj_ext, &object_extensions, struct object_extension, entry )
             {
-                strarray_add( &clean_files, strmake( "%s.%s", obj, ext->extension ));
-                output( "%s.%s: %s\n", obj, ext->extension, source->filename );
-                if (strstr( ext->extension, "cross" ))
+                strarray_add( &clean_files, strmake( "%s.%s", obj, obj_ext->extension ));
+                output( "%s.%s: %s\n", obj, obj_ext->extension, source->filename );
+                if (strstr( obj_ext->extension, "cross" ))
                     output( "\t$(CROSSCC) -c $(ALLCROSSCFLAGS) -o $@ %s\n", source->filename );
                 else
                     output( "\t$(CC) -c $(ALLCFLAGS) -o $@ %s\n", source->filename );
@@ -1263,8 +1316,13 @@ static void output_sources(void)
                 output( "%s.cross.o: %s\n", obj, source->filename );
                 output( "\t$(CROSSCC) -c $(ALLCROSSCFLAGS) -o $@ %s\n", source->filename );
             }
-            LIST_FOR_EACH_ENTRY( ext, &object_extensions, struct object_extension, entry )
-                column += output( "%s.%s ", obj, ext->extension );
+            if (is_test && !strcmp( ext, "c" ) && !is_generated_idl( source ))
+            {
+                output( "%s.ok:\n", obj );
+                output( "\t$(RUNTEST) $(RUNTESTFLAGS) %s && touch $@\n", obj );
+            }
+            LIST_FOR_EACH_ENTRY( obj_ext, &object_extensions, struct object_extension, entry )
+                column += output( "%s.%s ", obj, obj_ext->extension );
             if (source->flags & FLAG_C_IMPLIB) column += output( "%s.cross.o", obj );
             column += output( ":" );
         }
@@ -1313,13 +1371,24 @@ static void output_sources(void)
         strarray_add( &clean_files, "dlldata.c" );
     }
 
-    if (find_src_file( "testlist.o" ))
+    if (is_test)
     {
         output( "testlist.c: $(MAKECTESTS) Makefile.in\n" );
         column = output( "\t$(MAKECTESTS) -o $@" );
         LIST_FOR_EACH_ENTRY( source, &sources, struct incl_file, entry )
             if (strendswith( source->name, ".c" ) && !is_generated_idl( source ))
-                output_filename( source->filename, &column );
+                output_filename( source->name, &column );
+        output( "\n" );
+        column = output( "check test:" );
+        LIST_FOR_EACH_ENTRY( source, &sources, struct incl_file, entry )
+            if (strendswith( source->name, ".c" ) && !is_generated_idl( source ))
+                output_filename( replace_extension( source->name, 2, ".ok" ), &column );
+        output( "\n" );
+        output( "clean testclean::\n" );
+        column = output( "\t$(RM)" );
+        LIST_FOR_EACH_ENTRY( source, &sources, struct incl_file, entry )
+            if (strendswith( source->name, ".c" ) && !is_generated_idl( source ))
+                output_filename( replace_extension( source->name, 2, ".ok" ), &column );
         output( "\n" );
         strarray_add( &clean_files, "testlist.c" );
     }
@@ -1330,6 +1399,13 @@ static void output_sources(void)
         column = output( "\t$(RM)" );
         for (i = 0; i < clean_files.count; i++) output_filename( clean_files.str[i], &column );
         output( "\n" );
+    }
+
+    if (subdirs.count)
+    {
+        for (i = column = 0; i < subdirs.count; i++) output_filename( subdirs.str[i], &column );
+        output( ":\n" );
+        output( "\t$(MKDIR_P) -m 755 $@\n" );
     }
 }
 
