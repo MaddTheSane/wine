@@ -2625,6 +2625,16 @@ IDL_TLB_RES = \$(IDL_TLB_SRCS:.idl=_t.res)
 MODULEFLAGS = -shared \$(srcdir)/\$(MAINSPEC) \$(EXTRADLLFLAGS)
 
 all: $deps
+
+manpages:: dummy
+	\$(C2MAN) -o \$(top_builddir)/documentation/man\$(api_manext) -R\$(top_builddir) -C\$(srcdir) \$(PARENTSRC:%=-P%) -I\$(top_srcdir)/include \$(MAINSPEC:%=-w %) \$(C_SRCS)
+htmlpages:: dummy
+	\$(C2MAN) -o \$(top_builddir)/documentation/html -R\$(top_builddir) -C\$(srcdir) \$(PARENTSRC:%=-P%) -I\$(top_srcdir)/include -Th \$(MAINSPEC:%=-w %) \$(C_SRCS)
+sgmlpages:: dummy
+	\$(C2MAN) -o \$(top_builddir)/documentation/api-guide -R\$(top_builddir) -C\$(srcdir) \$(PARENTSRC:%=-P%) -I\$(top_srcdir)/include -Ts \$(MAINSPEC:%=-w %) \$(C_SRCS)
+xmlpages:: dummy
+	\$(C2MAN) -o \$(top_builddir)/documentation/api-guide-xml -R\$(top_builddir) -C\$(srcdir) \$(PARENTSRC:%=-P%) -I\$(top_srcdir)/include -Tx \$(MAINSPEC:%=-w %) \$(C_SRCS)
+.PHONY: manpages htmlpages sgmlpages xmlpages
 ")
 
 AC_SUBST(MAKE_PROG_RULES,"
@@ -3512,7 +3522,7 @@ then
     AC_CONFIG_COMMANDS([tools],[AS_MKDIR_P(tools)])
     WINE_APPEND_RULE(
 [tools/makedep$ac_exeext: tools/makedep.c include/config.h
-	\$(CC) \$(ALLCFLAGS) -o \$@ $srcdir/tools/makedep.c \$(LDFLAGS)
+	\$(CC) -Iinclude -I$srcdir/include \$(ALLCFLAGS) -o \$@ $srcdir/tools/makedep.c \$(LDFLAGS)
 clean:: __clean__
 	\$(RM) tools/makedep$ac_exeext])
 fi

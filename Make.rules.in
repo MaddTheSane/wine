@@ -11,11 +11,10 @@
 
 # First some useful definitions
 
-INCLUDES     = -I$(srcdir) $(PARENTSRC:%=-I@srcdir@/%) -I. -I$(top_srcdir)/include -I$(top_builddir)/include $(EXTRAINCL)
 DEFS         = -D__WINESRC__ $(EXTRADEFS)
-ALLCFLAGS    = $(INCLUDES) $(DEFS) $(DLLFLAGS) $(EXTRACFLAGS) $(CPPFLAGS) $(CFLAGS) $(MODCFLAGS)
-IDLFLAGS     = $(INCLUDES) $(DEFS) $(EXTRAIDLFLAGS)
-RCFLAGS      = --nostdinc $(PORCFLAGS) $(TARGETFLAGS) $(INCLUDES) $(DEFS) $(EXTRARCFLAGS)
+ALLCFLAGS    = $(DEFS) $(DLLFLAGS) $(EXTRACFLAGS) $(CPPFLAGS) $(CFLAGS) $(MODCFLAGS)
+IDLFLAGS     = $(DEFS) $(EXTRAIDLFLAGS)
+RCFLAGS      = --nostdinc $(PORCFLAGS) $(TARGETFLAGS) $(DEFS) $(EXTRARCFLAGS)
 
 IDL_GEN_C_SRCS  = $(IDL_C_SRCS:.idl=_c.c) $(IDL_I_SRCS:.idl=_i.c) \
                   $(IDL_P_SRCS:.idl=_p.c) $(IDL_S_SRCS:.idl=_s.c)
@@ -28,7 +27,7 @@ OBJS = $(C_SRCS:.c=.o) $(BISON_SRCS:.y=.tab.o) $(LEX_SRCS:.l=.yy.o) $(IDL_GEN_C_
        $(IDL_R_SRCS:.idl=_r.res) $(IDL_TLB_RES) $(RC_SRCS:.rc=.res) $(MC_SRCS:.mc=.res) $(EXTRA_OBJS)
 
 CROSSOBJS = $(OBJS:.o=.cross.o)
-ALLCROSSCFLAGS = $(INCLUDES) $(DEFS) -DWINE_CROSSTEST $(CPPFLAGS) $(CFLAGS)
+ALLCROSSCFLAGS = $(DEFS) -DWINE_CROSSTEST $(CPPFLAGS) $(CFLAGS)
 
 # Implicit rules
 
@@ -105,20 +104,6 @@ $(WINETEST_RES): $(TESTMODULE_STRIPPED)
 all: $(MANPAGES:.man.in=.man)
 
 .PHONY: install-man-pages
-
-# Rules for auto documentation
-
-manpages:: $(C_SRCS) dummy
-	$(C2MAN) -o $(top_builddir)/documentation/man$(api_manext) -R$(top_builddir) -C$(srcdir) $(INCLUDES) -S$(api_manext) $(MAINSPEC:%=-w %) $(C_SRCS)
-
-htmlpages:: $(C_SRCS) dummy
-	$(C2MAN) -o $(top_builddir)/documentation/html -R$(top_builddir) -C$(srcdir) $(INCLUDES) -Th $(MAINSPEC:%=-w %) $(C_SRCS)
-
-sgmlpages:: $(C_SRCS) dummy
-	$(C2MAN) -o $(top_builddir)/documentation/api-guide -R$(top_builddir) -C$(srcdir) $(INCLUDES) -Ts $(MAINSPEC:%=-w %) $(C_SRCS)
-
-xmlpages:: $(C_SRCS) dummy
-	$(C2MAN) -o $(top_builddir)/documentation/api-guide-xml -R$(top_builddir) -C$(srcdir) $(INCLUDES) -Tx $(MAINSPEC:%=-w %) $(C_SRCS)
 
 # Rules for cleaning
 

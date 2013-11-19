@@ -2421,12 +2421,7 @@ void surface_add_dirty_rect(struct wined3d_surface *surface, const struct wined3
         surface->dirtyRect.bottom = surface->resource.height;
     }
 
-    /* if the container is a texture then mark it dirty. */
-    if (surface->container)
-    {
-        TRACE("Passing to container.\n");
-        wined3d_texture_set_dirty(surface->container);
-    }
+    wined3d_texture_set_dirty(surface->container);
 }
 
 HRESULT surface_load(struct wined3d_surface *surface, BOOL srgb)
@@ -3640,29 +3635,11 @@ HRESULT CDECL wined3d_surface_flip(struct wined3d_surface *surface, struct wined
 void surface_internal_preload(struct wined3d_surface *surface,
         struct wined3d_context *context, enum WINED3DSRGB srgb)
 {
+    struct wined3d_texture *texture = surface->container;
+
     TRACE("iface %p, srgb %#x.\n", surface, srgb);
 
-    if (surface->container)
-    {
-        struct wined3d_texture *texture = surface->container;
-
-        TRACE("Passing to container (%p).\n", texture);
-        texture->texture_ops->texture_preload(texture, context, srgb);
-    }
-    else
-    {
-        TRACE("(%p) : About to load surface\n", surface);
-
-        surface_load(surface, srgb == SRGB_SRGB);
-
-        if (surface->resource.pool == WINED3D_POOL_DEFAULT)
-        {
-            /* Tell opengl to try and keep this texture in video ram (well mostly) */
-            GLclampf tmp;
-            tmp = 0.9f;
-            context->gl_info->gl_ops.gl.p_glPrioritizeTextures(1, &surface->texture_name, &tmp);
-        }
-    }
+    texture->texture_ops->texture_preload(texture, context, srgb);
 }
 
 /* Read the framebuffer back into the surface */
@@ -3963,24 +3940,19 @@ static void surface_prepare_texture_internal(struct wined3d_surface *surface,
 /* Context activation is done by the caller. */
 void surface_prepare_texture(struct wined3d_surface *surface, struct wined3d_context *context, BOOL srgb)
 {
-    if (surface->container)
+    struct wined3d_texture *texture = surface->container;
+    UINT sub_count = texture->level_count * texture->layer_count;
+    UINT i;
+
+    TRACE("surface %p is a subresource of texture %p.\n", surface, texture);
+
+    for (i = 0; i < sub_count; ++i)
     {
-        struct wined3d_texture *texture = surface->container;
-        UINT sub_count = texture->level_count * texture->layer_count;
-        UINT i;
-
-        TRACE("surface %p is a subresource of texture %p.\n", surface, texture);
-
-        for (i = 0; i < sub_count; ++i)
-        {
-            struct wined3d_surface *s = surface_from_resource(texture->sub_resources[i]);
-            surface_prepare_texture_internal(s, context, srgb);
-        }
-
-        return;
+        struct wined3d_surface *s = surface_from_resource(texture->sub_resources[i]);
+        surface_prepare_texture_internal(s, context, srgb);
     }
 
-    surface_prepare_texture_internal(surface, context, srgb);
+    return;
 }
 
 void surface_prepare_rb(struct wined3d_surface *surface, const struct wined3d_gl_info *gl_info, BOOL multisample)
@@ -4317,12 +4289,6 @@ static void fb_copy_to_texture_direct(struct wined3d_surface *dst_surface, struc
     struct wined3d_context *context;
     BOOL upsidedown = FALSE;
     RECT dst_rect = *dst_rect_in;
-    GLenum dst_target;
-
-    if (dst_surface->container)
-        dst_target = dst_surface->container->target;
-    else
-        dst_target = dst_surface->texture_target;
 
     /* Make sure that the top pixel is always above the bottom pixel, and keep a separate upside down flag
      * glCopyTexSubImage is a bit picky about the parameters we pass to it
@@ -4340,7 +4306,7 @@ static void fb_copy_to_texture_direct(struct wined3d_surface *dst_surface, struc
     surface_internal_preload(dst_surface, context, SRGB_RGB);
 
     /* Bind the target texture */
-    context_bind_texture(context, dst_target, dst_surface->texture_name);
+    context_bind_texture(context, dst_surface->container->target, dst_surface->texture_name);
     if (surface_is_offscreen(src_surface))
     {
         TRACE("Reading from an offscreen target\n");
@@ -5062,13 +5028,7 @@ void surface_modify_ds_location(struct wined3d_surface *surface,
 
     if (((surface->flags & SFLAG_INTEXTURE) && !(location & SFLAG_INTEXTURE))
             || (!(surface->flags & SFLAG_INTEXTURE) && (location & SFLAG_INTEXTURE)))
-    {
-        if (surface->container)
-        {
-            TRACE("Passing to container.\n");
-            wined3d_texture_set_dirty(surface->container);
-        }
-    }
+        wined3d_texture_set_dirty(surface->container);
 
     surface->ds_current_size.cx = w;
     surface->ds_current_size.cy = h;

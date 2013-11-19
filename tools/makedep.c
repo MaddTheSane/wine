@@ -81,28 +81,15 @@ static const struct
 static struct list sources = LIST_INIT(sources);
 static struct list includes = LIST_INIT(includes);
 
-struct object_extension
-{
-    struct list entry;
-    const char *extension;
-};
-
-static struct list object_extensions = LIST_INIT(object_extensions);
-
-struct incl_path
-{
-    struct list entry;
-    const char *name;
-};
-
-static struct list paths = LIST_INIT(paths);
-
 struct strarray
 {
     unsigned int count;  /* strings in use */
     unsigned int size;   /* total allocated size */
     const char **str;
 };
+
+static struct strarray paths;
+static struct strarray object_extensions;
 
 static const char *src_dir;
 static const char *top_src_dir;
@@ -291,6 +278,19 @@ static void strarray_add( struct strarray *array, const char *str )
 
 
 /*******************************************************************
+ *         strarray_insert
+ */
+static void strarray_insert( struct strarray *array, unsigned int pos, const char *str )
+{
+    unsigned int i;
+
+    strarray_add( array, NULL );
+    for (i = array->count - 1; i > pos; i--) array->str[i] = array->str[i - 1];
+    array->str[pos] = str;
+}
+
+
+/*******************************************************************
  *         output_filename
  */
 static void output_filename( const char *name, int *column )
@@ -418,30 +418,6 @@ static char *get_line( FILE *file )
 }
 
 /*******************************************************************
- *         add_object_extension
- *
- * Add an extension for object files.
- */
-static void add_object_extension( const char *ext )
-{
-    struct object_extension *object_extension = xmalloc( sizeof(*object_extension) );
-    list_add_tail( &object_extensions, &object_extension->entry );
-    object_extension->extension = ext;
-}
-
-/*******************************************************************
- *         add_include_path
- *
- * Add a directory to the include path.
- */
-static void add_include_path( const char *name )
-{
-    struct incl_path *path = xmalloc( sizeof(*path) );
-    list_add_tail( &paths, &path->entry );
-    path->name = name;
-}
-
-/*******************************************************************
  *         find_src_file
  */
 static struct incl_file *find_src_file( const char *name )
@@ -560,7 +536,7 @@ static FILE *open_include_file( struct incl_file *pFile )
 {
     FILE *file = NULL;
     char *filename, *p;
-    struct incl_path *path;
+    unsigned int i;
 
     errno = ENOENT;
 
@@ -666,24 +642,17 @@ static FILE *open_include_file( struct incl_file *pFile )
         free( filename );
     }
 
-    /* now try in global includes */
-    if (top_obj_dir)
-    {
-        filename = strmake( "%s/include/%s", top_obj_dir, pFile->name );
-        if ((file = fopen( filename, "r" ))) goto found;
-        free( filename );
-    }
-    if (top_src_dir)
-    {
-        filename = strmake( "%s/include/%s", top_src_dir, pFile->name );
-        if ((file = fopen( filename, "r" ))) goto found;
-        free( filename );
-    }
-
     /* now search in include paths */
-    LIST_FOR_EACH_ENTRY( path, &paths, struct incl_path, entry )
+    for (i = 0; i < paths.count; i++)
     {
-        filename = strmake( "%s/%s", path->name, pFile->name );
+        if (paths.str[i][0] == '/')
+        {
+            /* ignore absolute paths that don't point into the source dir */
+            if (!top_src_dir) continue;
+            if (strncmp( paths.str[i], top_src_dir, strlen(top_src_dir) )) continue;
+            if (paths.str[i][strlen(top_src_dir)] != '/') continue;
+        }
+        filename = strmake( "%s/%s", paths.str[i], pFile->name );
         if ((file = fopen( filename, "r" ))) goto found;
         free( filename );
     }
@@ -1179,6 +1148,16 @@ static void output_sources(void)
     strarray_init( &clean_files );
     strarray_init( &subdirs );
 
+    column = output( "includes = -I." );
+    if (src_dir) output_filename( strmake( "-I%s", src_dir ), &column );
+    if (parent_dir)
+    {
+        if (src_dir) output_filename( strmake( "-I%s/%s", src_dir, parent_dir ), &column );
+        else output_filename( strmake( "-I%s", parent_dir ), &column );
+    }
+    for (i = 0; i < paths.count; i++) output_filename( strmake( "-I%s", paths.str[i] ), &column );
+    output( "\n" );
+
     LIST_FOR_EACH_ENTRY( source, &sources, struct incl_file, entry )
     {
         char *obj = xstrdup( source->name );
@@ -1205,7 +1184,7 @@ static void output_sources(void)
 
             output( "\t$(BISON) $(BISONFLAGS) -p %s_ -o $@ %s\n", obj, source->filename );
             output( "%s.tab.o: %s.tab.c\n", obj, obj );
-            output( "\t$(CC) -c $(ALLCFLAGS) -o $@ %s.tab.c\n", obj );
+            output( "\t$(CC) -c $(includes) $(ALLCFLAGS) -o $@ %s.tab.c\n", obj );
             strarray_add( &clean_files, strmake( "%s.tab.c", obj ));
             strarray_add( &clean_files, strmake( "%s.tab.o", obj ));
             column += output( "%s.tab.o:", obj );
@@ -1216,7 +1195,7 @@ static void output_sources(void)
             output( "%s.yy.c: %s\n", obj, source->filename );
             output( "\t$(FLEX) $(LEXFLAGS) -o$@ %s\n", source->filename );
             output( "%s.yy.o: %s.yy.c\n", obj, obj );
-            output( "\t$(CC) -c $(ALLCFLAGS) -o $@ %s.yy.c\n", obj );
+            output( "\t$(CC) -c $(includes) $(ALLCFLAGS) -o $@ %s.yy.c\n", obj );
             strarray_add( &clean_files, strmake( "%s.yy.c", obj ));
             strarray_add( &clean_files, strmake( "%s.yy.o", obj ));
             column += output( "%s.yy.o:", obj );
@@ -1226,14 +1205,14 @@ static void output_sources(void)
             if (source->flags & FLAG_RC_PO)
             {
                 output( "%s.res: $(WRC) $(ALL_MO_FILES) %s\n", obj, source->filename );
-                output( "\t$(WRC) $(RCFLAGS) -o $@ %s\n", source->filename );
+                output( "\t$(WRC) $(includes) $(RCFLAGS) -o $@ %s\n", source->filename );
                 column += output( "%s.res rsrc.pot:", obj );
                 po_srcs++;
             }
             else
             {
                 output( "%s.res: $(WRC) %s\n", obj, source->filename );
-                output( "\t$(WRC) $(RCFLAGS) -o $@ %s\n", source->filename );
+                output( "\t$(WRC) $(includes) $(RCFLAGS) -o $@ %s\n", source->filename );
                 column += output( "%s.res:", obj );
             }
             strarray_add( &clean_files, strmake( "%s.res", obj ));
@@ -1258,7 +1237,7 @@ static void output_sources(void)
             {
                 if (!(source->flags & idl_outputs[i].flag)) continue;
                 output( "%s%s: $(WIDL)\n", obj, idl_outputs[i].ext );
-                output( "\t$(WIDL) %s -o $@ %s\n", idl_outputs[i].widl_arg, source->filename );
+                output( "\t$(WIDL) $(includes) %s -o $@ %s\n", idl_outputs[i].widl_arg, source->filename );
                 targets[nb_targets++] = strmake( "%s%s", obj, idl_outputs[i].ext );
             }
             for (i = 0; i < nb_targets; i++)
@@ -1300,29 +1279,28 @@ static void output_sources(void)
         }
         else
         {
-            struct object_extension *obj_ext;
-            LIST_FOR_EACH_ENTRY( obj_ext, &object_extensions, struct object_extension, entry )
+            for (i = 0; i < object_extensions.count; i++)
             {
-                strarray_add( &clean_files, strmake( "%s.%s", obj, obj_ext->extension ));
-                output( "%s.%s: %s\n", obj, obj_ext->extension, source->filename );
-                if (strstr( obj_ext->extension, "cross" ))
-                    output( "\t$(CROSSCC) -c $(ALLCROSSCFLAGS) -o $@ %s\n", source->filename );
+                strarray_add( &clean_files, strmake( "%s.%s", obj, object_extensions.str[i] ));
+                output( "%s.%s: %s\n", obj, object_extensions.str[i], source->filename );
+                if (strstr( object_extensions.str[i], "cross" ))
+                    output( "\t$(CROSSCC) -c $(includes) $(ALLCROSSCFLAGS) -o $@ %s\n", source->filename );
                 else
-                    output( "\t$(CC) -c $(ALLCFLAGS) -o $@ %s\n", source->filename );
+                    output( "\t$(CC) -c $(includes) $(ALLCFLAGS) -o $@ %s\n", source->filename );
             }
             if (source->flags & FLAG_C_IMPLIB)
             {
                 strarray_add( &clean_files, strmake( "%s.cross.o", obj ));
                 output( "%s.cross.o: %s\n", obj, source->filename );
-                output( "\t$(CROSSCC) -c $(ALLCROSSCFLAGS) -o $@ %s\n", source->filename );
+                output( "\t$(CROSSCC) -c $(includes) $(ALLCROSSCFLAGS) -o $@ %s\n", source->filename );
             }
             if (is_test && !strcmp( ext, "c" ) && !is_generated_idl( source ))
             {
                 output( "%s.ok:\n", obj );
                 output( "\t$(RUNTEST) $(RUNTESTFLAGS) %s && touch $@\n", obj );
             }
-            LIST_FOR_EACH_ENTRY( obj_ext, &object_extensions, struct object_extension, entry )
-                column += output( "%s.%s ", obj, obj_ext->extension );
+            for (i = 0; i < object_extensions.count; i++)
+                column += output( "%s.%s ", obj, object_extensions.str[i] );
             if (source->flags & FLAG_C_IMPLIB) column += output( "%s.cross.o", obj );
             column += output( ":" );
         }
@@ -1341,7 +1319,7 @@ static void output_sources(void)
         LIST_FOR_EACH_ENTRY( source, &sources, struct incl_file, entry )
             if (source->flags & FLAG_RC_PO) output_filename( source->filename, &column );
         output( "\n" );
-        column = output( "\t$(WRC) $(RCFLAGS) -O pot -o $@" );
+        column = output( "\t$(WRC) $(includes) $(RCFLAGS) -O pot -o $@" );
         LIST_FOR_EACH_ENTRY( source, &sources, struct incl_file, entry )
             if (source->flags & FLAG_RC_PO) output_filename( source->filename, &column );
         output( "\n" );
@@ -1364,7 +1342,7 @@ static void output_sources(void)
     if (find_src_file( "dlldata.o" ))
     {
         output( "dlldata.c: $(WIDL) Makefile.in\n" );
-        column = output( "\t$(WIDL) $(IDLFLAGS) --dlldata-only -o $@" );
+        column = output( "\t$(WIDL) --dlldata-only -o $@" );
         LIST_FOR_EACH_ENTRY( source, &sources, struct incl_file, entry )
             if (source->flags & FLAG_IDL_PROXY) output_filename( source->filename, &column );
         output( "\n" );
@@ -1498,7 +1476,7 @@ static void parse_option( const char *opt )
     switch(opt[1])
     {
     case 'I':
-        if (opt[2]) add_include_path( opt + 2 );
+        if (opt[2]) strarray_add( &paths, xstrdup( opt + 2 ));
         break;
     case 'C':
         src_dir = opt + 2;
@@ -1523,7 +1501,7 @@ static void parse_option( const char *opt )
         else Separator = NULL;
         break;
     case 'x':
-        if (opt[2]) add_object_extension( opt + 2 );
+        if (opt[2]) strarray_add( &object_extensions, xstrdup( opt + 2 ));
         break;
     default:
         fprintf( stderr, "Unknown option '%s'\n%s", opt, Usage );
@@ -1538,7 +1516,6 @@ static void parse_option( const char *opt )
 int main( int argc, char *argv[] )
 {
     struct incl_file *pFile;
-    struct incl_path *path, *next;
     int i, j;
 
     i = 1;
@@ -1571,22 +1548,11 @@ int main( int argc, char *argv[] )
     if (src_dir && !strcmp( src_dir, "." )) src_dir = NULL;
     if (top_src_dir && top_obj_dir && !strcmp( top_src_dir, top_obj_dir )) top_src_dir = NULL;
 
-    /* set the default extension list for object files */
-    if (list_empty( &object_extensions ))
-        add_object_extension( "o" );
+    if (top_src_dir) strarray_insert( &paths, 0, strmake( "%s/include", top_src_dir ));
+    if (top_obj_dir) strarray_insert( &paths, 0, strmake( "%s/include", top_obj_dir ));
 
-    /* get rid of absolute paths that don't point into the source dir */
-    LIST_FOR_EACH_ENTRY_SAFE( path, next, &paths, struct incl_path, entry )
-    {
-        if (path->name[0] != '/') continue;
-        if (top_src_dir)
-        {
-            if (!strncmp( path->name, top_src_dir, strlen(top_src_dir) ) &&
-                path->name[strlen(top_src_dir)] == '/') continue;
-        }
-        list_remove( &path->entry );
-        free( path );
-    }
+    /* set the default extension list for object files */
+    if (!object_extensions.count) strarray_add( &object_extensions, "o" );
 
     for (i = 1; i < argc; i++) add_src_file( argv[i] );
     add_generated_sources();
