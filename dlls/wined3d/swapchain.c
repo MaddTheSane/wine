@@ -302,7 +302,7 @@ static void swapchain_blit(const struct wined3d_swapchain *swapchain,
         if (backbuffer->resource.multisample_type)
         {
             location = SFLAG_INRB_RESOLVED;
-            surface_load_location(backbuffer, location, NULL);
+            surface_load_location(backbuffer, location);
         }
 
         context_apply_fbo_state_blit(context, GL_READ_FRAMEBUFFER, backbuffer, NULL, location);
@@ -352,7 +352,7 @@ static void swapchain_blit(const struct wined3d_swapchain *swapchain,
             gl_filter = GL_NEAREST;
 
         context_apply_fbo_state_blit(context2, GL_FRAMEBUFFER, swapchain->front_buffer, NULL, SFLAG_INDRAWABLE);
-        context_bind_texture(context2, backbuffer->texture_target, backbuffer->texture_name);
+        context_bind_texture(context2, backbuffer->texture_target, backbuffer->container->texture_rgb.name);
 
         /* Set up the texture. The surface is not in a wined3d_texture
          * container, so there are no D3D texture settings to dirtify. */
@@ -498,14 +498,14 @@ static void swapchain_gl_present(struct wined3d_swapchain *swapchain, const RECT
      */
     if (!swapchain->render_to_fbo && render_to_fbo && wined3d_settings.offscreen_rendering_mode == ORM_FBO)
     {
-        surface_load_location(back_buffer, SFLAG_INTEXTURE, NULL);
+        surface_load_location(back_buffer, SFLAG_INTEXTURE);
         surface_invalidate_location(back_buffer, SFLAG_INDRAWABLE);
         swapchain->render_to_fbo = TRUE;
         swapchain_update_draw_bindings(swapchain);
     }
     else
     {
-        surface_load_location(back_buffer, back_buffer->draw_binding, NULL);
+        surface_load_location(back_buffer, back_buffer->draw_binding);
     }
 
     if (swapchain->render_to_fbo)

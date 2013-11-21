@@ -374,15 +374,15 @@ int macdrv_err_on;
 
     - (void) keyboardSelectionDidChange
     {
-        TISInputSourceRef inputSource;
+        TISInputSourceRef inputSourceLayout;
 
         inputSourceIsInputMethodValid = FALSE;
 
-        inputSource = TISCopyCurrentKeyboardLayoutInputSource();
-        if (inputSource)
+        inputSourceLayout = TISCopyCurrentKeyboardLayoutInputSource();
+        if (inputSourceLayout)
         {
             CFDataRef uchr;
-            uchr = TISGetInputSourceProperty(inputSource,
+            uchr = TISGetInputSourceProperty(inputSourceLayout,
                     kTISPropertyUnicodeKeyLayoutData);
             if (uchr)
             {
@@ -393,6 +393,7 @@ int macdrv_err_on;
                 event->keyboard_changed.keyboard_type = self.keyboardType;
                 event->keyboard_changed.iso_keyboard = (KBGetLayoutType(self.keyboardType) == kKeyboardISO);
                 event->keyboard_changed.uchr = CFDataCreateCopy(NULL, uchr);
+                event->keyboard_changed.input_source = TISCopyCurrentKeyboardInputSource();
 
                 if (event->keyboard_changed.uchr)
                 {
@@ -407,8 +408,13 @@ int macdrv_err_on;
                 macdrv_release_event(event);
             }
 
-            CFRelease(inputSource);
+            CFRelease(inputSourceLayout);
         }
+    }
+
+    - (void) enabledKeyboardInputSourcesChanged
+    {
+        macdrv_layout_list_needs_update = TRUE;
     }
 
     - (CGFloat) primaryScreenHeight
@@ -1930,6 +1936,11 @@ int macdrv_err_on;
                            name:@"com.apple.HIToolbox.beginMenuTrackingNotification"
                          object:nil
              suspensionBehavior:NSNotificationSuspensionBehaviorDrop];
+
+        [dnc addObserver:self
+                selector:@selector(enabledKeyboardInputSourcesChanged)
+                    name:(NSString*)kTISNotifyEnabledKeyboardInputSourcesChanged
+                  object:nil];
     }
 
     - (BOOL) inputSourceIsInputMethod
@@ -2208,31 +2219,28 @@ void macdrv_window_rejected_focus(const macdrv_event *event)
 }
 
 /***********************************************************************
- *              macdrv_get_keyboard_layout
+ *              macdrv_get_input_source_info
  *
- * Returns the keyboard layout uchr data.
+ * Returns the keyboard layout uchr data, keyboard type and input source.
  */
-CFDataRef macdrv_copy_keyboard_layout(CGEventSourceKeyboardType* keyboard_type, int* is_iso)
+void macdrv_get_input_source_info(CFDataRef* uchr, CGEventSourceKeyboardType* keyboard_type, int* is_iso, TISInputSourceRef* input_source)
 {
-    __block CFDataRef result = NULL;
-
     OnMainThread(^{
-        TISInputSourceRef inputSource;
+        TISInputSourceRef inputSourceLayout;
 
-        inputSource = TISCopyCurrentKeyboardLayoutInputSource();
-        if (inputSource)
+        inputSourceLayout = TISCopyCurrentKeyboardLayoutInputSource();
+        if (inputSourceLayout)
         {
-            CFDataRef uchr = TISGetInputSourceProperty(inputSource,
+            CFDataRef data = TISGetInputSourceProperty(inputSourceLayout,
                                 kTISPropertyUnicodeKeyLayoutData);
-            result = CFDataCreateCopy(NULL, uchr);
-            CFRelease(inputSource);
+            *uchr = CFDataCreateCopy(NULL, data);
+            CFRelease(inputSourceLayout);
 
             *keyboard_type = [WineApplicationController sharedController].keyboardType;
             *is_iso = (KBGetLayoutType(*keyboard_type) == kKeyboardISO);
+            *input_source = TISCopyCurrentKeyboardInputSource();
         }
     });
-
-    return result;
 }
 
 /***********************************************************************
@@ -2445,4 +2453,64 @@ void macdrv_set_mouse_capture_window(macdrv_window window)
     OnMainThread(^{
         [[WineApplicationController sharedController] setMouseCaptureWindow:w];
     });
+}
+
+const CFStringRef macdrv_input_source_input_key = CFSTR("input");
+const CFStringRef macdrv_input_source_type_key = CFSTR("type");
+const CFStringRef macdrv_input_source_lang_key = CFSTR("lang");
+
+/***********************************************************************
+ *              macdrv_create_input_source_list
+ */
+CFArrayRef macdrv_create_input_source_list(void)
+{
+    CFMutableArrayRef ret = CFArrayCreateMutable(NULL, 0, &kCFTypeArrayCallBacks);
+
+    OnMainThread(^{
+        CFArrayRef input_list;
+        CFDictionaryRef filter_dict;
+        const void *filter_keys[2] = { kTISPropertyInputSourceCategory, kTISPropertyInputSourceIsSelectCapable };
+        const void *filter_values[2] = { kTISCategoryKeyboardInputSource, kCFBooleanTrue };
+        int i;
+
+        filter_dict = CFDictionaryCreate(NULL, filter_keys, filter_values, sizeof(filter_keys)/sizeof(filter_keys[0]),
+                                         &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
+        input_list = TISCreateInputSourceList(filter_dict, false);
+
+        for (i = 0; i < CFArrayGetCount(input_list); i++)
+        {
+            TISInputSourceRef input = (TISInputSourceRef)CFArrayGetValueAtIndex(input_list, i);
+            CFArrayRef source_langs = TISGetInputSourceProperty(input, kTISPropertyInputSourceLanguages);
+            CFDictionaryRef entry;
+            const void *input_keys[3] = { macdrv_input_source_input_key,
+                                          macdrv_input_source_type_key,
+                                          macdrv_input_source_lang_key };
+            const void *input_values[3];
+
+            input_values[0] = input;
+            input_values[1] = TISGetInputSourceProperty(input, kTISPropertyInputSourceType);
+            input_values[2] = CFArrayGetValueAtIndex(source_langs, 0);
+
+            entry = CFDictionaryCreate(NULL, input_keys, input_values, sizeof(input_keys) / sizeof(input_keys[0]),
+                                       &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
+
+            CFArrayAppendValue(ret, entry);
+            CFRelease(entry);
+        }
+        CFRelease(input_list);
+        CFRelease(filter_dict);
+    });
+
+    return ret;
+}
+
+int macdrv_select_input_source(TISInputSourceRef input_source)
+{
+    __block int ret = FALSE;
+
+    OnMainThread(^{
+        ret = (TISSelectInputSource(input_source) == noErr);
+    });
+
+    return ret;
 }

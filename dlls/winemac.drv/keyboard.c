@@ -176,6 +176,7 @@ enum {
     kVK_UpArrow             = 0x7E,
 };
 
+extern const CFStringRef kTISTypeKeyboardLayout;
 
 /* Indexed by Mac virtual keycode values defined above. */
 static const struct {
@@ -394,6 +395,7 @@ static const struct {
     { VK_VOLUME_UP | 0x100,     "Volume Up" },
 };
 
+HKL CDECL macdrv_GetKeyboardLayout(DWORD);
 
 static BOOL char_matches_string(WCHAR wchar, UniChar *string, BOOL ignore_diacritics)
 {
@@ -426,6 +428,152 @@ static int strip_apple_private_chars(LPWSTR bufW, int len)
             i++;
     }
     return len;
+}
+
+static struct list layout_list = LIST_INIT( layout_list );
+struct layout
+{
+    struct list entry;
+    HKL hkl;
+    TISInputSourceRef input_source;
+    BOOL enabled; /* is the input source enabled - ie displayed in the input source selector UI */
+};
+
+static CRITICAL_SECTION layout_list_section;
+static CRITICAL_SECTION_DEBUG critsect_debug =
+{
+    0, 0, &layout_list_section,
+    { &critsect_debug.ProcessLocksList, &critsect_debug.ProcessLocksList },
+    0, 0, { (DWORD_PTR)(__FILE__ ": layout_list_section") }
+};
+static CRITICAL_SECTION layout_list_section = { &critsect_debug, -1, 0, 0, 0, 0 };
+
+int macdrv_layout_list_needs_update = TRUE;
+
+static DWORD get_lcid(CFStringRef lang)
+{
+    CFRange range;
+    WCHAR str[10];
+
+    range.location = 0;
+    range.length = min(CFStringGetLength(lang), sizeof(str) / sizeof(str[0]) - 1);
+    CFStringGetCharacters(lang, range, str);
+    str[range.length] = 0;
+    return LocaleNameToLCID(str, 0);
+}
+
+static HKL get_hkl(CFStringRef lang, CFStringRef type)
+{
+    ULONG_PTR lcid = get_lcid(lang);
+    struct layout *layout;
+
+    /* Look for the last occurrence of this lcid in the list and if
+       present use that value + 0x10000 */
+    LIST_FOR_EACH_ENTRY_REV(layout, &layout_list, struct layout, entry)
+    {
+        ULONG_PTR hkl = HandleToUlong(layout->hkl);
+
+        if (LOWORD(hkl) == lcid)
+        {
+            lcid = (hkl & ~0xe0000000) + 0x10000;
+            break;
+        }
+    }
+
+    if (!CFEqual(type, kTISTypeKeyboardLayout)) lcid |= 0xe0000000;
+
+    return (HKL)lcid;
+}
+
+/******************************************************************
+ *                get_layout_from_source
+ *
+ * Must be called while holding the layout_list_section.
+ * Note, returned layout may not currently be enabled.
+ */
+static struct layout *get_layout_from_source(TISInputSourceRef input)
+{
+    struct layout *ret = NULL, *layout;
+
+    LIST_FOR_EACH_ENTRY(layout, &layout_list, struct layout, entry)
+    {
+        if (CFEqual(input, layout->input_source))
+        {
+            ret = layout;
+            break;
+        }
+    }
+    return ret;
+}
+
+/***********************************************************************
+ *            update_layout_list
+ *
+ * Must be called while holding the layout_list_section
+ *
+ * If an input source has been disabled (ie. removed from the UI) its
+ * entry remains in the layout list but is marked as such and is not
+ * enumerated by GetKeyboardLayoutList.  This is to ensure the
+ * HKL <-> input source mapping is unique.
+ */
+static void update_layout_list(void)
+{
+    CFArrayRef sources;
+    struct layout *layout;
+    int i;
+
+    if (!InterlockedExchange(&macdrv_layout_list_needs_update, FALSE)) return;
+
+    sources = macdrv_create_input_source_list();
+
+    LIST_FOR_EACH_ENTRY(layout, &layout_list, struct layout, entry)
+        layout->enabled = FALSE;
+
+    for (i = 0; i < CFArrayGetCount(sources); i++)
+    {
+        CFDictionaryRef dict = CFArrayGetValueAtIndex(sources, i);
+        TISInputSourceRef input = (TISInputSourceRef)CFDictionaryGetValue(dict, macdrv_input_source_input_key);
+        layout = get_layout_from_source(input);
+        if (!layout)
+        {
+            CFStringRef type = CFDictionaryGetValue(dict, macdrv_input_source_type_key);
+            CFStringRef lang = CFDictionaryGetValue(dict, macdrv_input_source_lang_key);
+
+            layout = HeapAlloc(GetProcessHeap(), 0, sizeof(*layout));
+            layout->input_source = (TISInputSourceRef)CFRetain(input);
+            layout->hkl = get_hkl(lang, type);
+
+            list_add_tail(&layout_list, &layout->entry);
+            TRACE("adding new layout %p\n", layout->hkl);
+        }
+        else
+            TRACE("enabling already existing layout %p\n", layout->hkl);
+
+        layout->enabled = TRUE;
+    }
+
+    CFRelease(sources);
+}
+
+/***********************************************************************
+ *            macdrv_get_hkl_from_source
+ *
+ * Find the HKL associated with a given input source.
+ */
+HKL macdrv_get_hkl_from_source(TISInputSourceRef input)
+{
+    struct layout *layout;
+    HKL ret = 0;
+
+    EnterCriticalSection(&layout_list_section);
+
+    update_layout_list();
+    layout = get_layout_from_source(input);
+    if (layout) ret = layout->hkl;
+
+    LeaveCriticalSection(&layout_list_section);
+
+    return ret;
 }
 
 
@@ -902,6 +1050,7 @@ void macdrv_keyboard_changed(const macdrv_event *event)
     thread_data->keyboard_layout_uchr = CFDataCreateCopy(NULL, event->keyboard_changed.uchr);
     thread_data->keyboard_type = event->keyboard_changed.keyboard_type;
     thread_data->iso_keyboard = event->keyboard_changed.iso_keyboard;
+    thread_data->active_keyboard_layout = macdrv_get_hkl_from_source(event->keyboard_changed.input_source);
     thread_data->dead_key_state = 0;
 
     macdrv_compute_keyboard_layout(thread_data);
@@ -966,48 +1115,6 @@ void macdrv_hotkey_press(const macdrv_event *event)
 
 
 /***********************************************************************
- *              get_locale_keyboard_layout
- */
-static HKL get_locale_keyboard_layout(void)
-{
-    ULONG_PTR layout;
-    LANGID langid;
-
-    layout = GetUserDefaultLCID();
-
-    /*
-     * Microsoft Office expects this value to be something specific
-     * for Japanese and Korean Windows with an IME the value is 0xe001
-     * We should probably check to see if an IME exists and if so then
-     * set this word properly.
-     */
-    langid = PRIMARYLANGID(LANGIDFROMLCID(layout));
-    if (langid == LANG_CHINESE || langid == LANG_JAPANESE || langid == LANG_KOREAN)
-        layout |= 0xe001 << 16; /* IME */
-    else
-        layout |= layout << 16;
-
-    return (HKL)layout;
-}
-
-
-/***********************************************************************
- *              match_keyboard_layout
- */
-static BOOL match_keyboard_layout(HKL hkl)
-{
-    const DWORD isIME = 0xE0000000;
-    HKL current_hkl = get_locale_keyboard_layout();
-
-    /* if the layout is an IME, only match the low word (LCID) */
-    if (((ULONG_PTR)hkl & isIME) == isIME)
-        return (LOWORD(hkl) == LOWORD(current_hkl));
-    else
-        return (hkl == current_hkl);
-}
-
-
-/***********************************************************************
  *              macdrv_process_text_input
  */
 BOOL macdrv_process_text_input(UINT vkey, UINT scan, UINT repeat, const BYTE *key_state, void *himc)
@@ -1061,20 +1168,11 @@ HKL CDECL macdrv_ActivateKeyboardLayout(HKL hkl, UINT flags)
 {
     HKL oldHkl = 0;
     struct macdrv_thread_data *thread_data = macdrv_init_thread_data();
+    struct layout *layout;
 
-    /* FIXME: Use Text Input Services or NSTextInputContext to actually
-              change the Mac keyboard input source. */
+    TRACE("hkl %p flags %04x\n", hkl, flags);
 
-    FIXME("hkl %p flags %04x: semi-stub!\n", hkl, flags);
-    if (flags & KLF_SETFORPROCESS)
-    {
-        SetLastError(ERROR_CALL_NOT_IMPLEMENTED);
-        FIXME("KLF_SETFORPROCESS not supported\n");
-        return 0;
-    }
-
-    if (flags)
-        FIXME("flags %x not supported\n",flags);
+    if (flags) FIXME("flags %x not supported\n",flags);
 
     if (hkl == (HKL)HKL_NEXT || hkl == (HKL)HKL_PREV)
     {
@@ -1083,17 +1181,22 @@ HKL CDECL macdrv_ActivateKeyboardLayout(HKL hkl, UINT flags)
         return 0;
     }
 
-    if (!match_keyboard_layout(hkl))
+    EnterCriticalSection(&layout_list_section);
+    update_layout_list();
+
+    LIST_FOR_EACH_ENTRY(layout, &layout_list, struct layout, entry)
     {
-        SetLastError(ERROR_CALL_NOT_IMPLEMENTED);
-        FIXME("setting keyboard of different locales not supported\n");
-        return 0;
+        if (layout->hkl == hkl)
+        {
+            if (macdrv_select_input_source(layout->input_source))
+            {
+                oldHkl = thread_data->active_keyboard_layout;
+                thread_data->active_keyboard_layout = hkl;
+            }
+            break;
+        }
     }
-
-    oldHkl = thread_data->active_keyboard_layout;
-    if (!oldHkl) oldHkl = get_locale_keyboard_layout();
-
-    thread_data->active_keyboard_layout = hkl;
+    LeaveCriticalSection(&layout_list_section);
 
     return oldHkl;
 }
@@ -1202,24 +1305,43 @@ INT CDECL macdrv_GetKeyNameText(LONG lparam, LPWSTR buffer, INT size)
  */
 HKL CDECL macdrv_GetKeyboardLayout(DWORD thread_id)
 {
-    if (!thread_id || thread_id == GetCurrentThreadId())
-    {
-        struct macdrv_thread_data *thread_data = macdrv_thread_data();
-        if (thread_data && thread_data->active_keyboard_layout)
-            return thread_data->active_keyboard_layout;
-    }
-    else
+    if (thread_id && thread_id != GetCurrentThreadId())
         FIXME("couldn't return keyboard layout for thread %04x\n", thread_id);
 
-    /* FIXME: Use TISGetInputSourceProperty() and kTISPropertyInputSourceLanguages
-     *        to get input source language ID string.  Use
-     *        CFLocaleGetWindowsLocaleCodeFromLocaleIdentifier() to convert that
-     *        to a Windows locale ID and from there to a layout handle.
-     */
-
-    return get_locale_keyboard_layout();
+    return macdrv_init_thread_data()->active_keyboard_layout;
 }
 
+
+/***********************************************************************
+ *     GetKeyboardLayoutList (MACDRV.@)
+ */
+UINT CDECL macdrv_GetKeyboardLayoutList(INT size, HKL *list)
+{
+    int count = 0;
+    struct layout *layout;
+
+    TRACE("%d, %p\n", size, list);
+
+    EnterCriticalSection(&layout_list_section);
+
+    update_layout_list();
+
+    LIST_FOR_EACH_ENTRY(layout, &layout_list, struct layout, entry)
+    {
+        if (!layout->enabled) continue;
+        if (list)
+        {
+            if (count >= size) break;
+            list[count] = layout->hkl;
+            TRACE("\t%d: %p\n", count, list[count]);
+        }
+        count++;
+    }
+    LeaveCriticalSection(&layout_list_section);
+
+    TRACE("returning %d\n", count);
+    return count;
+}
 
 /***********************************************************************
  *              GetKeyboardLayoutName (MACDRV.@)
@@ -1229,7 +1351,7 @@ BOOL CDECL macdrv_GetKeyboardLayoutName(LPWSTR name)
     static const WCHAR formatW[] = {'%','0','8','x',0};
     DWORD layout;
 
-    layout = HandleToUlong(get_locale_keyboard_layout());
+    layout = HandleToUlong(macdrv_GetKeyboardLayout(0));
     if (HIWORD(layout) == LOWORD(layout)) layout = LOWORD(layout);
     sprintfW(name, formatW, layout);
     TRACE("returning %s\n", debugstr_w(name));
