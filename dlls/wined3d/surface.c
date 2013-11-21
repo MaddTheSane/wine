@@ -594,39 +594,6 @@ static void surface_evict_sysmem(struct wined3d_surface *surface)
     surface_invalidate_location(surface, SFLAG_INSYSMEM);
 }
 
-/* Context activation is done by the caller. */
-static void surface_bind(struct wined3d_surface *surface, struct wined3d_context *context, BOOL srgb)
-{
-    struct wined3d_texture *texture = surface->container;
-
-    TRACE("surface %p, context %p, srgb %#x.\n", surface, context, srgb);
-
-    TRACE("Passing to container (%p).\n", texture);
-    texture->texture_ops->texture_bind(texture, context, srgb);
-}
-
-/* Context activation is done by the caller. */
-static void surface_bind_and_dirtify(struct wined3d_surface *surface,
-        struct wined3d_context *context, BOOL srgb)
-{
-    DWORD active_sampler;
-
-    /* We don't need a specific texture unit, but after binding the texture
-     * the current unit is dirty. Read the unit back instead of switching to
-     * 0, this avoids messing around with the state manager's GL states. The
-     * current texture unit should always be a valid one.
-     *
-     * To be more specific, this is tricky because we can implicitly be
-     * called from sampler() in state.c. This means we can't touch anything
-     * other than whatever happens to be the currently active texture, or we
-     * would risk marking already applied sampler states dirty again. */
-    active_sampler = context->rev_tex_unit_map[context->active_texture];
-
-    if (active_sampler != WINED3D_UNMAPPED_STAGE)
-        context_invalidate_state(context, STATE_SAMPLER(active_sampler));
-    surface_bind(surface, context, srgb);
-}
-
 static void surface_force_reload(struct wined3d_surface *surface)
 {
     surface->flags &= ~(SFLAG_ALLOCATED | SFLAG_SRGBALLOCATED);
@@ -639,13 +606,13 @@ static void surface_release_client_storage(struct wined3d_surface *surface)
 
     if (surface->container->texture_rgb.name)
     {
-        surface_bind_and_dirtify(surface, context, FALSE);
+        wined3d_texture_bind_and_dirtify(surface->container, context, FALSE);
         gl_info->gl_ops.gl.p_glTexImage2D(surface->texture_target, surface->texture_level,
                 GL_RGB, 1, 1, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
     }
     if (surface->container->texture_srgb.name)
     {
-        surface_bind_and_dirtify(surface, context, TRUE);
+        wined3d_texture_bind_and_dirtify(surface->container, context, TRUE);
         gl_info->gl_ops.gl.p_glTexImage2D(surface->texture_target, surface->texture_level,
                 GL_RGB, 1, 1, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
     }
@@ -1513,21 +1480,6 @@ static void gdi_surface_map(struct wined3d_surface *surface, const RECT *rect, D
 {
     TRACE("surface %p, rect %s, flags %#x.\n",
             surface, wine_dbgstr_rect(rect), flags);
-
-    if (!(surface->flags & SFLAG_DIBSECTION))
-    {
-        HRESULT hr;
-
-        /* This happens on gdi surfaces if the application set a user pointer
-         * and resets it. Recreate the DIB section. */
-        if (FAILED(hr = surface_create_dib_section(surface)))
-        {
-            ERR("Failed to create dib section, hr %#x.\n", hr);
-            return;
-        }
-        wined3d_resource_free_sysmem(&surface->resource);
-        surface->resource.allocatedMemory = surface->dib.bitmap_data;
-    }
 }
 
 static void gdi_surface_unmap(struct wined3d_surface *surface)
@@ -2086,7 +2038,7 @@ HRESULT surface_upload_from_surface(struct wined3d_surface *dst_surface, const P
         surface_prepare_texture(dst_surface, context, FALSE);
     else
         surface_load_location(dst_surface, SFLAG_INTEXTURE);
-    surface_bind(dst_surface, context, FALSE);
+    wined3d_texture_bind(dst_surface->container, context, FALSE);
 
     data.buffer_object = src_surface->pbo;
     data.addr = src_surface->resource.allocatedMemory;
@@ -3757,7 +3709,7 @@ void surface_load_fb_texture(struct wined3d_surface *surface, BOOL srgb)
     device_invalidate_state(device, STATE_FRAMEBUFFER);
 
     surface_prepare_texture(surface, context, srgb);
-    surface_bind_and_dirtify(surface, context, srgb);
+    wined3d_texture_bind_and_dirtify(surface->container, context, srgb);
 
     TRACE("Reading back offscreen render target %p.\n", surface);
 
@@ -3789,7 +3741,7 @@ static void surface_prepare_texture_internal(struct wined3d_surface *surface,
         surface->flags |= SFLAG_CONVERTED;
     else surface->flags &= ~SFLAG_CONVERTED;
 
-    surface_bind_and_dirtify(surface, context, srgb);
+    wined3d_texture_bind_and_dirtify(surface->container, context, srgb);
     surface_allocate_surface(surface, context->gl_info, &format, srgb);
     surface->flags |= alloc_flag;
 }
@@ -5098,7 +5050,7 @@ static void surface_load_sysmem(struct wined3d_surface *surface,
         /* TODO: Use already acquired context when possible. */
         context = context_acquire(device, NULL);
 
-        surface_bind_and_dirtify(surface, context, !(surface->flags & SFLAG_INTEXTURE));
+        wined3d_texture_bind_and_dirtify(surface->container, context, !(surface->flags & SFLAG_INTEXTURE));
         surface_download_data(surface, gl_info);
 
         context_release(context);
@@ -5225,7 +5177,7 @@ static HRESULT surface_load_texture(struct wined3d_surface *surface,
     context = context_acquire(device, NULL);
 
     surface_prepare_texture(surface, context, srgb);
-    surface_bind_and_dirtify(surface, context, srgb);
+    wined3d_texture_bind_and_dirtify(surface->container, context, srgb);
 
     if (surface->CKeyFlags & WINEDDSD_CKSRCBLT)
     {

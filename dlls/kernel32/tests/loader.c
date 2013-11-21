@@ -45,7 +45,10 @@ struct PROCESS_BASIC_INFORMATION_PRIVATE
 static BOOL is_child;
 static LONG *child_failures;
 static WORD cb_count;
+static DWORD page_size;
 
+static NTSTATUS (WINAPI *pNtCreateSection)(HANDLE *, ACCESS_MASK, const OBJECT_ATTRIBUTES *,
+                                           const LARGE_INTEGER *, ULONG, ULONG, HANDLE );
 static NTSTATUS (WINAPI *pNtMapViewOfSection)(HANDLE, HANDLE, PVOID *, ULONG, SIZE_T, const LARGE_INTEGER *, SIZE_T *, ULONG, ULONG, ULONG);
 static NTSTATUS (WINAPI *pNtUnmapViewOfSection)(HANDLE, PVOID);
 static NTSTATUS (WINAPI *pNtQueryInformationProcess)(HANDLE, PROCESSINFOCLASS, PVOID, ULONG, PULONG);
@@ -70,15 +73,7 @@ static PVOID RVAToAddr(DWORD_PTR rva, HMODULE module)
     return ((char*) module) + rva;
 }
 
-static const struct
-{
-    WORD e_magic;      /* 00: MZ Header signature */
-    WORD unused[29];
-    DWORD e_lfanew;    /* 3c: Offset to extended header */
-} dos_header =
-{
-    IMAGE_DOS_SIGNATURE, { 0 }, sizeof(dos_header)
-};
+static IMAGE_DOS_HEADER dos_header;
 
 static IMAGE_NT_HEADERS nt_header =
 {
@@ -154,11 +149,107 @@ static IMAGE_SECTION_HEADER section =
     IMAGE_SCN_CNT_INITIALIZED_DATA | IMAGE_SCN_MEM_READ, /* Characteristics */
 };
 
+
+static const char filler[0x1000];
+static const char section_data[0x10] = "section data";
+
+static DWORD create_test_dll( const IMAGE_DOS_HEADER *dos_header, UINT dos_size,
+                              const IMAGE_NT_HEADERS *nt_header, const char *dll_name )
+{
+    DWORD dummy, size, file_align;
+    HANDLE hfile;
+    BOOL ret;
+
+    hfile = CreateFileA(dll_name, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, 0, 0);
+    if (hfile == INVALID_HANDLE_VALUE) return 0;
+
+    SetLastError(0xdeadbeef);
+    ret = WriteFile(hfile, dos_header, dos_size, &dummy, NULL);
+    ok(ret, "WriteFile error %d\n", GetLastError());
+
+    SetLastError(0xdeadbeef);
+    ret = WriteFile(hfile, nt_header, sizeof(DWORD) + sizeof(IMAGE_FILE_HEADER), &dummy, NULL);
+    ok(ret, "WriteFile error %d\n", GetLastError());
+
+    if (nt_header->FileHeader.SizeOfOptionalHeader)
+    {
+        SetLastError(0xdeadbeef);
+        ret = WriteFile(hfile, &nt_header->OptionalHeader,
+                        min(nt_header->FileHeader.SizeOfOptionalHeader, sizeof(IMAGE_OPTIONAL_HEADER)),
+                        &dummy, NULL);
+        ok(ret, "WriteFile error %d\n", GetLastError());
+        if (nt_header->FileHeader.SizeOfOptionalHeader > sizeof(IMAGE_OPTIONAL_HEADER))
+        {
+            file_align = nt_header->FileHeader.SizeOfOptionalHeader - sizeof(IMAGE_OPTIONAL_HEADER);
+            assert(file_align < sizeof(filler));
+            SetLastError(0xdeadbeef);
+            ret = WriteFile(hfile, filler, file_align, &dummy, NULL);
+            ok(ret, "WriteFile error %d\n", GetLastError());
+        }
+    }
+
+    assert(nt_header->FileHeader.NumberOfSections <= 1);
+    if (nt_header->FileHeader.NumberOfSections)
+    {
+        if (nt_header->OptionalHeader.SectionAlignment >= page_size)
+        {
+            section.PointerToRawData = dos_size;
+            section.VirtualAddress = nt_header->OptionalHeader.SectionAlignment;
+            section.Misc.VirtualSize = section.SizeOfRawData * 10;
+        }
+        else
+        {
+            section.PointerToRawData = nt_header->OptionalHeader.SizeOfHeaders;
+            section.VirtualAddress = nt_header->OptionalHeader.SizeOfHeaders;
+            section.Misc.VirtualSize = 5;
+        }
+
+        SetLastError(0xdeadbeef);
+        ret = WriteFile(hfile, &section, sizeof(section), &dummy, NULL);
+        ok(ret, "WriteFile error %d\n", GetLastError());
+
+        /* section data */
+        SetLastError(0xdeadbeef);
+        ret = WriteFile(hfile, section_data, sizeof(section_data), &dummy, NULL);
+        ok(ret, "WriteFile error %d\n", GetLastError());
+    }
+    size = GetFileSize(hfile, NULL);
+    CloseHandle(hfile);
+    return size;
+}
+
+/* helper to test image section mapping */
+static NTSTATUS map_image_section( const IMAGE_NT_HEADERS *nt_header )
+{
+    char temp_path[MAX_PATH];
+    char dll_name[MAX_PATH];
+    LARGE_INTEGER size;
+    HANDLE file, map;
+    NTSTATUS status;
+
+    GetTempPathA(MAX_PATH, temp_path);
+    GetTempFileNameA(temp_path, "ldr", 0, dll_name);
+
+    size.u.LowPart = create_test_dll( &dos_header, sizeof(dos_header), nt_header, dll_name );
+    ok( size.u.LowPart, "could not create %s\n", dll_name);
+    size.u.HighPart = 0;
+
+    file = CreateFileA(dll_name, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, 0, 0);
+    ok(file != INVALID_HANDLE_VALUE, "CreateFile error %d\n", GetLastError());
+
+    status = pNtCreateSection(&map, STANDARD_RIGHTS_REQUIRED | SECTION_MAP_READ, NULL, &size,
+                              PAGE_READONLY, SEC_IMAGE, file );
+    if (map) CloseHandle( map );
+    CloseHandle( file );
+    DeleteFileA( dll_name );
+    return status;
+}
+
+
 static void test_Loader(void)
 {
     static const struct test_data
     {
-        const void *dos_header;
         DWORD size_of_dos_header;
         WORD number_of_sections, size_of_optional_header;
         DWORD section_alignment, file_alignment;
@@ -166,47 +257,47 @@ static void test_Loader(void)
         DWORD errors[4]; /* 0 means LoadLibrary should succeed */
     } td[] =
     {
-        { &dos_header, sizeof(dos_header),
+        { sizeof(dos_header),
           1, 0, 0, 0, 0, 0,
           { ERROR_BAD_EXE_FORMAT }
         },
-        { &dos_header, sizeof(dos_header),
+        { sizeof(dos_header),
           1, sizeof(IMAGE_OPTIONAL_HEADER), 0x1000, 0x1000,
           sizeof(dos_header) + sizeof(nt_header) + sizeof(IMAGE_SECTION_HEADER) + 0xe00,
           sizeof(dos_header) + sizeof(nt_header) + sizeof(IMAGE_SECTION_HEADER),
           { ERROR_BAD_EXE_FORMAT } /* XP doesn't like too small image size */
         },
-        { &dos_header, sizeof(dos_header),
+        { sizeof(dos_header),
           1, sizeof(IMAGE_OPTIONAL_HEADER), 0x1000, 0x1000,
           sizeof(dos_header) + sizeof(nt_header) + sizeof(IMAGE_SECTION_HEADER) + 0x1000,
           sizeof(dos_header) + sizeof(nt_header) + sizeof(IMAGE_SECTION_HEADER),
           { ERROR_SUCCESS }
         },
-        { &dos_header, sizeof(dos_header),
+        { sizeof(dos_header),
           1, sizeof(IMAGE_OPTIONAL_HEADER), 0x1000, 0x1000,
           0x1f00,
           0x1000,
           { ERROR_SUCCESS }
         },
-        { &dos_header, sizeof(dos_header),
+        { sizeof(dos_header),
           1, sizeof(IMAGE_OPTIONAL_HEADER), 0x200, 0x200,
           sizeof(dos_header) + sizeof(nt_header) + sizeof(IMAGE_SECTION_HEADER) + 0x200,
           sizeof(dos_header) + sizeof(nt_header) + sizeof(IMAGE_SECTION_HEADER),
           { ERROR_SUCCESS, ERROR_INVALID_ADDRESS } /* vista is more strict */
         },
-        { &dos_header, sizeof(dos_header),
+        { sizeof(dos_header),
           1, sizeof(IMAGE_OPTIONAL_HEADER), 0x200, 0x1000,
           sizeof(dos_header) + sizeof(nt_header) + sizeof(IMAGE_SECTION_HEADER) + 0x1000,
           sizeof(dos_header) + sizeof(nt_header) + sizeof(IMAGE_SECTION_HEADER),
           { ERROR_BAD_EXE_FORMAT } /* XP doesn't like alignments */
         },
-        { &dos_header, sizeof(dos_header),
+        { sizeof(dos_header),
           1, sizeof(IMAGE_OPTIONAL_HEADER), 0x1000, 0x200,
           sizeof(dos_header) + sizeof(nt_header) + sizeof(IMAGE_SECTION_HEADER) + 0x1000,
           sizeof(dos_header) + sizeof(nt_header) + sizeof(IMAGE_SECTION_HEADER),
           { ERROR_SUCCESS }
         },
-        { &dos_header, sizeof(dos_header),
+        { sizeof(dos_header),
           1, sizeof(IMAGE_OPTIONAL_HEADER), 0x1000, 0x200,
           sizeof(dos_header) + sizeof(nt_header) + sizeof(IMAGE_SECTION_HEADER) + 0x1000,
           0x200,
@@ -215,66 +306,66 @@ static void test_Loader(void)
         /* Mandatory are all fields up to SizeOfHeaders, everything else
          * is really optional (at least that's true for XP).
          */
-        { &dos_header, sizeof(dos_header),
+        { sizeof(dos_header),
           1, FIELD_OFFSET(IMAGE_OPTIONAL_HEADER, CheckSum), 0x200, 0x200,
           sizeof(dos_header) + sizeof(DWORD) + sizeof(IMAGE_FILE_HEADER) + FIELD_OFFSET(IMAGE_OPTIONAL_HEADER, CheckSum) + sizeof(IMAGE_SECTION_HEADER) + 0x10,
           sizeof(dos_header) + sizeof(DWORD) + sizeof(IMAGE_FILE_HEADER) + FIELD_OFFSET(IMAGE_OPTIONAL_HEADER, CheckSum) + sizeof(IMAGE_SECTION_HEADER),
           { ERROR_SUCCESS, ERROR_BAD_EXE_FORMAT, ERROR_INVALID_ADDRESS,
             ERROR_NOACCESS }
         },
-        { &dos_header, sizeof(dos_header),
+        { sizeof(dos_header),
           0, FIELD_OFFSET(IMAGE_OPTIONAL_HEADER, CheckSum), 0x200, 0x200,
           0xd0, /* beyond of the end of file */
           0xc0, /* beyond of the end of file */
           { ERROR_SUCCESS, ERROR_BAD_EXE_FORMAT } /* vista is more strict */
         },
-        { &dos_header, sizeof(dos_header),
+        { sizeof(dos_header),
           0, FIELD_OFFSET(IMAGE_OPTIONAL_HEADER, CheckSum), 0x200, 0x200,
           0x1000,
           0,
           { ERROR_SUCCESS, ERROR_BAD_EXE_FORMAT } /* vista is more strict */
         },
-        { &dos_header, sizeof(dos_header),
+        { sizeof(dos_header),
           0, FIELD_OFFSET(IMAGE_OPTIONAL_HEADER, CheckSum), 0x200, 0x200,
           1,
           0,
           { ERROR_SUCCESS, ERROR_BAD_EXE_FORMAT } /* vista is more strict */
         },
 #if 0 /* not power of 2 alignments need more test cases */
-        { &dos_header, sizeof(dos_header),
+        { sizeof(dos_header),
           0, FIELD_OFFSET(IMAGE_OPTIONAL_HEADER, CheckSum), 0x300, 0x300,
           1,
           0,
           { ERROR_BAD_EXE_FORMAT } /* alignment is not power of 2 */
         },
 #endif
-        { &dos_header, sizeof(dos_header),
+        { sizeof(dos_header),
           0, FIELD_OFFSET(IMAGE_OPTIONAL_HEADER, CheckSum), 4, 4,
           1,
           0,
           { ERROR_SUCCESS, ERROR_BAD_EXE_FORMAT } /* vista is more strict */
         },
-        { &dos_header, sizeof(dos_header),
+        { sizeof(dos_header),
           0, FIELD_OFFSET(IMAGE_OPTIONAL_HEADER, CheckSum), 1, 1,
           1,
           0,
           { ERROR_SUCCESS, ERROR_BAD_EXE_FORMAT } /* vista is more strict */
         },
-        { &dos_header, sizeof(dos_header),
+        { sizeof(dos_header),
           0, FIELD_OFFSET(IMAGE_OPTIONAL_HEADER, CheckSum), 0x200, 0x200,
           0,
           0,
           { ERROR_BAD_EXE_FORMAT } /* image size == 0 -> failure */
         },
         /* the following data mimics the PE image which upack creates */
-        { &dos_header, 0x10,
+        { 0x10,
           1, 0x148, 0x1000, 0x200,
           sizeof(dos_header) + sizeof(nt_header) + sizeof(IMAGE_SECTION_HEADER) + 0x1000,
           0x200,
           { ERROR_SUCCESS }
         },
         /* Minimal PE image that XP is able to load: 92 bytes */
-        { &dos_header, 0x04,
+        { 0x04,
           0, FIELD_OFFSET(IMAGE_OPTIONAL_HEADER, CheckSum),
           0x04 /* also serves as e_lfanew in the truncated MZ header */, 0x04,
           1,
@@ -282,19 +373,15 @@ static void test_Loader(void)
           { ERROR_SUCCESS, ERROR_BAD_EXE_FORMAT } /* vista is more strict */
         }
     };
-    static const char filler[0x1000];
-    static const char section_data[0x10] = "section data";
     int i;
-    DWORD dummy, file_size, file_align;
-    HANDLE hfile;
+    DWORD file_size;
     HMODULE hlib, hlib_as_data_file;
-    SYSTEM_INFO si;
     char temp_path[MAX_PATH];
     char dll_name[MAX_PATH];
     SIZE_T size;
     BOOL ret;
-
-    GetSystemInfo(&si);
+    NTSTATUS status;
+    WORD orig_machine = nt_header.FileHeader.Machine;
 
     /* prevent displaying of the "Unable to load this DLL" message box */
     SetErrorMode(SEM_FAILCRITICALERRORS);
@@ -305,18 +392,6 @@ static void test_Loader(void)
     {
         GetTempFileNameA(temp_path, "ldr", 0, dll_name);
 
-        /*trace("creating %s\n", dll_name);*/
-        hfile = CreateFileA(dll_name, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, 0, 0);
-        if (hfile == INVALID_HANDLE_VALUE)
-        {
-            ok(0, "could not create %s\n", dll_name);
-            break;
-        }
-
-        SetLastError(0xdeadbeef);
-        ret = WriteFile(hfile, td[i].dos_header, td[i].size_of_dos_header, &dummy, NULL);
-        ok(ret, "WriteFile error %d\n", GetLastError());
-
         nt_header.FileHeader.NumberOfSections = td[i].number_of_sections;
         nt_header.FileHeader.SizeOfOptionalHeader = td[i].size_of_optional_header;
 
@@ -324,55 +399,13 @@ static void test_Loader(void)
         nt_header.OptionalHeader.FileAlignment = td[i].file_alignment;
         nt_header.OptionalHeader.SizeOfImage = td[i].size_of_image;
         nt_header.OptionalHeader.SizeOfHeaders = td[i].size_of_headers;
-        SetLastError(0xdeadbeef);
-        ret = WriteFile(hfile, &nt_header, sizeof(DWORD) + sizeof(IMAGE_FILE_HEADER), &dummy, NULL);
-        ok(ret, "WriteFile error %d\n", GetLastError());
 
-        if (nt_header.FileHeader.SizeOfOptionalHeader)
+        file_size = create_test_dll( &dos_header, td[i].size_of_dos_header, &nt_header, dll_name );
+        if (!file_size)
         {
-            SetLastError(0xdeadbeef);
-            ret = WriteFile(hfile, &nt_header.OptionalHeader,
-                            min(nt_header.FileHeader.SizeOfOptionalHeader, sizeof(IMAGE_OPTIONAL_HEADER)),
-                            &dummy, NULL);
-            ok(ret, "WriteFile error %d\n", GetLastError());
-            if (nt_header.FileHeader.SizeOfOptionalHeader > sizeof(IMAGE_OPTIONAL_HEADER))
-            {
-                file_align = nt_header.FileHeader.SizeOfOptionalHeader - sizeof(IMAGE_OPTIONAL_HEADER);
-                assert(file_align < sizeof(filler));
-                SetLastError(0xdeadbeef);
-                ret = WriteFile(hfile, filler, file_align, &dummy, NULL);
-                ok(ret, "WriteFile error %d\n", GetLastError());
-            }
+            ok(0, "could not create %s\n", dll_name);
+            break;
         }
-
-        assert(nt_header.FileHeader.NumberOfSections <= 1);
-        if (nt_header.FileHeader.NumberOfSections)
-        {
-            if (nt_header.OptionalHeader.SectionAlignment >= si.dwPageSize)
-            {
-                section.PointerToRawData = td[i].size_of_dos_header;
-                section.VirtualAddress = nt_header.OptionalHeader.SectionAlignment;
-                section.Misc.VirtualSize = section.SizeOfRawData * 10;
-            }
-            else
-            {
-                section.PointerToRawData = nt_header.OptionalHeader.SizeOfHeaders;
-                section.VirtualAddress = nt_header.OptionalHeader.SizeOfHeaders;
-                section.Misc.VirtualSize = 5;
-            }
-
-            SetLastError(0xdeadbeef);
-            ret = WriteFile(hfile, &section, sizeof(section), &dummy, NULL);
-            ok(ret, "WriteFile error %d\n", GetLastError());
-
-            /* section data */
-            SetLastError(0xdeadbeef);
-            ret = WriteFile(hfile, section_data, sizeof(section_data), &dummy, NULL);
-            ok(ret, "WriteFile error %d\n", GetLastError());
-        }
-
-        file_size = GetFileSize(hfile, NULL);
-        CloseHandle(hfile);
 
         SetLastError(0xdeadbeef);
         hlib = LoadLibraryA(dll_name);
@@ -390,17 +423,17 @@ static void test_Loader(void)
             ok(info.BaseAddress == hlib, "%d: %p != %p\n", i, info.BaseAddress, hlib);
             ok(info.AllocationBase == hlib, "%d: %p != %p\n", i, info.AllocationBase, hlib);
             ok(info.AllocationProtect == PAGE_EXECUTE_WRITECOPY, "%d: %x != PAGE_EXECUTE_WRITECOPY\n", i, info.AllocationProtect);
-            ok(info.RegionSize == ALIGN_SIZE(nt_header.OptionalHeader.SizeOfImage, si.dwPageSize), "%d: got %lx != expected %x\n",
-               i, info.RegionSize, ALIGN_SIZE(nt_header.OptionalHeader.SizeOfImage, si.dwPageSize));
+            ok(info.RegionSize == ALIGN_SIZE(nt_header.OptionalHeader.SizeOfImage, page_size), "%d: got %lx != expected %x\n",
+               i, info.RegionSize, ALIGN_SIZE(nt_header.OptionalHeader.SizeOfImage, page_size));
             ok(info.State == MEM_COMMIT, "%d: %x != MEM_COMMIT\n", i, info.State);
-            if (nt_header.OptionalHeader.SectionAlignment < si.dwPageSize)
+            if (nt_header.OptionalHeader.SectionAlignment < page_size)
                 ok(info.Protect == PAGE_EXECUTE_WRITECOPY, "%d: %x != PAGE_EXECUTE_WRITECOPY\n", i, info.Protect);
             else
                 ok(info.Protect == PAGE_READONLY, "%d: %x != PAGE_READONLY\n", i, info.Protect);
             ok(info.Type == SEC_IMAGE, "%d: %x != SEC_IMAGE\n", i, info.Type);
 
             SetLastError(0xdeadbeef);
-            ptr = VirtualAlloc(hlib, si.dwPageSize, MEM_COMMIT, info.Protect);
+            ptr = VirtualAlloc(hlib, page_size, MEM_COMMIT, info.Protect);
             ok(!ptr, "%d: VirtualAlloc should fail\n", i);
             /* FIXME: Remove once Wine is fixed */
             if (info.Protect == PAGE_WRITECOPY || info.Protect == PAGE_EXECUTE_WRITECOPY)
@@ -413,11 +446,11 @@ todo_wine
             size = VirtualQuery((char *)hlib + info.RegionSize, &info, sizeof(info));
             ok(size == sizeof(info),
                 "%d: VirtualQuery error %d\n", i, GetLastError());
-            if (nt_header.OptionalHeader.SectionAlignment == si.dwPageSize ||
+            if (nt_header.OptionalHeader.SectionAlignment == page_size ||
                 nt_header.OptionalHeader.SectionAlignment == nt_header.OptionalHeader.FileAlignment)
             {
-                ok(info.BaseAddress == (char *)hlib + ALIGN_SIZE(nt_header.OptionalHeader.SizeOfImage, si.dwPageSize), "%d: got %p != expected %p\n",
-                   i, info.BaseAddress, (char *)hlib + ALIGN_SIZE(nt_header.OptionalHeader.SizeOfImage, si.dwPageSize));
+                ok(info.BaseAddress == (char *)hlib + ALIGN_SIZE(nt_header.OptionalHeader.SizeOfImage, page_size), "%d: got %p != expected %p\n",
+                   i, info.BaseAddress, (char *)hlib + ALIGN_SIZE(nt_header.OptionalHeader.SizeOfImage, page_size));
                 ok(info.AllocationBase == 0, "%d: %p != 0\n", i, info.AllocationBase);
                 ok(info.AllocationProtect == 0, "%d: %x != 0\n", i, info.AllocationProtect);
                 /*ok(info.RegionSize == not_practical_value, "%d: %lx != not_practical_value\n", i, info.RegionSize);*/
@@ -431,20 +464,20 @@ todo_wine
                 ok(info.BaseAddress == hlib, "%d: got %p != expected %p\n", i, info.BaseAddress, hlib);
                 ok(info.AllocationBase == hlib, "%d: %p != %p\n", i, info.AllocationBase, hlib);
                 ok(info.AllocationProtect == PAGE_EXECUTE_WRITECOPY, "%d: %x != PAGE_EXECUTE_WRITECOPY\n", i, info.AllocationProtect);
-                ok(info.RegionSize == ALIGN_SIZE(file_size, si.dwPageSize), "%d: got %lx != expected %x\n",
-                   i, info.RegionSize, ALIGN_SIZE(file_size, si.dwPageSize));
+                ok(info.RegionSize == ALIGN_SIZE(file_size, page_size), "%d: got %lx != expected %x\n",
+                   i, info.RegionSize, ALIGN_SIZE(file_size, page_size));
                 ok(info.State == MEM_COMMIT, "%d: %x != MEM_COMMIT\n", i, info.State);
                 ok(info.Protect == PAGE_READONLY, "%d: %x != PAGE_READONLY\n", i, info.Protect);
                 ok(info.Type == SEC_IMAGE, "%d: %x != SEC_IMAGE\n", i, info.Type);
             }
 
             /* header: check the zeroing of alignment */
-            if (nt_header.OptionalHeader.SectionAlignment >= si.dwPageSize)
+            if (nt_header.OptionalHeader.SectionAlignment >= page_size)
             {
                 const char *start;
 
                 start = (const char *)hlib + nt_header.OptionalHeader.SizeOfHeaders;
-                size = ALIGN_SIZE((ULONG_PTR)start, si.dwPageSize) - (ULONG_PTR)start;
+                size = ALIGN_SIZE((ULONG_PTR)start, page_size) - (ULONG_PTR)start;
                 ok(!memcmp(start, filler, size), "%d: header alignment is not cleared\n", i);
             }
 
@@ -454,18 +487,18 @@ todo_wine
                 size = VirtualQuery((char *)hlib + section.VirtualAddress, &info, sizeof(info));
                 ok(size == sizeof(info),
                     "%d: VirtualQuery error %d\n", i, GetLastError());
-                if (nt_header.OptionalHeader.SectionAlignment < si.dwPageSize)
+                if (nt_header.OptionalHeader.SectionAlignment < page_size)
                 {
                     ok(info.BaseAddress == hlib, "%d: got %p != expected %p\n", i, info.BaseAddress, hlib);
-                    ok(info.RegionSize == ALIGN_SIZE(nt_header.OptionalHeader.SizeOfImage, si.dwPageSize), "%d: got %lx != expected %x\n",
-                       i, info.RegionSize, ALIGN_SIZE(nt_header.OptionalHeader.SizeOfImage, si.dwPageSize));
+                    ok(info.RegionSize == ALIGN_SIZE(nt_header.OptionalHeader.SizeOfImage, page_size), "%d: got %lx != expected %x\n",
+                       i, info.RegionSize, ALIGN_SIZE(nt_header.OptionalHeader.SizeOfImage, page_size));
                     ok(info.Protect == PAGE_EXECUTE_WRITECOPY, "%d: %x != PAGE_EXECUTE_WRITECOPY\n", i, info.Protect);
                 }
                 else
                 {
                     ok(info.BaseAddress == (char *)hlib + section.VirtualAddress, "%d: got %p != expected %p\n", i, info.BaseAddress, (char *)hlib + section.VirtualAddress);
-                    ok(info.RegionSize == ALIGN_SIZE(section.Misc.VirtualSize, si.dwPageSize), "%d: got %lx != expected %x\n",
-                       i, info.RegionSize, ALIGN_SIZE(section.Misc.VirtualSize, si.dwPageSize));
+                    ok(info.RegionSize == ALIGN_SIZE(section.Misc.VirtualSize, page_size), "%d: got %lx != expected %x\n",
+                       i, info.RegionSize, ALIGN_SIZE(section.Misc.VirtualSize, page_size));
                     ok(info.Protect == PAGE_READONLY, "%d: %x != PAGE_READONLY\n", i, info.Protect);
                 }
                 ok(info.AllocationBase == hlib, "%d: %p != %p\n", i, info.AllocationBase, hlib);
@@ -473,23 +506,23 @@ todo_wine
                 ok(info.State == MEM_COMMIT, "%d: %x != MEM_COMMIT\n", i, info.State);
                 ok(info.Type == SEC_IMAGE, "%d: %x != SEC_IMAGE\n", i, info.Type);
 
-                if (nt_header.OptionalHeader.SectionAlignment >= si.dwPageSize)
+                if (nt_header.OptionalHeader.SectionAlignment >= page_size)
                     ok(!memcmp((const char *)hlib + section.VirtualAddress + section.PointerToRawData, &nt_header, section.SizeOfRawData), "wrong section data\n");
                 else
                     ok(!memcmp((const char *)hlib + section.PointerToRawData, section_data, section.SizeOfRawData), "wrong section data\n");
 
                 /* check the zeroing of alignment */
-                if (nt_header.OptionalHeader.SectionAlignment >= si.dwPageSize)
+                if (nt_header.OptionalHeader.SectionAlignment >= page_size)
                 {
                     const char *start;
 
                     start = (const char *)hlib + section.VirtualAddress + section.PointerToRawData + section.SizeOfRawData;
-                    size = ALIGN_SIZE((ULONG_PTR)start, si.dwPageSize) - (ULONG_PTR)start;
+                    size = ALIGN_SIZE((ULONG_PTR)start, page_size) - (ULONG_PTR)start;
                     ok(memcmp(start, filler, size), "%d: alignment should not be cleared\n", i);
                 }
 
                 SetLastError(0xdeadbeef);
-                ptr = VirtualAlloc((char *)hlib + section.VirtualAddress, si.dwPageSize, MEM_COMMIT, info.Protect);
+                ptr = VirtualAlloc((char *)hlib + section.VirtualAddress, page_size, MEM_COMMIT, info.Protect);
                 ok(!ptr, "%d: VirtualAlloc should fail\n", i);
                 /* FIXME: Remove once Wine is fixed */
                 if (info.Protect == PAGE_WRITECOPY || info.Protect == PAGE_EXECUTE_WRITECOPY)
@@ -552,6 +585,102 @@ todo_wine
         ret = DeleteFileA(dll_name);
         ok(ret, "DeleteFile error %d\n", GetLastError());
     }
+
+    nt_header.FileHeader.NumberOfSections = 1;
+    nt_header.FileHeader.SizeOfOptionalHeader = sizeof(IMAGE_OPTIONAL_HEADER);
+
+    nt_header.OptionalHeader.SectionAlignment = page_size;
+    nt_header.OptionalHeader.FileAlignment = page_size;
+    nt_header.OptionalHeader.SizeOfHeaders = sizeof(dos_header) + sizeof(nt_header) + sizeof(IMAGE_SECTION_HEADER);
+    nt_header.OptionalHeader.SizeOfImage = nt_header.OptionalHeader.SizeOfImage + page_size;
+
+    status = map_image_section( &nt_header );
+    ok( status == STATUS_SUCCESS, "NtCreateSection error %08x\n", status );
+
+    dos_header.e_magic = 0;
+    status = map_image_section( &nt_header );
+    ok( status == STATUS_INVALID_IMAGE_NOT_MZ, "NtCreateSection error %08x\n", status );
+
+    dos_header.e_magic = IMAGE_DOS_SIGNATURE;
+    nt_header.Signature = IMAGE_OS2_SIGNATURE;
+    status = map_image_section( &nt_header );
+    ok( status == STATUS_INVALID_IMAGE_NE_FORMAT, "NtCreateSection error %08x\n", status );
+
+    nt_header.Signature = 0xdeadbeef;
+    status = map_image_section( &nt_header );
+    ok( status == STATUS_INVALID_IMAGE_PROTECT, "NtCreateSection error %08x\n", status );
+
+    nt_header.Signature = IMAGE_NT_SIGNATURE;
+    nt_header.OptionalHeader.Magic = 0xdead;
+    status = map_image_section( &nt_header );
+    ok( status == STATUS_INVALID_IMAGE_FORMAT, "NtCreateSection error %08x\n", status );
+
+    nt_header.OptionalHeader.Magic = IMAGE_NT_OPTIONAL_HDR_MAGIC;
+    nt_header.FileHeader.Machine = 0xdead;
+    status = map_image_section( &nt_header );
+    ok( status == STATUS_INVALID_IMAGE_FORMAT || broken(status == STATUS_SUCCESS), /* win2k */
+        "NtCreateSection error %08x\n", status );
+
+    nt_header.FileHeader.Machine = IMAGE_FILE_MACHINE_UNKNOWN;
+    status = map_image_section( &nt_header );
+    ok( status == STATUS_INVALID_IMAGE_FORMAT || broken(status == STATUS_SUCCESS), /* win2k */
+        "NtCreateSection error %08x\n", status );
+
+    switch (orig_machine)
+    {
+    case IMAGE_FILE_MACHINE_I386: nt_header.FileHeader.Machine = IMAGE_FILE_MACHINE_AMD64; break;
+    case IMAGE_FILE_MACHINE_AMD64: nt_header.FileHeader.Machine = IMAGE_FILE_MACHINE_I386; break;
+    case IMAGE_FILE_MACHINE_ARMNT: nt_header.FileHeader.Machine = IMAGE_FILE_MACHINE_ARM64; break;
+    case IMAGE_FILE_MACHINE_ARM64: nt_header.FileHeader.Machine = IMAGE_FILE_MACHINE_ARMNT; break;
+    }
+    status = map_image_section( &nt_header );
+    ok( status == STATUS_INVALID_IMAGE_FORMAT || broken(status == STATUS_SUCCESS), /* win2k */
+                  "NtCreateSection error %08x\n", status );
+
+    if (nt_header.OptionalHeader.Magic == IMAGE_NT_OPTIONAL_HDR32_MAGIC)
+    {
+        IMAGE_NT_HEADERS64 nt64;
+
+        memset( &nt64, 0, sizeof(nt64) );
+        nt64.Signature = IMAGE_NT_SIGNATURE;
+        nt64.FileHeader.Machine = orig_machine;
+        nt64.FileHeader.NumberOfSections = 1;
+        nt64.FileHeader.SizeOfOptionalHeader = sizeof(IMAGE_OPTIONAL_HEADER64);
+        nt64.OptionalHeader.Magic = IMAGE_NT_OPTIONAL_HDR64_MAGIC;
+        nt64.OptionalHeader.MajorLinkerVersion = 1;
+        nt64.OptionalHeader.ImageBase = 0x10000000;
+        nt64.OptionalHeader.MajorOperatingSystemVersion = 4;
+        nt64.OptionalHeader.MajorImageVersion = 1;
+        nt64.OptionalHeader.MajorSubsystemVersion = 4;
+        nt64.OptionalHeader.SizeOfHeaders = sizeof(dos_header) + sizeof(nt64) + sizeof(IMAGE_SECTION_HEADER);
+        nt64.OptionalHeader.SizeOfImage = nt64.OptionalHeader.SizeOfHeaders + 0x1000;
+        nt64.OptionalHeader.Subsystem = IMAGE_SUBSYSTEM_WINDOWS_CUI;
+        status = map_image_section( (IMAGE_NT_HEADERS *)&nt64 );
+        ok( status == STATUS_INVALID_IMAGE_FORMAT, "NtCreateSection error %08x\n", status );
+    }
+    else
+    {
+        IMAGE_NT_HEADERS32 nt32;
+
+        memset( &nt32, 0, sizeof(nt32) );
+        nt32.Signature = IMAGE_NT_SIGNATURE;
+        nt32.FileHeader.Machine = orig_machine;
+        nt32.FileHeader.NumberOfSections = 1;
+        nt32.FileHeader.SizeOfOptionalHeader = sizeof(IMAGE_OPTIONAL_HEADER32);
+        nt32.OptionalHeader.Magic = IMAGE_NT_OPTIONAL_HDR32_MAGIC;
+        nt32.OptionalHeader.MajorLinkerVersion = 1;
+        nt32.OptionalHeader.ImageBase = 0x10000000;
+        nt32.OptionalHeader.MajorOperatingSystemVersion = 4;
+        nt32.OptionalHeader.MajorImageVersion = 1;
+        nt32.OptionalHeader.MajorSubsystemVersion = 4;
+        nt32.OptionalHeader.SizeOfHeaders = sizeof(dos_header) + sizeof(nt32) + sizeof(IMAGE_SECTION_HEADER);
+        nt32.OptionalHeader.SizeOfImage = nt32.OptionalHeader.SizeOfHeaders + 0x1000;
+        nt32.OptionalHeader.Subsystem = IMAGE_SUBSYSTEM_WINDOWS_CUI;
+        status = map_image_section( (IMAGE_NT_HEADERS *)&nt32 );
+        ok( status == STATUS_INVALID_IMAGE_FORMAT, "NtCreateSection error %08x\n", status );
+    }
+
+    nt_header.FileHeader.Machine = orig_machine;  /* restore it for the next tests */
 }
 
 /* Verify linking style of import descriptors */
@@ -617,11 +746,8 @@ static void test_image_mapping(const char *dll_name, DWORD scn_page_access, BOOL
     SIZE_T size;
     void *addr1, *addr2;
     MEMORY_BASIC_INFORMATION info;
-    SYSTEM_INFO si;
 
     if (!pNtMapViewOfSection) return;
-
-    GetSystemInfo(&si);
 
     SetLastError(0xdeadbeef);
     hfile = CreateFileA(dll_name, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, 0, 0);
@@ -645,7 +771,7 @@ static void test_image_mapping(const char *dll_name, DWORD scn_page_access, BOOL
     size = VirtualQuery((char *)addr1 + section.VirtualAddress, &info, sizeof(info));
     ok(size == sizeof(info), "VirtualQuery error %d\n", GetLastError());
     ok(info.BaseAddress == (char *)addr1 + section.VirtualAddress, "got %p != expected %p\n", info.BaseAddress, (char *)addr1 + section.VirtualAddress);
-    ok(info.RegionSize == si.dwPageSize, "got %#lx != expected %#x\n", info.RegionSize, si.dwPageSize);
+    ok(info.RegionSize == page_size, "got %#lx != expected %#x\n", info.RegionSize, page_size);
     ok(info.Protect == scn_page_access, "got %#x != expected %#x\n", info.Protect, scn_page_access);
     ok(info.AllocationBase == addr1, "%p != %p\n", info.AllocationBase, addr1);
     ok(info.AllocationProtect == PAGE_EXECUTE_WRITECOPY, "%#x != PAGE_EXECUTE_WRITECOPY\n", info.AllocationProtect);
@@ -673,7 +799,7 @@ static void test_image_mapping(const char *dll_name, DWORD scn_page_access, BOOL
     size = VirtualQuery((char *)addr2 + section.VirtualAddress, &info, sizeof(info));
     ok(size == sizeof(info), "VirtualQuery error %d\n", GetLastError());
     ok(info.BaseAddress == (char *)addr2 + section.VirtualAddress, "got %p != expected %p\n", info.BaseAddress, (char *)addr2 + section.VirtualAddress);
-    ok(info.RegionSize == si.dwPageSize, "got %#lx != expected %#x\n", info.RegionSize, si.dwPageSize);
+    ok(info.RegionSize == page_size, "got %#lx != expected %#x\n", info.RegionSize, page_size);
     ok(info.Protect == scn_page_access, "got %#x != expected %#x\n", info.Protect, scn_page_access);
     ok(info.AllocationBase == addr2, "%p != %p\n", info.AllocationBase, addr2);
     ok(info.AllocationProtect == PAGE_EXECUTE_WRITECOPY, "%#x != PAGE_EXECUTE_WRITECOPY\n", info.AllocationProtect);
@@ -691,7 +817,7 @@ static void test_image_mapping(const char *dll_name, DWORD scn_page_access, BOOL
     size = VirtualQuery((char *)addr2 + section.VirtualAddress, &info, sizeof(info));
     ok(size == sizeof(info), "VirtualQuery error %d\n", GetLastError());
     ok(info.BaseAddress == (char *)addr2 + section.VirtualAddress, "got %p != expected %p\n", info.BaseAddress, (char *)addr2 + section.VirtualAddress);
-    ok(info.RegionSize == si.dwPageSize, "got %#lx != expected %#x\n", info.RegionSize, si.dwPageSize);
+    ok(info.RegionSize == page_size, "got %#lx != expected %#x\n", info.RegionSize, page_size);
     ok(info.Protect == scn_page_access, "got %#x != expected %#x\n", info.Protect, scn_page_access);
     ok(info.AllocationBase == addr2, "%p != %p\n", info.AllocationBase, addr2);
     ok(info.AllocationProtect == PAGE_EXECUTE_WRITECOPY, "%#x != PAGE_EXECUTE_WRITECOPY\n", info.AllocationProtect);
@@ -783,12 +909,9 @@ static void test_VirtualProtect(void *base, void *section)
     };
     DWORD ret, orig_prot, old_prot, rw_prot, exec_prot, i, j;
     MEMORY_BASIC_INFORMATION info;
-    SYSTEM_INFO si;
-
-    GetSystemInfo(&si);
 
     SetLastError(0xdeadbeef);
-    ret = VirtualProtect(section, si.dwPageSize, PAGE_NOACCESS, &old_prot);
+    ret = VirtualProtect(section, page_size, PAGE_NOACCESS, &old_prot);
     ok(ret, "VirtualProtect error %d\n", GetLastError());
 
     orig_prot = old_prot;
@@ -799,7 +922,7 @@ static void test_VirtualProtect(void *base, void *section)
         ret = VirtualQuery(section, &info, sizeof(info));
         ok(ret, "VirtualQuery failed %d\n", GetLastError());
         ok(info.BaseAddress == section, "%d: got %p != expected %p\n", i, info.BaseAddress, section);
-        ok(info.RegionSize == si.dwPageSize, "%d: got %#lx != expected %#x\n", i, info.RegionSize, si.dwPageSize);
+        ok(info.RegionSize == page_size, "%d: got %#lx != expected %#x\n", i, info.RegionSize, page_size);
         ok(info.Protect == PAGE_NOACCESS, "%d: got %#x != expected PAGE_NOACCESS\n", i, info.Protect);
         ok(info.AllocationBase == base, "%d: %p != %p\n", i, info.AllocationBase, base);
         ok(info.AllocationProtect == PAGE_EXECUTE_WRITECOPY, "%d: %#x != PAGE_EXECUTE_WRITECOPY\n", i, info.AllocationProtect);
@@ -808,7 +931,7 @@ static void test_VirtualProtect(void *base, void *section)
 
         old_prot = 0xdeadbeef;
         SetLastError(0xdeadbeef);
-        ret = VirtualProtect(section, si.dwPageSize, td[i].prot_set, &old_prot);
+        ret = VirtualProtect(section, page_size, td[i].prot_set, &old_prot);
         if (td[i].prot_get)
         {
             ok(ret, "%d: VirtualProtect error %d, requested prot %#x\n", i, GetLastError(), td[i].prot_set);
@@ -818,7 +941,7 @@ static void test_VirtualProtect(void *base, void *section)
             ret = VirtualQuery(section, &info, sizeof(info));
             ok(ret, "VirtualQuery failed %d\n", GetLastError());
             ok(info.BaseAddress == section, "%d: got %p != expected %p\n", i, info.BaseAddress, section);
-            ok(info.RegionSize == si.dwPageSize, "%d: got %#lx != expected %#x\n", i, info.RegionSize, si.dwPageSize);
+            ok(info.RegionSize == page_size, "%d: got %#lx != expected %#x\n", i, info.RegionSize, page_size);
             ok(info.Protect == td[i].prot_get, "%d: got %#x != expected %#x\n", i, info.Protect, td[i].prot_get);
             ok(info.AllocationBase == base, "%d: %p != %p\n", i, info.AllocationBase, base);
             ok(info.AllocationProtect == PAGE_EXECUTE_WRITECOPY, "%d: %#x != PAGE_EXECUTE_WRITECOPY\n", i, info.AllocationProtect);
@@ -833,7 +956,7 @@ static void test_VirtualProtect(void *base, void *section)
 
         old_prot = 0xdeadbeef;
         SetLastError(0xdeadbeef);
-        ret = VirtualProtect(section, si.dwPageSize, PAGE_NOACCESS, &old_prot);
+        ret = VirtualProtect(section, page_size, PAGE_NOACCESS, &old_prot);
         ok(ret, "%d: VirtualProtect error %d\n", i, GetLastError());
         if (td[i].prot_get)
             ok(old_prot == td[i].prot_get, "%d: got %#x != expected %#x\n", i, old_prot, td[i].prot_get);
@@ -852,7 +975,7 @@ static void test_VirtualProtect(void *base, void *section)
             DWORD prot = exec_prot | rw_prot;
 
             SetLastError(0xdeadbeef);
-            ret = VirtualProtect(section, si.dwPageSize, prot, &old_prot);
+            ret = VirtualProtect(section, page_size, prot, &old_prot);
             if ((rw_prot && exec_prot) || (!rw_prot && !exec_prot))
             {
                 ok(!ret, "VirtualProtect(%02x) should fail\n", prot);
@@ -868,7 +991,7 @@ static void test_VirtualProtect(void *base, void *section)
     }
 
     SetLastError(0xdeadbeef);
-    ret = VirtualProtect(section, si.dwPageSize, orig_prot, &old_prot);
+    ret = VirtualProtect(section, page_size, orig_prot, &old_prot);
     ok(ret, "VirtualProtect error %d\n", GetLastError());
 }
 
@@ -913,7 +1036,6 @@ static void test_section_access(void)
     DWORD dummy, file_align;
     HANDLE hfile;
     HMODULE hlib;
-    SYSTEM_INFO si;
     char temp_path[MAX_PATH];
     char dll_name[MAX_PATH];
     SIZE_T size;
@@ -921,8 +1043,6 @@ static void test_section_access(void)
     STARTUPINFOA sti;
     PROCESS_INFORMATION pi;
     DWORD ret;
-
-    GetSystemInfo(&si);
 
     /* prevent displaying of the "Unable to load this DLL" message box */
     SetErrorMode(SEM_FAILCRITICALERRORS);
@@ -949,9 +1069,9 @@ static void test_section_access(void)
         nt_header.FileHeader.SizeOfOptionalHeader = sizeof(IMAGE_OPTIONAL_HEADER);
         nt_header.FileHeader.Characteristics = IMAGE_FILE_EXECUTABLE_IMAGE | IMAGE_FILE_DLL | IMAGE_FILE_RELOCS_STRIPPED;
 
-        nt_header.OptionalHeader.SectionAlignment = si.dwPageSize;
+        nt_header.OptionalHeader.SectionAlignment = page_size;
         nt_header.OptionalHeader.FileAlignment = 0x200;
-        nt_header.OptionalHeader.SizeOfImage = sizeof(dos_header) + sizeof(nt_header) + sizeof(IMAGE_SECTION_HEADER) + si.dwPageSize;
+        nt_header.OptionalHeader.SizeOfImage = sizeof(dos_header) + sizeof(nt_header) + sizeof(IMAGE_SECTION_HEADER) + page_size;
         nt_header.OptionalHeader.SizeOfHeaders = sizeof(dos_header) + sizeof(nt_header) + sizeof(IMAGE_SECTION_HEADER);
         SetLastError(0xdeadbeef);
         ret = WriteFile(hfile, &nt_header, sizeof(DWORD) + sizeof(IMAGE_FILE_HEADER), &dummy, NULL);
@@ -991,7 +1111,7 @@ static void test_section_access(void)
         ok(size == sizeof(info),
             "%d: VirtualQuery error %d\n", i, GetLastError());
         ok(info.BaseAddress == (char *)hlib + section.VirtualAddress, "%d: got %p != expected %p\n", i, info.BaseAddress, (char *)hlib + section.VirtualAddress);
-        ok(info.RegionSize == si.dwPageSize, "%d: got %#lx != expected %#x\n", i, info.RegionSize, si.dwPageSize);
+        ok(info.RegionSize == page_size, "%d: got %#lx != expected %#x\n", i, info.RegionSize, page_size);
         ok(info.Protect == td[i].scn_page_access, "%d: got %#x != expected %#x\n", i, info.Protect, td[i].scn_page_access);
         ok(info.AllocationBase == hlib, "%d: %p != %p\n", i, info.AllocationBase, hlib);
         ok(info.AllocationProtect == PAGE_EXECUTE_WRITECOPY, "%d: %#x != PAGE_EXECUTE_WRITECOPY\n", i, info.AllocationProtect);
@@ -1053,7 +1173,7 @@ static void test_section_access(void)
         ok(size == sizeof(info),
             "%d: VirtualQuery error %d\n", i, GetLastError());
         ok(info.BaseAddress == (char *)hlib + section.VirtualAddress, "%d: got %p != expected %p\n", i, info.BaseAddress, (char *)hlib + section.VirtualAddress);
-        ok(info.RegionSize == si.dwPageSize, "%d: got %#lx != expected %#x\n", i, info.RegionSize, si.dwPageSize);
+        ok(info.RegionSize == page_size, "%d: got %#lx != expected %#x\n", i, info.RegionSize, page_size);
         ok(info.Protect == td[i].scn_page_access, "%d: got %#x != expected %#x\n", i, info.Protect, td[i].scn_page_access);
         ok(info.AllocationBase == hlib, "%d: %p != %p\n", i, info.AllocationBase, hlib);
         ok(info.AllocationProtect == PAGE_EXECUTE_WRITECOPY, "%d: %#x != PAGE_EXECUTE_WRITECOPY\n", i, info.AllocationProtect);
@@ -2500,8 +2620,10 @@ START_TEST(loader)
     int argc;
     char **argv;
     HANDLE ntdll, mapping;
+    SYSTEM_INFO si;
 
     ntdll = GetModuleHandleA("ntdll.dll");
+    pNtCreateSection = (void *)GetProcAddress(ntdll, "NtCreateSection");
     pNtMapViewOfSection = (void *)GetProcAddress(ntdll, "NtMapViewOfSection");
     pNtUnmapViewOfSection = (void *)GetProcAddress(ntdll, "NtUnmapViewOfSection");
     pNtTerminateProcess = (void *)GetProcAddress(ntdll, "NtTerminateProcess");
@@ -2516,6 +2638,11 @@ START_TEST(loader)
     pRtlAcquirePebLock = (void *)GetProcAddress(ntdll, "RtlAcquirePebLock");
     pRtlReleasePebLock = (void *)GetProcAddress(ntdll, "RtlReleasePebLock");
     pResolveDelayLoadedAPI = (void *)GetProcAddress(GetModuleHandleA("kernel32.dll"), "ResolveDelayLoadedAPI");
+
+    GetSystemInfo( &si );
+    page_size = si.dwPageSize;
+    dos_header.e_magic = IMAGE_DOS_SIGNATURE;
+    dos_header.e_lfanew = sizeof(dos_header);
 
     mapping = CreateFileMappingA(INVALID_HANDLE_VALUE, NULL, PAGE_READWRITE, 0, 4096, "winetest_loader");
     ok(mapping != 0, "CreateFileMapping failed\n");
