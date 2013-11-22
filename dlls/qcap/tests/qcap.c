@@ -154,6 +154,8 @@ static const struct {
     filter_type filter_type;
     BOOL wine_missing;
     BOOL wine_extra;
+    BOOL optional; /* fails on wine if missing */
+    BOOL broken;
 } renderstream_cat_media[] = {
     {BASEFILTER_QUERYINTERFACE, SOURCE_FILTER},
     {BASEFILTER_ENUMPINS, SOURCE_FILTER},
@@ -189,15 +191,20 @@ static const struct {
     {PIN_QUERYPININFO, SOURCE_FILTER, TRUE},
     {KSPROPERTYSET_GET, SOURCE_FILTER, TRUE},
     {ENUMPINS_NEXT, SOURCE_FILTER, TRUE},
-    {PIN_ENUMMEDIATYPES, SOURCE_FILTER, TRUE},
-    {ENUMMEDIATYPES_NEXT, SOURCE_FILTER, TRUE},
+    {PIN_ENUMMEDIATYPES, SOURCE_FILTER, TRUE, FALSE, TRUE},
+    {ENUMMEDIATYPES_NEXT, SOURCE_FILTER, TRUE, FALSE, TRUE},
     {BASEFILTER_QUERYINTERFACE, SINK_FILTER, FALSE, TRUE},
     {BASEFILTER_ENUMPINS, SINK_FILTER},
     {ENUMPINS_NEXT, SINK_FILTER},
     {PIN_QUERYDIRECTION, SINK_FILTER},
     {PIN_CONNECTEDTO, SINK_FILTER},
     {GRAPHBUILDER_CONNECT, NOT_FILTER},
-    {BASEFILTER_GETSTATE, SOURCE_FILTER, TRUE},
+    {BASEFILTER_GETSTATE, SOURCE_FILTER, TRUE, FALSE, TRUE},
+    {BASEFILTER_ENUMPINS, SOURCE_FILTER, FALSE, FALSE, FALSE, TRUE},
+    {ENUMPINS_NEXT, SOURCE_FILTER, FALSE, FALSE, FALSE, TRUE},
+    {PIN_QUERYDIRECTION, SOURCE_FILTER, FALSE, FALSE, FALSE, TRUE},
+    {PIN_CONNECTEDTO, SOURCE_FILTER, FALSE, FALSE, FALSE, TRUE},
+    {ENUMPINS_NEXT, SOURCE_FILTER, FALSE, FALSE, FALSE, TRUE},
     {END, NOT_FILTER}
 }, renderstream_intermediate[] = {
     {BASEFILTER_QUERYINTERFACE, SOURCE_FILTER},
@@ -234,8 +241,8 @@ static const struct {
     {PIN_QUERYPININFO, SOURCE_FILTER, TRUE},
     {KSPROPERTYSET_GET, SOURCE_FILTER, TRUE},
     {ENUMPINS_NEXT, SOURCE_FILTER, TRUE},
-    {PIN_ENUMMEDIATYPES, SOURCE_FILTER, TRUE},
-    {ENUMMEDIATYPES_NEXT, SOURCE_FILTER, TRUE},
+    {PIN_ENUMMEDIATYPES, SOURCE_FILTER, TRUE, FALSE, TRUE},
+    {ENUMMEDIATYPES_NEXT, SOURCE_FILTER, TRUE, FALSE, TRUE},
     {BASEFILTER_QUERYINTERFACE, SINK_FILTER, FALSE, TRUE},
     {BASEFILTER_ENUMPINS, SINK_FILTER},
     {ENUMPINS_NEXT, SINK_FILTER},
@@ -256,30 +263,55 @@ static const struct {
     {PIN_QUERYDIRECTION, INTERMEDIATE_FILTER},
     {PIN_CONNECTEDTO, INTERMEDIATE_FILTER},
     {GRAPHBUILDER_CONNECT, NOT_FILTER},
-    {BASEFILTER_GETSTATE, SOURCE_FILTER, TRUE},
+    {BASEFILTER_GETSTATE, SOURCE_FILTER, TRUE, FALSE, TRUE},
+    {BASEFILTER_ENUMPINS, SOURCE_FILTER, FALSE, FALSE, FALSE, TRUE},
+    {ENUMPINS_NEXT, SOURCE_FILTER, FALSE, FALSE, FALSE, TRUE},
+    {PIN_QUERYDIRECTION, SOURCE_FILTER, FALSE, FALSE, FALSE, TRUE},
+    {PIN_CONNECTEDTO, SOURCE_FILTER, FALSE, FALSE, FALSE, TRUE},
+    {ENUMPINS_NEXT, SOURCE_FILTER, FALSE, FALSE, FALSE, TRUE},
     {END, NOT_FILTER}
 }, *current_calls_list;
 int call_no;
 
 static void check_calls_list(const char *func, call_id id, filter_type type)
 {
-    while(current_calls_list[call_no].wine_missing || current_calls_list[call_no].wine_extra) {
+    while(current_calls_list[call_no].wine_missing || current_calls_list[call_no].wine_extra ||
+         current_calls_list[call_no].optional || current_calls_list[call_no].broken) {
         if(current_calls_list[call_no].wine_missing) {
-            todo_wine ok(current_calls_list[call_no].call_id == id && current_calls_list[call_no].filter_type == type,
-                    "missing call, got %s(%d), expected %d\n", func, id, current_calls_list[call_no].call_id);
+            todo_wine ok((current_calls_list[call_no].call_id == id && current_calls_list[call_no].filter_type == type) ||
+                    broken(current_calls_list[call_no].optional && (current_calls_list[call_no].call_id != id ||
+                            current_calls_list[call_no].filter_type != type)),
+                    "missing call, got %s(%d), expected %d (%d)\n", func, id, current_calls_list[call_no].call_id, call_no);
 
             if(current_calls_list[call_no].call_id != id || current_calls_list[call_no].filter_type != type)
                 call_no++;
             else
                 break;
-        }else {
+        }else if(current_calls_list[call_no].wine_extra) {
             todo_wine ok(current_calls_list[call_no].call_id != id || current_calls_list[call_no].filter_type != type,
-                    "extra call, got %s(%d)\n", func, id);
+                    "extra call, got %s(%d) (%d)\n", func, id, call_no);
 
             if(current_calls_list[call_no].call_id == id && current_calls_list[call_no].filter_type == type) {
                 call_no++;
                 return;
             }
+            call_no++;
+        }else if(current_calls_list[call_no].optional) {
+            ok((current_calls_list[call_no].call_id == id && current_calls_list[call_no].filter_type == type) ||
+                    broken(current_calls_list[call_no].call_id != id || current_calls_list[call_no].filter_type != type),
+                    "unexpected call: %s on %s (%d)\n", func, debugstr_filter_type(type), call_no);
+
+            if(current_calls_list[call_no].call_id != id || current_calls_list[call_no].filter_type != type)
+                call_no++;
+            else
+                break;
+        }else if(current_calls_list[call_no].broken) {
+            ok(broken(current_calls_list[call_no].call_id == id && current_calls_list[call_no].filter_type == type) ||
+                    (current_calls_list[call_no].call_id != id || current_calls_list[call_no].filter_type != type),
+                    "unexpected call: %s on %s (%d)\n", func, debugstr_filter_type(type), call_no);
+
+            if(current_calls_list[call_no].call_id == id && current_calls_list[call_no].filter_type == type)
+                break;
             call_no++;
         }
     }
@@ -993,12 +1025,53 @@ static void test_CaptureGraphBuilder_RenderStream(void)
     ICaptureGraphBuilder2_Release(cgb);
 }
 
+static void test_AviMux_QueryInterface(void)
+{
+    IUnknown *avimux, *unk;
+    HRESULT hr;
+
+    hr = CoCreateInstance(&CLSID_AviDest, NULL, CLSCTX_INPROC_SERVER, &IID_IUnknown, (void**)&avimux);
+    ok(hr == S_OK || broken(hr == REGDB_E_CLASSNOTREG),
+            "couldn't create AVI Mux filter, hr = %08x\n", hr);
+    if(hr != S_OK) {
+        win_skip("AVI Mux filter is not registered\n");
+        return;
+    }
+
+    hr = IUnknown_QueryInterface(avimux, &IID_IBaseFilter, (void**)&unk);
+    ok(hr == S_OK, "QueryInterface(IID_IBaseFilter) failed: %x\n", hr);
+    IUnknown_Release(unk);
+
+    hr = IUnknown_QueryInterface(avimux, &IID_IConfigAviMux, (void**)&unk);
+    ok(hr == S_OK, "QueryInterface(IID_IConfigAviMux) failed: %x\n", hr);
+    IUnknown_Release(unk);
+
+    hr = IUnknown_QueryInterface(avimux, &IID_IConfigInterleaving, (void**)&unk);
+    ok(hr == S_OK, "QueryInterface(IID_IConfigInterleaving) failed: %x\n", hr);
+    IUnknown_Release(unk);
+
+    hr = IUnknown_QueryInterface(avimux, &IID_IMediaSeeking, (void**)&unk);
+    ok(hr == S_OK, "QueryInterface(IID_IMediaSeeking) failed: %x\n", hr);
+    IUnknown_Release(unk);
+
+    hr = IUnknown_QueryInterface(avimux, &IID_IPersistMediaPropertyBag, (void**)&unk);
+    ok(hr == S_OK, "QueryInterface(IID_IPersistMediaPropertyBag) failed: %x\n", hr);
+    IUnknown_Release(unk);
+
+    hr = IUnknown_QueryInterface(avimux, &IID_ISpecifyPropertyPages, (void**)&unk);
+    ok(hr == S_OK, "QueryInterface(IID_ISpecifyPropertyPages) failed: %x\n", hr);
+    IUnknown_Release(unk);
+
+    IUnknown_Release(avimux);
+}
+
 START_TEST(qcap)
 {
     if (SUCCEEDED(CoInitialize(NULL)))
     {
         test_smart_tee_filter();
         test_CaptureGraphBuilder_RenderStream();
+        test_AviMux_QueryInterface();
         CoUninitialize();
     }
     else

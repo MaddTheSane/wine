@@ -2255,7 +2255,7 @@ void surface_set_dirty(struct wined3d_surface *surface)
     wined3d_texture_set_dirty(surface->container);
 }
 
-HRESULT surface_load(struct wined3d_surface *surface, BOOL srgb)
+void surface_load(struct wined3d_surface *surface, BOOL srgb)
 {
     DWORD flag = srgb ? SFLAG_INSRGBTEX : SFLAG_INTEXTURE;
     BOOL ck_changed;
@@ -2263,10 +2263,7 @@ HRESULT surface_load(struct wined3d_surface *surface, BOOL srgb)
     TRACE("surface %p, srgb %#x.\n", surface, srgb);
 
     if (surface->resource.pool == WINED3D_POOL_SCRATCH)
-    {
         ERR("Not supported on scratch surfaces.\n");
-        return WINED3DERR_INVALIDCALL;
-    }
 
     ck_changed = !(surface->flags & SFLAG_GLCKEY) != !(surface->CKeyFlags & WINEDDSD_CKSRCBLT);
 
@@ -2293,13 +2290,11 @@ HRESULT surface_load(struct wined3d_surface *surface, BOOL srgb)
     else
     {
         TRACE("surface is already in texture\n");
-        return WINED3D_OK;
+        return;
     }
 
     surface_load_location(surface, flag);
     surface_evict_sysmem(surface);
-
-    return WINED3D_OK;
 }
 
 /* See also float_16_to_32() in wined3d_private.h */
@@ -2424,7 +2419,6 @@ DWORD CDECL wined3d_surface_get_priority(const struct wined3d_surface *surface)
 
 void CDECL wined3d_surface_preload(struct wined3d_surface *surface)
 {
-    struct wined3d_context *context;
     TRACE("surface %p.\n", surface);
 
     if (!surface->resource.device->d3d_initialized)
@@ -2433,9 +2427,7 @@ void CDECL wined3d_surface_preload(struct wined3d_surface *surface)
         return;
     }
 
-    context = context_acquire(surface->resource.device, NULL);
-    surface_internal_preload(surface, context, SRGB_ANY);
-    context_release(context);
+    wined3d_texture_preload(surface->container);
 }
 
 void * CDECL wined3d_surface_get_parent(const struct wined3d_surface *surface)
@@ -3452,17 +3444,6 @@ HRESULT CDECL wined3d_surface_flip(struct wined3d_surface *surface, struct wined
     return WINED3D_OK;
 }
 
-/* Context activation is done by the caller */
-void surface_internal_preload(struct wined3d_surface *surface,
-        struct wined3d_context *context, enum WINED3DSRGB srgb)
-{
-    struct wined3d_texture *texture = surface->container;
-
-    TRACE("iface %p, srgb %#x.\n", surface, srgb);
-
-    texture->texture_ops->texture_preload(texture, context, srgb);
-}
-
 /* Read the framebuffer back into the surface */
 static void read_from_framebuffer(struct wined3d_surface *surface, void *dest, UINT pitch)
 {
@@ -4016,6 +3997,10 @@ static HRESULT d3dfmt_convert_surface(const BYTE *src, BYTE *dst, UINT pitch, UI
 
 void flip_surface(struct wined3d_surface *front, struct wined3d_surface *back)
 {
+    if (front->container->level_count != 1 || front->container->layer_count != 1
+            || back->container->level_count != 1 || back->container->layer_count != 1)
+        ERR("Flip between surfaces %p and %p not supported.\n", front, back);
+
     /* Flip the surface contents */
     /* Flip the DC */
     {
@@ -4059,6 +4044,14 @@ void flip_surface(struct wined3d_surface *front, struct wined3d_surface *back)
     /* Flip the opengl texture */
     {
         GLuint tmp;
+
+        tmp = back->container->texture_rgb.name;
+        back->container->texture_rgb.name = front->container->texture_rgb.name;
+        front->container->texture_rgb.name = tmp;
+
+        tmp = back->container->texture_srgb.name;
+        back->container->texture_srgb.name = front->container->texture_srgb.name;
+        front->container->texture_srgb.name = tmp;
 
         tmp = back->rb_multisample;
         back->rb_multisample = front->rb_multisample;
@@ -4104,7 +4097,7 @@ static void fb_copy_to_texture_direct(struct wined3d_surface *dst_surface, struc
     context = context_acquire(device, src_surface);
     gl_info = context->gl_info;
     context_apply_blit_state(context, device);
-    surface_internal_preload(dst_surface, context, SRGB_RGB);
+    wined3d_texture_load(dst_surface->container, context, FALSE);
 
     /* Bind the target texture */
     context_bind_texture(context, dst_surface->container->target, dst_surface->container->texture_rgb.name);
@@ -4212,14 +4205,14 @@ static void fb_copy_to_texture_hwstretch(struct wined3d_surface *dst_surface, st
     context = context_acquire(device, src_surface);
     gl_info = context->gl_info;
     context_apply_blit_state(context, device);
-    surface_internal_preload(dst_surface, context, SRGB_RGB);
+    wined3d_texture_load(dst_surface->container, context, FALSE);
 
     src_offscreen = surface_is_offscreen(src_surface);
     noBackBufferBackup = src_offscreen && wined3d_settings.offscreen_rendering_mode == ORM_FBO;
     if (!noBackBufferBackup && !src_surface->container->texture_rgb.name)
     {
         /* Get it a description */
-        surface_internal_preload(src_surface, context, SRGB_RGB);
+        wined3d_texture_load(src_surface->container, context, FALSE);
     }
 
     /* Try to use an aux buffer for drawing the rectangle. This way it doesn't need restoring.
@@ -4508,7 +4501,7 @@ static void surface_blt_to_drawable(const struct wined3d_device *device,
     /* Make sure the surface is up-to-date. This should probably use
      * surface_load_location() and worry about the destination surface too,
      * unless we're overwriting it completely. */
-    surface_internal_preload(src_surface, context, SRGB_RGB);
+    wined3d_texture_load(src_surface->container, context, FALSE);
 
     /* Activate the destination context, set it up for blitting */
     context_apply_blit_state(context, device);

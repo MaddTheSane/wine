@@ -2043,13 +2043,6 @@ enum wined3d_texture_state
     MAX_WINETEXTURESTATES        = 11,
 };
 
-enum WINED3DSRGB
-{
-    SRGB_ANY                                = 0,    /* Uses the cached value(e.g. external calls) */
-    SRGB_RGB                                = 1,    /* Loads the rgb texture */
-    SRGB_SRGB                               = 2,    /* Loads the srgb texture */
-};
-
 struct gl_texture
 {
     DWORD                   states[MAX_WINETEXTURESTATES];
@@ -2058,8 +2051,8 @@ struct gl_texture
 
 struct wined3d_texture_ops
 {
-    void (*texture_preload)(struct wined3d_texture *texture, struct wined3d_context *context,
-            enum WINED3DSRGB srgb);
+    void (*texture_sub_resource_load)(struct wined3d_resource *sub_resource,
+            struct wined3d_context *context, BOOL srgb);
     void (*texture_sub_resource_add_dirty_region)(struct wined3d_resource *sub_resource,
             const struct wined3d_box *dirty_region);
     void (*texture_sub_resource_cleanup)(struct wined3d_resource *sub_resource);
@@ -2106,6 +2099,8 @@ void wined3d_texture_apply_state_changes(struct wined3d_texture *texture,
 void wined3d_texture_bind(struct wined3d_texture *texture,
         struct wined3d_context *context, BOOL srgb) DECLSPEC_HIDDEN;
 void wined3d_texture_bind_and_dirtify(struct wined3d_texture *texture,
+        struct wined3d_context *context, BOOL srgb) DECLSPEC_HIDDEN;
+void wined3d_texture_load(struct wined3d_texture *texture,
         struct wined3d_context *context, BOOL srgb) DECLSPEC_HIDDEN;
 void wined3d_texture_set_dirty(struct wined3d_texture *texture) DECLSPEC_HIDDEN;
 
@@ -2247,11 +2242,9 @@ void surface_set_dirty(struct wined3d_surface *surface) DECLSPEC_HIDDEN;
 HRESULT surface_color_fill(struct wined3d_surface *s,
         const RECT *rect, const struct wined3d_color *color) DECLSPEC_HIDDEN;
 GLenum surface_get_gl_buffer(const struct wined3d_surface *surface) DECLSPEC_HIDDEN;
-void surface_internal_preload(struct wined3d_surface *surface,
-        struct wined3d_context *context, enum WINED3DSRGB srgb) DECLSPEC_HIDDEN;
 void surface_invalidate_location(struct wined3d_surface *surface, DWORD location) DECLSPEC_HIDDEN;
 BOOL surface_is_offscreen(const struct wined3d_surface *surface) DECLSPEC_HIDDEN;
-HRESULT surface_load(struct wined3d_surface *surface, BOOL srgb) DECLSPEC_HIDDEN;
+void surface_load(struct wined3d_surface *surface, BOOL srgb) DECLSPEC_HIDDEN;
 void surface_load_ds_location(struct wined3d_surface *surface,
         struct wined3d_context *context, DWORD location) DECLSPEC_HIDDEN;
 void surface_load_fb_texture(struct wined3d_surface *surface, BOOL srgb) DECLSPEC_HIDDEN;
