@@ -1,7 +1,8 @@
 /* include/config.h.in.  Generated from configure.ac by autoheader.  */
 
-#ifndef WINE_CROSSTEST
+#ifndef __WINE_CONFIG_H
 #define __WINE_CONFIG_H
+#ifndef WINE_CROSSTEST
 
 /* Define to a function attribute for Microsoft hotpatch assembly prefix. */
 #undef DECLSPEC_HOTPATCH
@@ -1055,8 +1056,8 @@
 /* Define to 1 if you have the <sys/wait.h> header file. */
 #undef HAVE_SYS_WAIT_H
 
-/* Define to 1 if you have the `tcgetattr' function. */
-#undef HAVE_TCGETATTR
+/* Define to 1 if you have the `tcdrain' function. */
+#undef HAVE_TCDRAIN
 
 /* Define to 1 if you have the <termios.h> header file. */
 #undef HAVE_TERMIOS_H
@@ -1369,3 +1370,4 @@
 #endif
 
 #endif /* WINE_CROSSTEST */
+#endif /* __WINE_CONFIG_H */

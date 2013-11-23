@@ -746,6 +746,7 @@ clean::
     AC_SUBST(FORCEFEEDBACKLIB,"-framework ForceFeedback -framework CoreFoundation")
     AC_SUBST(APPLICATIONSERVICESLIB,"-framework ApplicationServices")
     AC_SUBST(CORESERVICESLIB,"-framework CoreServices")
+    AC_SUBST(APPKITLIB,"-framework AppKit")
     case $host_os in
       darwin11*)
         AC_SUBST(LDEXECFLAGS,["-image_base 0x7bf00000 -Wl,-macosx_version_min,10.6,-segaddr,WINE_DOS,0x00001000,-segaddr,WINE_SHAREDHEAP,0x7f000000,-sectcreate,__TEXT,__info_plist,wine_info.plist"]) ;;
@@ -1224,14 +1225,14 @@ This probably prevents linking to OpenGL. Try deleting the file and restarting c
 		     $X_LIBS $XLIB -lm $X_EXTRA_LIBS)
         if test "x$with_glu" != "xno"
         then
-            AC_CHECK_LIB(GLU,gluLookAt,[:],,[$OPENGL_LIBS $X_LIBS $X_PRE_LIBS $XLIB -lm $X_EXTRA_LIBS])
+            AC_CHECK_LIB(GLU,gluLookAt,[:],,[$OPENGL_LIBS $X_LIBS $XLIB -lm $X_EXTRA_LIBS])
             WINE_NOTICE_WITH(glu,[test "x$ac_cv_lib_GLU_gluLookAt" != xyes],
                              [libGLU ${notice_platform}development files not found, GLU won't be supported.])
         fi
 
         if test "x$with_osmesa" != "xno"
         then
-            WINE_CHECK_SONAME(OSMesa,glAccum,,,[$X_LIBS $X_PRE_LIBS $XLIB -lm $X_EXTRA_LIBS])
+            WINE_CHECK_SONAME(OSMesa,glAccum,,,[$X_LIBS $XLIB -lm $X_EXTRA_LIBS])
             WINE_NOTICE_WITH(osmesa,[test "x$ac_cv_lib_soname_OSMesa" = "x"],
                              [libOSMesa ${notice_platform}development files not found (or too old), OpenGL rendering in bitmaps won't be supported.])
         fi
@@ -2069,7 +2070,7 @@ AC_CHECK_FUNCS(\
 	strtoll \
 	strtoull \
 	symlink \
-	tcgetattr \
+	tcdrain \
 	thr_kill2 \
 	timegm \
 	usleep \
@@ -2537,9 +2538,11 @@ esac
 
 dnl **** Generate output files ****
 
-AH_TOP([#ifndef WINE_CROSSTEST
-#define __WINE_CONFIG_H])
-AH_BOTTOM([#endif /* WINE_CROSSTEST */])
+AH_TOP([#ifndef __WINE_CONFIG_H
+#define __WINE_CONFIG_H
+#ifndef WINE_CROSSTEST])
+AH_BOTTOM([#endif /* WINE_CROSSTEST */
+#endif /* __WINE_CONFIG_H */])
 
 AC_CONFIG_COMMANDS([include/stamp-h], [echo timestamp > include/stamp-h])
 

@@ -68,8 +68,8 @@ static const WCHAR muteW[] = {'M','u','t','e',0};
  *   - We must be able to identify bad devices without crashing.
  */
 
-/* buffer size = 10 * 100000 (100 ns) = 0.1 seconds */
-#define AC_BUFLEN (10 * 100000)
+/* buffer size = 100 * 100000 (100 ns) = 1 second */
+#define AC_BUFLEN (100 * 100000)
 #define MAX_DEVICES 256
 #define MAPPER_INDEX 0x3F
 
@@ -1228,6 +1228,8 @@ static LRESULT WOD_Open(WINMM_OpenInfo *info)
         WINMM_MMDevice *mmdevice;
 
         if(WINMM_IsMapper(info->req_device)){
+            if (g_outmmdevices_count == 0)
+                return MMSYSERR_BADDEVICEID;
             devices = g_out_mapper_devices;
             mmdevice = read_map(g_out_map, 0);
             lock = &g_devthread_lock;
@@ -1317,6 +1319,8 @@ static LRESULT WID_Open(WINMM_OpenInfo *info)
     HRESULT hr;
 
     if(WINMM_IsMapper(info->req_device)){
+        if (g_inmmdevices_count == 0)
+            return MMSYSERR_BADDEVICEID;
         devices = g_in_mapper_devices;
         mmdevice = read_map(g_in_map, 0);
         lock = &g_devthread_lock;
@@ -1901,7 +1905,7 @@ static void WID_PullData(WINMM_Device *device)
 
         if(packet > 0)
             WARN("losing %u frames\n", packet);
-        device->played_frames += packet_len;
+        device->played_frames += packet_len - packet;
     }
 
 exit:

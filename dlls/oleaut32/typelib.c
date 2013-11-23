@@ -1885,6 +1885,9 @@ static TLBString *TLB_append_str(struct list *string_list, BSTR new_str)
 {
     TLBString *str;
 
+    if(!new_str)
+        return NULL;
+
     LIST_FOR_EACH_ENTRY(str, string_list, TLBString, entry) {
         if (strcmpW(str->str, new_str) == 0)
             return str;
@@ -2139,24 +2142,17 @@ static void MSFT_ReadValue( VARIANT * pVar, int offset, TLBContext *pcx )
         case VT_BSTR    :{
             char * ptr;
             MSFT_ReadLEDWords(&size, sizeof(INT), pcx, DO_NOT_SEEK );
-	    if(size < 0) {
-                char next;
-                DWORD origPos = MSFT_Tell(pcx), nullPos;
-
-                do {
-                    MSFT_Read(&next, 1, pcx, DO_NOT_SEEK);
-                } while (next);
-                nullPos = MSFT_Tell(pcx);
-                size = nullPos - origPos;
-                MSFT_Seek(pcx, origPos);
-	    }
-            ptr = heap_alloc_zero(size);/* allocate temp buffer */
-            MSFT_Read(ptr, size, pcx, DO_NOT_SEEK);/* read string (ANSI) */
-            V_BSTR(pVar)=SysAllocStringLen(NULL,size);
-            /* FIXME: do we need a AtoW conversion here? */
-            V_UNION(pVar, bstrVal[size])='\0';
-            while(size--) V_UNION(pVar, bstrVal[size])=ptr[size];
-            heap_free(ptr);
+            if(size == -1){
+                V_BSTR(pVar) = NULL;
+            }else{
+                ptr = heap_alloc_zero(size);
+                MSFT_Read(ptr, size, pcx, DO_NOT_SEEK);
+                V_BSTR(pVar)=SysAllocStringLen(NULL,size);
+                /* FIXME: do we need a AtoW conversion here? */
+                V_UNION(pVar, bstrVal[size])='\0';
+                while(size--) V_UNION(pVar, bstrVal[size])=ptr[size];
+                heap_free(ptr);
+            }
 	}
 	size=-4; break;
     /* FIXME: this will not work AT ALL when the variant contains a pointer */

@@ -157,7 +157,6 @@ static void *ft_handle = NULL;
 MAKE_FUNCPTR(FT_Done_Face);
 MAKE_FUNCPTR(FT_Get_Char_Index);
 MAKE_FUNCPTR(FT_Get_First_Char);
-MAKE_FUNCPTR(FT_Get_Module);
 MAKE_FUNCPTR(FT_Get_Next_Char);
 MAKE_FUNCPTR(FT_Get_Sfnt_Name);
 MAKE_FUNCPTR(FT_Get_Sfnt_Name_Count);
@@ -915,14 +914,6 @@ static BOOL is_hinting_enabled(void)
             FT_TrueTypeEngineType type = pFT_Get_TrueType_Engine_Type(library);
             enabled = (type == FT_TRUETYPE_ENGINE_TYPE_PATENTED);
         }
-#ifdef FT_DRIVER_HAS_HINTER
-        else
-        {
-            /* otherwise if we've been compiled with < 2.2.0 headers use the internal macro */
-            FT_Module mod = pFT_Get_Module(library, "truetype");
-            enabled = (mod && FT_DRIVER_HAS_HINTER(mod));
-        }
-#endif
         else enabled = FALSE;
         TRACE("hinting is %senabled\n", enabled ? "" : "NOT ");
     }
@@ -1306,10 +1297,12 @@ static inline WORD get_mac_code_page( const FT_SfntName *name )
 static int match_name_table_language( const FT_SfntName *name, LANGID lang )
 {
     LANGID name_lang;
+    int res = 0;
 
     switch (name->platform_id)
     {
     case TT_PLATFORM_MICROSOFT:
+        res += 5;  /* prefer the Microsoft name */
         switch (name->encoding_id)
         {
         case TT_MS_ID_UNICODE_CS:
@@ -1326,6 +1319,7 @@ static int match_name_table_language( const FT_SfntName *name, LANGID lang )
         name_lang = mac_langid_table[name->language_id];
         break;
     case TT_PLATFORM_APPLE_UNICODE:
+        res += 2;  /* prefer Unicode encodings */
         switch (name->encoding_id)
         {
         case TT_APPLE_ID_DEFAULT:
@@ -1341,10 +1335,10 @@ static int match_name_table_language( const FT_SfntName *name, LANGID lang )
     default:
         return 0;
     }
-    if (name_lang == lang) return 3;
-    if (PRIMARYLANGID( name_lang ) == PRIMARYLANGID( lang )) return 2;
-    if (name_lang == MAKELANGID( LANG_ENGLISH, SUBLANG_DEFAULT )) return 1;
-    return 0;
+    if (name_lang == lang) res += 30;
+    else if (PRIMARYLANGID( name_lang ) == PRIMARYLANGID( lang )) res += 20;
+    else if (name_lang == MAKELANGID( LANG_ENGLISH, SUBLANG_DEFAULT )) res += 10;
+    return res;
 }
 
 static WCHAR *copy_name_table_string( const FT_SfntName *name )
@@ -3889,7 +3883,6 @@ static BOOL init_freetype(void)
     LOAD_FUNCPTR(FT_Done_Face)
     LOAD_FUNCPTR(FT_Get_Char_Index)
     LOAD_FUNCPTR(FT_Get_First_Char)
-    LOAD_FUNCPTR(FT_Get_Module)
     LOAD_FUNCPTR(FT_Get_Next_Char)
     LOAD_FUNCPTR(FT_Get_Sfnt_Name)
     LOAD_FUNCPTR(FT_Get_Sfnt_Name_Count)
@@ -4505,6 +4498,8 @@ static LONG load_VDMX(GdiFont *font, LONG height)
 
 	TRACE("Ratios[%d] %d  %d : %d -> %d\n", i, ratio.bCharSet, ratio.xRatio, ratio.yStartRatio, ratio.yEndRatio);
 
+        if (!ratio.bCharSet) continue;
+
 	if((ratio.xRatio == 0 &&
 	    ratio.yStartRatio == 0 &&
 	    ratio.yEndRatio == 0) ||
@@ -4519,10 +4514,7 @@ static LONG load_VDMX(GdiFont *font, LONG height)
 	    }
     }
 
-    if(offset == -1) {
-	FIXME("No suitable ratio found\n");
-	return ppem;
-    }
+    if(offset == -1) return 0;
 
     if(get_font_data(font, MS_VDMX_TAG, offset, &group, 4) != GDI_ERROR) {
 	USHORT recs;
@@ -4569,6 +4561,31 @@ static LONG load_VDMX(GdiFont *font, LONG height)
 	    if(!font->yMax) {
 		ppem = 0;
 		TRACE("ppem not found for height %d\n", height);
+	    }
+	} else {
+	    ppem = -height;
+	    if(ppem < startsz || ppem > endsz)
+            {
+                ppem = 0;
+                goto end;
+            }
+
+	    for(i = 0; i < recs; i++) {
+		USHORT yPelHeight;
+		yPelHeight = GET_BE_WORD(vTable[i * 3]);
+
+		if(yPelHeight > ppem)
+                {
+                    ppem = 0;
+                    break; /* failed */
+                }
+
+		if(yPelHeight == ppem) {
+		    font->yMax = GET_BE_WORD(vTable[(i * 3) + 1]);
+		    font->yMin = GET_BE_WORD(vTable[(i * 3) + 2]);
+                    TRACE("ppem %d found; yMax=%d  yMin=%d\n", ppem, font->yMax, font->yMin);
+		    break;
+		}
 	    }
 	}
 	end:
