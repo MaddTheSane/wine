@@ -31,6 +31,35 @@
 #include "wine/strmbase.h"
 #include "wine/test.h"
 
+#define DEFINE_EXPECT(func) \
+    static BOOL expect_ ## func = FALSE, called_ ## func = FALSE
+
+#define SET_EXPECT(func) \
+    expect_ ## func = TRUE
+
+#define CHECK_EXPECT2(func) \
+    do { \
+        ok(expect_ ##func, "unexpected call " #func "\n"); \
+        called_ ## func = TRUE; \
+    }while(0)
+
+#define CHECK_EXPECT(func) \
+    do { \
+        CHECK_EXPECT2(func); \
+        expect_ ## func = FALSE; \
+    }while(0)
+
+#define CHECK_CALLED(func) \
+    do { \
+        ok(called_ ## func, "expected " #func "\n"); \
+        expect_ ## func = called_ ## func = FALSE; \
+    }while(0)
+
+DEFINE_EXPECT(ReceiveConnection);
+DEFINE_EXPECT(GetAllocatorRequirements);
+DEFINE_EXPECT(NotifyAllocator);
+DEFINE_EXPECT(Reconnect);
+
 static const char *debugstr_guid(REFIID riid)
 {
     static char buf[50];
@@ -275,6 +304,9 @@ int call_no;
 
 static void check_calls_list(const char *func, call_id id, filter_type type)
 {
+    if(!current_calls_list)
+        return;
+
     while(current_calls_list[call_no].wine_missing || current_calls_list[call_no].wine_extra ||
          current_calls_list[call_no].optional || current_calls_list[call_no].broken) {
         if(current_calls_list[call_no].wine_missing) {
@@ -339,7 +371,8 @@ static HRESULT WINAPI GraphBuilder_QueryInterface(
         return S_OK;
     }
 
-    ok(IsEqualIID(riid, &IID_IMediaEvent), "QueryInterface(%s)\n", debugstr_guid(riid));
+    ok(IsEqualIID(riid, &IID_IMediaEvent) || IsEqualIID(riid, &IID_IMediaEventSink),
+            "QueryInterface(%s)\n", debugstr_guid(riid));
     *ppv = NULL;
     return E_NOINTERFACE;
 }
@@ -391,8 +424,8 @@ static HRESULT WINAPI GraphBuilder_ConnectDirect(IGraphBuilder *iface,
 
 static HRESULT WINAPI GraphBuilder_Reconnect(IGraphBuilder *iface, IPin *ppin)
 {
-    ok(0, "unexpected call\n");
-    return E_NOTIMPL;
+    CHECK_EXPECT(Reconnect);
+    return S_OK;
 }
 
 static HRESULT WINAPI GraphBuilder_Disconnect(IGraphBuilder *iface, IPin *ppin)
@@ -451,7 +484,7 @@ static HRESULT WINAPI GraphBuilder_ShouldOperationContinue(IGraphBuilder *iface)
     return E_NOTIMPL;
 }
 
-static IGraphBuilderVtbl GraphBuilder_vtbl = {
+static const IGraphBuilderVtbl GraphBuilder_vtbl = {
     GraphBuilder_QueryInterface,
     GraphBuilder_AddRef,
     GraphBuilder_Release,
@@ -479,6 +512,7 @@ typedef struct {
     IEnumPins IEnumPins_iface;
     IPin IPin_iface;
     IKsPropertySet IKsPropertySet_iface;
+    IMemInputPin IMemInputPin_iface;
     IEnumMediaTypes IEnumMediaTypes_iface;
 
     PIN_DIRECTION dir;
@@ -601,7 +635,7 @@ static HRESULT WINAPI BaseFilter_QueryVendorInfo(IBaseFilter *iface, LPWSTR *pVe
     return E_NOTIMPL;
 }
 
-static IBaseFilterVtbl BaseFilterVtbl = {
+static const IBaseFilterVtbl BaseFilterVtbl = {
     BaseFilter_QueryInterface,
     BaseFilter_AddRef,
     BaseFilter_Release,
@@ -677,7 +711,7 @@ static HRESULT WINAPI EnumPins_Clone(IEnumPins *iface, IEnumPins **ppEnum)
     return E_NOTIMPL;
 }
 
-static IEnumPinsVtbl EnumPinsVtbl = {
+static const IEnumPinsVtbl EnumPinsVtbl = {
     EnumPins_QueryInterface,
     EnumPins_AddRef,
     EnumPins_Release,
@@ -706,7 +740,12 @@ static HRESULT WINAPI Pin_QueryInterface(IPin *iface, REFIID riid, void **ppv)
         return S_OK;
     }
 
-    ok(0, "unexpected call\n");
+    if(IsEqualIID(riid, &IID_IMemInputPin)) {
+        *ppv = &This->IMemInputPin_iface;
+        return S_OK;
+    }
+
+    ok(0, "unexpected call: %s\n", debugstr_guid(riid));
     *ppv = NULL;
     return E_NOINTERFACE;
 }
@@ -730,8 +769,21 @@ static HRESULT WINAPI Pin_Connect(IPin *iface, IPin *pReceivePin, const AM_MEDIA
 static HRESULT WINAPI Pin_ReceiveConnection(IPin *iface,
         IPin *pConnector, const AM_MEDIA_TYPE *pmt)
 {
-    ok(0, "unexpected call\n");
-    return E_NOTIMPL;
+    CHECK_EXPECT(ReceiveConnection);
+
+    ok(IsEqualIID(&pmt->majortype, &MEDIATYPE_Stream), "majortype = %s\n",
+            debugstr_guid(&pmt->majortype));
+    ok(IsEqualIID(&pmt->subtype, &MEDIASUBTYPE_Avi), "subtype = %s\n",
+            debugstr_guid(&pmt->subtype));
+    ok(pmt->bFixedSizeSamples, "bFixedSizeSamples = %x\n", pmt->bFixedSizeSamples);
+    ok(!pmt->bTemporalCompression, "bTemporalCompression = %x\n", pmt->bTemporalCompression);
+    ok(pmt->lSampleSize == 1, "lSampleSize = %d\n", pmt->lSampleSize);
+    ok(IsEqualIID(&pmt->formattype, &GUID_NULL), "formattype = %s\n",
+            debugstr_guid(&pmt->formattype));
+    ok(!pmt->pUnk, "pUnk = %p\n", pmt->pUnk);
+    ok(!pmt->cbFormat, "cbFormat = %d\n", pmt->cbFormat);
+    ok(!pmt->pbFormat, "pbFormat = %p\n", pmt->pbFormat);
+    return S_OK;
 }
 
 static HRESULT WINAPI Pin_Disconnect(IPin *iface)
@@ -826,7 +878,7 @@ static HRESULT WINAPI Pin_NewSegment(IPin *iface, REFERENCE_TIME tStart,
     return E_NOTIMPL;
 }
 
-static IPinVtbl PinVtbl = {
+static const IPinVtbl PinVtbl = {
     Pin_QueryInterface,
     Pin_AddRef,
     Pin_Release,
@@ -898,13 +950,93 @@ static HRESULT WINAPI KsPropertySet_QuerySupported(IKsPropertySet *iface,
     return E_NOTIMPL;
 }
 
-static IKsPropertySetVtbl KsPropertySetVtbl = {
+static const IKsPropertySetVtbl KsPropertySetVtbl = {
     KsPropertySet_QueryInterface,
     KsPropertySet_AddRef,
     KsPropertySet_Release,
     KsPropertySet_Set,
     KsPropertySet_Get,
     KsPropertySet_QuerySupported
+};
+
+static HRESULT WINAPI MemInputPin_QueryInterface(IMemInputPin *iface, REFIID riid, void **ppv)
+{
+    ok(0, "unexpected call\n");
+    return E_NOTIMPL;
+}
+
+static ULONG WINAPI MemInputPin_AddRef(IMemInputPin *iface)
+{
+    return 2;
+}
+
+static ULONG WINAPI MemInputPin_Release(IMemInputPin *iface)
+{
+    return 1;
+}
+
+static HRESULT WINAPI MemInputPin_GetAllocator(IMemInputPin *iface, IMemAllocator **ppAllocator)
+{
+    ok(0, "unexpected call\n");
+    return E_NOTIMPL;
+}
+
+static HRESULT WINAPI MemInputPin_NotifyAllocator(IMemInputPin *iface,
+        IMemAllocator *pAllocator, BOOL bReadOnly)
+{
+    ALLOCATOR_PROPERTIES ap;
+    HRESULT hr;
+
+    CHECK_EXPECT(NotifyAllocator);
+
+    ok(pAllocator != NULL, "pAllocator = %p\n", pAllocator);
+    ok(bReadOnly, "bReadOnly = %x\n", bReadOnly);
+
+    hr = IMemAllocator_GetProperties(pAllocator, &ap);
+    ok(hr == S_OK, "GetProperties returned %x\n", hr);
+    ok(ap.cBuffers == 32, "cBuffers = %d\n", ap.cBuffers);
+    ok(ap.cbBuffer == 0, "cbBuffer = %d\n", ap.cbBuffer);
+    ok(ap.cbAlign == 1, "cbAlign = %d\n", ap.cbAlign);
+    ok(ap.cbPrefix == 0, "cbPrefix = %d\n", ap.cbPrefix);
+    return S_OK;
+}
+
+static HRESULT WINAPI MemInputPin_GetAllocatorRequirements(
+        IMemInputPin *iface, ALLOCATOR_PROPERTIES *pProps)
+{
+    CHECK_EXPECT(GetAllocatorRequirements);
+    return E_NOTIMPL;
+}
+
+static HRESULT WINAPI MemInputPin_Receive(IMemInputPin *iface, IMediaSample *pSample)
+{
+    ok(0, "unexpected call\n");
+    return E_NOTIMPL;
+}
+
+static HRESULT WINAPI MemInputPin_ReceiveMultiple(IMemInputPin *iface,
+        IMediaSample **pSamples, LONG nSamples, LONG *nSamplesProcessed)
+{
+    ok(0, "unexpected call\n");
+    return E_NOTIMPL;
+}
+
+static HRESULT WINAPI MemInputPin_ReceiveCanBlock(IMemInputPin *iface)
+{
+    ok(0, "unexpected call\n");
+    return E_NOTIMPL;
+}
+
+static const IMemInputPinVtbl MemInputPinVtbl = {
+    MemInputPin_QueryInterface,
+    MemInputPin_AddRef,
+    MemInputPin_Release,
+    MemInputPin_GetAllocator,
+    MemInputPin_NotifyAllocator,
+    MemInputPin_GetAllocatorRequirements,
+    MemInputPin_Receive,
+    MemInputPin_ReceiveMultiple,
+    MemInputPin_ReceiveCanBlock
 };
 
 static test_filter* impl_from_IEnumMediaTypes(IEnumMediaTypes *iface)
@@ -962,7 +1094,7 @@ static HRESULT WINAPI EnumMediaTypes_Reset(IEnumMediaTypes *iface)
     check_calls_list("EnumMediaTypes_Reset", ENUMMEDIATYPES_RESET, This->filter_type);
 
     This->enum_media_types_pos = 0;
-    return E_FAIL;
+    return S_OK;
 }
 
 static HRESULT WINAPI EnumMediaTypes_Clone(IEnumMediaTypes *iface, IEnumMediaTypes **ppEnum)
@@ -971,7 +1103,7 @@ static HRESULT WINAPI EnumMediaTypes_Clone(IEnumMediaTypes *iface, IEnumMediaTyp
     return E_NOTIMPL;
 }
 
-static IEnumMediaTypesVtbl EnumMediaTypesVtbl = {
+static const IEnumMediaTypesVtbl EnumMediaTypesVtbl = {
     EnumMediaTypes_QueryInterface,
     EnumMediaTypes_AddRef,
     EnumMediaTypes_Release,
@@ -981,16 +1113,29 @@ static IEnumMediaTypesVtbl EnumMediaTypesVtbl = {
     EnumMediaTypes_Clone
 };
 
+static void init_test_filter(test_filter *This, PIN_DIRECTION dir, filter_type type)
+{
+    memset(This, 0, sizeof(*This));
+    This->IBaseFilter_iface.lpVtbl = &BaseFilterVtbl;
+    This->IEnumPins_iface.lpVtbl = &EnumPinsVtbl;
+    This->IPin_iface.lpVtbl = &PinVtbl;
+    This->IKsPropertySet_iface.lpVtbl = &KsPropertySetVtbl;
+    This->IMemInputPin_iface.lpVtbl = &MemInputPinVtbl;
+    This->IEnumMediaTypes_iface.lpVtbl = &EnumMediaTypesVtbl;
+
+    This->dir = dir;
+    This->filter_type = type;
+}
+
 static void test_CaptureGraphBuilder_RenderStream(void)
 {
-    test_filter source_filter = {{&BaseFilterVtbl}, {&EnumPinsVtbl}, {&PinVtbl},
-        {&KsPropertySetVtbl}, {&EnumMediaTypesVtbl}, PINDIR_OUTPUT, SOURCE_FILTER};
-    test_filter sink_filter = {{&BaseFilterVtbl}, {&EnumPinsVtbl}, {&PinVtbl},
-        {&KsPropertySetVtbl}, {&EnumMediaTypesVtbl}, PINDIR_INPUT, SINK_FILTER};
-    test_filter intermediate_filter = {{&BaseFilterVtbl}, {&EnumPinsVtbl}, {&PinVtbl},
-        {&KsPropertySetVtbl}, {&EnumMediaTypesVtbl}, PINDIR_OUTPUT, INTERMEDIATE_FILTER};
+    test_filter source_filter, sink_filter, intermediate_filter;
     ICaptureGraphBuilder2 *cgb;
     HRESULT hr;
+
+    init_test_filter(&source_filter, PINDIR_OUTPUT, SOURCE_FILTER);
+    init_test_filter(&sink_filter, PINDIR_INPUT, SINK_FILTER);
+    init_test_filter(&intermediate_filter, PINDIR_OUTPUT, INTERMEDIATE_FILTER);
 
     hr = CoCreateInstance(&CLSID_CaptureGraphBuilder2, NULL, CLSCTX_INPROC_SERVER,
             &IID_ICaptureGraphBuilder2, (void**)&cgb);
@@ -1065,6 +1210,129 @@ static void test_AviMux_QueryInterface(void)
     IUnknown_Release(avimux);
 }
 
+static void test_AviMux(void)
+{
+    test_filter source_filter, sink_filter;
+    VIDEOINFOHEADER videoinfoheader;
+    IPin *avimux_in, *avimux_out, *pin;
+    AM_MEDIA_TYPE source_media_type;
+    AM_MEDIA_TYPE *media_type;
+    PIN_DIRECTION dir;
+    IBaseFilter *avimux;
+    IEnumPins *ep;
+    IEnumMediaTypes *emt;
+    HRESULT hr;
+
+    init_test_filter(&source_filter, PINDIR_OUTPUT, SOURCE_FILTER);
+    init_test_filter(&sink_filter, PINDIR_INPUT, SINK_FILTER);
+
+    hr = CoCreateInstance(&CLSID_AviDest, NULL, CLSCTX_INPROC_SERVER, &IID_IBaseFilter, (void**)&avimux);
+    ok(hr == S_OK || broken(hr == REGDB_E_CLASSNOTREG),
+            "couldn't create AVI Mux filter, hr = %08x\n", hr);
+    if(hr != S_OK) {
+        win_skip("AVI Mux filter is not registered\n");
+        return;
+    }
+
+    hr = IBaseFilter_EnumPins(avimux, &ep);
+    ok(hr == S_OK, "EnumPins returned %x\n", hr);
+
+    hr = IEnumPins_Next(ep, 1, &avimux_out, NULL);
+    ok(hr == S_OK, "Next returned %x\n", hr);
+    hr = IPin_QueryDirection(avimux_out, &dir);
+    ok(hr == S_OK, "QueryDirection returned %x\n", hr);
+    ok(dir == PINDIR_OUTPUT, "dir = %d\n", dir);
+
+    hr = IEnumPins_Next(ep, 1, &avimux_in, NULL);
+    ok(hr == S_OK, "Next returned %x\n", hr);
+    hr = IPin_QueryDirection(avimux_in, &dir);
+    ok(hr == S_OK, "QueryDirection returned %x\n", hr);
+    ok(dir == PINDIR_INPUT, "dir = %d\n", dir);
+    IEnumPins_Release(ep);
+
+    hr = IPin_EnumMediaTypes(avimux_out, &emt);
+    ok(hr == S_OK, "EnumMediaTypes returned %x\n", hr);
+    hr = IEnumMediaTypes_Next(emt, 1, &media_type, NULL);
+    ok(hr == S_OK, "Next returned %x\n", hr);
+    ok(IsEqualIID(&media_type->majortype, &MEDIATYPE_Stream), "majortype = %s\n",
+            debugstr_guid(&media_type->majortype));
+    ok(IsEqualIID(&media_type->subtype, &MEDIASUBTYPE_Avi), "subtype = %s\n",
+            debugstr_guid(&media_type->subtype));
+    ok(media_type->bFixedSizeSamples, "bFixedSizeSamples = %x\n", media_type->bFixedSizeSamples);
+    ok(!media_type->bTemporalCompression, "bTemporalCompression = %x\n", media_type->bTemporalCompression);
+    ok(media_type->lSampleSize == 1, "lSampleSize = %d\n", media_type->lSampleSize);
+    ok(IsEqualIID(&media_type->formattype, &GUID_NULL), "formattype = %s\n",
+            debugstr_guid(&media_type->formattype));
+    ok(!media_type->pUnk, "pUnk = %p\n", media_type->pUnk);
+    ok(!media_type->cbFormat, "cbFormat = %d\n", media_type->cbFormat);
+    ok(!media_type->pbFormat, "pbFormat = %p\n", media_type->pbFormat);
+    CoTaskMemFree(media_type);
+    hr = IEnumMediaTypes_Next(emt, 1, &media_type, NULL);
+    ok(hr == S_FALSE, "Next returned %x\n", hr);
+    IEnumMediaTypes_Release(emt);
+
+    hr = IPin_EnumMediaTypes(avimux_in, &emt);
+    ok(hr == S_OK, "EnumMediaTypes returned %x\n", hr);
+    hr = IEnumMediaTypes_Reset(emt);
+    ok(hr == S_OK, "Reset returned %x\n", hr);
+    hr = IEnumMediaTypes_Next(emt, 1, &media_type, NULL);
+    ok(hr == S_FALSE, "Next returned %x\n", hr);
+    IEnumMediaTypes_Release(emt);
+
+    hr = IPin_ReceiveConnection(avimux_in, &source_filter.IPin_iface, NULL);
+    ok(hr == E_POINTER, "ReceiveConnection returned %x\n", hr);
+
+    current_calls_list = NULL;
+    memset(&source_media_type, 0, sizeof(AM_MEDIA_TYPE));
+    memset(&videoinfoheader, 0, sizeof(VIDEOINFOHEADER));
+    source_media_type.majortype = MEDIATYPE_Video;
+    source_media_type.subtype = MEDIASUBTYPE_RGB32;
+    source_media_type.formattype = FORMAT_VideoInfo;
+    source_media_type.bFixedSizeSamples = TRUE;
+    source_media_type.lSampleSize = 40000;
+    source_media_type.cbFormat = sizeof(VIDEOINFOHEADER);
+    source_media_type.pbFormat = (BYTE*)&videoinfoheader;
+    videoinfoheader.AvgTimePerFrame = 333333;
+    videoinfoheader.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+    videoinfoheader.bmiHeader.biWidth = 100;
+    videoinfoheader.bmiHeader.biHeight = 100;
+    videoinfoheader.bmiHeader.biPlanes = 1;
+    videoinfoheader.bmiHeader.biBitCount = 32;
+    videoinfoheader.bmiHeader.biSizeImage = 40000;
+    videoinfoheader.bmiHeader.biClrImportant = 256;
+    hr = IPin_ReceiveConnection(avimux_in, &source_filter.IPin_iface, &source_media_type);
+    ok(hr == S_OK, "ReceiveConnection returned %x\n", hr);
+
+    hr = IPin_ConnectedTo(avimux_in, &pin);
+    ok(hr == S_OK, "ConnectedTo returned %x\n", hr);
+    ok(pin == &source_filter.IPin_iface, "incorrect pin: %p, expected %p\n",
+            pin, &source_filter.IPin_iface);
+
+    hr = IPin_Connect(avimux_out, &source_filter.IPin_iface, NULL);
+    todo_wine ok(hr == VFW_E_INVALID_DIRECTION, "Connect returned %x\n", hr);
+
+    hr = IBaseFilter_JoinFilterGraph(avimux, (IFilterGraph*)&GraphBuilder, NULL);
+    ok(hr == S_OK, "JoinFilterGraph returned %x\n", hr);
+
+    SET_EXPECT(ReceiveConnection);
+    SET_EXPECT(GetAllocatorRequirements);
+    SET_EXPECT(NotifyAllocator);
+    SET_EXPECT(Reconnect);
+    hr = IPin_Connect(avimux_out, &sink_filter.IPin_iface, NULL);
+    ok(hr == S_OK, "Connect returned %x\n", hr);
+    CHECK_CALLED(ReceiveConnection);
+    CHECK_CALLED(GetAllocatorRequirements);
+    CHECK_CALLED(NotifyAllocator);
+    CHECK_CALLED(Reconnect);
+
+    hr = IPin_Disconnect(avimux_out);
+    ok(hr == S_OK, "Disconnect returned %x\n", hr);
+
+    IPin_Release(avimux_in);
+    IPin_Release(avimux_out);
+    IBaseFilter_Release(avimux);
+}
+
 START_TEST(qcap)
 {
     if (SUCCEEDED(CoInitialize(NULL)))
@@ -1072,6 +1340,7 @@ START_TEST(qcap)
         test_smart_tee_filter();
         test_CaptureGraphBuilder_RenderStream();
         test_AviMux_QueryInterface();
+        test_AviMux();
         CoUninitialize();
     }
     else

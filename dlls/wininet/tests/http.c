@@ -1927,14 +1927,14 @@ static const char page1[] =
 static const char ok_with_length[] =
 "HTTP/1.1 200 OK\r\n"
 "Connection: Keep-Alive\r\n"
-"Content-Length: 23\r\n\r\n"
-"abc\r\nHTTP/1.1 211 OK\r\n\r\n";
+"Content-Length: 18\r\n\r\n"
+"HTTP/1.1 211 OK\r\n\r\n";
 
 static const char ok_with_length2[] =
 "HTTP/1.1 210 OK\r\n"
 "Connection: Keep-Alive\r\n"
-"Content-Length: 24\r\n\r\n"
-"abc\r\nHTTP/1.1 211 OK\r\n\r\n";
+"Content-Length: 19\r\n\r\n"
+"HTTP/1.1 211 OK\r\n\r\n";
 
 struct server_info {
     HANDLE hEvent;
@@ -2146,6 +2146,12 @@ static DWORD CALLBACK server_thread(LPVOID param)
                 send(c, ok_with_length2, sizeof(ok_with_length2)-1, 0);
                 count = 0;
             }
+        }
+        if (strstr(buffer, "GET /testH"))
+        {
+            send(c, ok_with_length2, sizeof(ok_with_length2)-1, 0);
+            recvfrom(c, buffer, sizeof(buffer), 0, NULL, NULL);
+            send(c, ok_with_length, sizeof(ok_with_length)-1, 0);
         }
 
         if (strstr(buffer, "GET /test_no_content"))
@@ -2937,6 +2943,90 @@ static void test_connection_closing(int port)
     CloseHandle(hCompleteEvent);
 }
 
+static void test_successive_HttpSendRequest(int port)
+{
+    HINTERNET session, connection, req;
+    DWORD res;
+
+    hCompleteEvent = CreateEventW(NULL, FALSE, FALSE, NULL);
+
+    session = InternetOpenA("", INTERNET_OPEN_TYPE_DIRECT, NULL, NULL, INTERNET_FLAG_ASYNC);
+    ok(session != NULL,"InternetOpen failed with error %u\n", GetLastError());
+
+    pInternetSetStatusCallbackA(session, callback);
+
+    SET_EXPECT(INTERNET_STATUS_HANDLE_CREATED);
+    connection = InternetConnectA(session, "localhost", port, NULL, NULL, INTERNET_SERVICE_HTTP, 0x0, 0xdeadbeef);
+    ok(connection != NULL,"InternetConnect failed with error %u\n", GetLastError());
+    CHECK_NOTIFIED(INTERNET_STATUS_HANDLE_CREATED);
+
+    SET_EXPECT(INTERNET_STATUS_HANDLE_CREATED);
+    req = HttpOpenRequestA(connection, "GET", "/testH", NULL, NULL, NULL, INTERNET_FLAG_KEEP_CONNECTION, 0xdeadbeaf);
+    ok(req != NULL, "HttpOpenRequest failed: %u\n", GetLastError());
+    CHECK_NOTIFIED(INTERNET_STATUS_HANDLE_CREATED);
+
+    SET_OPTIONAL(INTERNET_STATUS_COOKIE_SENT);
+    SET_OPTIONAL(INTERNET_STATUS_DETECTING_PROXY);
+    SET_EXPECT(INTERNET_STATUS_CONNECTING_TO_SERVER);
+    SET_EXPECT(INTERNET_STATUS_CONNECTED_TO_SERVER);
+    SET_EXPECT(INTERNET_STATUS_SENDING_REQUEST);
+    SET_EXPECT(INTERNET_STATUS_REQUEST_SENT);
+    SET_EXPECT(INTERNET_STATUS_RECEIVING_RESPONSE);
+    SET_EXPECT(INTERNET_STATUS_RESPONSE_RECEIVED);
+    SET_EXPECT(INTERNET_STATUS_REQUEST_COMPLETE);
+
+    res = HttpSendRequestA(req, NULL, 0, NULL, 0);
+    ok(!res && (GetLastError() == ERROR_IO_PENDING),
+            "Asynchronous HttpSendRequest NOT returning 0 with error ERROR_IO_PENDING\n");
+    WaitForSingleObject(hCompleteEvent, INFINITE);
+    ok(req_error == ERROR_SUCCESS, "req_error = %u\n", req_error);
+
+    CLEAR_NOTIFIED(INTERNET_STATUS_COOKIE_SENT);
+    CLEAR_NOTIFIED(INTERNET_STATUS_DETECTING_PROXY);
+    CHECK_NOTIFIED(INTERNET_STATUS_CONNECTING_TO_SERVER);
+    CHECK_NOTIFIED(INTERNET_STATUS_CONNECTED_TO_SERVER);
+    CHECK_NOTIFIED(INTERNET_STATUS_SENDING_REQUEST);
+    CHECK_NOTIFIED(INTERNET_STATUS_REQUEST_SENT);
+    CHECK_NOTIFIED(INTERNET_STATUS_RECEIVING_RESPONSE);
+    CHECK_NOTIFIED(INTERNET_STATUS_RESPONSE_RECEIVED);
+    CHECK_NOTIFIED(INTERNET_STATUS_REQUEST_COMPLETE);
+
+    test_status_code(req, 210);
+
+    SET_OPTIONAL(INTERNET_STATUS_COOKIE_SENT);
+    SET_OPTIONAL(INTERNET_STATUS_DETECTING_PROXY);
+    SET_EXPECT(INTERNET_STATUS_SENDING_REQUEST);
+    SET_EXPECT(INTERNET_STATUS_REQUEST_SENT);
+    SET_EXPECT(INTERNET_STATUS_RECEIVING_RESPONSE);
+    SET_EXPECT(INTERNET_STATUS_RESPONSE_RECEIVED);
+    SET_OPTIONAL(INTERNET_STATUS_CLOSING_CONNECTION);
+    SET_OPTIONAL(INTERNET_STATUS_CONNECTION_CLOSED);
+    SET_EXPECT(INTERNET_STATUS_REQUEST_COMPLETE);
+
+    res = HttpSendRequestA(req, NULL, 0, NULL, 0);
+    ok(!res && (GetLastError() == ERROR_IO_PENDING),
+       "Asynchronous HttpSendRequest NOT returning 0 with error ERROR_IO_PENDING\n");
+    WaitForSingleObject(hCompleteEvent, INFINITE);
+    ok(req_error == ERROR_SUCCESS, "req_error = %u\n", req_error);
+
+    CLEAR_NOTIFIED(INTERNET_STATUS_COOKIE_SENT);
+    CLEAR_NOTIFIED(INTERNET_STATUS_DETECTING_PROXY);
+    CHECK_NOTIFIED(INTERNET_STATUS_SENDING_REQUEST);
+    CHECK_NOTIFIED(INTERNET_STATUS_REQUEST_SENT);
+    CHECK_NOTIFIED(INTERNET_STATUS_RECEIVING_RESPONSE);
+    CHECK_NOTIFIED(INTERNET_STATUS_RESPONSE_RECEIVED);
+    CLEAR_NOTIFIED(INTERNET_STATUS_CLOSING_CONNECTION);
+    CLEAR_NOTIFIED(INTERNET_STATUS_CONNECTION_CLOSED);
+    CHECK_NOTIFIED(INTERNET_STATUS_REQUEST_COMPLETE);
+
+    test_status_code(req, 200);
+
+    SET_WINE_ALLOW(INTERNET_STATUS_CLOSING_CONNECTION);
+    SET_WINE_ALLOW(INTERNET_STATUS_CONNECTION_CLOSED);
+
+    close_async_handle(session, hCompleteEvent, 2);
+    CloseHandle(hCompleteEvent);
+}
 
 static void test_no_content(int port)
 {
@@ -3507,7 +3597,7 @@ static void test_response_without_headers(int port)
 static void test_HttpQueryInfo(int port)
 {
     HINTERNET hi, hc, hr;
-    DWORD size, index;
+    DWORD size, index, error;
     char buffer[1024];
     BOOL ret;
 
@@ -3522,7 +3612,9 @@ static void test_HttpQueryInfo(int port)
 
     size = sizeof(buffer);
     ret = HttpQueryInfoA(hr, HTTP_QUERY_STATUS_TEXT, buffer, &size, &index);
-    ok(!ret && GetLastError() == ERROR_HTTP_HEADER_NOT_FOUND, "HttpQueryInfo failed %u\n", GetLastError());
+    error = GetLastError();
+    ok(!ret || broken(ret), "HttpQueryInfo succeeded\n");
+    if (!ret) ok(error == ERROR_HTTP_HEADER_NOT_FOUND, "got %u expected ERROR_HTTP_HEADER_NOT_FOUND\n", error);
 
     ret = HttpSendRequestA(hr, NULL, 0, NULL, 0);
     ok(ret, "HttpSendRequest failed\n");
@@ -3912,6 +4004,7 @@ static void test_http_connection(void)
     test_premature_disconnect(si.port);
     test_connection_closing(si.port);
     test_cache_control_verb(si.port);
+    test_successive_HttpSendRequest(si.port);
 
     /* send the basic request again to shutdown the server thread */
     test_basic_request(si.port, "GET", "/quit");

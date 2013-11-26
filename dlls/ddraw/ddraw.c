@@ -2856,12 +2856,11 @@ static HRESULT CreateSurface(struct ddraw *ddraw, DDSURFACEDESC2 *DDSD,
         DDSD->dwFlags &= ~DDSD_LPSURFACE;
     }
 
-    if((DDSD->ddsCaps.dwCaps & (DDSCAPS_FLIP | DDSCAPS_PRIMARYSURFACE)) == (DDSCAPS_FLIP | DDSCAPS_PRIMARYSURFACE) &&
-       !(ddraw->cooperative_level & DDSCL_EXCLUSIVE))
+    if ((DDSD->ddsCaps.dwCaps & (DDSCAPS_FLIP | DDSCAPS_PRIMARYSURFACE))
+            == (DDSCAPS_FLIP | DDSCAPS_PRIMARYSURFACE)
+            && !(ddraw->cooperative_level & DDSCL_EXCLUSIVE))
     {
-        TRACE("(%p): Attempt to create a flipable primary surface without DDSCL_EXCLUSIVE set\n",
-                ddraw);
-        *surface = NULL;
+        WARN("Attempted to create a flipable primary surface without DDSCL_EXCLUSIVE.\n");
         return DDERR_NOEXCLUSIVEMODE;
     }
 
@@ -2871,60 +2870,15 @@ static HRESULT CreateSurface(struct ddraw *ddraw, DDSURFACEDESC2 *DDSD,
         return DDERR_INVALIDCAPS;
     }
 
-    if((DDSD->ddsCaps.dwCaps & sysvidmem) == sysvidmem)
+    /* This is a special case in ddrawex, but not allowed in ddraw. */
+    if ((DDSD->ddsCaps.dwCaps & sysvidmem) == sysvidmem)
     {
-        /* This is a special switch in ddrawex.dll, but not allowed in ddraw.dll */
-        WARN("Application tries to put the surface in both system and video memory\n");
-        *surface = NULL;
+        WARN("Tried to create a surface in both system and video memory.\n");
         return DDERR_INVALIDCAPS;
     }
 
-    /* Check cube maps but only if the size includes them */
-    if (DDSD->dwSize >= sizeof(DDSURFACEDESC2))
-    {
-        if(DDSD->ddsCaps.dwCaps2 & DDSCAPS2_CUBEMAP_ALLFACES &&
-           !(DDSD->ddsCaps.dwCaps2 & DDSCAPS2_CUBEMAP))
-        {
-            WARN("Cube map faces requested without cube map flag\n");
-            return DDERR_INVALIDCAPS;
-        }
-        if(DDSD->ddsCaps.dwCaps2 & DDSCAPS2_CUBEMAP &&
-           (DDSD->ddsCaps.dwCaps2 & DDSCAPS2_CUBEMAP_ALLFACES) == 0)
-        {
-            WARN("Cube map without faces requested\n");
-            return DDERR_INVALIDPARAMS;
-        }
-
-        /* Quick tests confirm those can be created, but we don't do that yet */
-        if(DDSD->ddsCaps.dwCaps2 & DDSCAPS2_CUBEMAP &&
-           (DDSD->ddsCaps.dwCaps2 & DDSCAPS2_CUBEMAP_ALLFACES) != DDSCAPS2_CUBEMAP_ALLFACES)
-        {
-            FIXME("Partial cube maps not supported yet\n");
-        }
-    }
-
-    if (DDSD->ddsCaps.dwCaps2 & (DDSCAPS2_TEXTUREMANAGE | DDSCAPS2_D3DTEXTUREMANAGE))
-    {
-        if (!(DDSD->ddsCaps.dwCaps & DDSCAPS_TEXTURE))
-        {
-            WARN("DDSCAPS2_TEXTUREMANAGE used without DDSCAPS_TEXTURE, returning DDERR_INVALIDCAPS.\n");
-            return DDERR_INVALIDCAPS;
-        }
-        if (DDSD->ddsCaps.dwCaps & (DDSCAPS_VIDEOMEMORY | DDSCAPS_SYSTEMMEMORY))
-        {
-            WARN("DDSCAPS2_TEXTUREMANAGE used width DDSCAPS_VIDEOMEMORY "
-                    "or DDSCAPS_SYSTEMMEMORY, returning DDERR_INVALIDCAPS.\n");
-            return DDERR_INVALIDCAPS;
-        }
-    }
-
-    /* According to the msdn this flag is ignored by CreateSurface */
-    if (DDSD->dwSize >= sizeof(DDSURFACEDESC2))
-        DDSD->ddsCaps.dwCaps2 &= ~DDSCAPS2_MIPMAPSUBLEVEL;
-
     /* Modify some flags */
     copy_to_surfacedesc2(&desc2, DDSD);
-    desc2.u4.ddpfPixelFormat.dwSize=sizeof(DDPIXELFORMAT); /* Just to be sure */
 
     /* The first surface is a front buffer, the back buffer is created afterwards */
     if (desc2.ddsCaps.dwCaps & DDSCAPS_PRIMARYSURFACE)

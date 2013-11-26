@@ -5608,6 +5608,39 @@ HRESULT ddraw_surface_create_texture(struct ddraw *ddraw, DDSURFACEDESC2 *desc,
         DDRAW_dump_surface_desc(desc);
     }
 
+    if ((desc->ddsCaps.dwCaps2 & DDSCAPS2_CUBEMAP_ALLFACES)
+            && !(desc->ddsCaps.dwCaps2 & DDSCAPS2_CUBEMAP))
+    {
+        WARN("Cube map faces requested without cube map flag.\n");
+        return DDERR_INVALIDCAPS;
+    }
+
+    if ((desc->ddsCaps.dwCaps2 & DDSCAPS2_CUBEMAP)
+            && !(desc->ddsCaps.dwCaps2 & DDSCAPS2_CUBEMAP_ALLFACES))
+    {
+        WARN("Cube map without faces requested.\n");
+        return DDERR_INVALIDPARAMS;
+    }
+
+    if ((desc->ddsCaps.dwCaps2 & DDSCAPS2_CUBEMAP)
+            && (desc->ddsCaps.dwCaps2 & DDSCAPS2_CUBEMAP_ALLFACES) != DDSCAPS2_CUBEMAP_ALLFACES)
+        FIXME("Partial cube maps not implemented.\n");
+
+    if (desc->ddsCaps.dwCaps2 & (DDSCAPS2_TEXTUREMANAGE | DDSCAPS2_D3DTEXTUREMANAGE))
+    {
+        if (!(desc->ddsCaps.dwCaps & DDSCAPS_TEXTURE))
+        {
+            WARN("DDSCAPS2_TEXTUREMANAGE used without DDSCAPS_TEXTURE, returning DDERR_INVALIDCAPS.\n");
+            return DDERR_INVALIDCAPS;
+        }
+        if (desc->ddsCaps.dwCaps & (DDSCAPS_VIDEOMEMORY | DDSCAPS_SYSTEMMEMORY))
+        {
+            WARN("DDSCAPS2_TEXTUREMANAGE used width DDSCAPS_VIDEOMEMORY "
+                    "or DDSCAPS_SYSTEMMEMORY, returning DDERR_INVALIDCAPS.\n");
+            return DDERR_INVALIDCAPS;
+        }
+    }
+
     if (FAILED(hr = wined3d_get_adapter_display_mode(ddraw->wined3d, WINED3DADAPTER_DEFAULT, &mode, NULL)))
     {
         ERR("Failed to get display mode, hr %#x.\n", hr);
