@@ -1267,6 +1267,7 @@ enable_libs_port
 enable_libs_wine
 enable_libs_wpp
 enable_loader
+enable_arp
 enable_aspnet_regiis
 enable_attrib
 enable_cabarc
@@ -7270,7 +7271,7 @@ all: libwine.dll libwine.a
 libwine.a: wine.def
 	\$(DLLTOOL) -l \$@ -d \$(srcdir)/wine.def
 
-libwine.dll: \$(OBJS) wine.def Makefile.in
+libwine.dll: \$(OBJS) wine.def
 	\$(CC) -shared \$(srcdir)/wine.def -o \$@ \$(OBJS) $crtlibs \$(EXTRALIBS)
 
 install install-lib:: libwine.dll \$(DESTDIR)\$(libdir) dummy
@@ -7462,7 +7463,7 @@ fi
     LIBWINE_RULES="
 all: libwine.dylib
 
-libwine.\$(VERSION).dylib: \$(OBJS) Makefile.in
+libwine.\$(VERSION).dylib: \$(OBJS)
 	\$(CC) -dynamiclib -install_name @rpath/libwine.\$(SOVERSION).dylib -Wl,-rpath,@loader_path/ -compatibility_version \$(SOVERSION) -current_version \$(VERSION) \$(OBJS) \$(EXTRALIBS) \$(LDFLAGS) \$(LIBS) -o \$@
 
 libwine.\$(SOVERSION).dylib: libwine.\$(VERSION).dylib
@@ -7487,10 +7488,10 @@ clean::
 
 
     as_fn_append LOADER_RULES "
-$wine_binary: main.o Makefile.in wine_info.plist
+$wine_binary: main.o wine_info.plist
 	\$(CC) -o \$@ $LDEXECFLAGS main.o \$(LIBWINE) \$(LIBPORT) \$(EXTRALIBS) \$(LDFLAGS) \$(LDRPATH_LOCAL)
 
-wine-installed: main.o Makefile.in wine_info.plist
+wine-installed: main.o wine_info.plist
 	\$(CC) -o \$@ $LDEXECFLAGS main.o \$(LIBWINE) \$(LIBPORT) \$(EXTRALIBS) \$(LDFLAGS) \$(LDRPATH_INSTALL)
 
 wine_info.plist: wine_info.plist.in \$(top_builddir)/include/config.h
@@ -7645,7 +7646,7 @@ fi
     LIBWINE_RULES="
 all: libwine.so
 
-libwine.so: \$(OBJS) Makefile.in
+libwine.so: \$(OBJS)
 	\$(CC) -shared \$(OBJS) \$(EXTRALIBS) \$(LDFLAGS) \$(LIBS) -o \$@
 
 install install-lib:: libwine.so \$(DESTDIR)\$(libdir) dummy
@@ -7660,10 +7661,10 @@ clean::
 
 
     as_fn_append LOADER_RULES "
-$wine_binary: main.o Makefile.in
+$wine_binary: main.o
 	\$(CC) -o \$@ $LDEXECFLAGS main.o \$(LIBWINE) \$(LIBPORT) \$(EXTRALIBS) \$(LDFLAGS) \$(LDRPATH_LOCAL)
 
-wine-installed: main.o Makefile.in
+wine-installed: main.o
 	\$(CC) -o \$@ $LDEXECFLAGS main.o \$(LIBWINE) \$(LIBPORT) \$(EXTRALIBS) \$(LDFLAGS) \$(LDRPATH_INSTALL)
 "
     ;;
@@ -7996,7 +7997,7 @@ $as_echo "$ac_cv_c_dll_unixware" >&6; }
     LIBWINE_RULES="
 all: libwine.so
 
-libwine.so.\$(VERSION): \$(OBJS) wine.map Makefile.in
+libwine.so.\$(VERSION): \$(OBJS) wine.map
 	$LDSHARED \$(OBJS) \$(EXTRALIBS) \$(LDFLAGS) \$(LIBS) -o \$@
 
 libwine.so.\$(SOVERSION): libwine.so.\$(VERSION)
@@ -8021,10 +8022,10 @@ clean::
 
 
     as_fn_append LOADER_RULES "
-$wine_binary: main.o Makefile.in
+$wine_binary: main.o
 	\$(CC) -o \$@ $LDEXECFLAGS main.o \$(LIBWINE) \$(LIBPORT) \$(EXTRALIBS) \$(LDFLAGS) \$(LDRPATH_LOCAL)
 
-wine-installed: main.o Makefile.in
+wine-installed: main.o
 	\$(CC) -o \$@ $LDEXECFLAGS main.o \$(LIBWINE) \$(LIBPORT) \$(EXTRALIBS) \$(LDFLAGS) \$(LDRPATH_INSTALL)
 "
     ;;
@@ -14019,7 +14020,7 @@ case $host_os in
         as_fn_append LOADER_RULES "
 all: $wine_binary-preloader
 
-$wine_binary-preloader: preloader.o Makefile.in
+$wine_binary-preloader: preloader.o
 	\$(CC) -o \$@ -static -nostartfiles -nodefaultlibs -Wl,-Ttext=0x7c400000 preloader.o \$(LIBPORT) \$(LDFLAGS)
 
 install install-lib:: $wine_binary-preloader \$(DESTDIR)\$(bindir)
@@ -16338,7 +16339,13 @@ wine_fn_config_lib ()
     ac_name=$1
     ac_flags=$2
     ac_dir=dlls/$ac_name
+    ac_deps="include"
 
+    if test "x$enable_tools" = xno; then :
+
+else
+  ac_deps="tools/widl tools/winebuild tools/winegcc $ac_deps"
+fi
     wine_fn_all_rules Make.rules.in
     wine_fn_clean_rules
 
@@ -16351,7 +16358,7 @@ $ac_dir/uninstall::
 install install-dev:: $ac_dir/install
 __uninstall__: $ac_dir/uninstall
 __builddeps__: $ac_dir
-$ac_dir: tools/widl tools/winebuild tools/winegcc include"
+$ac_dir: $ac_deps"
 }
 
 wine_fn_config_dll ()
@@ -16363,9 +16370,14 @@ wine_fn_config_dll ()
     ac_implib=${4:-$ac_name}
     ac_file=$ac_dir/lib$ac_implib
     ac_dll=$ac_name
-    ac_deps="tools/widl tools/winebuild tools/winegcc include"
+    ac_deps="include"
     ac_implibflags=""
 
+    if test "x$enable_tools" = xno; then :
+
+else
+  ac_deps="tools/widl tools/winebuild tools/winegcc $ac_deps"
+fi
     case $ac_name in
       *16) ac_implibflags=" -m16" ;;
       *.*) ;;
@@ -17328,6 +17340,7 @@ wine_fn_config_makefile libs/port enable_libs_port
 wine_fn_config_makefile libs/wine enable_libs_wine clean,install-dev,install-lib
 wine_fn_config_makefile libs/wpp enable_libs_wpp
 wine_fn_config_makefile loader enable_loader clean,install-lib,manpage
+wine_fn_config_program arp enable_arp install
 wine_fn_config_program aspnet_regiis enable_aspnet_regiis install
 wine_fn_config_program attrib enable_attrib install,po
 wine_fn_config_program cabarc enable_cabarc install
@@ -17524,6 +17537,9 @@ then
 	\$(CC) -Iinclude -I$srcdir/include \$(ALLCFLAGS) -o \$@ $srcdir/tools/makedep.c \$(LDFLAGS)
 clean:: __clean__
 	\$(RM) tools/makedep$ac_exeext"
+else
+    wine_fn_append_rule "\$(MAKEDEP):
+	@echo \"You need to run make in $TOOLSDIR first\" && false"
 fi
 
 if test -n "$with_wine64"

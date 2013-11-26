@@ -57,6 +57,8 @@ extern GpStatus graphics_from_image(GpImage *image, GpGraphics **graphics) DECLS
 extern GpStatus METAFILE_GetGraphicsContext(GpMetafile* metafile, GpGraphics **result) DECLSPEC_HIDDEN;
 extern GpStatus METAFILE_GetDC(GpMetafile* metafile, HDC *hdc) DECLSPEC_HIDDEN;
 extern GpStatus METAFILE_ReleaseDC(GpMetafile* metafile, HDC hdc) DECLSPEC_HIDDEN;
+extern GpStatus METAFILE_FillRectangles(GpMetafile* metafile, GpBrush* brush,
+    GDIPCONST GpRectF* rects, INT count) DECLSPEC_HIDDEN;
 extern GpStatus METAFILE_GraphicsDeleted(GpMetafile* metafile) DECLSPEC_HIDDEN;
 extern MetafileType METAFILE_GetEmfType(HENHMETAFILE hemf) DECLSPEC_HIDDEN;
 
@@ -296,8 +298,12 @@ struct GpMetafile{
     GpGraphics *playback_graphics;
     HDC playback_dc;
     GpPointF playback_points[3];
+    GpRectF src_rect;
     HANDLETABLE *handle_table;
     int handle_count;
+    GpMatrix *world_transform;
+    GpUnit page_unit;
+    REAL page_scale;
 };
 
 struct GpBitmap{

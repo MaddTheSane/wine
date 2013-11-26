@@ -3820,38 +3820,31 @@ GpStatus WINGDIPAPI GdipFillPolygon2I(GpGraphics *graphics, GpBrush *brush,
 GpStatus WINGDIPAPI GdipFillRectangle(GpGraphics *graphics, GpBrush *brush,
     REAL x, REAL y, REAL width, REAL height)
 {
-    GpStatus stat;
-    GpPath *path;
+    GpRectF rect;
 
     TRACE("(%p, %p, %.2f, %.2f, %.2f, %.2f)\n", graphics, brush, x, y, width, height);
 
-    if(!graphics || !brush)
-        return InvalidParameter;
+    rect.X = x;
+    rect.Y = y;
+    rect.Width = width;
+    rect.Height = height;
 
-    if(graphics->busy)
-        return ObjectBusy;
-
-    stat = GdipCreatePath(FillModeAlternate, &path);
-
-    if (stat == Ok)
-    {
-        stat = GdipAddPathRectangle(path, x, y, width, height);
-
-        if (stat == Ok)
-            stat = GdipFillPath(graphics, brush, path);
-
-        GdipDeletePath(path);
-    }
-
-    return stat;
+    return GdipFillRectangles(graphics, brush, &rect, 1);
 }
 
 GpStatus WINGDIPAPI GdipFillRectangleI(GpGraphics *graphics, GpBrush *brush,
     INT x, INT y, INT width, INT height)
 {
+    GpRectF rect;
+
     TRACE("(%p, %p, %d, %d, %d, %d)\n", graphics, brush, x, y, width, height);
 
-    return GdipFillRectangle(graphics, brush, x, y, width, height);
+    rect.X = (REAL)x;
+    rect.Y = (REAL)y;
+    rect.Width = (REAL)width;
+    rect.Height = (REAL)height;
+
+    return GdipFillRectangles(graphics, brush, &rect, 1);
 }
 
 GpStatus WINGDIPAPI GdipFillRectangles(GpGraphics *graphics, GpBrush *brush, GDIPCONST GpRectF *rects,
@@ -3864,6 +3857,13 @@ GpStatus WINGDIPAPI GdipFillRectangles(GpGraphics *graphics, GpBrush *brush, GDI
 
     if(!rects)
         return InvalidParameter;
+
+    if (graphics->image && graphics->image->type == ImageTypeMetafile)
+    {
+        status = METAFILE_FillRectangles((GpMetafile*)graphics->image, brush, rects, count);
+        /* FIXME: Add gdi32 drawing. */
+        return status;
+    }
 
     status = GdipCreatePath(FillModeAlternate, &path);
     if (status != Ok) return status;

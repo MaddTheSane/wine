@@ -779,7 +779,6 @@ static void surface_map(struct wined3d_surface *surface, const RECT *rect, DWORD
         TRACE("WINED3D_MAP_DISCARD flag passed, marking SYSMEM as up to date.\n");
         surface_prepare_system_memory(surface);
         surface_validate_location(surface, SFLAG_INSYSMEM);
-        surface_invalidate_location(surface, ~SFLAG_INSYSMEM);
     }
     else
     {
@@ -788,6 +787,9 @@ static void surface_map(struct wined3d_surface *surface, const RECT *rect, DWORD
 
         surface_load_location(surface, SFLAG_INSYSMEM);
     }
+
+    if (!(flags & (WINED3D_MAP_NO_DIRTY_UPDATE | WINED3D_MAP_READONLY)))
+        surface_invalidate_location(surface, ~SFLAG_INSYSMEM);
 
     if (surface->flags & SFLAG_PBO)
     {
@@ -815,9 +817,6 @@ static void surface_map(struct wined3d_surface *surface, const RECT *rect, DWORD
 
         context_release(context);
     }
-
-    if (!(flags & (WINED3D_MAP_NO_DIRTY_UPDATE | WINED3D_MAP_READONLY)))
-        surface_set_dirty(surface);
 }
 
 static void surface_unmap(struct wined3d_surface *surface)
@@ -2239,20 +2238,6 @@ GLenum surface_get_gl_buffer(const struct wined3d_surface *surface)
 
     FIXME("Higher back buffer, returning GL_BACK\n");
     return GL_BACK;
-}
-
-/* Slightly inefficient way to handle multiple dirty rects but it works :) */
-void surface_set_dirty(struct wined3d_surface *surface)
-{
-    TRACE("surface %p.\n", surface);
-
-    if (!(surface->flags & SFLAG_INSYSMEM) && (surface->flags & SFLAG_INTEXTURE))
-        surface_load_location(surface, SFLAG_INSYSMEM);
-
-    surface_validate_location(surface, SFLAG_INSYSMEM);
-    surface_invalidate_location(surface, ~SFLAG_INSYSMEM);
-
-    wined3d_texture_set_dirty(surface->container);
 }
 
 void surface_load(struct wined3d_surface *surface, BOOL srgb)
@@ -6519,10 +6504,12 @@ static HRESULT surface_init(struct wined3d_surface *surface, struct wined3d_text
     }
 
     surface_set_container(surface, container);
+    surface_validate_location(surface, SFLAG_INSYSMEM);
+    list_init(&surface->renderbuffers);
     list_init(&surface->overlays);
 
     /* Flags */
-    surface->flags = SFLAG_NORMCOORD; /* Default to normalized coords. */
+    surface->flags |= SFLAG_NORMCOORD; /* Default to normalized coords. */
     if (flags & WINED3D_SURFACE_DISCARD)
         surface->flags |= SFLAG_DISCARD;
     if (flags & WINED3D_SURFACE_PIN_SYSMEM)
@@ -6539,10 +6526,6 @@ static HRESULT surface_init(struct wined3d_surface *surface, struct wined3d_text
      * future locks prevents these from crashing. */
     if (lockable && (desc->usage & WINED3DUSAGE_RENDERTARGET))
         surface->flags |= SFLAG_DYNLOCK;
-
-    /* Mark the texture as dirty so that it gets loaded first time around. */
-    surface_set_dirty(surface);
-    list_init(&surface->renderbuffers);
 
     TRACE("surface %p, memory %p, size %u\n",
             surface, surface->resource.allocatedMemory, surface->resource.size);
