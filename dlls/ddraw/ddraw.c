@@ -2814,7 +2814,6 @@ static HRESULT CreateSurface(struct ddraw *ddraw, DDSURFACEDESC2 *DDSD,
     struct ddraw_surface *object = NULL;
     HRESULT hr;
     DDSURFACEDESC2 desc2;
-    const DWORD sysvidmem = DDSCAPS_VIDEOMEMORY | DDSCAPS_SYSTEMMEMORY;
 
     TRACE("ddraw %p, surface_desc %p, surface %p, outer_unknown %p.\n", ddraw, DDSD, surface, UnkOuter);
 
@@ -2856,33 +2855,8 @@ static HRESULT CreateSurface(struct ddraw *ddraw, DDSURFACEDESC2 *DDSD,
         DDSD->dwFlags &= ~DDSD_LPSURFACE;
     }
 
-    if ((DDSD->ddsCaps.dwCaps & (DDSCAPS_FLIP | DDSCAPS_PRIMARYSURFACE))
-            == (DDSCAPS_FLIP | DDSCAPS_PRIMARYSURFACE)
-            && !(ddraw->cooperative_level & DDSCL_EXCLUSIVE))
-    {
-        WARN("Attempted to create a flipable primary surface without DDSCL_EXCLUSIVE.\n");
-        return DDERR_NOEXCLUSIVEMODE;
-    }
-
-    if((DDSD->ddsCaps.dwCaps & (DDSCAPS_BACKBUFFER | DDSCAPS_PRIMARYSURFACE)) == (DDSCAPS_BACKBUFFER | DDSCAPS_PRIMARYSURFACE))
-    {
-        WARN("Application wanted to create back buffer primary surface\n");
-        return DDERR_INVALIDCAPS;
-    }
-
-    /* This is a special case in ddrawex, but not allowed in ddraw. */
-    if ((DDSD->ddsCaps.dwCaps & sysvidmem) == sysvidmem)
-    {
-        WARN("Tried to create a surface in both system and video memory.\n");
-        return DDERR_INVALIDCAPS;
-    }
-
     /* Modify some flags */
     copy_to_surfacedesc2(&desc2, DDSD);
-
-    /* The first surface is a front buffer, the back buffer is created afterwards */
-    if (desc2.ddsCaps.dwCaps & DDSCAPS_PRIMARYSURFACE)
-        desc2.ddsCaps.dwCaps |= DDSCAPS_FRONTBUFFER;
 
     if (FAILED(hr = ddraw_surface_create_texture(ddraw, &desc2, version, &object)))
     {
@@ -2892,48 +2866,6 @@ static HRESULT CreateSurface(struct ddraw *ddraw, DDSURFACEDESC2 *DDSD,
     object->is_complex_root = TRUE;
 
     *surface = object;
-
-    /* Create Additional surfaces if necessary
-     * This applies to Primary surfaces which have a back buffer count
-     * set, but not to mipmap textures. In case of Mipmap textures,
-     * wineD3D takes care of the creation of additional surfaces
-     */
-    if(DDSD->dwFlags & DDSD_BACKBUFFERCOUNT)
-    {
-        struct ddraw_surface *last = object;
-        UINT i;
-
-        desc2.ddsCaps.dwCaps &= ~DDSCAPS_FRONTBUFFER; /* It's not a front buffer */
-        desc2.ddsCaps.dwCaps |= DDSCAPS_BACKBUFFER;
-        desc2.dwBackBufferCount = 0;
-
-        for (i = 0; i < DDSD->dwBackBufferCount; ++i)
-        {
-            struct ddraw_surface *object2 = NULL;
-
-            if (FAILED(hr = ddraw_surface_create_texture(ddraw, &desc2, version, &object2)))
-            {
-                if (version == 7)
-                    IDirectDrawSurface7_Release(&object->IDirectDrawSurface7_iface);
-                else if (version == 4)
-                    IDirectDrawSurface4_Release(&object->IDirectDrawSurface4_iface);
-                else
-                    IDirectDrawSurface_Release(&object->IDirectDrawSurface_iface);
-
-                return hr;
-            }
-
-            /* Add the new surface to the complex attachment array. */
-            last->complex_array[0] = object2;
-            last = object2;
-
-            /* Remove the (possible) back buffer cap from the new surface
-             * description, because only one surface in the flipping chain is a
-             * back buffer, one is a front buffer, the others are just primary
-             * surfaces. */
-            desc2.ddsCaps.dwCaps &= ~DDSCAPS_BACKBUFFER;
-        }
-    }
 
     if (desc2.ddsCaps.dwCaps & DDSCAPS_PRIMARYSURFACE)
         ddraw->primary = object;
@@ -4969,7 +4901,7 @@ static HRESULT CDECL device_parent_create_swapchain_surface(struct wined3d_devic
 
     texture_desc = *desc;
     texture_desc.resource_type = WINED3D_RTYPE_TEXTURE;
-    if (FAILED(hr = wined3d_texture_create_2d(ddraw->wined3d_device, &texture_desc, 1,
+    if (FAILED(hr = wined3d_texture_create(ddraw->wined3d_device, &texture_desc, 1,
             WINED3D_SURFACE_MAPPABLE, ddraw, &ddraw_frontbuffer_parent_ops, &texture)))
     {
         WARN("Failed to create texture, hr %#x.\n", hr);

@@ -37,7 +37,27 @@ static IBackgroundCopyJob *test_job;
 static GUID test_jobId;
 static BG_JOB_TYPE test_type;
 
-static VOID init_paths(void)
+static HRESULT test_create_manager(void)
+{
+    HRESULT hres;
+    IBackgroundCopyManager *manager = NULL;
+
+    /* Creating BITS instance */
+    hres = CoCreateInstance(&CLSID_BackgroundCopyManager, NULL, CLSCTX_LOCAL_SERVER,
+                            &IID_IBackgroundCopyManager, (void **) &manager);
+
+    if(hres == HRESULT_FROM_WIN32(ERROR_SERVICE_DISABLED)) {
+        win_skip("Needed Service is disabled\n");
+        return hres;
+    }
+
+    if (hres == S_OK)
+        IBackgroundCopyManager_Release(manager);
+
+    return hres;
+}
+
+static void init_paths(void)
 {
     WCHAR tmpDir[MAX_PATH];
     WCHAR prefix[] = {'q', 'm', 'g', 'r', 0};
@@ -414,6 +434,18 @@ static void test_CompleteLocalURL(void)
     HeapFree(GetProcessHeap(), 0, urlB);
 }
 
+static void test_NotifyFlags(void)
+{
+    ULONG flags;
+    HRESULT hr;
+
+    /* check default flags */
+    flags = 0;
+    hr = IBackgroundCopyJob_GetNotifyFlags(test_job, &flags);
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+    ok(flags == (BG_NOTIFY_JOB_ERROR | BG_NOTIFY_JOB_TRANSFERRED), "flags 0x%08x\n", flags);
+}
+
 typedef void (*test_t)(void);
 
 START_TEST(job)
@@ -425,6 +457,7 @@ START_TEST(job)
         test_GetProgress_preTransfer,
         test_GetState,
         test_ResumeEmpty,
+        test_NotifyFlags,
         0
     };
     static const test_t tests_bits20[] = {
@@ -441,6 +474,13 @@ START_TEST(job)
     init_paths();
 
     CoInitialize(NULL);
+
+    if (FAILED(test_create_manager()))
+    {
+        CoUninitialize();
+        win_skip("Failed to create Manager instance, skipping tests\n");
+        return;
+    }
 
     for (test = tests, i = 0; *test; ++test, ++i)
     {
