@@ -5589,30 +5589,54 @@ static HRESULT CDECL ddraw_reset_enum_callback(struct wined3d_resource *resource
     return DD_OK;
 }
 
-HRESULT ddraw_surface_create_texture(struct ddraw *ddraw, DDSURFACEDESC2 *desc,
-        unsigned int version, struct ddraw_surface **surface)
+HRESULT ddraw_surface_create(struct ddraw *ddraw, const DDSURFACEDESC2 *surface_desc,
+        struct ddraw_surface **surface, IUnknown *outer_unknown, unsigned int version)
 {
     struct ddraw_surface *root, *mip, **attach;
     struct wined3d_resource_desc wined3d_desc;
     struct wined3d_texture *wined3d_texture;
     struct wined3d_resource *resource;
     struct wined3d_display_mode mode;
+    DDSURFACEDESC2 *desc, *mip_desc;
     struct ddraw_texture *texture;
     UINT layers, levels, i, j;
-    DDSURFACEDESC2 *mip_desc;
     HRESULT hr;
 
+    TRACE("ddraw %p, surface_desc %p, surface %p, outer_unknown %p, version %u.\n",
+            ddraw, surface_desc, surface, outer_unknown, version);
     if (TRACE_ON(ddraw))
     {
         TRACE("Requesting surface desc:\n");
-        DDRAW_dump_surface_desc(desc);
+        DDRAW_dump_surface_desc(surface_desc);
     }
+
+    if (outer_unknown)
+        return CLASS_E_NOAGGREGATION;
+
+    if (!surface)
+        return E_POINTER;
+
+    if (!(texture = HeapAlloc(GetProcessHeap(), 0, sizeof(*texture))))
+        return E_OUTOFMEMORY;
+
+    texture->version = version;
+    texture->surface_desc = *surface_desc;
+    desc = &texture->surface_desc;
+
+    /* Ensure DDSD_CAPS is always set. */
+    desc->dwFlags |= DDSD_CAPS;
+
+    /* If the surface is of the 'ALLOCONLOAD' type, ignore the LPSURFACE
+     * field. Frank Herbert's Dune specifies a NULL pointer for lpSurface. */
+    if ((desc->ddsCaps.dwCaps & DDSCAPS_ALLOCONLOAD) || !desc->lpSurface)
+        desc->dwFlags &= ~DDSD_LPSURFACE;
 
     if ((desc->ddsCaps.dwCaps & (DDSCAPS_FLIP | DDSCAPS_PRIMARYSURFACE))
             == (DDSCAPS_FLIP | DDSCAPS_PRIMARYSURFACE)
             && !(ddraw->cooperative_level & DDSCL_EXCLUSIVE))
     {
         WARN("Tried to create a flippable primary surface without DDSCL_EXCLUSIVE.\n");
+        HeapFree(GetProcessHeap(), 0, texture);
         return DDERR_NOEXCLUSIVEMODE;
     }
 
@@ -5620,6 +5644,7 @@ HRESULT ddraw_surface_create_texture(struct ddraw *ddraw, DDSURFACEDESC2 *desc,
             == (DDSCAPS_BACKBUFFER | DDSCAPS_PRIMARYSURFACE))
     {
         WARN("Tried to create a back buffer surface.\n");
+        HeapFree(GetProcessHeap(), 0, texture);
         return DDERR_INVALIDCAPS;
     }
 
@@ -5628,6 +5653,7 @@ HRESULT ddraw_surface_create_texture(struct ddraw *ddraw, DDSURFACEDESC2 *desc,
             == (DDSCAPS_VIDEOMEMORY | DDSCAPS_SYSTEMMEMORY))
     {
         WARN("Tried to create a surface in both system and video memory.\n");
+        HeapFree(GetProcessHeap(), 0, texture);
         return DDERR_INVALIDCAPS;
     }
 
@@ -5635,6 +5661,7 @@ HRESULT ddraw_surface_create_texture(struct ddraw *ddraw, DDSURFACEDESC2 *desc,
             && !(desc->ddsCaps.dwCaps2 & DDSCAPS2_CUBEMAP))
     {
         WARN("Cube map faces requested without cube map flag.\n");
+        HeapFree(GetProcessHeap(), 0, texture);
         return DDERR_INVALIDCAPS;
     }
 
@@ -5642,6 +5669,7 @@ HRESULT ddraw_surface_create_texture(struct ddraw *ddraw, DDSURFACEDESC2 *desc,
             && !(desc->ddsCaps.dwCaps2 & DDSCAPS2_CUBEMAP_ALLFACES))
     {
         WARN("Cube map without faces requested.\n");
+        HeapFree(GetProcessHeap(), 0, texture);
         return DDERR_INVALIDPARAMS;
     }
 
@@ -5654,12 +5682,14 @@ HRESULT ddraw_surface_create_texture(struct ddraw *ddraw, DDSURFACEDESC2 *desc,
         if (!(desc->ddsCaps.dwCaps & DDSCAPS_TEXTURE))
         {
             WARN("DDSCAPS2_TEXTUREMANAGE used without DDSCAPS_TEXTURE, returning DDERR_INVALIDCAPS.\n");
+            HeapFree(GetProcessHeap(), 0, texture);
             return DDERR_INVALIDCAPS;
         }
         if (desc->ddsCaps.dwCaps & (DDSCAPS_VIDEOMEMORY | DDSCAPS_SYSTEMMEMORY))
         {
             WARN("DDSCAPS2_TEXTUREMANAGE used width DDSCAPS_VIDEOMEMORY "
                     "or DDSCAPS_SYSTEMMEMORY, returning DDERR_INVALIDCAPS.\n");
+            HeapFree(GetProcessHeap(), 0, texture);
             return DDERR_INVALIDCAPS;
         }
     }
@@ -5667,6 +5697,7 @@ HRESULT ddraw_surface_create_texture(struct ddraw *ddraw, DDSURFACEDESC2 *desc,
     if (FAILED(hr = wined3d_get_adapter_display_mode(ddraw->wined3d, WINED3DADAPTER_DEFAULT, &mode, NULL)))
     {
         ERR("Failed to get display mode, hr %#x.\n", hr);
+        HeapFree(GetProcessHeap(), 0, texture);
         return hr;
     }
 
@@ -5682,6 +5713,7 @@ HRESULT ddraw_surface_create_texture(struct ddraw *ddraw, DDSURFACEDESC2 *desc,
     if (wined3d_desc.format == WINED3DFMT_UNKNOWN)
     {
         WARN("Unsupported / unknown pixelformat.\n");
+        HeapFree(GetProcessHeap(), 0, texture);
         return DDERR_INVALIDPIXELFORMAT;
     }
 
@@ -5691,6 +5723,7 @@ HRESULT ddraw_surface_create_texture(struct ddraw *ddraw, DDSURFACEDESC2 *desc,
         if (!(desc->ddsCaps.dwCaps & DDSCAPS_PRIMARYSURFACE))
         {
             WARN("No width / height specified.\n");
+            HeapFree(GetProcessHeap(), 0, texture);
             return DDERR_INVALIDPARAMS;
         }
 
@@ -5700,7 +5733,10 @@ HRESULT ddraw_surface_create_texture(struct ddraw *ddraw, DDSURFACEDESC2 *desc,
     }
 
     if (!desc->dwWidth || !desc->dwHeight)
+    {
+        HeapFree(GetProcessHeap(), 0, texture);
         return DDERR_INVALIDPARAMS;
+    }
 
     if (desc->ddsCaps.dwCaps & DDSCAPS_PRIMARYSURFACE)
     {
@@ -5720,6 +5756,7 @@ HRESULT ddraw_surface_create_texture(struct ddraw *ddraw, DDSURFACEDESC2 *desc,
                     &swapchain_desc, NULL, ddraw_reset_enum_callback, TRUE)))
             {
                 ERR("Failed to reset device.\n");
+                HeapFree(GetProcessHeap(), 0, texture);
                 return hr;
             }
         }
@@ -5749,7 +5786,10 @@ HRESULT ddraw_surface_create_texture(struct ddraw *ddraw, DDSURFACEDESC2 *desc,
             {
                 /* Mipmap count is given, should not be 0. */
                 if (!desc->u2.dwMipMapCount)
+                {
+                    HeapFree(GetProcessHeap(), 0, texture);
                     return DDERR_INVALIDPARAMS;
+                }
             }
             else
             {
@@ -5845,12 +5885,6 @@ HRESULT ddraw_surface_create_texture(struct ddraw *ddraw, DDSURFACEDESC2 *desc,
     if (desc->ddsCaps.dwCaps & DDSCAPS_OWNDC)
         wined3d_desc.usage |= WINED3DUSAGE_OWNDC;
 
-    if (!(texture = HeapAlloc(GetProcessHeap(), 0, sizeof(*texture))))
-        return E_OUTOFMEMORY;
-
-    texture->version = version;
-    copy_to_surfacedesc2(&texture->surface_desc, desc);
-
     if (desc->ddsCaps.dwCaps2 & DDSCAPS2_CUBEMAP)
     {
         wined3d_desc.resource_type = WINED3D_RTYPE_CUBE_TEXTURE;
@@ -5889,6 +5923,7 @@ HRESULT ddraw_surface_create_texture(struct ddraw *ddraw, DDSURFACEDESC2 *desc,
     resource = wined3d_texture_get_sub_resource(wined3d_texture, 0);
     root = wined3d_resource_get_parent(resource);
     root->wined3d_texture = wined3d_texture;
+    root->is_complex_root = TRUE;
     texture->root = root;
 
     for (i = 0; i < layers; ++i)
@@ -5984,6 +6019,8 @@ HRESULT ddraw_surface_create_texture(struct ddraw *ddraw, DDSURFACEDESC2 *desc,
         }
     }
 
+    if (surface_desc->ddsCaps.dwCaps & DDSCAPS_PRIMARYSURFACE)
+        ddraw->primary = root;
     *surface = root;
 
     return DD_OK;

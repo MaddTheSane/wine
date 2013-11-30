@@ -154,6 +154,7 @@ static inline NSUInteger adjusted_modifiers_for_option_behavior(NSUInteger modif
 {
     NSMutableArray* glContexts;
     NSMutableArray* pendingGlContexts;
+    BOOL clearedGlSurface;
 
     NSMutableAttributedString* markedText;
     NSRange markedTextSelection;
@@ -221,7 +222,14 @@ static inline NSUInteger adjusted_modifiers_for_option_behavior(NSUInteger modif
         WineWindow* window = (WineWindow*)[self window];
 
         for (WineOpenGLContext* context in pendingGlContexts)
+        {
+            if (!clearedGlSurface)
+            {
+                context.shouldClearToBlack = TRUE;
+                clearedGlSurface = TRUE;
+            }
             context.needsUpdate = TRUE;
+        }
         [glContexts addObjectsFromArray:pendingGlContexts];
         [pendingGlContexts removeAllObjects];
 
@@ -294,8 +302,23 @@ static inline NSUInteger adjusted_modifiers_for_option_behavior(NSUInteger modif
             glContexts = [[NSMutableArray alloc] init];
         if (!pendingGlContexts)
             pendingGlContexts = [[NSMutableArray alloc] init];
-        [pendingGlContexts addObject:context];
-        [self setNeedsDisplay:YES];
+
+        if ([[self window] windowNumber] > 0 && !NSIsEmptyRect([self visibleRect]))
+        {
+            [glContexts addObject:context];
+            if (!clearedGlSurface)
+            {
+                context.shouldClearToBlack = TRUE;
+                clearedGlSurface = TRUE;
+            }
+            context.needsUpdate = TRUE;
+        }
+        else
+        {
+            [pendingGlContexts addObject:context];
+            [self setNeedsDisplay:YES];
+        }
+
         [(WineWindow*)[self window] updateColorSpace];
     }
 
@@ -2407,7 +2430,7 @@ void macdrv_add_view_opengl_context(macdrv_view v, macdrv_opengl_context c)
     WineContentView* view = (WineContentView*)v;
     WineOpenGLContext *context = (WineOpenGLContext*)c;
 
-    OnMainThreadAsync(^{
+    OnMainThread(^{
         [view addGLContext:context];
     });
 

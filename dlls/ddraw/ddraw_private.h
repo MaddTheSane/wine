@@ -193,8 +193,8 @@ struct ddraw_texture
     struct ddraw_surface *root;
 };
 
-HRESULT ddraw_surface_create_texture(struct ddraw *ddraw, DDSURFACEDESC2 *desc,
-        unsigned int version, struct ddraw_surface **surface) DECLSPEC_HIDDEN;
+HRESULT ddraw_surface_create(struct ddraw *ddraw, const DDSURFACEDESC2 *surface_desc,
+        struct ddraw_surface **surface, IUnknown *outer_unknown, unsigned int version) DECLSPEC_HIDDEN;
 HRESULT ddraw_surface_init(struct ddraw_surface *surface, struct ddraw *ddraw, struct ddraw_texture *texture,
         struct wined3d_surface *wined3d_surface, const struct wined3d_parent_ops **parent_ops) DECLSPEC_HIDDEN;
 ULONG ddraw_surface_release_iface(struct ddraw_surface *This) DECLSPEC_HIDDEN;
@@ -607,18 +607,6 @@ struct member_info
     } while (0)
 
 #define DD_STRUCT_COPY_BYSIZE(to,from) DD_STRUCT_COPY_BYSIZE_(to,from,(from)->dwSize)
-
-#define SIZEOF_END_PADDING(type, last_field) \
-    (sizeof(type) - offsetof(type, last_field) - sizeof(((type *)0)->last_field))
-
-static inline void copy_to_surfacedesc2(DDSURFACEDESC2 *to, DDSURFACEDESC2 *from)
-{
-    DWORD from_size = from->dwSize;
-    if (from_size == sizeof(DDSURFACEDESC))
-        from_size -= SIZEOF_END_PADDING(DDSURFACEDESC, ddsCaps);
-    to->dwSize = sizeof(DDSURFACEDESC2); /* for struct copy */
-    DD_STRUCT_COPY_BYSIZE_(to, from, from_size);
-}
 
 HRESULT hr_ddraw_from_wined3d(HRESULT hr) DECLSPEC_HIDDEN;
 

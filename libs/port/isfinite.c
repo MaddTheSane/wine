@@ -1,7 +1,7 @@
 /*
- * MACDRV Cocoa OpenGL declarations
+ * isfinite function
  *
- * Copyright 2012, 2013 Ken Thomases for CodeWeavers Inc.
+ * Copyright 2013 Francois Gouget
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -18,17 +18,29 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA
  */
 
-#import <AppKit/AppKit.h>
+#include "config.h"
+#include "wine/port.h"
 
+#ifndef HAVE_ISFINITE
 
-@interface WineOpenGLContext : NSOpenGLContext
+#ifdef HAVE_IEEEFP_H
+#include <ieeefp.h>
+
+int isfinite(double x)
 {
-    NSView* latentView;
-    BOOL needsUpdate;
-    BOOL shouldClearToBlack;
+  return finite(x);
 }
 
-@property BOOL needsUpdate;
-@property BOOL shouldClearToBlack;
+#elif defined(HAVE_FLOAT_H) && defined(HAVE__FINITE)
+#include <float.h>
 
-@end
+int isfinite(double x)
+{
+  return _finite(x);
+}
+
+#else
+#error No isfinite() implementation available.
+#endif
+
+#endif /* HAVE_ISFINITE */
