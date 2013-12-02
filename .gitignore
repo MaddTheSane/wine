@@ -126,7 +126,6 @@ dlls/rpcrt4/tests/server_c.c
 dlls/rpcrt4/tests/server_s.c
 dlls/scrrun/scrrun.h
 dlls/scrrun/tests/scrrun.h
-dlls/shell32/AUTHORS
 dlls/sti/sti_wia.h
 dlls/sti/sti_wia_p.c
 dlls/urlmon/urlmon_urlmon.h
@@ -154,6 +153,7 @@ include/atliface.h
 include/audioclient.h
 include/audiopolicy.h
 include/austream.h
+include/bdaiface.h
 include/bits.h
 include/bits1_5.h
 include/bits3_0.h
