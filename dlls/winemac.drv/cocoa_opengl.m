@@ -19,6 +19,7 @@
  */
 
 #import "cocoa_opengl.h"
+#include <OpenGL/gl.h>
 
 #include "macdrv_cocoa.h"
 #include "cocoa_event.h"
