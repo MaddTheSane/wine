@@ -4817,6 +4817,498 @@ static void test_surface_discard(void)
     DestroyWindow(window);
 }
 
+static void test_flip(void)
+{
+    const DWORD placement = DDSCAPS_LOCALVIDMEM | DDSCAPS_VIDEOMEMORY | DDSCAPS_SYSTEMMEMORY;
+    IDirectDrawSurface4 *primary, *backbuffer1, *backbuffer2, *backbuffer3, *surface;
+    DDSCAPS2 caps = {DDSCAPS_FLIP, 0, 0, 0};
+    DDSURFACEDESC2 surface_desc;
+    BOOL sysmem_primary;
+    IDirectDraw4 *ddraw;
+    D3DCOLOR color;
+    ULONG refcount;
+    HWND window;
+    DDBLTFX fx;
+    HRESULT hr;
+
+    if (!(ddraw = create_ddraw()))
+    {
+        skip("Failed to create a ddraw object, skipping test.\n");
+        return;
+    }
+
+    window = CreateWindowA("static", "ddraw_test", WS_OVERLAPPEDWINDOW,
+            0, 0, 640, 480, 0, 0, 0, 0);
+
+    hr = IDirectDraw4_SetDisplayMode(ddraw, 640, 480, 32, 0, 0);
+    ok(SUCCEEDED(hr), "Failed to set display mode, hr %#x.\n", hr);
+    hr = IDirectDraw4_SetCooperativeLevel(ddraw, window, DDSCL_EXCLUSIVE | DDSCL_FULLSCREEN);
+    ok(SUCCEEDED(hr), "Failed to set cooperative level, hr %#x.\n", hr);
+
+    memset(&surface_desc, 0, sizeof(surface_desc));
+    surface_desc.dwSize = sizeof(surface_desc);
+    surface_desc.dwFlags = DDSD_CAPS | DDSD_BACKBUFFERCOUNT;
+    surface_desc.ddsCaps.dwCaps = DDSCAPS_PRIMARYSURFACE | DDSCAPS_COMPLEX | DDSCAPS_FLIP;
+    surface_desc.dwBackBufferCount = 3;
+    hr = IDirectDraw4_CreateSurface(ddraw, &surface_desc, &primary, NULL);
+    ok(SUCCEEDED(hr), "Failed to create surface, hr %#x.\n", hr);
+
+    memset(&surface_desc, 0, sizeof(surface_desc));
+    surface_desc.dwSize = sizeof(surface_desc);
+    hr = IDirectDrawSurface4_GetSurfaceDesc(primary, &surface_desc);
+    ok(SUCCEEDED(hr), "Failed to get surface desc, hr %#x.\n", hr);
+    ok((surface_desc.ddsCaps.dwCaps & ~placement)
+            == (DDSCAPS_VISIBLE | DDSCAPS_PRIMARYSURFACE | DDSCAPS_FRONTBUFFER | DDSCAPS_FLIP | DDSCAPS_COMPLEX),
+            "Got unexpected caps %#x.\n", surface_desc.ddsCaps.dwCaps);
+    sysmem_primary = surface_desc.ddsCaps.dwCaps & DDSCAPS_SYSTEMMEMORY;
+
+    hr = IDirectDrawSurface4_GetAttachedSurface(primary, &caps, &backbuffer1);
+    ok(SUCCEEDED(hr), "Failed to get attached surface, hr %#x.\n", hr);
+    memset(&surface_desc, 0, sizeof(surface_desc));
+    surface_desc.dwSize = sizeof(surface_desc);
+    hr = IDirectDrawSurface4_GetSurfaceDesc(backbuffer1, &surface_desc);
+    ok(SUCCEEDED(hr), "Failed to get surface desc, hr %#x.\n", hr);
+    ok((surface_desc.ddsCaps.dwCaps & ~placement) == (DDSCAPS_FLIP | DDSCAPS_COMPLEX | DDSCAPS_BACKBUFFER),
+            "Got unexpected caps %#x.\n", surface_desc.ddsCaps.dwCaps);
+
+    hr = IDirectDrawSurface4_GetAttachedSurface(backbuffer1, &caps, &backbuffer2);
+    ok(SUCCEEDED(hr), "Failed to get attached surface, hr %#x.\n", hr);
+    memset(&surface_desc, 0, sizeof(surface_desc));
+    surface_desc.dwSize = sizeof(surface_desc);
+    hr = IDirectDrawSurface4_GetSurfaceDesc(backbuffer2, &surface_desc);
+    ok(SUCCEEDED(hr), "Failed to get surface desc, hr %#x.\n", hr);
+    ok((surface_desc.ddsCaps.dwCaps & ~placement) == (DDSCAPS_FLIP | DDSCAPS_COMPLEX),
+            "Got unexpected caps %#x.\n", surface_desc.ddsCaps.dwCaps);
+
+    hr = IDirectDrawSurface4_GetAttachedSurface(backbuffer2, &caps, &backbuffer3);
+    ok(SUCCEEDED(hr), "Failed to get attached surface, hr %#x.\n", hr);
+    memset(&surface_desc, 0, sizeof(surface_desc));
+    surface_desc.dwSize = sizeof(surface_desc);
+    hr = IDirectDrawSurface4_GetSurfaceDesc(backbuffer3, &surface_desc);
+    ok(SUCCEEDED(hr), "Failed to get surface desc, hr %#x.\n", hr);
+    ok((surface_desc.ddsCaps.dwCaps & ~placement) == (DDSCAPS_FLIP | DDSCAPS_COMPLEX),
+            "Got unexpected caps %#x.\n", surface_desc.ddsCaps.dwCaps);
+
+    hr = IDirectDrawSurface4_GetAttachedSurface(backbuffer3, &caps, &surface);
+    todo_wine ok(SUCCEEDED(hr), "Failed to get attached surface, hr %#x.\n", hr);
+    todo_wine ok(surface == primary, "Got unexpected surface %p, expected %p.\n", surface, primary);
+    if (surface)
+        IDirectDrawSurface4_Release(surface);
+
+    memset(&surface_desc, 0, sizeof(surface_desc));
+    surface_desc.dwSize = sizeof(surface_desc);
+    surface_desc.dwFlags = DDSD_CAPS | DDSD_WIDTH | DDSD_HEIGHT;
+    surface_desc.ddsCaps.dwCaps = 0;
+    surface_desc.dwWidth = 640;
+    surface_desc.dwHeight = 480;
+    hr = IDirectDraw4_CreateSurface(ddraw, &surface_desc, &surface, NULL);
+    ok(SUCCEEDED(hr), "Failed to create surface, hr %#x.\n", hr);
+    hr = IDirectDrawSurface4_Flip(primary, surface, DDFLIP_WAIT);
+    todo_wine ok(hr == DDERR_NOTFLIPPABLE, "Got unexpected hr %#x.\n", hr);
+    IDirectDrawSurface4_Release(surface);
+
+    hr = IDirectDrawSurface4_Flip(primary, primary, DDFLIP_WAIT);
+    todo_wine ok(hr == DDERR_NOTFLIPPABLE, "Got unexpected hr %#x.\n", hr);
+    hr = IDirectDrawSurface4_Flip(backbuffer1, NULL, DDFLIP_WAIT);
+    ok(hr == DDERR_NOTFLIPPABLE, "Got unexpected hr %#x.\n", hr);
+    hr = IDirectDrawSurface4_Flip(backbuffer2, NULL, DDFLIP_WAIT);
+    ok(hr == DDERR_NOTFLIPPABLE, "Got unexpected hr %#x.\n", hr);
+    hr = IDirectDrawSurface4_Flip(backbuffer3, NULL, DDFLIP_WAIT);
+    ok(hr == DDERR_NOTFLIPPABLE, "Got unexpected hr %#x.\n", hr);
+
+    memset(&fx, 0, sizeof(fx));
+    fx.dwSize = sizeof(fx);
+    U5(fx).dwFillColor = 0xffff0000;
+    hr = IDirectDrawSurface4_Blt(backbuffer1, NULL, NULL, NULL, DDBLT_COLORFILL | DDBLT_WAIT, &fx);
+    ok(SUCCEEDED(hr), "Failed to fill surface, hr %#x.\n", hr);
+    U5(fx).dwFillColor = 0xff00ff00;
+    hr = IDirectDrawSurface4_Blt(backbuffer2, NULL, NULL, NULL, DDBLT_COLORFILL | DDBLT_WAIT, &fx);
+    ok(SUCCEEDED(hr), "Failed to fill surface, hr %#x.\n", hr);
+    U5(fx).dwFillColor = 0xff0000ff;
+    hr = IDirectDrawSurface4_Blt(backbuffer3, NULL, NULL, NULL, DDBLT_COLORFILL | DDBLT_WAIT, &fx);
+    ok(SUCCEEDED(hr), "Failed to fill surface, hr %#x.\n", hr);
+
+    hr = IDirectDrawSurface4_Flip(primary, NULL, DDFLIP_WAIT);
+    ok(SUCCEEDED(hr), "Failed to flip, hr %#x.\n", hr);
+    color = get_surface_color(backbuffer1, 320, 240);
+    /* The testbot seems to just copy the contents of one surface to all the
+     * others, instead of properly flipping. */
+    todo_wine ok(compare_color(color, 0x0000ff00, 1) || broken(sysmem_primary && compare_color(color, 0x000000ff, 1)),
+            "Got unexpected color 0x%08x.\n", color);
+    color = get_surface_color(backbuffer2, 320, 240);
+    todo_wine ok(compare_color(color, 0x000000ff, 1), "Got unexpected color 0x%08x.\n", color);
+    U5(fx).dwFillColor = 0xffff0000;
+    hr = IDirectDrawSurface4_Blt(backbuffer3, NULL, NULL, NULL, DDBLT_COLORFILL | DDBLT_WAIT, &fx);
+    ok(SUCCEEDED(hr), "Failed to fill surface, hr %#x.\n", hr);
+
+    hr = IDirectDrawSurface4_Flip(primary, NULL, DDFLIP_WAIT);
+    ok(SUCCEEDED(hr), "Failed to flip, hr %#x.\n", hr);
+    color = get_surface_color(backbuffer1, 320, 240);
+    todo_wine ok(compare_color(color, 0x000000ff, 1) || broken(sysmem_primary && compare_color(color, 0x00ff0000, 1)),
+            "Got unexpected color 0x%08x.\n", color);
+    color = get_surface_color(backbuffer2, 320, 240);
+    todo_wine ok(compare_color(color, 0x00ff0000, 1), "Got unexpected color 0x%08x.\n", color);
+    U5(fx).dwFillColor = 0xff00ff00;
+    hr = IDirectDrawSurface4_Blt(backbuffer3, NULL, NULL, NULL, DDBLT_COLORFILL | DDBLT_WAIT, &fx);
+    ok(SUCCEEDED(hr), "Failed to fill surface, hr %#x.\n", hr);
+
+    hr = IDirectDrawSurface4_Flip(primary, NULL, DDFLIP_WAIT);
+    ok(SUCCEEDED(hr), "Failed to flip, hr %#x.\n", hr);
+    color = get_surface_color(backbuffer1, 320, 240);
+    todo_wine ok(compare_color(color, 0x00ff0000, 1) || broken(sysmem_primary && compare_color(color, 0x0000ff00, 1)),
+            "Got unexpected color 0x%08x.\n", color);
+    color = get_surface_color(backbuffer2, 320, 240);
+    ok(compare_color(color, 0x0000ff00, 1), "Got unexpected color 0x%08x.\n", color);
+    U5(fx).dwFillColor = 0xff0000ff;
+    hr = IDirectDrawSurface4_Blt(backbuffer3, NULL, NULL, NULL, DDBLT_COLORFILL | DDBLT_WAIT, &fx);
+    ok(SUCCEEDED(hr), "Failed to fill surface, hr %#x.\n", hr);
+
+    hr = IDirectDrawSurface4_Flip(primary, backbuffer1, DDFLIP_WAIT);
+    ok(SUCCEEDED(hr), "Failed to flip, hr %#x.\n", hr);
+    color = get_surface_color(backbuffer2, 320, 240);
+    ok(compare_color(color, 0x0000ff00, 1) || broken(sysmem_primary && compare_color(color, 0x000000ff, 1)),
+            "Got unexpected color 0x%08x.\n", color);
+    color = get_surface_color(backbuffer3, 320, 240);
+    ok(compare_color(color, 0x000000ff, 1), "Got unexpected color 0x%08x.\n", color);
+    U5(fx).dwFillColor = 0xffff0000;
+    hr = IDirectDrawSurface4_Blt(backbuffer1, NULL, NULL, NULL, DDBLT_COLORFILL | DDBLT_WAIT, &fx);
+    ok(SUCCEEDED(hr), "Failed to fill surface, hr %#x.\n", hr);
+
+    hr = IDirectDrawSurface4_Flip(primary, backbuffer2, DDFLIP_WAIT);
+    ok(SUCCEEDED(hr), "Failed to flip, hr %#x.\n", hr);
+    color = get_surface_color(backbuffer1, 320, 240);
+    ok(compare_color(color, 0x00ff0000, 1), "Got unexpected color 0x%08x.\n", color);
+    color = get_surface_color(backbuffer3, 320, 240);
+    ok(compare_color(color, 0x000000ff, 1) || broken(sysmem_primary && compare_color(color, 0x00ff0000, 1)),
+            "Got unexpected color 0x%08x.\n", color);
+    U5(fx).dwFillColor = 0xff00ff00;
+    hr = IDirectDrawSurface4_Blt(backbuffer2, NULL, NULL, NULL, DDBLT_COLORFILL | DDBLT_WAIT, &fx);
+    ok(SUCCEEDED(hr), "Failed to fill surface, hr %#x.\n", hr);
+
+    hr = IDirectDrawSurface4_Flip(primary, backbuffer3, DDFLIP_WAIT);
+    ok(SUCCEEDED(hr), "Failed to flip, hr %#x.\n", hr);
+    color = get_surface_color(backbuffer1, 320, 240);
+    ok(compare_color(color, 0x00ff0000, 1) || broken(sysmem_primary && compare_color(color, 0x0000ff00, 1)),
+            "Got unexpected color 0x%08x.\n", color);
+    color = get_surface_color(backbuffer2, 320, 240);
+    ok(compare_color(color, 0x0000ff00, 1), "Got unexpected color 0x%08x.\n", color);
+
+    IDirectDrawSurface4_Release(backbuffer3);
+    IDirectDrawSurface4_Release(backbuffer2);
+    IDirectDrawSurface4_Release(backbuffer1);
+    IDirectDrawSurface4_Release(primary);
+    refcount = IDirectDraw4_Release(ddraw);
+    ok(refcount == 0, "The ddraw object was not properly freed, refcount %u.\n", refcount);
+    DestroyWindow(window);
+}
+
+static void reset_ddsd(DDSURFACEDESC2 *ddsd)
+{
+    memset(ddsd, 0, sizeof(*ddsd));
+    ddsd->dwSize = sizeof(*ddsd);
+}
+
+static void test_set_surface_desc(void)
+{
+    IDirectDraw4 *ddraw;
+    HWND window;
+    HRESULT hr;
+    DDSURFACEDESC2 ddsd;
+    IDirectDrawSurface4 *surface;
+    BYTE data[16*16*4];
+    ULONG ref;
+    unsigned int i;
+    static const struct
+    {
+        DWORD caps, caps2;
+        BOOL supported;
+        const char *name;
+    }
+    invalid_caps_tests[] =
+    {
+        {DDSCAPS_VIDEOMEMORY, 0, FALSE, "videomemory plain"},
+        {DDSCAPS_TEXTURE | DDSCAPS_SYSTEMMEMORY, 0, TRUE, "systemmemory texture"},
+        {DDSCAPS_TEXTURE, DDSCAPS2_D3DTEXTUREMANAGE, FALSE, "managed texture"},
+        {DDSCAPS_TEXTURE, DDSCAPS2_TEXTUREMANAGE, FALSE, "managed texture"},
+    };
+
+    if (!(ddraw = create_ddraw()))
+    {
+        skip("Failed to create a ddraw object, skipping test.\n");
+        return;
+    }
+
+    window = CreateWindowA("static", "ddraw_test", WS_OVERLAPPEDWINDOW,
+            0, 0, 640, 480, 0, 0, 0, 0);
+
+    hr = IDirectDraw2_SetCooperativeLevel(ddraw, window, DDSCL_NORMAL);
+    ok(SUCCEEDED(hr), "Failed to set cooperative level, hr %#x.\n", hr);
+
+    reset_ddsd(&ddsd);
+    ddsd.dwFlags = DDSD_WIDTH | DDSD_HEIGHT | DDSD_CAPS | DDSD_PIXELFORMAT;
+    ddsd.dwWidth = 8;
+    ddsd.dwHeight = 8;
+    ddsd.ddpfPixelFormat.dwSize = sizeof(ddsd.ddpfPixelFormat);
+    ddsd.ddpfPixelFormat.dwFlags = DDPF_RGB;
+    U1(ddsd.ddpfPixelFormat).dwRGBBitCount = 32;
+    U2(ddsd.ddpfPixelFormat).dwRBitMask = 0x00ff0000;
+    U3(ddsd.ddpfPixelFormat).dwGBitMask = 0x0000ff00;
+    U4(ddsd.ddpfPixelFormat).dwBBitMask = 0x000000ff;
+    ddsd.ddsCaps.dwCaps = DDSCAPS_SYSTEMMEMORY;
+
+    hr = IDirectDraw4_CreateSurface(ddraw, &ddsd, &surface, NULL);
+    ok(SUCCEEDED(hr), "Failed to create surface, hr %#x.\n", hr);
+
+    reset_ddsd(&ddsd);
+    ddsd.dwFlags = DDSD_LPSURFACE;
+    ddsd.lpSurface = data;
+    hr = IDirectDrawSurface4_SetSurfaceDesc(surface, &ddsd, 0);
+    ok(SUCCEEDED(hr), "Failed to set surface desc, hr %#x.\n", hr);
+
+    /* Redundantly setting the same lpSurface is not an error. */
+    hr = IDirectDrawSurface4_SetSurfaceDesc(surface, &ddsd, 0);
+    ok(SUCCEEDED(hr), "Failed to set surface desc, hr %#x.\n", hr);
+    hr = IDirectDrawSurface4_GetSurfaceDesc(surface, &ddsd);
+    ok(SUCCEEDED(hr), "Failed to get surface desc, hr %#x.\n", hr);
+    ok(!(ddsd.dwFlags & DDSD_LPSURFACE), "DDSD_LPSURFACE is set.\n");
+    ok(ddsd.lpSurface == NULL, "lpSurface is %p, expected NULL.\n", ddsd.lpSurface);
+
+    hr = IDirectDrawSurface4_Lock(surface, NULL, &ddsd, 0, NULL);
+    ok(SUCCEEDED(hr), "Failed to lock surface, hr %#x.\n", hr);
+    ok(!(ddsd.dwFlags & DDSD_LPSURFACE), "DDSD_LPSURFACE is set.\n");
+    ok(ddsd.lpSurface == data, "lpSurface is %p, expected %p.\n", data, data);
+    hr = IDirectDrawSurface4_Unlock(surface, NULL);
+    ok(SUCCEEDED(hr), "Failed to unlock surface, hr %#x.\n", hr);
+
+    reset_ddsd(&ddsd);
+    ddsd.dwFlags = DDSD_LPSURFACE;
+    ddsd.lpSurface = data;
+    hr = IDirectDrawSurface4_SetSurfaceDesc(surface, &ddsd, 1);
+    ok(hr == DDERR_INVALIDPARAMS, "SetSurfaceDesc with flags=1 returned %#x.\n", hr);
+
+    ddsd.lpSurface = NULL;
+    hr = IDirectDrawSurface4_SetSurfaceDesc(surface, &ddsd, 0);
+    ok(hr == DDERR_INVALIDPARAMS, "Setting lpSurface=NULL returned %#x.\n", hr);
+
+    hr = IDirectDrawSurface4_SetSurfaceDesc(surface, NULL, 0);
+    ok(hr == DDERR_INVALIDPARAMS, "SetSurfaceDesc with NULL desc returned %#x.\n", hr);
+
+    hr = IDirectDrawSurface4_GetSurfaceDesc(surface, &ddsd);
+    ok(SUCCEEDED(hr), "Failed to get surface desc, hr %#x.\n", hr);
+    ok(ddsd.ddsCaps.dwCaps == DDSCAPS_SYSTEMMEMORY, "Got unexpected caps %#x.\n", ddsd.ddsCaps.dwCaps);
+    ok(ddsd.ddsCaps.dwCaps2 == 0, "Got unexpected caps2 %#x.\n", 0);
+
+    /* Setting the caps is an error. This also means the original description cannot be reapplied. */
+    hr = IDirectDrawSurface4_SetSurfaceDesc(surface, &ddsd, 0);
+    ok(hr == DDERR_INVALIDPARAMS, "Setting the original desc returned %#x.\n", hr);
+
+    ddsd.dwFlags = DDSD_CAPS;
+    hr = IDirectDrawSurface4_SetSurfaceDesc(surface, &ddsd, 0);
+    ok(hr == DDERR_INVALIDPARAMS, "Setting DDSD_CAPS returned %#x.\n", hr);
+
+    /* dwCaps = 0 is allowed, but ignored. Caps2 can be anything and is ignored too. */
+    ddsd.dwFlags = DDSD_CAPS | DDSD_LPSURFACE;
+    ddsd.lpSurface = data;
+    hr = IDirectDrawSurface4_SetSurfaceDesc(surface, &ddsd, 0);
+    ok(hr == DDERR_INVALIDCAPS, "Setting DDSD_CAPS returned %#x.\n", hr);
+    ddsd.ddsCaps.dwCaps = DDSCAPS_SYSTEMMEMORY;
+    hr = IDirectDrawSurface4_SetSurfaceDesc(surface, &ddsd, 0);
+    ok(hr == DDERR_INVALIDCAPS, "Setting DDSD_CAPS returned %#x.\n", hr);
+    ddsd.ddsCaps.dwCaps = 0;
+    ddsd.ddsCaps.dwCaps2 = 0xdeadbeef;
+    hr = IDirectDrawSurface4_SetSurfaceDesc(surface, &ddsd, 0);
+    ok(SUCCEEDED(hr), "Failed to set surface desc, hr %#x.\n", hr);
+
+    hr = IDirectDrawSurface4_GetSurfaceDesc(surface, &ddsd);
+    ok(SUCCEEDED(hr), "Failed to get surface desc, hr %#x.\n", hr);
+    ok(ddsd.ddsCaps.dwCaps == DDSCAPS_SYSTEMMEMORY, "Got unexpected caps %#x.\n", ddsd.ddsCaps.dwCaps);
+    ok(ddsd.ddsCaps.dwCaps2 == 0, "Got unexpected caps2 %#x.\n", 0);
+
+    /* Setting the height is allowed, but it cannot be set to 0, and only if LPSURFACE is set too. */
+    reset_ddsd(&ddsd);
+    ddsd.dwFlags = DDSD_HEIGHT;
+    ddsd.dwHeight = 16;
+    hr = IDirectDrawSurface4_SetSurfaceDesc(surface, &ddsd, 0);
+    ok(hr == DDERR_INVALIDPARAMS, "Setting height without lpSurface returned %#x.\n", hr);
+
+    ddsd.lpSurface = data;
+    ddsd.dwFlags = DDSD_HEIGHT | DDSD_LPSURFACE;
+    hr = IDirectDrawSurface4_SetSurfaceDesc(surface, &ddsd, 0);
+    ok(SUCCEEDED(hr), "Failed to set surface desc, hr %#x.\n", hr);
+
+    ddsd.dwHeight = 0;
+    hr = IDirectDrawSurface4_SetSurfaceDesc(surface, &ddsd, 0);
+    ok(hr == DDERR_INVALIDPARAMS, "Setting height=0 returned %#x.\n", hr);
+
+    reset_ddsd(&ddsd);
+    hr = IDirectDrawSurface4_GetSurfaceDesc(surface, &ddsd);
+    ok(SUCCEEDED(hr), "GetSurfaceDesc failed, hr %#x.\n", hr);
+    ok(ddsd.dwWidth == 8, "SetSurfaceDesc: Expected width 8, got %u.\n", ddsd.dwWidth);
+    ok(ddsd.dwHeight == 16, "SetSurfaceDesc: Expected height 16, got %u.\n", ddsd.dwHeight);
+
+    /* Pitch and width can be set, but only together, and only with LPSURFACE. They must not be 0 */
+    reset_ddsd(&ddsd);
+    ddsd.dwFlags = DDSD_PITCH;
+    U1(ddsd).lPitch = 8 * 4;
+    hr = IDirectDrawSurface4_SetSurfaceDesc(surface, &ddsd, 0);
+    ok(hr == DDERR_INVALIDPARAMS, "Setting pitch without lpSurface or width returned %#x.\n", hr);
+
+    ddsd.dwFlags = DDSD_WIDTH;
+    ddsd.dwWidth = 16;
+    hr = IDirectDrawSurface4_SetSurfaceDesc(surface, &ddsd, 0);
+    ok(hr == DDERR_INVALIDPARAMS, "Setting width without lpSurface or pitch returned %#x.\n", hr);
+
+    ddsd.dwFlags = DDSD_PITCH | DDSD_LPSURFACE;
+    ddsd.lpSurface = data;
+    hr = IDirectDrawSurface4_SetSurfaceDesc(surface, &ddsd, 0);
+    ok(hr == DDERR_INVALIDPARAMS, "Setting pitch and lpSurface without width returned %#x.\n", hr);
+
+    ddsd.dwFlags = DDSD_WIDTH | DDSD_LPSURFACE;
+    hr = IDirectDrawSurface4_SetSurfaceDesc(surface, &ddsd, 0);
+    ok(hr == DDERR_INVALIDPARAMS, "Setting width and lpSurface without pitch returned %#x.\n", hr);
+
+    ddsd.dwFlags = DDSD_WIDTH | DDSD_PITCH | DDSD_LPSURFACE;
+    U1(ddsd).lPitch = 16 * 4;
+    ddsd.dwWidth = 16;
+    hr = IDirectDrawSurface4_SetSurfaceDesc(surface, &ddsd, 0);
+    ok(SUCCEEDED(hr), "Failed to set surface desc, hr %#x.\n", hr);
+
+    reset_ddsd(&ddsd);
+    hr = IDirectDrawSurface4_GetSurfaceDesc(surface, &ddsd);
+    ok(SUCCEEDED(hr), "Failed to get surface desc, hr %#x.\n", hr);
+    ok(ddsd.dwWidth == 16, "SetSurfaceDesc: Expected width 8, got %u.\n", ddsd.dwWidth);
+    ok(ddsd.dwHeight == 16, "SetSurfaceDesc: Expected height 16, got %u.\n", ddsd.dwHeight);
+    ok(U1(ddsd).lPitch == 16 * 4, "SetSurfaceDesc: Expected pitch 64, got %u.\n", U1(ddsd).lPitch);
+
+    /* The pitch must be 32 bit aligned and > 0, but is not verified for sanity otherwise.
+     *
+     * VMware rejects those calls, but all real drivers accept it. Mark the VMware behavior broken. */
+    ddsd.dwFlags = DDSD_WIDTH | DDSD_PITCH | DDSD_LPSURFACE;
+    U1(ddsd).lPitch = 4 * 4;
+    ddsd.lpSurface = data;
+    hr = IDirectDrawSurface4_SetSurfaceDesc(surface, &ddsd, 0);
+    ok(SUCCEEDED(hr) || broken(hr == DDERR_INVALIDPARAMS), "Failed to set surface desc, hr %#x.\n", hr);
+
+    U1(ddsd).lPitch = 4;
+    hr = IDirectDrawSurface4_SetSurfaceDesc(surface, &ddsd, 0);
+    ok(SUCCEEDED(hr) || broken(hr == DDERR_INVALIDPARAMS), "Failed to set surface desc, hr %#x.\n", hr);
+
+    U1(ddsd).lPitch = 16 * 4 + 1;
+    hr = IDirectDrawSurface4_SetSurfaceDesc(surface, &ddsd, 0);
+    ok(hr == DDERR_INVALIDPARAMS, "Setting misaligned pitch returned %#x.\n", hr);
+
+    U1(ddsd).lPitch = 16 * 4 + 3;
+    hr = IDirectDrawSurface4_SetSurfaceDesc(surface, &ddsd, 0);
+    ok(hr == DDERR_INVALIDPARAMS, "Setting misaligned pitch returned %#x.\n", hr);
+
+    U1(ddsd).lPitch = -4;
+    hr = IDirectDrawSurface4_SetSurfaceDesc(surface, &ddsd, 0);
+    ok(hr == DDERR_INVALIDPARAMS, "Setting negative pitch returned %#x.\n", hr);
+
+    U1(ddsd).lPitch = 16 * 4;
+    hr = IDirectDrawSurface4_SetSurfaceDesc(surface, &ddsd, 0);
+    ok(SUCCEEDED(hr), "Failed to set surface desc, hr %#x.\n", hr);
+
+    reset_ddsd(&ddsd);
+    ddsd.dwFlags = DDSD_WIDTH | DDSD_PITCH | DDSD_LPSURFACE;
+    U1(ddsd).lPitch = 0;
+    ddsd.dwWidth = 16;
+    ddsd.lpSurface = data;
+    hr = IDirectDrawSurface4_SetSurfaceDesc(surface, &ddsd, 0);
+    ok(hr == DDERR_INVALIDPARAMS, "Setting zero pitch returned %#x.\n", hr);
+
+    ddsd.dwFlags = DDSD_WIDTH | DDSD_PITCH | DDSD_LPSURFACE;
+    U1(ddsd).lPitch = 16 * 4;
+    ddsd.dwWidth = 0;
+    hr = IDirectDrawSurface4_SetSurfaceDesc(surface, &ddsd, 0);
+    ok(hr == DDERR_INVALIDPARAMS, "Setting zero width returned %#x.\n", hr);
+
+    /* Setting the pixelformat without LPSURFACE is an error, but with LPSURFACE it works. */
+    ddsd.dwFlags = DDSD_PIXELFORMAT;
+    ddsd.ddpfPixelFormat.dwSize = sizeof(ddsd.ddpfPixelFormat);
+    ddsd.ddpfPixelFormat.dwFlags = DDPF_RGB;
+    U1(ddsd.ddpfPixelFormat).dwRGBBitCount = 32;
+    U2(ddsd.ddpfPixelFormat).dwRBitMask = 0x00ff0000;
+    U3(ddsd.ddpfPixelFormat).dwGBitMask = 0x0000ff00;
+    U4(ddsd.ddpfPixelFormat).dwBBitMask = 0x000000ff;
+    hr = IDirectDrawSurface4_SetSurfaceDesc(surface, &ddsd, 0);
+    ok(hr == DDERR_INVALIDPARAMS, "Setting the pixel format returned %#x.\n", hr);
+
+    ddsd.dwFlags = DDSD_PIXELFORMAT | DDSD_LPSURFACE;
+    hr = IDirectDrawSurface4_SetSurfaceDesc(surface, &ddsd, 0);
+    ok(SUCCEEDED(hr), "Failed to set surface desc, hr %#x.\n", hr);
+
+    /* Can't set color keys. */
+    reset_ddsd(&ddsd);
+    ddsd.dwFlags = DDSD_CKSRCBLT;
+    ddsd.ddckCKSrcBlt.dwColorSpaceLowValue = 0x00ff0000;
+    ddsd.ddckCKSrcBlt.dwColorSpaceHighValue = 0x00ff0000;
+    hr = IDirectDrawSurface4_SetSurfaceDesc(surface, &ddsd, 0);
+    ok(hr == DDERR_INVALIDPARAMS, "Setting ddckCKSrcBlt returned %#x.\n", hr);
+
+    ddsd.dwFlags = DDSD_CKSRCBLT | DDSD_LPSURFACE;
+    ddsd.lpSurface = data;
+    hr = IDirectDrawSurface4_SetSurfaceDesc(surface, &ddsd, 0);
+    ok(hr == DDERR_INVALIDPARAMS, "Setting ddckCKSrcBlt returned %#x.\n", hr);
+
+    IDirectDrawSurface4_Release(surface);
+
+    /* SetSurfaceDesc needs systemmemory surfaces.
+     *
+     * As a sidenote, fourcc surfaces aren't allowed in sysmem, thus testing DDSD_LINEARSIZE is moot. */
+    for (i = 0; i < sizeof(invalid_caps_tests) / sizeof(*invalid_caps_tests); i++)
+    {
+        reset_ddsd(&ddsd);
+        ddsd.dwFlags = DDSD_WIDTH | DDSD_HEIGHT | DDSD_CAPS | DDSD_PIXELFORMAT;
+        ddsd.dwWidth = 8;
+        ddsd.dwHeight = 8;
+        ddsd.ddpfPixelFormat.dwSize = sizeof(ddsd.ddpfPixelFormat);
+        ddsd.ddpfPixelFormat.dwFlags = DDPF_RGB;
+        U1(ddsd.ddpfPixelFormat).dwRGBBitCount = 32;
+        U2(ddsd.ddpfPixelFormat).dwRBitMask = 0x00ff0000;
+        U3(ddsd.ddpfPixelFormat).dwGBitMask = 0x0000ff00;
+        U4(ddsd.ddpfPixelFormat).dwBBitMask = 0x000000ff;
+        ddsd.ddsCaps.dwCaps = invalid_caps_tests[i].caps;
+        ddsd.ddsCaps.dwCaps2 = invalid_caps_tests[i].caps2;
+
+        hr = IDirectDraw4_CreateSurface(ddraw, &ddsd, &surface, NULL);
+        ok(SUCCEEDED(hr) || hr == DDERR_NODIRECTDRAWHW, "Failed to create surface, hr %#x.\n", hr);
+        if (FAILED(hr))
+        {
+            skip("Cannot create a %s surface, skipping vidmem SetSurfaceDesc test.\n",
+                    invalid_caps_tests[i].name);
+            goto done;
+        }
+
+        reset_ddsd(&ddsd);
+        ddsd.dwFlags = DDSD_LPSURFACE;
+        ddsd.lpSurface = data;
+        hr = IDirectDrawSurface4_SetSurfaceDesc(surface, &ddsd, 0);
+        if (invalid_caps_tests[i].supported)
+        {
+            ok(SUCCEEDED(hr), "Failed to set surface desc, hr %#x.\n", hr);
+        }
+        else
+        {
+            ok(hr == DDERR_INVALIDSURFACETYPE, "SetSurfaceDesc on a %s surface returned %#x.\n",
+                    invalid_caps_tests[i].name, hr);
+
+            /* Check priority of error conditions. */
+            ddsd.dwFlags = DDSD_WIDTH;
+            hr = IDirectDrawSurface4_SetSurfaceDesc(surface, &ddsd, 0);
+            ok(hr == DDERR_INVALIDSURFACETYPE, "SetSurfaceDesc on a %s surface returned %#x.\n",
+                    invalid_caps_tests[i].name, hr);
+        }
+
+        IDirectDrawSurface4_Release(surface);
+    }
+
+done:
+    ref = IDirectDraw4_Release(ddraw);
+    ok(ref == 0, "Ddraw object not properly released, refcount %u.\n", ref);
+    DestroyWindow(window);
+}
+
 START_TEST(ddraw4)
 {
     test_process_vertices();
@@ -4853,4 +5345,6 @@ START_TEST(ddraw4)
     test_rt_caps();
     test_surface_lock();
     test_surface_discard();
+    test_flip();
+    test_set_surface_desc();
 }

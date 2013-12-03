@@ -939,7 +939,7 @@ static HRESULT surface_lock(struct ddraw_surface *This,
         }
     }
 
-    if (This->surface_desc.ddsCaps.dwCaps & DDSCAPS_FRONTBUFFER)
+    if (This->surface_desc.ddsCaps.dwCaps & DDSCAPS_PRIMARYSURFACE)
         hr = ddraw_surface_update_frontbuffer(This, Rect, TRUE);
     if (SUCCEEDED(hr))
         hr = wined3d_surface_map(This->wined3d_surface, &map_desc, Rect, Flags);
@@ -959,7 +959,7 @@ static HRESULT surface_lock(struct ddraw_surface *This,
         }
     }
 
-    if (This->surface_desc.ddsCaps.dwCaps & DDSCAPS_FRONTBUFFER)
+    if (This->surface_desc.ddsCaps.dwCaps & DDSCAPS_PRIMARYSURFACE)
     {
         if (Flags & DDLOCK_READONLY)
             memset(&This->ddraw->primary_lock, 0, sizeof(This->ddraw->primary_lock));
@@ -1121,7 +1121,7 @@ static HRESULT WINAPI ddraw_surface7_Unlock(IDirectDrawSurface7 *iface, RECT *pR
     hr = wined3d_surface_unmap(surface->wined3d_surface);
     if (SUCCEEDED(hr))
     {
-        if (surface->surface_desc.ddsCaps.dwCaps & DDSCAPS_FRONTBUFFER)
+        if (surface->surface_desc.ddsCaps.dwCaps & DDSCAPS_PRIMARYSURFACE)
             hr = ddraw_surface_update_frontbuffer(surface, &surface->ddraw->primary_lock, FALSE);
         surface->surface_desc.lpSurface = NULL;
     }
@@ -1197,10 +1197,8 @@ static HRESULT WINAPI ddraw_surface7_Flip(IDirectDrawSurface7 *iface, IDirectDra
 
     TRACE("iface %p, dst %p, flags %#x.\n", iface, DestOverride, Flags);
 
-    /* Flip has to be called from a front buffer
-     * What about overlay surfaces, AFAIK they can flip too? */
     if (!(surface->surface_desc.ddsCaps.dwCaps & (DDSCAPS_FRONTBUFFER | DDSCAPS_OVERLAY)))
-        return DDERR_INVALIDOBJECT; /* Unchecked */
+        return DDERR_NOTFLIPPABLE;
 
     wined3d_mutex_lock();
 
@@ -1225,7 +1223,7 @@ static HRESULT WINAPI ddraw_surface7_Flip(IDirectDrawSurface7 *iface, IDirectDra
     }
 
     hr = wined3d_surface_flip(surface->wined3d_surface, Override->wined3d_surface, Flags);
-    if (SUCCEEDED(hr) && surface->surface_desc.ddsCaps.dwCaps & DDSCAPS_FRONTBUFFER)
+    if (SUCCEEDED(hr) && surface->surface_desc.ddsCaps.dwCaps & DDSCAPS_PRIMARYSURFACE)
         hr = ddraw_surface_update_frontbuffer(surface, NULL, FALSE);
 
     wined3d_mutex_unlock();
@@ -1292,12 +1290,12 @@ static HRESULT ddraw_surface_blt_clipped(struct ddraw_surface *dst_surface, cons
 
     if (!dst_surface->clipper)
     {
-        if (src_surface && src_surface->surface_desc.ddsCaps.dwCaps & DDSCAPS_FRONTBUFFER)
+        if (src_surface && src_surface->surface_desc.ddsCaps.dwCaps & DDSCAPS_PRIMARYSURFACE)
             hr = ddraw_surface_update_frontbuffer(src_surface, src_rect_in, TRUE);
         if (SUCCEEDED(hr))
             hr = wined3d_surface_blt(dst_surface->wined3d_surface, dst_rect_in,
                     wined3d_src_surface, src_rect_in, flags, fx, filter);
-        if (SUCCEEDED(hr) && (dst_surface->surface_desc.ddsCaps.dwCaps & DDSCAPS_FRONTBUFFER))
+        if (SUCCEEDED(hr) && (dst_surface->surface_desc.ddsCaps.dwCaps & DDSCAPS_PRIMARYSURFACE))
             hr = ddraw_surface_update_frontbuffer(dst_surface, dst_rect_in, FALSE);
 
         return hr;
@@ -1376,7 +1374,7 @@ static HRESULT ddraw_surface_blt_clipped(struct ddraw_surface *dst_surface, cons
             src_rect_clipped.right -= (LONG)((dst_rect.right - clip_rect[i].right) * scale_x);
             src_rect_clipped.bottom -= (LONG)((dst_rect.bottom - clip_rect[i].bottom) * scale_y);
 
-            if (src_surface->surface_desc.ddsCaps.dwCaps & DDSCAPS_FRONTBUFFER)
+            if (src_surface->surface_desc.ddsCaps.dwCaps & DDSCAPS_PRIMARYSURFACE)
             {
                 if (FAILED(hr = ddraw_surface_update_frontbuffer(src_surface, &src_rect_clipped, TRUE)))
                     break;
@@ -1387,7 +1385,7 @@ static HRESULT ddraw_surface_blt_clipped(struct ddraw_surface *dst_surface, cons
                 wined3d_src_surface, &src_rect_clipped, flags, fx, filter)))
             break;
 
-        if (dst_surface->surface_desc.ddsCaps.dwCaps & DDSCAPS_FRONTBUFFER)
+        if (dst_surface->surface_desc.ddsCaps.dwCaps & DDSCAPS_PRIMARYSURFACE)
         {
             if (FAILED(hr = ddraw_surface_update_frontbuffer(dst_surface, &clip_rect[i], FALSE)))
                 break;
@@ -1935,7 +1933,7 @@ static HRESULT WINAPI ddraw_surface7_GetDC(IDirectDrawSurface7 *iface, HDC *hdc)
         return DDERR_INVALIDPARAMS;
 
     wined3d_mutex_lock();
-    if (surface->surface_desc.ddsCaps.dwCaps & DDSCAPS_FRONTBUFFER)
+    if (surface->surface_desc.ddsCaps.dwCaps & DDSCAPS_PRIMARYSURFACE)
         hr = ddraw_surface_update_frontbuffer(surface, NULL, TRUE);
     if (SUCCEEDED(hr))
         hr = wined3d_surface_getdc(surface->wined3d_surface, hdc);
@@ -2011,7 +2009,7 @@ static HRESULT WINAPI ddraw_surface7_ReleaseDC(IDirectDrawSurface7 *iface, HDC h
 
     wined3d_mutex_lock();
     hr = wined3d_surface_releasedc(surface->wined3d_surface, hdc);
-    if (SUCCEEDED(hr) && (surface->surface_desc.ddsCaps.dwCaps & DDSCAPS_FRONTBUFFER))
+    if (SUCCEEDED(hr) && (surface->surface_desc.ddsCaps.dwCaps & DDSCAPS_PRIMARYSURFACE))
         hr = ddraw_surface_update_frontbuffer(surface, NULL, FALSE);
     wined3d_mutex_unlock();
 
@@ -3970,12 +3968,12 @@ static HRESULT WINAPI ddraw_surface7_BltFast(IDirectDrawSurface7 *iface, DWORD d
         return DDERR_BLTFASTCANTCLIP;
     }
 
-    if (src->surface_desc.ddsCaps.dwCaps & DDSCAPS_FRONTBUFFER)
+    if (src->surface_desc.ddsCaps.dwCaps & DDSCAPS_PRIMARYSURFACE)
         hr = ddraw_surface_update_frontbuffer(src, rsrc, TRUE);
     if (SUCCEEDED(hr))
         hr = wined3d_surface_blt(This->wined3d_surface, &dst_rect,
                 src->wined3d_surface, rsrc, flags, NULL, WINED3D_TEXF_POINT);
-    if (SUCCEEDED(hr) && (This->surface_desc.ddsCaps.dwCaps & DDSCAPS_FRONTBUFFER))
+    if (SUCCEEDED(hr) && (This->surface_desc.ddsCaps.dwCaps & DDSCAPS_PRIMARYSURFACE))
         hr = ddraw_surface_update_frontbuffer(This, &dst_rect, FALSE);
     wined3d_mutex_unlock();
 
@@ -4247,7 +4245,8 @@ static HRESULT WINAPI ddraw_surface7_SetSurfaceDesc(IDirectDrawSurface7 *iface, 
         WARN("Flags is %x, returning DDERR_INVALIDPARAMS\n", Flags);
         return DDERR_INVALIDPARAMS;
     }
-    if (!(This->surface_desc.ddsCaps.dwCaps & DDSCAPS_SYSTEMMEMORY))
+    if (!(This->surface_desc.ddsCaps.dwCaps & DDSCAPS_SYSTEMMEMORY) ||
+            This->surface_desc.ddsCaps.dwCaps2 & (DDSCAPS2_TEXTUREMANAGE | DDSCAPS2_D3DTEXTUREMANAGE))
     {
         WARN("Surface is not in system memory, returning DDERR_INVALIDSURFACETYPE.\n");
         return DDERR_INVALIDSURFACETYPE;
@@ -4260,12 +4259,12 @@ static HRESULT WINAPI ddraw_surface7_SetSurfaceDesc(IDirectDrawSurface7 *iface, 
         WARN("Invalid flags (0x%08x) set, returning DDERR_INVALIDPARAMS\n", DDSD->dwFlags);
         return DDERR_INVALIDPARAMS;
     }
-    if (!(DDSD->dwFlags & DDSD_LPSURFACE))
+    if (!(DDSD->dwFlags & DDSD_LPSURFACE) || !DDSD->lpSurface)
     {
-        WARN("DDSD_LPSURFACE is not set, returning DDERR_INVALIDPARAMS\n");
+        WARN("DDSD_LPSURFACE is not set or lpSurface is NULL, returning DDERR_INVALIDPARAMS\n");
         return DDERR_INVALIDPARAMS;
     }
-    if (DDSD->dwFlags & DDSD_CAPS)
+    if ((DDSD->dwFlags & DDSD_CAPS) && DDSD->ddsCaps.dwCaps)
     {
         WARN("DDSD_CAPS is set, returning DDERR_INVALIDCAPS.\n");
         return DDERR_INVALIDCAPS;
@@ -4711,18 +4710,18 @@ static HRESULT WINAPI ddraw_surface7_SetPalette(IDirectDrawSurface7 *iface, IDir
     /* Release the old palette */
     if(oldPal) IDirectDrawPalette_Release(oldPal);
 
-    /* Update the wined3d frontbuffer if this is the frontbuffer. */
-    if ((This->surface_desc.ddsCaps.dwCaps & DDSCAPS_FRONTBUFFER) && This->ddraw->wined3d_frontbuffer)
+    /* Update the wined3d frontbuffer if this is the primary. */
+    if ((This->surface_desc.ddsCaps.dwCaps & DDSCAPS_PRIMARYSURFACE) && This->ddraw->wined3d_frontbuffer)
         wined3d_surface_set_palette(This->ddraw->wined3d_frontbuffer,
                 palette_impl ? palette_impl->wineD3DPalette : NULL);
 
     /* If this is a front buffer, also update the back buffers
      * TODO: How do things work for palettized cube textures?
      */
-    if(This->surface_desc.ddsCaps.dwCaps & DDSCAPS_FRONTBUFFER)
+    if (This->surface_desc.ddsCaps.dwCaps & DDSCAPS_FRONTBUFFER)
     {
         /* For primary surfaces the tree is just a list, so the simpler scheme fits too */
-        DDSCAPS2 caps2 = { DDSCAPS_PRIMARYSURFACE, 0, 0, 0 };
+        DDSCAPS2 caps2 = { DDSCAPS_FLIP, 0, 0, 0 };
 
         surf = This;
         while(1)
@@ -5000,7 +4999,7 @@ static struct ddraw_surface *get_sub_mimaplevel(struct ddraw_surface *surface)
  * Loads a texture created with the DDSCAPS_ALLOCONLOAD
  *
  * This function isn't relayed to WineD3D because the whole interface is
- * implemented in DDraw only. For speed improvements a implementation which
+ * implemented in DDraw only. For speed improvements an implementation which
  * takes OpenGL more into account could be placed into WineD3D.
  *
  * Params:
@@ -5734,7 +5733,9 @@ HRESULT ddraw_surface_create(struct ddraw *ddraw, const DDSURFACEDESC2 *surface_
     {
         /* The first surface is a front buffer, the back buffers are created
          * afterwards. */
-        desc->ddsCaps.dwCaps |= DDSCAPS_VISIBLE | DDSCAPS_FRONTBUFFER;
+        if (desc->ddsCaps.dwCaps & DDSCAPS_FLIP)
+            desc->ddsCaps.dwCaps |= DDSCAPS_FRONTBUFFER;
+        desc->ddsCaps.dwCaps |= DDSCAPS_VISIBLE;
         if (ddraw->cooperative_level & DDSCL_EXCLUSIVE)
         {
             struct wined3d_swapchain_desc swapchain_desc;
@@ -5978,8 +5979,9 @@ HRESULT ddraw_surface_create(struct ddraw *ddraw, const DDSURFACEDESC2 *surface_
             desc = &texture->surface_desc;
 
             /* Only one surface in the flipping chain is a back buffer, one is
-             * a front buffer, the others are just primary surfaces. */
-            desc->ddsCaps.dwCaps &= ~(DDSCAPS_FRONTBUFFER | DDSCAPS_BACKBUFFER);
+             * a front buffer, the others are just flippable surfaces. */
+            desc->ddsCaps.dwCaps &= ~(DDSCAPS_VISIBLE | DDSCAPS_PRIMARYSURFACE | DDSCAPS_FRONTBUFFER
+                    | DDSCAPS_BACKBUFFER);
             if (!i)
                 desc->ddsCaps.dwCaps |= DDSCAPS_BACKBUFFER;
             desc->dwBackBufferCount = 0;
