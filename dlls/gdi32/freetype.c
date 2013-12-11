@@ -5998,7 +5998,7 @@ static FT_UInt get_glyph_index(const GdiFont *font, UINT glyph)
         }
         else
             ret = pFT_Get_Char_Index(font->ft_face, (unsigned char)buf);
-        TRACE("%04x (%02x) -> ret %d def_used %d\n", glyph, buf, ret, default_used);
+        TRACE("%04x (%02x) -> ret %d def_used %d\n", glyph, (unsigned char)buf, ret, default_used);
         return ret;
     }
 
@@ -6013,6 +6013,34 @@ static FT_UInt get_glyph_index(const GdiFont *font, UINT glyph)
     else glyphId = pFT_Get_Char_Index(font->ft_face, glyph);
 
     return glyphId;
+}
+
+/* helper for freetype_GetGlyphIndices */
+static FT_UInt get_gdi_glyph_index(const GdiFont *font, UINT glyph)
+{
+    WCHAR wc = (WCHAR)glyph;
+    BOOL default_used = FALSE;
+    BOOL *default_used_pointer = NULL;
+    FT_UInt ret;
+    char buf;
+
+    if(font->ft_face->charmap->encoding != FT_ENCODING_NONE)
+        return get_glyph_index(font, glyph);
+
+    if (codepage_sets_default_used(font->codepage))
+        default_used_pointer = &default_used;
+    if(!WideCharToMultiByte(font->codepage, 0, &wc, 1, &buf, sizeof(buf), NULL, default_used_pointer)
+       || default_used)
+    {
+        if (font->codepage == CP_SYMBOL && wc < 0x100)
+            ret = (unsigned char)wc;
+        else
+            ret = 0;
+    }
+    else
+        ret = (unsigned char)buf;
+    TRACE("%04x (%02x) -> ret %d def_used %d\n", glyph, (unsigned char)buf, ret, default_used);
+    return ret;
 }
 
 static FT_UInt get_default_char_index(GdiFont *font)
@@ -6061,7 +6089,7 @@ static DWORD freetype_GetGlyphIndices( PHYSDEV dev, LPCWSTR lpstr, INT count, LP
 
     for(i = 0; i < count; i++)
     {
-        pgi[i] = get_glyph_index(physdev->font, lpstr[i]);
+        pgi[i] = get_gdi_glyph_index(physdev->font, lpstr[i]);
         if  (pgi[i] == 0)
         {
             if (!got_default)
@@ -6188,8 +6216,14 @@ static DWORD get_glyph_outline(GdiFont *incoming_font, UINT glyph, UINT format,
           font->font_desc.matrix.eM21, font->font_desc.matrix.eM22);
 
     if(format & GGO_GLYPH_INDEX) {
-        glyph_index = glyph;
-        original_index = glyph;
+        if(font->ft_face->charmap->encoding == FT_ENCODING_NONE) {
+            /* Windows bitmap font, e.g. Small Fonts, uses ANSI character code
+               as glyph index. "Tresure Adventure Game" depends on this. */
+            glyph_index = pFT_Get_Char_Index(font->ft_face, glyph);
+            TRACE("translate glyph index %04x -> %04x\n", glyph, glyph_index);
+        } else
+            glyph_index = glyph;
+        original_index = glyph_index;
 	format &= ~GGO_GLYPH_INDEX;
         /* TODO: Window also turns off tategaki for glyphs passed in by index
             if their unicode code points fall outside of the range that is
