@@ -622,7 +622,7 @@ int CDECL MSVCRT_vsnprintf( char *str, MSVCRT_size_t len,
 }
 
 /*********************************************************************
-*		_vsnprintf_l (MSVCRT.@)
+ *		_vsnprintf_l (MSVCRT.@)
  */
 int CDECL MSVCRT_vsnprintf_l( char *str, MSVCRT_size_t len, const char *format,
                             MSVCRT__locale_t locale, __ms_va_list valist )
@@ -635,6 +635,29 @@ int CDECL MSVCRT_vsnprintf_l( char *str, MSVCRT_size_t len, const char *format,
             arg_clbk_valist, NULL, &valist);
     puts_clbk_str_a(&ctx, 1, &nullbyte);
     return ret;
+}
+
+/*********************************************************************
+ *		_vsprintf_l (MSVCRT.@)
+ */
+int CDECL MSVCRT_vsprintf_l( char *str, const char *format,
+                            MSVCRT__locale_t locale, __ms_va_list valist )
+{
+    return MSVCRT_vsnprintf_l(str, INT_MAX, format, locale, valist);
+}
+
+/*********************************************************************
+ *		_sprintf_l (MSVCRT.@)
+ */
+int CDECL MSVCRT_sprintf_l(char *str, const char *format,
+                           MSVCRT__locale_t locale, ...)
+{
+    int retval;
+    __ms_va_list valist;
+    __ms_va_start(valist, locale);
+    retval = MSVCRT_vsnprintf_l(str, INT_MAX, format, locale, valist);
+    __ms_va_end(valist);
+    return retval;
 }
 
 /*********************************************************************
@@ -670,6 +693,29 @@ int CDECL MSVCRT_vsnprintf_s_l( char *str, MSVCRT_size_t sizeOfBuffer,
     }
 
     return ret;
+}
+
+/*********************************************************************
+ *		_vsprintf_s_l (MSVCRT.@)
+ */
+int CDECL MSVCRT_vsprintf_s_l( char *str, MSVCRT_size_t count, const char *format,
+                               MSVCRT__locale_t locale, __ms_va_list valist )
+{
+    return MSVCRT_vsnprintf_s_l(str, INT_MAX, count, format, locale, valist);
+}
+
+/*********************************************************************
+ *		_sprintf_s_l (MSVCRT.@)
+ */
+int CDECL MSVCRT_sprintf_s_l( char *str, MSVCRT_size_t count, const char *format,
+                              MSVCRT__locale_t locale, ...)
+{
+    int retval;
+    __ms_va_list valist;
+    __ms_va_start(valist, locale);
+    retval = MSVCRT_vsnprintf_s_l(str, INT_MAX, count, format, locale, valist);
+    __ms_va_end(valist);
+    return retval;
 }
 
 /*********************************************************************
