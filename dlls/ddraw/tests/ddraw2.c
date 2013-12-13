@@ -4580,6 +4580,7 @@ static void test_set_surface_desc(void)
     {
         {DDSCAPS_VIDEOMEMORY, FALSE, "videomemory plain"},
         {DDSCAPS_TEXTURE | DDSCAPS_SYSTEMMEMORY, TRUE, "systemmemory texture"},
+        {DDSCAPS_PRIMARYSURFACE | DDSCAPS_SYSTEMMEMORY, FALSE, "systemmemory primary"},
     };
 
     if (!(ddraw = create_ddraw()))
@@ -4606,7 +4607,7 @@ static void test_set_surface_desc(void)
     U4(ddsd.ddpfPixelFormat).dwBBitMask = 0x000000ff;
     ddsd.ddsCaps.dwCaps = DDSCAPS_SYSTEMMEMORY;
 
-    hr = IDirectDraw_CreateSurface(ddraw, &ddsd, &surface, NULL);
+    hr = IDirectDraw2_CreateSurface(ddraw, &ddsd, &surface, NULL);
     ok(SUCCEEDED(hr), "Failed to create surface, hr %#x.\n", hr);
 
     hr = IDirectDrawSurface_QueryInterface(surface, &IID_IDirectDrawSurface3, (void **)&surface3);
@@ -4810,18 +4811,22 @@ static void test_set_surface_desc(void)
     for (i = 0; i < sizeof(invalid_caps_tests) / sizeof(*invalid_caps_tests); i++)
     {
         reset_ddsd(&ddsd);
-        ddsd.dwFlags = DDSD_WIDTH | DDSD_HEIGHT | DDSD_CAPS | DDSD_PIXELFORMAT;
-        ddsd.dwWidth = 8;
-        ddsd.dwHeight = 8;
-        ddsd.ddpfPixelFormat.dwSize = sizeof(ddsd.ddpfPixelFormat);
-        ddsd.ddpfPixelFormat.dwFlags = DDPF_RGB;
-        U1(ddsd.ddpfPixelFormat).dwRGBBitCount = 32;
-        U2(ddsd.ddpfPixelFormat).dwRBitMask = 0x00ff0000;
-        U3(ddsd.ddpfPixelFormat).dwGBitMask = 0x0000ff00;
-        U4(ddsd.ddpfPixelFormat).dwBBitMask = 0x000000ff;
+        ddsd.dwFlags = DDSD_CAPS;
         ddsd.ddsCaps.dwCaps = invalid_caps_tests[i].caps;
+        if (!(invalid_caps_tests[i].caps & DDSCAPS_PRIMARYSURFACE))
+        {
+            ddsd.dwFlags |= DDSD_WIDTH | DDSD_HEIGHT | DDSD_PIXELFORMAT;
+            ddsd.dwWidth = 8;
+            ddsd.dwHeight = 8;
+            ddsd.ddpfPixelFormat.dwSize = sizeof(ddsd.ddpfPixelFormat);
+            ddsd.ddpfPixelFormat.dwFlags = DDPF_RGB;
+            U1(ddsd.ddpfPixelFormat).dwRGBBitCount = 32;
+            U2(ddsd.ddpfPixelFormat).dwRBitMask = 0x00ff0000;
+            U3(ddsd.ddpfPixelFormat).dwGBitMask = 0x0000ff00;
+            U4(ddsd.ddpfPixelFormat).dwBBitMask = 0x000000ff;
+        }
 
-        hr = IDirectDraw_CreateSurface(ddraw, &ddsd, &surface, NULL);
+        hr = IDirectDraw2_CreateSurface(ddraw, &ddsd, &surface, NULL);
         ok(SUCCEEDED(hr) || hr == DDERR_NODIRECTDRAWHW, "Failed to create surface, hr %#x.\n", hr);
         if (FAILED(hr))
         {
@@ -4927,6 +4932,143 @@ static void test_user_memory_getdc(void)
     DestroyWindow(window);
 }
 
+static void test_sysmem_overlay(void)
+{
+    IDirectDraw2 *ddraw;
+    HWND window;
+    HRESULT hr;
+    DDSURFACEDESC ddsd;
+    IDirectDrawSurface *surface;
+    ULONG ref;
+
+    if (!(ddraw = create_ddraw()))
+    {
+        skip("Failed to create a ddraw object, skipping test.\n");
+        return;
+    }
+
+    window = CreateWindowA("static", "ddraw_test", WS_OVERLAPPEDWINDOW,
+            0, 0, 640, 480, 0, 0, 0, 0);
+
+    hr = IDirectDraw2_SetCooperativeLevel(ddraw, window, DDSCL_NORMAL);
+    ok(SUCCEEDED(hr), "Failed to set cooperative level, hr %#x.\n", hr);
+
+    reset_ddsd(&ddsd);
+    ddsd.dwFlags = DDSD_CAPS | DDSD_PIXELFORMAT | DDSD_WIDTH | DDSD_HEIGHT;
+    ddsd.dwWidth = 16;
+    ddsd.dwHeight = 16;
+    ddsd.ddsCaps.dwCaps = DDSCAPS_SYSTEMMEMORY | DDSCAPS_OVERLAY;
+    ddsd.ddpfPixelFormat.dwSize = sizeof(ddsd.ddpfPixelFormat);
+    ddsd.ddpfPixelFormat.dwFlags = DDPF_RGB;
+    U1(ddsd.ddpfPixelFormat).dwRGBBitCount = 32;
+    U2(ddsd.ddpfPixelFormat).dwRBitMask = 0x00ff0000;
+    U3(ddsd.ddpfPixelFormat).dwGBitMask = 0x0000ff00;
+    U4(ddsd.ddpfPixelFormat).dwBBitMask = 0x000000ff;
+    hr = IDirectDraw2_CreateSurface(ddraw, &ddsd, &surface, NULL);
+    ok(hr == DDERR_NOOVERLAYHW, "Got unexpected hr %#x.\n", hr);
+
+    ref = IDirectDraw2_Release(ddraw);
+    ok(ref == 0, "Ddraw object not properly released, refcount %u.\n", ref);
+    DestroyWindow(window);
+}
+
+static void test_primary_palette(void)
+{
+    DDSCAPS surface_caps = {DDSCAPS_FLIP};
+    IDirectDrawSurface *primary, *backbuffer;
+    PALETTEENTRY palette_entries[256];
+    IDirectDrawPalette *palette, *tmp;
+    DDSURFACEDESC surface_desc;
+    IDirectDraw2 *ddraw;
+    DWORD palette_caps;
+    ULONG refcount;
+    HWND window;
+    HRESULT hr;
+
+    if (!(ddraw = create_ddraw()))
+    {
+        skip("Failed to create a ddraw object, skipping test.\n");
+        return;
+    }
+
+    window = CreateWindowA("static", "ddraw_test", WS_OVERLAPPEDWINDOW,
+            0, 0, 640, 480, 0, 0, 0, 0);
+    hr = IDirectDraw2_SetDisplayMode(ddraw, 640, 480, 8, 0, 0);
+    ok(SUCCEEDED(hr), "Failed to set display mode, hr %#x.\n", hr);
+    hr = IDirectDraw2_SetCooperativeLevel(ddraw, window, DDSCL_EXCLUSIVE | DDSCL_FULLSCREEN);
+    ok(SUCCEEDED(hr), "Failed to set cooperative level, hr %#x.\n", hr);
+
+    memset(&surface_desc, 0, sizeof(surface_desc));
+    surface_desc.dwSize = sizeof(surface_desc);
+    surface_desc.dwFlags = DDSD_CAPS | DDSD_BACKBUFFERCOUNT;
+    surface_desc.ddsCaps.dwCaps = DDSCAPS_PRIMARYSURFACE | DDSCAPS_COMPLEX | DDSCAPS_FLIP;
+    surface_desc.dwBackBufferCount = 1;
+    hr = IDirectDraw2_CreateSurface(ddraw, &surface_desc, &primary, NULL);
+    ok(SUCCEEDED(hr), "Failed to create surface, hr %#x.\n", hr);
+    hr = IDirectDrawSurface_GetAttachedSurface(primary, &surface_caps, &backbuffer);
+    ok(SUCCEEDED(hr), "Failed to get attached surface, hr %#x.\n", hr);
+
+    memset(palette_entries, 0, sizeof(palette_entries));
+    hr = IDirectDraw2_CreatePalette(ddraw, DDPCAPS_8BIT | DDPCAPS_ALLOW256, palette_entries, &palette, NULL);
+    ok(SUCCEEDED(hr), "Failed to create palette, hr %#x.\n", hr);
+    refcount = get_refcount((IUnknown *)palette);
+    ok(refcount == 1, "Got unexpected refcount %u.\n", refcount);
+
+    hr = IDirectDrawPalette_GetCaps(palette, &palette_caps);
+    ok(SUCCEEDED(hr), "Failed to get palette caps, hr %#x.\n", hr);
+    ok(palette_caps == (DDPCAPS_8BIT | DDPCAPS_ALLOW256), "Got unexpected palette caps %#x.\n", palette_caps);
+
+    hr = IDirectDrawSurface_SetPalette(primary, palette);
+    ok(SUCCEEDED(hr), "Failed to set palette, hr %#x.\n", hr);
+    refcount = get_refcount((IUnknown *)palette);
+    ok(refcount == 2, "Got unexpected refcount %u.\n", refcount);
+
+    hr = IDirectDrawPalette_GetCaps(palette, &palette_caps);
+    ok(SUCCEEDED(hr), "Failed to get palette caps, hr %#x.\n", hr);
+    ok(palette_caps == (DDPCAPS_8BIT | DDPCAPS_PRIMARYSURFACE | DDPCAPS_ALLOW256),
+            "Got unexpected palette caps %#x.\n", palette_caps);
+
+    hr = IDirectDrawSurface_SetPalette(primary, NULL);
+    ok(SUCCEEDED(hr), "Failed to set palette, hr %#x.\n", hr);
+    refcount = get_refcount((IUnknown *)palette);
+    ok(refcount == 1, "Got unexpected refcount %u.\n", refcount);
+
+    hr = IDirectDrawPalette_GetCaps(palette, &palette_caps);
+    ok(SUCCEEDED(hr), "Failed to get palette caps, hr %#x.\n", hr);
+    ok(palette_caps == (DDPCAPS_8BIT | DDPCAPS_ALLOW256), "Got unexpected palette caps %#x.\n", palette_caps);
+
+    hr = IDirectDrawSurface_SetPalette(primary, palette);
+    ok(SUCCEEDED(hr), "Failed to set palette, hr %#x.\n", hr);
+    refcount = get_refcount((IUnknown *)palette);
+    ok(refcount == 2, "Got unexpected refcount %u.\n", refcount);
+
+    hr = IDirectDrawSurface_GetPalette(primary, &tmp);
+    ok(SUCCEEDED(hr), "Failed to get palette, hr %#x.\n", hr);
+    ok(tmp == palette, "Got unexpected palette %p, expected %p.\n", tmp, palette);
+    IDirectDrawPalette_Release(tmp);
+    hr = IDirectDrawSurface_GetPalette(backbuffer, &tmp);
+    ok(hr == DDERR_NOPALETTEATTACHED, "Got unexpected hr %#x.\n", hr);
+
+    refcount = IDirectDrawPalette_Release(palette);
+    ok(refcount == 1, "Got unexpected refcount %u.\n", refcount);
+    refcount = IDirectDrawPalette_Release(palette);
+    ok(!refcount, "Got unexpected refcount %u.\n", refcount);
+
+    /* Note that this only seems to work when the palette is attached to the
+     * primary surface. When attached to a regular surface, attempting to get
+     * the palette here will cause an access violation. */
+    hr = IDirectDrawSurface_GetPalette(primary, &tmp);
+    ok(hr == DDERR_NOPALETTEATTACHED, "Got unexpected hr %#x.\n", hr);
+
+    refcount = IDirectDrawSurface_Release(backbuffer);
+    ok(refcount == 1, "Got unexpected refcount %u.\n", refcount);
+    refcount = IDirectDrawSurface_Release(primary);
+    ok(!refcount, "Got unexpected refcount %u.\n", refcount);
+    refcount = IDirectDraw2_Release(ddraw);
+    ok(!refcount, "Got unexpected refcount %u.\n", refcount);
+    DestroyWindow(window);
+}
+
 START_TEST(ddraw2)
 {
     test_coop_level_create_device_window();
@@ -4962,4 +5104,6 @@ START_TEST(ddraw2)
     test_flip();
     test_set_surface_desc();
     test_user_memory_getdc();
+    test_sysmem_overlay();
+    test_primary_palette();
 }

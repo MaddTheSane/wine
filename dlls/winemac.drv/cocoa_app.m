@@ -154,6 +154,8 @@ int macdrv_err_on;
 
             warpRecords = [[NSMutableArray alloc] init];
 
+            windowsBeingDragged = [[NSMutableSet alloc] init];
+
             if (!requests || !requestsManipQueue || !eventQueues || !eventQueuesLock ||
                 !keyWindows || !originalDisplayModes || !latentDisplayModes || !warpRecords)
             {
@@ -173,6 +175,7 @@ int macdrv_err_on;
 
     - (void) dealloc
     {
+        [windowsBeingDragged release];
         [cursor release];
         [screenFrameCGRects release];
         [applicationIcon release];
@@ -1258,7 +1261,9 @@ int macdrv_err_on;
     {
         BOOL ret;
 
-        if (clippingCursor)
+        if ([windowsBeingDragged count])
+            ret = FALSE;
+        else if (clippingCursor)
         {
             [self clipCursorLocation:&pos];
 
@@ -1316,7 +1321,7 @@ int macdrv_err_on;
 
     - (void) activateCursorClipping
     {
-        if (clippingCursor)
+        if (cursorClippingEventTap && !CGEventTapIsEnabled(cursorClippingEventTap))
         {
             CGEventTapEnable(cursorClippingEventTap, TRUE);
             [self setCursorPosition:NSPointToCGPoint([self flippedMouseLocation:[NSEvent mouseLocation]])];
@@ -1325,12 +1330,20 @@ int macdrv_err_on;
 
     - (void) deactivateCursorClipping
     {
-        if (clippingCursor)
+        if (cursorClippingEventTap && CGEventTapIsEnabled(cursorClippingEventTap))
         {
             CGEventTapEnable(cursorClippingEventTap, FALSE);
             [warpRecords removeAllObjects];
             lastSetCursorPositionTime = [[NSProcessInfo processInfo] systemUptime];
         }
+    }
+
+    - (void) updateCursorClippingState
+    {
+        if (clippingCursor && [NSApp isActive] && ![windowsBeingDragged count])
+            [self activateCursorClipping];
+        else
+            [self deactivateCursorClipping];
     }
 
     - (BOOL) startClippingCursor:(CGRect)rect
@@ -1346,8 +1359,7 @@ int macdrv_err_on;
 
         clippingCursor = TRUE;
         cursorClipRect = rect;
-        if ([NSApp isActive])
-            [self activateCursorClipping];
+        [self updateCursorClippingState];
 
         return TRUE;
     }
@@ -1358,8 +1370,8 @@ int macdrv_err_on;
         if (err != kCGErrorSuccess)
             return FALSE;
 
-        [self deactivateCursorClipping];
         clippingCursor = FALSE;
+        [self updateCursorClippingState];
 
         return TRUE;
     }
@@ -1388,7 +1400,9 @@ int macdrv_err_on;
         WineWindow* targetWindow;
         BOOL drag = [anEvent type] != NSMouseMoved;
 
-        if (mouseCaptureWindow)
+        if ([windowsBeingDragged count])
+            targetWindow = nil;
+        else if (mouseCaptureWindow)
             targetWindow = mouseCaptureWindow;
         else if (drag)
             targetWindow = (WineWindow*)[anEvent window];
@@ -1613,7 +1627,9 @@ int macdrv_err_on;
             }
         }
 
-        if (mouseCaptureWindow)
+        if ([windowsBeingDragged count])
+            window = nil;
+        else if (mouseCaptureWindow)
             window = mouseCaptureWindow;
 
         if ([window isKindOfClass:[WineWindow class]])
@@ -1854,6 +1870,39 @@ int macdrv_err_on;
                     [window postKeyEvent:anEvent];
             }
         }
+        else if (type == NSAppKitDefined)
+        {
+            short subtype = [anEvent subtype];
+
+            // These subtypes are not documented but they appear to mean
+            // "a window is being dragged" and "a window is no longer being
+            // dragged", respectively.
+            if (subtype == 20 || subtype == 21)
+            {
+                WineWindow* window = (WineWindow*)[anEvent window];
+                if ([window isKindOfClass:[WineWindow class]])
+                {
+                    macdrv_event* event;
+                    int eventType;
+
+                    if (subtype == 20)
+                    {
+                        [windowsBeingDragged addObject:window];
+                        eventType = WINDOW_DRAG_BEGIN;
+                    }
+                    else
+                    {
+                        [windowsBeingDragged removeObject:window];
+                        eventType = WINDOW_DRAG_END;
+                    }
+                    [self updateCursorClippingState];
+
+                    event = macdrv_create_event(eventType, window);
+                    [window.queue postEvent:event];
+                    macdrv_release_event(event);
+                }
+            }
+        }
 
         return ret;
     }
@@ -1910,6 +1959,8 @@ int macdrv_err_on;
                     [self updateFullscreenWindows];
                 });
             }
+            [windowsBeingDragged removeObject:window];
+            [self updateCursorClippingState];
         }];
 
         [nc addObserver:self
@@ -2012,7 +2063,7 @@ int macdrv_err_on;
         }
         [latentDisplayModes removeAllObjects];
 
-        [self activateCursorClipping];
+        [self updateCursorClippingState];
 
         [self updateFullscreenWindows];
         [self adjustWindowLevels:YES];
@@ -2055,6 +2106,8 @@ int macdrv_err_on;
     {
         macdrv_event* event;
         WineEventQueue* queue;
+
+        [self updateCursorClippingState];
 
         [self invalidateGotFocusEvents];
 
@@ -2123,8 +2176,6 @@ int macdrv_err_on;
 
     - (void)applicationWillResignActive:(NSNotification *)notification
     {
-        [self deactivateCursorClipping];
-
         [self adjustWindowLevels:NO];
     }
 

@@ -219,12 +219,15 @@ wine_fn_depend_rules ()
     ac_makedep="\$(MAKEDEP)"
     ac_input=Make.vars.in:$ac_dir/Makefile.in
     case $[1] in
-      *.in) ac_input=$ac_input:$[1] ;;
-      *) ac_makedep="$[1] $ac_makedep" ;;
+      *.in)
+          ac_input=$ac_input:$[1]
+          test "$srcdir" = . || ac_alldeps="$srcdir/$ac_alldeps" ;;
+      *)
+          ac_makedep="$[1] $ac_makedep" ;;
     esac
 
     wine_fn_append_rule \
-"$ac_dir/Makefile: $ac_dir/Makefile.in Make.vars.in config.status $ac_alldeps \$(MAKEDEP)
+"$ac_dir/Makefile: $srcdir/$ac_dir/Makefile.in $srcdir/Make.vars.in config.status $ac_alldeps \$(MAKEDEP)
 	@./config.status --file $ac_dir/Makefile:$ac_input && cd $ac_dir && \$(MAKE) depend
 depend: $ac_dir/depend
 .PHONY: $ac_dir/depend
@@ -312,7 +315,9 @@ $ac_dir/clean: $ac_dir/Makefile
 	\$(RM) $ac_dir/Makefile"
     else
         wine_fn_append_rule \
-"clean::
+"__clean__: $ac_dir/clean
+.PHONY: $ac_dir/clean
+$ac_dir/clean: dummy
 	\$(RM) \$(CLEAN_FILES:%=$ac_dir/%) $ac_clean $ac_dir/Makefile"
     fi
 }
@@ -322,7 +327,9 @@ wine_fn_disabled_rules ()
     ac_clean=$[@]
 
     wine_fn_append_rule \
-"clean::
+"__clean__: $ac_dir/clean
+.PHONY: $ac_dir/clean
+$ac_dir/clean: dummy
 	\$(RM) \$(CLEAN_FILES:%=$ac_dir/%) $ac_clean $ac_dir/Makefile"
 }
 
@@ -429,7 +436,7 @@ $ac_dir/uninstall::
         wine_fn_append_rule \
 "__builddeps__: $ac_file.$IMPLIBEXT $ac_file.$STATIC_IMPLIBEXT
 $ac_file.$IMPLIBEXT $ac_file.$STATIC_IMPLIBEXT $ac_file.cross.a: $ac_deps
-$ac_file.def: $ac_dir/$ac_name.spec $ac_dir/Makefile \$(WINEBUILD)
+$ac_file.def: $srcdir/$ac_dir/$ac_name.spec $ac_dir/Makefile \$(WINEBUILD)
 	\$(WINEBUILD) \$(TARGETFLAGS)$ac_implibflags -w --def -o \$[@] --export $srcdir/$ac_dir/$ac_name.spec
 $ac_file.$STATIC_IMPLIBEXT: $ac_dir/Makefile dummy
 	@cd $ac_dir && \$(MAKE) lib$ac_implib.$STATIC_IMPLIBEXT
@@ -462,9 +469,9 @@ $ac_file.cross.a: $ac_dir/Makefile dummy
     then
         wine_fn_append_rule \
 "__builddeps__: $ac_file.$IMPLIBEXT
-$ac_file.def: $ac_dir/$ac_name.spec $ac_dir/Makefile \$(WINEBUILD)
+$ac_file.def: $srcdir/$ac_dir/$ac_name.spec $ac_dir/Makefile \$(WINEBUILD)
 	\$(WINEBUILD) \$(TARGETFLAGS)$ac_implibflags -w --def -o \$[@] --export $srcdir/$ac_dir/$ac_name.spec
-$ac_file.a: $ac_dir/$ac_name.spec $ac_dir/Makefile \$(WINEBUILD)
+$ac_file.a: $srcdir/$ac_dir/$ac_name.spec $ac_dir/Makefile \$(WINEBUILD)
 	\$(WINEBUILD) \$(TARGETFLAGS)$ac_implibflags -w --implib -o \$[@] --export $srcdir/$ac_dir/$ac_name.spec
 .PHONY: $ac_dir/install-dev $ac_dir/uninstall
 $ac_dir/install-dev:: $ac_file.$IMPLIBEXT \$(DESTDIR)\$(dlldir)
@@ -477,7 +484,7 @@ __uninstall__: $ac_dir/uninstall"
         then
             wine_fn_append_rule \
 "__builddeps__: $ac_file.cross.a
-$ac_file.cross.a: $ac_dir/$ac_name.spec $ac_dir/Makefile \$(WINEBUILD)
+$ac_file.cross.a: $srcdir/$ac_dir/$ac_name.spec $ac_dir/Makefile \$(WINEBUILD)
 	\$(WINEBUILD) \$(CROSSTARGET:%=-b %)$ac_implibflags -w --implib -o \$[@] --export $srcdir/$ac_dir/$ac_name.spec"
         fi
 
@@ -628,7 +635,7 @@ wine_fn_config_makerules ()
     ac_rules=$[1]
     ac_deps=$[2]
     wine_fn_append_rule \
-"$ac_rules: $ac_rules.in $ac_deps config.status
+"$ac_rules: $srcdir/$ac_rules.in $ac_deps config.status
 	@./config.status $ac_rules
 distclean::
 	\$(RM) $ac_rules"
@@ -670,13 +677,6 @@ dnl
 dnl Usage: WINE_APPEND_RULE(rule)
 dnl
 AC_DEFUN([WINE_APPEND_RULE],[AC_REQUIRE([WINE_CONFIG_HELPERS])wine_fn_append_rule "$1"])
-
-dnl **** Create nonexistent directories from config.status ****
-dnl
-dnl Usage: WINE_CONFIG_EXTRA_DIR(dirname)
-dnl
-AC_DEFUN([WINE_CONFIG_EXTRA_DIR],
-[AC_CONFIG_COMMANDS([$1],[test -d "$1" || { AC_MSG_NOTICE([creating $1]); AS_MKDIR_P("$1"); }])])
 
 dnl **** Create symlinks from config.status ****
 dnl

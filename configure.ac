@@ -722,10 +722,10 @@ case $host_os in
     AC_SUBST(LIBWINE_RULES,["
 all: libwine.dll libwine.a
 
-libwine.a: wine.def
+libwine.a: \$(srcdir)/wine.def
 	\$(DLLTOOL) -l \$@ -d \$(srcdir)/wine.def
 
-libwine.dll: \$(OBJS) wine.def
+libwine.dll: \$(OBJS) \$(srcdir)/wine.def
 	\$(CC) -shared \$(srcdir)/wine.def -o \$@ \$(OBJS) $crtlibs \$(EXTRALIBS)
 
 install install-lib:: libwine.dll \$(DESTDIR)\$(libdir) dummy
@@ -878,9 +878,6 @@ $wine_binary: main.o wine_info.plist
 
 wine-installed: main.o wine_info.plist
 	\$(CC) -o \$@ $LDEXECFLAGS main.o \$(LIBWINE) \$(LIBPORT) \$(EXTRALIBS) \$(LDFLAGS) \$(LDRPATH_INSTALL)
-
-wine_info.plist: wine_info.plist.in \$(top_builddir)/include/config.h
-	LC_ALL=C sed -e 's,@PACKAGE_VERSION@,$PACKAGE_VERSION,g' \$(srcdir)/wine_info.plist.in >\$@ || (\$(RM) \$@ && false)
 "])
     ;;
 
@@ -993,7 +990,7 @@ wine-installed: main.o
     AC_SUBST(LIBWINE_RULES,["
 all: libwine.so
 
-libwine.so.\$(VERSION): \$(OBJS) wine.map
+libwine.so.\$(VERSION): \$(OBJS) \$(srcdir)/wine.map
 	$LDSHARED \$(OBJS) \$(EXTRALIBS) \$(LDFLAGS) \$(LIBS) -o \$@
 
 libwine.so.\$(SOVERSION): libwine.so.\$(VERSION)
@@ -2610,9 +2607,9 @@ fi
 
 AC_SUBST(MAKE_DLL_RULES,"
 DLLFLAGS    = $DLLFLAGS
-MAINSPEC    = \$(MODULE:%.dll=%).spec
+MAINSPEC    = \$(srcdir)/\$(MODULE:%.dll=%).spec
 IDL_TLB_RES = \$(IDL_TLB_SRCS:.idl=_t.res)
-MODULEFLAGS = -shared \$(srcdir)/\$(MAINSPEC) \$(EXTRADLLFLAGS)
+MODULEFLAGS = -shared \$(MAINSPEC) \$(EXTRADLLFLAGS)
 
 all: $deps
 
@@ -2667,7 +2664,7 @@ WINE_APPEND_RULE([
 .INIT: Makefile
 .MAKEFILEDEPS:
 all: Makefile
-Makefile: Makefile.in Make.vars.in Make.rules config.status
+Makefile: $srcdir/Makefile.in $srcdir/Make.vars.in Make.rules config.status
 	@./config.status Make.tmp Makefile])
 
 WINE_CONFIG_SYMLINK(fonts,fonts,[marlett.ttf,symbol.ttf,tahoma.ttf,tahomabd.ttf],enable_fonts)
@@ -2675,14 +2672,6 @@ WINE_CONFIG_SYMLINK(loader,loader,[l_intl.nls])
 WINE_CONFIG_SYMLINK(po,po,[LINGUAS])
 WINE_CONFIG_SYMLINK(,tools,[wine],,winewrapper)
 WINE_CONFIG_SYMLINK(,tools,[wine64],enable_win64,winewrapper)
-
-WINE_CONFIG_EXTRA_DIR(dlls/gdi32/dibdrv)
-WINE_CONFIG_EXTRA_DIR(dlls/gdi32/enhmfdrv)
-WINE_CONFIG_EXTRA_DIR(dlls/gdi32/mfdrv)
-WINE_CONFIG_EXTRA_DIR(dlls/kernel32/nls)
-WINE_CONFIG_EXTRA_DIR(dlls/user32/resources)
-WINE_CONFIG_EXTRA_DIR(dlls/wineps.drv/data)
-WINE_CONFIG_EXTRA_DIR(include/wine)
 
 WINE_CONFIG_MAKERULES([Make.rules],[MAKE_RULES])
 
@@ -3512,7 +3501,7 @@ if test "x$enable_tools" != xno
 then
     AC_CONFIG_COMMANDS([tools],[AS_MKDIR_P(tools)])
     WINE_APPEND_RULE(
-[tools/makedep$ac_exeext: tools/makedep.c include/config.h
+[tools/makedep$ac_exeext: $srcdir/tools/makedep.c include/config.h
 	\$(CC) -Iinclude -I$srcdir/include \$(ALLCFLAGS) -o \$@ $srcdir/tools/makedep.c \$(LDFLAGS)
 clean:: __clean__
 	\$(RM) tools/makedep$ac_exeext])
@@ -3537,9 +3526,6 @@ clean::
 else
     AS_VAR_APPEND([LOADER_RULES],["
 all: wine.inf
-
-wine.inf: wine.inf.in \$(top_builddir)/include/config.h
-	LC_ALL=C sed -e 's,@PACKAGE_STRING@,$PACKAGE_STRING,g' \$(srcdir)/wine.inf.in >\$@ || (\$(RM) \$@ && false)
 
 install install-lib:: wine.inf \$(DESTDIR)\$(datadir)/wine install-man-pages
 	\$(INSTALL_DATA) wine.inf \$(DESTDIR)\$(datadir)/wine/wine.inf

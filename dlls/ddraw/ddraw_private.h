@@ -178,6 +178,7 @@ struct ddraw_surface
 
     /* Clipper objects */
     struct ddraw_clipper *clipper;
+    struct ddraw_palette *palette;
 
     /* For the ddraw surface list */
     struct list             surface_list_entry;
@@ -378,9 +379,9 @@ struct ddraw_palette
     LONG ref;
 
     struct wined3d_palette *wineD3DPalette;
-
-    /* IDirectDrawPalette fields */
-    IUnknown                  *ifaceToRelease;
+    struct ddraw *ddraw;
+    IUnknown *ifaceToRelease;
+    DWORD flags;
 };
 
 static inline struct ddraw_palette *impl_from_IDirectDrawPalette(IDirectDrawPalette *iface)

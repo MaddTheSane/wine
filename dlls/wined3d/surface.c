@@ -88,9 +88,6 @@ static void surface_cleanup(struct wined3d_surface *surface)
         surface->resource.allocatedMemory = NULL;
     }
 
-    if (surface->flags & SFLAG_USERPTR)
-        surface->resource.allocatedMemory = NULL;
-
     if (surface->overlay_dest)
         list_remove(&surface->overlay_entry);
 
@@ -497,7 +494,7 @@ static HRESULT surface_create_dib_section(struct wined3d_surface *surface)
         memcpy(surface->dib.bitmap_data, surface->resource.allocatedMemory,
                 surface->resource.height * wined3d_surface_get_pitch(surface));
     }
-    else
+    else if (!surface->user_memory)
     {
         /* This is to make maps read the GL texture although memory is allocated. */
         surface->flags &= ~SFLAG_INSYSMEM;
@@ -519,16 +516,20 @@ static HRESULT surface_create_dib_section(struct wined3d_surface *surface)
 
 static void surface_get_memory(const struct wined3d_surface *surface, struct wined3d_bo_address *data)
 {
+    if (surface->user_memory)
+    {
+        data->addr = surface->user_memory;
+        data->buffer_object = 0;
+        return;
+    }
     if (surface->flags & SFLAG_PBO)
     {
         data->addr = NULL;
         data->buffer_object = surface->pbo;
+        return;
     }
-    else
-    {
-        data->addr = surface->resource.allocatedMemory;
-        data->buffer_object = 0;
-    }
+    data->addr = surface->resource.allocatedMemory;
+    data->buffer_object = 0;
 }
 
 static BOOL surface_need_pbo(const struct wined3d_surface *surface, const struct wined3d_gl_info *gl_info)
@@ -587,7 +588,8 @@ static void surface_prepare_system_memory(struct wined3d_surface *surface)
 
     if (!(surface->flags & SFLAG_PBO) && surface_need_pbo(surface, gl_info))
         surface_create_pbo(surface, gl_info);
-    else if (!(surface->resource.allocatedMemory || surface->flags & SFLAG_PBO))
+    else if (!(surface->resource.allocatedMemory || surface->flags & SFLAG_PBO
+            || surface->user_memory))
     {
         /* Whatever surface we have, make sure that there is memory allocated
          * for the downloaded copy, or a PBO to map. */
@@ -830,6 +832,9 @@ static BYTE *surface_map(struct wined3d_surface *surface, const RECT *rect, DWOR
         context_release(context);
         return ret;
     }
+
+    if (surface->user_memory)
+        return surface->user_memory;
 
     return surface->resource.allocatedMemory;
 }
@@ -1296,7 +1301,11 @@ static void surface_remove_pbo(struct wined3d_surface *surface, const struct win
 
 static BOOL surface_init_sysmem(struct wined3d_surface *surface)
 {
-    if (!surface->resource.allocatedMemory)
+    if (surface->resource.allocatedMemory)
+    {
+        memset(surface->resource.allocatedMemory, 0, surface->resource.size);
+    }
+    else if (!surface->user_memory)
     {
         if (!surface->resource.heap_memory)
         {
@@ -1313,10 +1322,6 @@ static BOOL surface_init_sysmem(struct wined3d_surface *surface)
         }
 
         surface->resource.allocatedMemory = surface->resource.heap_memory;
-    }
-    else
-    {
-        memset(surface->resource.allocatedMemory, 0, surface->resource.size);
     }
 
     surface_validate_location(surface, SFLAG_INSYSMEM);
@@ -1490,6 +1495,9 @@ static BYTE *gdi_surface_map(struct wined3d_surface *surface, const RECT *rect, 
 {
     TRACE("surface %p, rect %s, flags %#x.\n",
             surface, wine_dbgstr_rect(rect), flags);
+
+    if (surface->user_memory)
+        return surface->user_memory;
 
     return surface->resource.allocatedMemory;
 }
@@ -2498,18 +2506,9 @@ void CDECL wined3d_surface_set_palette(struct wined3d_surface *surface, struct w
         return;
     }
 
-    if (surface->palette && (surface->resource.usage & WINED3DUSAGE_RENDERTARGET))
-        surface->palette->flags &= ~WINEDDPCAPS_PRIMARYSURFACE;
-
     surface->palette = palette;
-
     if (palette)
-    {
-        if (surface->resource.usage & WINED3DUSAGE_RENDERTARGET)
-            palette->flags |= WINEDDPCAPS_PRIMARYSURFACE;
-
         surface->surface_ops->surface_realize_palette(surface);
-    }
 }
 
 HRESULT CDECL wined3d_surface_set_color_key(struct wined3d_surface *surface,
@@ -2620,14 +2619,7 @@ HRESULT CDECL wined3d_surface_set_mem(struct wined3d_surface *surface, void *mem
         return WINED3DERR_INVALIDCALL;
     }
 
-    /* Render targets depend on their hdc, and we can't create an hdc on a user pointer. */
-    if (surface->resource.usage & WINED3DUSAGE_RENDERTARGET)
-    {
-        ERR("Not supported on render targets.\n");
-        return WINED3DERR_INVALIDCALL;
-    }
-
-    if (mem && mem != surface->resource.allocatedMemory)
+    if (mem && mem != surface->user_memory)
     {
         /* Do I have to copy the old surface content? */
         if (surface->flags & SFLAG_DIBSECTION)
@@ -2642,8 +2634,9 @@ HRESULT CDECL wined3d_surface_set_mem(struct wined3d_surface *surface, void *mem
         else if (!(surface->flags & SFLAG_USERPTR))
         {
             wined3d_resource_free_sysmem(&surface->resource);
+            surface->resource.allocatedMemory = NULL;
         }
-        surface->resource.allocatedMemory = mem;
+        surface->user_memory = mem;
         surface->flags |= SFLAG_USERPTR;
 
         /* Now the surface memory is most up do date. Invalidate drawable and texture. */
@@ -2662,7 +2655,7 @@ HRESULT CDECL wined3d_surface_set_mem(struct wined3d_surface *surface, void *mem
 
         if (!mem)
         {
-            surface->resource.allocatedMemory = NULL;
+            surface->user_memory = NULL;
             surface->flags &= ~(SFLAG_USERPTR | SFLAG_INSYSMEM);
 
             if (surface->flags & SFLAG_CLIENT)
@@ -3777,7 +3770,7 @@ void d3dfmt_p8_init_palette(const struct wined3d_surface *surface, BYTE table[25
                 table[i][3] = i;
             else if (colorkey && color_in_range(&surface->src_blt_color_key, i))
                 table[i][3] = 0x00;
-            else if (pal->flags & WINEDDPCAPS_ALPHA)
+            else if (pal->flags & WINED3D_PALETTE_ALPHA)
                 table[i][3] = pal->palents[i].peFlags;
             else
                 table[i][3] = 0xff;
