@@ -44,7 +44,6 @@ C_SRCS = \
 	upgrade.c \
 	where.c
 
-IDL_H_SRCS = msiserver.idl
 IDL_I_SRCS = msiserver.idl
 IDL_R_SRCS = msiserver.idl
 IDL_TLB_SRCS = msiserver.idl
@@ -54,6 +53,5 @@ BISON_SRCS = \
 	sql.y
 
 RC_SRCS = msi.rc
-PO_SRCS = msi.rc
 
 @MAKE_DLL_RULES@
