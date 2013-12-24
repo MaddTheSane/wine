@@ -96,10 +96,8 @@ static struct builtin_load_info *builtin_load_info = &default_load_info;
 
 static HANDLE main_exe_file;
 static UINT tls_module_count;      /* number of modules with TLS directory */
-static UINT tls_total_size;        /* total size of TLS storage */
 static const IMAGE_TLS_DIRECTORY **tls_dirs;  /* array of TLS directories */
-#define TLS_ALIGNMENT (2 * sizeof(void *))
-#define TLS_ALIGN(size) (((size) + TLS_ALIGNMENT - 1) & ~(TLS_ALIGNMENT - 1))
+LIST_ENTRY tls_links = { &tls_links, &tls_links };
 
 static RTL_CRITICAL_SECTION loader_section;
 static RTL_CRITICAL_SECTION_DEBUG critsect_debug =
@@ -795,6 +793,97 @@ static BOOL is_dll_native_subsystem( HMODULE module, const IMAGE_NT_HEADERS *nt,
     return TRUE;
 }
 
+/*************************************************************************
+ *		alloc_tls_slot
+ *
+ * Allocate a TLS slot for a newly-loaded module.
+ * The loader_section must be locked while calling this function.
+ */
+static SHORT alloc_tls_slot( LDR_MODULE *mod )
+{
+    const IMAGE_TLS_DIRECTORY *dir;
+    ULONG i, size;
+    void *new_ptr;
+    LIST_ENTRY *entry;
+
+    if (!(dir = RtlImageDirectoryEntryToData( mod->BaseAddress, TRUE, IMAGE_DIRECTORY_ENTRY_TLS, &size )))
+        return -1;
+
+    size = dir->EndAddressOfRawData - dir->StartAddressOfRawData;
+    if (!size && !dir->SizeOfZeroFill && !dir->AddressOfCallBacks) return -1;
+
+    for (i = 0; i < tls_module_count; i++) if (!tls_dirs[i]) break;
+
+    TRACE( "module %p data %p-%p zerofill %u index %p callback %p flags %x -> slot %u\n", mod->BaseAddress,
+           (void *)dir->StartAddressOfRawData, (void *)dir->EndAddressOfRawData, dir->SizeOfZeroFill,
+           (void *)dir->AddressOfIndex, (void *)dir->AddressOfCallBacks, dir->Characteristics, i );
+
+    if (i == tls_module_count)
+    {
+        UINT new_count = max( 32, tls_module_count * 2 );
+
+        if (!tls_dirs)
+            new_ptr = RtlAllocateHeap( GetProcessHeap(), HEAP_ZERO_MEMORY, new_count * sizeof(*tls_dirs) );
+        else
+            new_ptr = RtlReAllocateHeap( GetProcessHeap(), HEAP_ZERO_MEMORY, tls_dirs,
+                                         new_count * sizeof(*tls_dirs) );
+        if (!new_ptr) return -1;
+
+        /* resize the pointer block in all running threads */
+        for (entry = tls_links.Flink; entry != &tls_links; entry = entry->Flink)
+        {
+            TEB *teb = CONTAINING_RECORD( entry, TEB, TlsLinks );
+            void **old = teb->ThreadLocalStoragePointer;
+            void **new = RtlAllocateHeap( GetProcessHeap(), HEAP_ZERO_MEMORY, new_count * sizeof(*new));
+
+            if (!new) return -1;
+            if (old) memcpy( new, old, tls_module_count * sizeof(*new) );
+            teb->ThreadLocalStoragePointer = new;
+            TRACE( "thread %04lx tls block %p -> %p\n", (ULONG_PTR)teb->ClientId.UniqueThread, old, new );
+            /* FIXME: can't free old block here, should be freed at thread exit */
+        }
+
+        tls_dirs = new_ptr;
+        tls_module_count = new_count;
+    }
+
+    /* allocate the data block in all running threads */
+    for (entry = tls_links.Flink; entry != &tls_links; entry = entry->Flink)
+    {
+        TEB *teb = CONTAINING_RECORD( entry, TEB, TlsLinks );
+
+        if (!(new_ptr = RtlAllocateHeap( GetProcessHeap(), 0, size + dir->SizeOfZeroFill ))) return -1;
+        memcpy( new_ptr, (void *)dir->StartAddressOfRawData, size );
+        memset( (char *)new_ptr + size, 0, dir->SizeOfZeroFill );
+
+        TRACE( "thread %04lx slot %u: %u/%u bytes at %p\n",
+               (ULONG_PTR)teb->ClientId.UniqueThread, i, size, dir->SizeOfZeroFill, new_ptr );
+
+        RtlFreeHeap( GetProcessHeap(), 0,
+                     interlocked_xchg_ptr( (void **)teb->ThreadLocalStoragePointer + i, new_ptr ));
+    }
+
+    *(DWORD *)dir->AddressOfIndex = i;
+    tls_dirs[i] = dir;
+    return i;
+}
+
+
+/*************************************************************************
+ *		free_tls_slot
+ *
+ * Free the module TLS slot on unload.
+ * The loader_section must be locked while calling this function.
+ */
+static void free_tls_slot( LDR_MODULE *mod )
+{
+    ULONG i = (USHORT)mod->TlsIndex;
+
+    if (mod->TlsIndex == -1) return;
+    assert( i < tls_module_count );
+    tls_dirs[i] = NULL;
+}
+
 
 /*************************************************************************
  *		alloc_module
@@ -819,7 +908,6 @@ static WINE_MODREF *alloc_module( HMODULE hModule, LPCWSTR filename )
     wm->ldr.SizeOfImage   = nt->OptionalHeader.SizeOfImage;
     wm->ldr.Flags         = LDR_DONT_RESOLVE_REFS;
     wm->ldr.LoadCount     = 1;
-    wm->ldr.TlsIndex      = -1;
     wm->ldr.SectionHandle = NULL;
     wm->ldr.CheckSum      = 0;
     wm->ldr.TimeDateStamp = 0;
@@ -856,6 +944,8 @@ static WINE_MODREF *alloc_module( HMODULE hModule, LPCWSTR filename )
     wm->ldr.InInitializationOrderModuleList.Flink = NULL;
     wm->ldr.InInitializationOrderModuleList.Blink = NULL;
 
+    wm->ldr.TlsIndex = alloc_tls_slot( &wm->ldr );
+
     if (!(nt->OptionalHeader.DllCharacteristics & IMAGE_DLLCHARACTERISTICS_NX_COMPAT))
     {
         ULONG flags = MEM_EXECUTE_OPTION_ENABLE;
@@ -867,53 +957,6 @@ static WINE_MODREF *alloc_module( HMODULE hModule, LPCWSTR filename )
 
 
 /*************************************************************************
- *              alloc_process_tls
- *
- * Allocate the process-wide structure for module TLS storage.
- */
-static NTSTATUS alloc_process_tls(void)
-{
-    PLIST_ENTRY mark, entry;
-    PLDR_MODULE mod;
-    const IMAGE_TLS_DIRECTORY *dir;
-    ULONG size, i;
-
-    mark = &NtCurrentTeb()->Peb->LdrData->InMemoryOrderModuleList;
-    for (entry = mark->Flink; entry != mark; entry = entry->Flink)
-    {
-        mod = CONTAINING_RECORD(entry, LDR_MODULE, InMemoryOrderModuleList);
-        if (!(dir = RtlImageDirectoryEntryToData( mod->BaseAddress, TRUE,
-                                                  IMAGE_DIRECTORY_ENTRY_TLS, &size )))
-            continue;
-        size = (dir->EndAddressOfRawData - dir->StartAddressOfRawData) + dir->SizeOfZeroFill;
-        if (!size && !dir->AddressOfCallBacks) continue;
-        tls_total_size += TLS_ALIGN(size);
-        tls_module_count++;
-    }
-    if (!tls_module_count) return STATUS_SUCCESS;
-
-    TRACE( "count %u size %u\n", tls_module_count, tls_total_size );
-
-    tls_dirs = RtlAllocateHeap( GetProcessHeap(), 0, tls_module_count * sizeof(*tls_dirs) );
-    if (!tls_dirs) return STATUS_NO_MEMORY;
-
-    for (i = 0, entry = mark->Flink; entry != mark; entry = entry->Flink)
-    {
-        mod = CONTAINING_RECORD(entry, LDR_MODULE, InMemoryOrderModuleList);
-        if (!(dir = RtlImageDirectoryEntryToData( mod->BaseAddress, TRUE,
-                                                  IMAGE_DIRECTORY_ENTRY_TLS, &size )))
-            continue;
-        tls_dirs[i] = dir;
-        *(DWORD *)dir->AddressOfIndex = i;
-        mod->TlsIndex = i;
-        mod->LoadCount = -1;  /* can't unload it */
-        i++;
-    }
-    return STATUS_SUCCESS;
-}
-
-
-/*************************************************************************
  *              alloc_thread_tls
  *
  * Allocate the per-thread structure for module TLS storage.
@@ -921,29 +964,33 @@ static NTSTATUS alloc_process_tls(void)
 static NTSTATUS alloc_thread_tls(void)
 {
     void **pointers;
-    char *data;
     UINT i, size;
 
     if (!tls_module_count) return STATUS_SUCCESS;
 
-    size = TLS_ALIGN( tls_module_count * sizeof(*pointers) );
-    if (!(pointers = RtlAllocateHeap( GetProcessHeap(), 0, size + tls_total_size )))
+    if (!(pointers = RtlAllocateHeap( GetProcessHeap(), HEAP_ZERO_MEMORY,
+                                      tls_module_count * sizeof(*pointers) )))
         return STATUS_NO_MEMORY;
-    data = (char *)pointers + size;
 
     for (i = 0; i < tls_module_count; i++)
     {
         const IMAGE_TLS_DIRECTORY *dir = tls_dirs[i];
+
+        if (!dir) continue;
         size = dir->EndAddressOfRawData - dir->StartAddressOfRawData;
+        if (!size && !dir->SizeOfZeroFill) continue;
 
-        TRACE( "thread %04x idx %d: %d/%d bytes from %p to %p\n",
-               GetCurrentThreadId(), i, size, dir->SizeOfZeroFill,
-               (void *)dir->StartAddressOfRawData, data );
+        if (!(pointers[i] = RtlAllocateHeap( GetProcessHeap(), 0, size + dir->SizeOfZeroFill )))
+        {
+            while (i) RtlFreeHeap( GetProcessHeap(), 0, pointers[--i] );
+            RtlFreeHeap( GetProcessHeap(), 0, pointers );
+            return STATUS_NO_MEMORY;
+        }
+        memcpy( pointers[i], (void *)dir->StartAddressOfRawData, size );
+        memset( (char *)pointers[i] + size, 0, dir->SizeOfZeroFill );
 
-        pointers[i] = data;
-        memcpy( data, (void *)dir->StartAddressOfRawData, size );
-        memset( data + size, 0, dir->SizeOfZeroFill );
-        data += TLS_ALIGN( size + dir->SizeOfZeroFill );
+        TRACE( "thread %04x slot %u: %u/%u bytes at %p\n",
+               GetCurrentThreadId(), i, size, dir->SizeOfZeroFill, pointers[i] );
     }
     NtCurrentTeb()->ThreadLocalStoragePointer = pointers;
     return STATUS_SUCCESS;
@@ -1213,6 +1260,10 @@ NTSTATUS MODULE_DllThreadAttach( LPVOID lpReserved )
     if (process_detaching) return STATUS_SUCCESS;
 
     RtlEnterCriticalSection( &loader_section );
+
+    RtlAcquirePebLock();
+    InsertHeadList( &tls_links, &NtCurrentTeb()->TlsLinks );
+    RtlReleasePebLock();
 
     if ((status = alloc_thread_tls()) != STATUS_SUCCESS) goto done;
 
@@ -2482,6 +2533,8 @@ void WINAPI LdrShutdownThread(void)
 {
     PLIST_ENTRY mark, entry;
     PLDR_MODULE mod;
+    UINT i;
+    void **pointers;
 
     TRACE("()\n");
 
@@ -2504,8 +2557,18 @@ void WINAPI LdrShutdownThread(void)
                         DLL_THREAD_DETACH, NULL );
     }
 
+    RtlAcquirePebLock();
+    RemoveEntryList( &NtCurrentTeb()->TlsLinks );
+    RtlReleasePebLock();
+
+    if ((pointers = NtCurrentTeb()->ThreadLocalStoragePointer))
+    {
+        for (i = 0; i < tls_module_count; i++) RtlFreeHeap( GetProcessHeap(), 0, pointers[i] );
+        RtlFreeHeap( GetProcessHeap(), 0, pointers );
+    }
+    RtlFreeHeap( GetProcessHeap(), 0, NtCurrentTeb()->FlsSlots );
+    RtlFreeHeap( GetProcessHeap(), 0, NtCurrentTeb()->TlsExpansionSlots );
     RtlLeaveCriticalSection( &loader_section );
-    RtlFreeHeap( GetProcessHeap(), 0, NtCurrentTeb()->ThreadLocalStoragePointer );
 }
 
 
@@ -2533,6 +2596,7 @@ static void free_modref( WINE_MODREF *wm )
     }
     SERVER_END_REQ;
 
+    free_tls_slot( &wm->ldr );
     RtlReleaseActivationContext( wm->ldr.ActivationContext );
     NtUnmapViewOfSection( NtCurrentProcess(), wm->ldr.BaseAddress );
     if (wm->ldr.Flags & LDR_WINE_INTERNAL) wine_dll_unload( wm->ldr.SectionHandle );
@@ -2806,8 +2870,6 @@ void WINAPI LdrInitializeThunk( void *kernel_start, ULONG_PTR unknown2,
     actctx_init();
     load_path = NtCurrentTeb()->Peb->ProcessParameters->DllPath.Buffer;
     if ((status = fixup_imports( wm, load_path )) != STATUS_SUCCESS) goto error;
-    if ((status = alloc_process_tls()) != STATUS_SUCCESS) goto error;
-    if ((status = alloc_thread_tls()) != STATUS_SUCCESS) goto error;
     heap_set_debug_flags( GetProcessHeap() );
 
     status = wine_call_on_stack( attach_process_dlls, wm, NtCurrentTeb()->Tib.StackBase );
