@@ -23,6 +23,7 @@ PUBLIC_IDL_H_SRCS = \
 	cordebug.idl \
 	ctfutb.idl \
 	ctxtcall.idl \
+	d2d1.idl \
 	d3d10.idl \
 	d3d10_1.idl \
 	d3d11.idl \
@@ -187,6 +188,7 @@ SRCDIR_INCLUDES = \
 	cryptuiapi.h \
 	custcntl.h \
 	cvconst.h \
+	d2dbasetypes.h \
 	d3d.h \
 	d3d10_1shader.h \
 	d3d10effect.h \
@@ -627,13 +629,6 @@ SRCDIR_INCLUDES = \
 	xmldsodid.h \
 	zmouse.h
 
-INSTALLDIRS = \
-	$(DESTDIR)$(includedir)/windows/ddk \
-	$(DESTDIR)$(includedir)/windows \
-	$(DESTDIR)$(includedir)/msvcrt/sys \
-	$(DESTDIR)$(includedir)/msvcrt \
-	$(DESTDIR)$(includedir)
-
 IDL_H_SRCS = $(PUBLIC_IDL_H_SRCS) $(PRIVATE_IDL_H_SRCS)
 
 @MAKE_RULES@
@@ -642,7 +637,7 @@ OBJDIR_INCLUDES = $(PUBLIC_IDL_H_SRCS:.idl=.h) $(XTEMPLATE_SRCS:.x=.h)
 
 all: $(IDL_H_SRCS:.idl=.h) $(IDL_TLB_SRCS:.idl=.tlb) $(XTEMPLATE_SRCS:.x=.h)
 
-install install-dev:: $(OBJDIR_INCLUDES) $(INSTALLDIRS)
+install install-dev:: $(OBJDIR_INCLUDES)
 	for f in $(SRCDIR_INCLUDES); do case $$f in \
 	  wine/*)   $(INSTALL_DATA) $(srcdir)/$$f $(DESTDIR)$(includedir)/`expr $$f : 'wine/\(.*\)'` ;; \
 	  msvcrt/*) $(INSTALL_DATA) $(srcdir)/$$f $(DESTDIR)$(includedir)/$$f ;; \
@@ -662,4 +657,4 @@ uninstall::
 	  msvcrt/*) $(RM) $(DESTDIR)$(includedir)/$$f ;; \
 	  *)        $(RM) $(DESTDIR)$(includedir)/windows/$$f ;; \
 	esac; done
-	-rmdir $(INSTALLDIRS)
+	-rmdir $(DESTDIR)$(includedir)/windows/ddk $(DESTDIR)$(includedir)/windows $(DESTDIR)$(includedir)/msvcrt/sys $(DESTDIR)$(includedir)/msvcrt

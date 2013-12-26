@@ -378,6 +378,7 @@ struct per_thread_data
     int he_len;
     int se_len;
     int pe_len;
+    char ntoa_buffer[16]; /* 4*3 digits + 3 '.' + 1 '\0' */
 };
 
 /* internal: routing description information */
@@ -510,6 +511,7 @@ static const int ws_aiflag_map[][2] =
     MAP_OPTION( AI_PASSIVE ),
     MAP_OPTION( AI_CANONNAME ),
     MAP_OPTION( AI_NUMERICHOST ),
+    MAP_OPTION( AI_V4MAPPED ),
     MAP_OPTION( AI_ADDRCONFIG ),
 };
 
@@ -2943,6 +2945,7 @@ int WINAPI WS_getsockname(SOCKET s, struct WS_sockaddr *name, int *namelen)
         else
         {
             res=0;
+            TRACE("=> %s\n", debugstr_sockaddr(name));
         }
         release_sock_fd( s, fd );
     }
@@ -3523,17 +3526,12 @@ WS_u_short WINAPI WS_ntohs(WS_u_short netshort)
  */
 char* WINAPI WS_inet_ntoa(struct WS_in_addr in)
 {
-  /* use "buffer for dummies" here because some applications have a
-   * propensity to decode addresses in ws_hostent structure without
-   * saving them first...
-   */
-    static char dbuffer[16]; /* Yes, 16: 4*3 digits + 3 '.' + 1 '\0' */
-
     char* s = inet_ntoa(*((struct in_addr*)&in));
     if( s )
     {
-        strcpy(dbuffer, s);
-        return dbuffer;
+        struct per_thread_data *data = get_per_thread_data();
+        strcpy(data->ntoa_buffer, s);
+        return data->ntoa_buffer;
     }
     SetLastError(wsaErrno());
     return NULL;
@@ -5370,6 +5368,14 @@ static int convert_eai_u2w(int unixret) {
     for (i=0;ws_eai_map[i][0];i++)
         if (ws_eai_map[i][1] == unixret)
             return ws_eai_map[i][0];
+
+    if (unixret == EAI_SYSTEM)
+        /* There are broken versions of glibc which return EAI_SYSTEM
+         * and set errno to 0 instead of returning EAI_NONAME.
+         */
+        return errno ? sock_get_error( errno ) : WS_EAI_NONAME;
+
+    FIXME("Unhandled unix EAI_xxx ret %d\n", unixret);
     return unixret;
 }
 
@@ -5446,7 +5452,7 @@ int WINAPI WS_getaddrinfo(LPCSTR nodename, LPCSTR servname, const struct WS_addr
         *xai = NULL;
         while (xuai) {
             struct WS_addrinfo *ai = HeapAlloc(GetProcessHeap(),HEAP_ZERO_MEMORY, sizeof(struct WS_addrinfo));
-            int len;
+            SIZE_T len;
 
             if (!ai)
                 goto outofmem;
@@ -5484,6 +5490,18 @@ int WINAPI WS_getaddrinfo(LPCSTR nodename, LPCSTR servname, const struct WS_addr
             xuai = xuai->ai_next;
         }
         freeaddrinfo(unixaires);
+
+        if (TRACE_ON(winsock))
+        {
+            struct WS_addrinfo *ai = *res;
+            while (ai)
+            {
+                TRACE("=> %p, flags %#x, family %d, type %d, protocol %d, len %ld, name %s, addr %s\n",
+                      ai, ai->ai_flags, ai->ai_family, ai->ai_socktype, ai->ai_protocol, ai->ai_addrlen,
+                      ai->ai_canonname, debugstr_sockaddr(ai->ai_addr));
+                ai = ai->ai_next;
+            }
+        }
     } else
         result = convert_eai_u2w(result);
 
@@ -6976,6 +6994,7 @@ INT WINAPI WSAAddressToStringA( LPSOCKADDR sockaddr, DWORD len,
         return SOCKET_ERROR;
     }
 
+    TRACE("=> %s,%u bytes\n", debugstr_a(buffer), size);
     *lenstr = size;
     strcpy( string, buffer );
     return 0;
@@ -7025,6 +7044,7 @@ INT WINAPI WSAAddressToStringW( LPSOCKADDR sockaddr, DWORD len,
         return SOCKET_ERROR;
     }
 
+    TRACE("=> %s,%u bytes\n", debugstr_w(buffer), size);
     *lenstr = size;
     lstrcpyW( string, buffer );
     return 0;

@@ -46,7 +46,7 @@ enum TYPEKIND {
 
 struct seg_t;
 
-typedef int (*dump_seg_t)(struct seg_t*);
+typedef BOOL (*dump_seg_t)(struct seg_t*);
 
 typedef struct seg_t {
     const char *name;
@@ -55,13 +55,11 @@ typedef struct seg_t {
     int length;
 } seg_t;
 
-extern seg_t segdir[];
-
 static int offset=0;
 static int indent;
 static int typeinfo_cnt;
 static int header_flags = 0;
-static int msft_eof = 0;
+static BOOL msft_eof = FALSE;
 
 static int msft_typeinfo_offs[1000];
 static int msft_typeinfo_kind[1000];
@@ -75,7 +73,7 @@ static const void *tlb_read(int size) {
     if(ret)
         offset += size;
     else
-        msft_eof = -1;
+        msft_eof = TRUE;
 
     return ret;
 }
@@ -279,7 +277,7 @@ static void dump_msft_typeinfobase(void)
     print_end_block();
 }
 
-static int dump_msft_typeinfobases(seg_t *seg)
+static BOOL dump_msft_typeinfobases(seg_t *seg)
 {
     int i;
 
@@ -287,7 +285,7 @@ static int dump_msft_typeinfobases(seg_t *seg)
         dump_msft_typeinfobase();
 
     assert(offset == seg->offset+seg->length);
-    return -1;
+    return TRUE;
 }
 
 static void dump_msft_impinfo(int n)
@@ -301,7 +299,7 @@ static void dump_msft_impinfo(int n)
     print_end_block();
 }
 
-static int dump_msft_impinfos(seg_t *seg)
+static BOOL dump_msft_impinfos(seg_t *seg)
 {
     int i;
 
@@ -309,7 +307,7 @@ static int dump_msft_impinfos(seg_t *seg)
         dump_msft_impinfo(i);
 
     assert(offset == seg->offset+seg->length);
-    return -1;
+    return TRUE;
 }
 
 static void dump_msft_impfile(int n)
@@ -324,7 +322,7 @@ static void dump_msft_impfile(int n)
     print_end_block();
 }
 
-static int dump_msft_impfiles(seg_t *seg)
+static BOOL dump_msft_impfiles(seg_t *seg)
 {
     int i;
 
@@ -332,10 +330,10 @@ static int dump_msft_impfiles(seg_t *seg)
         dump_msft_impfile(i);
 
     assert(offset == seg->offset+seg->length);
-    return -1;
+    return TRUE;
 }
 
-static int dump_msft_reftabs(seg_t *seg)
+static BOOL dump_msft_reftabs(seg_t *seg)
 {
     print_begin_block("RefTab");
 
@@ -343,10 +341,10 @@ static int dump_msft_reftabs(seg_t *seg)
 
     print_end_block();
 
-    return -1;
+    return TRUE;
 }
 
-static int dump_msft_guidhashtab(seg_t *seg)
+static BOOL dump_msft_guidhashtab(seg_t *seg)
 {
     print_begin_block("GuidHashTab");
 
@@ -355,7 +353,7 @@ static int dump_msft_guidhashtab(seg_t *seg)
     print_end_block();
 
     assert(offset == seg->offset+seg->length);
-    return -1;
+    return TRUE;
 }
 
 static void dump_msft_guidentry(int n)
@@ -369,7 +367,7 @@ static void dump_msft_guidentry(int n)
     print_end_block();
 }
 
-static int dump_msft_guidtab(seg_t *seg)
+static BOOL dump_msft_guidtab(seg_t *seg)
 {
     int i;
 
@@ -377,17 +375,17 @@ static int dump_msft_guidtab(seg_t *seg)
         dump_msft_guidentry(i);
 
     assert(offset == seg->offset+seg->length);
-    return -1;
+    return TRUE;
 }
 
-static int dump_msft_namehashtab(seg_t *seg)
+static BOOL dump_msft_namehashtab(seg_t *seg)
 {
     print_begin_block("NameHashTab");
 
     dump_binary(seg->length); /* FIXME */
 
     print_end_block();
-    return -1;
+    return TRUE;
 }
 
 static void dump_string(int len, int align_off)
@@ -417,7 +415,7 @@ static void dump_msft_name(int base, int n)
     print_end_block();
 }
 
-static int dump_msft_nametab(seg_t *seg)
+static BOOL dump_msft_nametab(seg_t *seg)
 {
     int i, base = offset;
 
@@ -425,7 +423,7 @@ static int dump_msft_nametab(seg_t *seg)
         dump_msft_name(base, i);
 
     assert(offset == seg->offset+seg->length);
-    return -1;
+    return TRUE;
 }
 
 static void dump_msft_string(int n)
@@ -449,7 +447,7 @@ static void dump_msft_string(int n)
     print_end_block();
 }
 
-static int dump_msft_stringtab(seg_t *seg)
+static BOOL dump_msft_stringtab(seg_t *seg)
 {
     int i;
 
@@ -457,7 +455,7 @@ static int dump_msft_stringtab(seg_t *seg)
         dump_msft_string(i);
 
     assert(offset == seg->offset+seg->length);
-    return -1;
+    return TRUE;
 }
 
 static void dump_msft_typedesc(int n)
@@ -470,7 +468,7 @@ static void dump_msft_typedesc(int n)
     print_end_block();
 }
 
-static int dump_msft_typedesctab(seg_t *seg)
+static BOOL dump_msft_typedesctab(seg_t *seg)
 {
     int i;
 
@@ -482,20 +480,20 @@ static int dump_msft_typedesctab(seg_t *seg)
     print_end_block();
 
     assert(offset == seg->offset+seg->length);
-    return -1;
+    return TRUE;
 }
 
-static int dump_msft_arraydescs(seg_t *seg)
+static BOOL dump_msft_arraydescs(seg_t *seg)
 {
     print_begin_block("ArrayDescriptions");
 
     dump_binary(seg->length); /* FIXME */
 
     print_end_block();
-    return -1;
+    return TRUE;
 }
 
-static int dump_msft_custdata(seg_t *seg)
+static BOOL dump_msft_custdata(seg_t *seg)
 {
     unsigned short vt;
     unsigned i, n;
@@ -522,7 +520,7 @@ static int dump_msft_custdata(seg_t *seg)
     }
 
     print_end_block();
-    return -1;
+    return TRUE;
 }
 
 static void dump_msft_cdguid(int n)
@@ -536,7 +534,7 @@ static void dump_msft_cdguid(int n)
     print_end_block();
 }
 
-static int dump_msft_cdguids(seg_t *seg)
+static BOOL dump_msft_cdguids(seg_t *seg)
 {
     int i;
 
@@ -544,25 +542,25 @@ static int dump_msft_cdguids(seg_t *seg)
         dump_msft_cdguid(i);
 
     assert(offset == seg->offset+seg->length);
-    return -1;
+    return TRUE;
 }
 
-static int dump_msft_res0e(seg_t *seg)
+static BOOL dump_msft_res0e(seg_t *seg)
 {
     print_begin_block("res0e");
     dump_binary(seg->length);
     print_end_block();
 
-    return -1;
+    return TRUE;
 }
 
-static int dump_msft_res0f(seg_t *seg)
+static BOOL dump_msft_res0f(seg_t *seg)
 {
     print_begin_block("res0f");
     dump_binary(seg->length);
     print_end_block();
 
-    return -1;
+    return TRUE;
 }
 
 static void dump_msft_func(int n)
@@ -660,7 +658,7 @@ static void dump_msft_coclass(int n)
         dump_msft_ref(i);
 }
 
-static int dump_msft_typeinfo(int n)
+static BOOL dump_msft_typeinfo(int n)
 {
     int i;
 
@@ -669,7 +667,7 @@ static int dump_msft_typeinfo(int n)
     if((msft_typeinfo_kind[n] & 0xf) == TKIND_COCLASS) {
         dump_msft_coclass(n);
         print_end_block();
-        return -1;
+        return TRUE;
     }
 
     print_dec("size");
@@ -700,10 +698,10 @@ static int dump_msft_typeinfo(int n)
 
     print_end_block();
 
-    return -1;
+    return TRUE;
 }
 
-seg_t segdir[] = {
+static seg_t segdir[] = {
     {"TypeInfoTab",       dump_msft_typeinfobases, -1, -1},
     {"ImpInfo",           dump_msft_impinfos, -1, -1},
     {"ImpFiles",          dump_msft_impfiles, -1, -1},
@@ -745,7 +743,7 @@ static void dump_msft_segdir(void)
     print_end_block();
 }
 
-static int dump_offset(void)
+static BOOL dump_offset(void)
 {
     int i;
 
@@ -757,7 +755,7 @@ static int dump_offset(void)
         if(msft_typeinfo_offs[i] == offset)
             return dump_msft_typeinfo(i);
 
-    return 0;
+    return FALSE;
 }
 
 enum FileSig get_kind_msft(void)

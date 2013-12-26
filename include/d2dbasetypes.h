@@ -1,7 +1,5 @@
 /*
- * Typelib for pstorec
- *
- * Copyright 2009 Alexandre Julliard
+ * Copyright 2013 Nikolay Sivov for CodeWeavers
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -18,6 +16,8 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA
  */
 
-#pragma makedep regtypelib
-
-#include "pstore.idl"
+typedef struct D2D_POINT_2F
+{
+    FLOAT x;
+    FLOAT y;
+} D2D_POINT_2F;
