@@ -51,16 +51,17 @@ struct incl_file
 };
 
 #define FLAG_SYSTEM         0x0001  /* is it a system include (#include <name>) */
-#define FLAG_IDL_PROXY      0x0002  /* generates a proxy (_p.c) file */
-#define FLAG_IDL_CLIENT     0x0004  /* generates a client (_c.c) file */
-#define FLAG_IDL_SERVER     0x0008  /* generates a server (_s.c) file */
-#define FLAG_IDL_IDENT      0x0010  /* generates an ident (_i.c) file */
-#define FLAG_IDL_REGISTER   0x0020  /* generates a registration (_r.res) file */
-#define FLAG_IDL_TYPELIB    0x0040  /* generates a typelib (.tlb) file */
-#define FLAG_IDL_REGTYPELIB 0x0080  /* generates a registered typelib (_t.res) file */
-#define FLAG_IDL_HEADER     0x0100  /* generates a header (.h) file */
-#define FLAG_RC_PO          0x0200  /* rc file contains translations */
-#define FLAG_C_IMPLIB       0x0400  /* file is part of an import library */
+#define FLAG_GENERATED      0x0002  /* generated file */
+#define FLAG_IDL_PROXY      0x0004  /* generates a proxy (_p.c) file */
+#define FLAG_IDL_CLIENT     0x0008  /* generates a client (_c.c) file */
+#define FLAG_IDL_SERVER     0x0010  /* generates a server (_s.c) file */
+#define FLAG_IDL_IDENT      0x0020  /* generates an ident (_i.c) file */
+#define FLAG_IDL_REGISTER   0x0040  /* generates a registration (_r.res) file */
+#define FLAG_IDL_TYPELIB    0x0080  /* generates a typelib (.tlb) file */
+#define FLAG_IDL_REGTYPELIB 0x0100  /* generates a registered typelib (_t.res) file */
+#define FLAG_IDL_HEADER     0x0200  /* generates a header (.h) file */
+#define FLAG_RC_PO          0x0400  /* rc file contains translations */
+#define FLAG_C_IMPLIB       0x0800  /* file is part of an import library */
 
 static const struct
 {
@@ -92,15 +93,8 @@ static const struct strarray empty_strarray;
 
 static struct strarray include_args;
 static struct strarray object_extensions;
-
-struct make_var
-{
-    char *name;
-    char *value;
-};
-
-static struct make_var *make_vars;
-static unsigned int nb_make_vars;
+static struct strarray make_vars;
+static struct strarray cmdline_vars;
 
 static const char *base_dir = ".";
 static const char *src_dir;
@@ -1047,48 +1041,6 @@ static void parse_in_file( struct incl_file *source, FILE *file )
 
 
 /*******************************************************************
- *         parse_generated_idl
- */
-static void parse_generated_idl( struct incl_file *source )
-{
-    source->filename = xstrdup( source->name );
-
-    if (strendswith( source->name, "_c.c" ))
-    {
-        add_include( source, replace_extension( source->name, "_c.c", ".h" ), 0 );
-    }
-    else if (strendswith( source->name, "_i.c" ))
-    {
-        add_include( source, "rpc.h", 1 );
-        add_include( source, "rpcndr.h", 1 );
-        add_include( source, "guiddef.h", 1 );
-    }
-    else if (strendswith( source->name, "_p.c" ))
-    {
-        add_include( source, "objbase.h", 1 );
-        add_include( source, "rpcproxy.h", 1 );
-        add_include( source, "wine/exception.h", 1 );
-        add_include( source, replace_extension( source->name, "_p.c", ".h" ), 0 );
-    }
-    else if (strendswith( source->name, "_s.c" ))
-    {
-        add_include( source, "wine/exception.h", 1 );
-        add_include( source, replace_extension( source->name, "_s.c", ".h" ), 0 );
-    }
-}
-
-/*******************************************************************
- *         is_generated_idl
- */
-static int is_generated_idl( struct incl_file *source )
-{
-    return (strendswith( source->name, "_c.c" ) ||
-            strendswith( source->name, "_i.c" ) ||
-            strendswith( source->name, "_p.c" ) ||
-            strendswith( source->name, "_s.c" ));
-}
-
-/*******************************************************************
  *         parse_file
  */
 static void parse_file( struct incl_file *source, int src )
@@ -1139,69 +1091,8 @@ static struct incl_file *add_src_file( const char *name )
     memset( file, 0, sizeof(*file) );
     file->name = xstrdup(name);
     list_add_tail( &sources, &file->entry );
-
-    /* special cases for generated files */
-
-    if (is_generated_idl( file ))
-    {
-        parse_generated_idl( file );
-        return file;
-    }
-
-    if (!strcmp( file->name, "dlldata.o" ))
-    {
-        file->filename = xstrdup( "dlldata.c" );
-        add_include( file, "objbase.h", 1 );
-        add_include( file, "rpcproxy.h", 1 );
-        return file;
-    }
-
-    if (!strcmp( file->name, "testlist.o" ))
-    {
-        file->filename = xstrdup( "testlist.c" );
-        add_include( file, "wine/test.h", 1 );
-        return file;
-    }
-
-    if (strendswith( file->name, ".o" ))
-    {
-        /* default to .c for unknown extra object files */
-        file->filename = replace_extension( file->name, ".o", ".c" );
-        return file;
-    }
-
-    if (strendswith( file->name, ".tlb" ) ||
-        strendswith( file->name, ".res" ) ||
-        strendswith( file->name, ".pot" ))
-    {
-        file->filename = xstrdup( file->name );
-        return file;
-    }
-
     parse_file( file, 1 );
     return file;
-}
-
-
-/*******************************************************************
- *         add_generated_sources
- */
-static void add_generated_sources(void)
-{
-    unsigned int i;
-    struct incl_file *source, *next;
-
-    LIST_FOR_EACH_ENTRY_SAFE( source, next, &sources, struct incl_file, entry )
-    {
-        if (!source->flags) continue;
-        for (i = 0; i < sizeof(idl_outputs) / sizeof(idl_outputs[0]); i++)
-        {
-            if (!(source->flags & idl_outputs[i].flag)) continue;
-            if (!strendswith( idl_outputs[i].ext, ".c" )) continue;
-            add_src_file( replace_extension( source->name, ".idl", idl_outputs[i].ext ));
-        }
-        if (source->flags & FLAG_IDL_PROXY) add_src_file( "dlldata.o" );
-    }
 }
 
 
@@ -1212,9 +1103,13 @@ static char *get_make_variable( const char *name )
 {
     unsigned int i;
 
-    for (i = 0; i < nb_make_vars; i++)
-        if (!strcmp( make_vars[i].name, name ))
-            return xstrdup( make_vars[i].value );
+    for (i = 0; i < cmdline_vars.count; i += 2)
+        if (!strcmp( cmdline_vars.str[i], name ))
+            return xstrdup( cmdline_vars.str[i + 1] );
+
+    for (i = 0; i < make_vars.count; i += 2)
+        if (!strcmp( make_vars.str[i], name ))
+            return xstrdup( make_vars.str[i + 1] );
     return NULL;
 }
 
@@ -1252,7 +1147,13 @@ static char *get_expanded_make_variable( const char *name )
         free( expand );
         expand = tmp;
     }
-    return expand;
+
+    /* consider empty variables undefined */
+    p = expand;
+    while (*p && isspace(*p)) p++;
+    if (*p) return expand;
+    free( expand );
+    return NULL;
 }
 
 
@@ -1272,12 +1173,44 @@ static struct strarray get_expanded_make_var_array( const char *name )
 
 
 /*******************************************************************
+ *         set_make_variable
+ */
+static int set_make_variable( struct strarray *array, const char *assignment )
+{
+    unsigned int i;
+    char *p, *name;
+
+    p = name = xstrdup( assignment );
+    while (isalnum(*p) || *p == '_') p++;
+    if (name == p) return 0;  /* not a variable */
+    if (isspace(*p))
+    {
+        *p++ = 0;
+        while (isspace(*p)) p++;
+    }
+    if (*p != '=') return 0;  /* not an assignment */
+    *p++ = 0;
+    while (isspace(*p)) p++;
+
+    /* redefining a variable replaces the previous value */
+    for (i = 0; i < array->count; i += 2)
+    {
+        if (strcmp( array->str[i], name )) continue;
+        array->str[i + 1] = p;
+        return 1;
+    }
+    strarray_add( array, name );
+    strarray_add( array, p );
+    return 1;
+}
+
+
+/*******************************************************************
  *         parse_makefile
  */
 static void parse_makefile(void)
 {
     char *buffer;
-    unsigned int i, vars_size = 0;
     FILE *file;
 
     input_file_name = strmake( "%s/%s", base_dir, makefile_name );
@@ -1287,46 +1220,102 @@ static void parse_makefile(void)
         exit( 1 );
     }
 
-    nb_make_vars = 0;
     input_line = 0;
     while ((buffer = get_line( file )))
     {
-        char *name, *p = buffer;
-
         if (Separator && !strncmp( buffer, Separator, strlen(Separator) )) break;
-        while (isspace(*p)) p++;
-        if (*p == '#') continue;  /* comment */
-        name = p;
-        while (isalnum(*p) || *p == '_') p++;
-        if (name == p) continue;  /* not a variable */
-        if (isspace(*p))
-        {
-            *p++ = 0;
-            while (isspace(*p)) p++;
-        }
-        if (*p != '=') continue;  /* not an assignment */
-        *p++ = 0;
-        while (isspace(*p)) p++;
-
-        /* redefining a variable replaces the previous value */
-        for (i = 0; i < nb_make_vars; i++)
-            if (!strcmp( make_vars[i].name, name )) break;
-        if (i == nb_make_vars)
-        {
-            if (nb_make_vars == vars_size)
-            {
-                vars_size *= 2;
-                if (!vars_size) vars_size = 32;
-                make_vars = xrealloc( make_vars, vars_size * sizeof(*make_vars) );
-            }
-            make_vars[nb_make_vars++].name = xstrdup( name );
-        }
-        else free( make_vars[i].value );
-
-        make_vars[i].value = xstrdup( p );
+        if (*buffer == '\t') continue;  /* command */
+        while (isspace( *buffer )) buffer++;
+        if (*buffer == '#') continue;  /* comment */
+        set_make_variable( &make_vars, buffer );
     }
     fclose( file );
     input_file_name = NULL;
+}
+
+
+/*******************************************************************
+ *         add_generated_source
+ *
+ * Add a generated source file to the list.
+ */
+static struct incl_file *add_generated_source( const char *name, const char *filename )
+{
+    struct incl_file *file;
+
+    if ((file = find_src_file( name ))) return file;  /* we already have it */
+    file = xmalloc( sizeof(*file) );
+    memset( file, 0, sizeof(*file) );
+    file->name = xstrdup( name );
+    file->filename = xstrdup( filename ? filename : name );
+    file->flags = FLAG_GENERATED;
+    list_add_tail( &sources, &file->entry );
+    return file;
+}
+
+
+/*******************************************************************
+ *         add_generated_sources
+ */
+static void add_generated_sources(void)
+{
+    struct incl_file *source, *next, *file;
+
+    LIST_FOR_EACH_ENTRY_SAFE( source, next, &sources, struct incl_file, entry )
+    {
+        if (source->flags & FLAG_IDL_CLIENT)
+        {
+            file = add_generated_source( replace_extension( source->name, ".idl", "_c.c" ), NULL );
+            add_include( file, replace_extension( source->name, ".idl", ".h" ), 0 );
+        }
+        if (source->flags & FLAG_IDL_SERVER)
+        {
+            file = add_generated_source( replace_extension( source->name, ".idl", "_s.c" ), NULL );
+            add_include( file, "wine/exception.h", 0 );
+            add_include( file, replace_extension( source->name, ".idl", ".h" ), 0 );
+        }
+        if (source->flags & FLAG_IDL_IDENT)
+        {
+            file = add_generated_source( replace_extension( source->name, ".idl", "_i.c" ), NULL );
+            add_include( file, "rpc.h", 0 );
+            add_include( file, "rpcndr.h", 0 );
+            add_include( file, "guiddef.h", 0 );
+        }
+        if (source->flags & FLAG_IDL_PROXY)
+        {
+            file = add_generated_source( "dlldata.o", "dlldata.c" );
+            add_include( file, "objbase.h", 0 );
+            add_include( file, "rpcproxy.h", 0 );
+            file = add_generated_source( replace_extension( source->name, ".idl", "_p.c" ), NULL );
+            add_include( file, "objbase.h", 0 );
+            add_include( file, "rpcproxy.h", 0 );
+            add_include( file, "wine/exception.h", 0 );
+            add_include( file, replace_extension( source->name, ".idl", ".h" ), 0 );
+        }
+        if (source->flags & FLAG_IDL_REGTYPELIB)
+        {
+            add_generated_source( replace_extension( source->name, ".idl", "_t.res" ), NULL );
+        }
+        if (source->flags & FLAG_IDL_REGISTER)
+        {
+            add_generated_source( replace_extension( source->name, ".idl", "_r.res" ), NULL );
+        }
+        if (strendswith( source->name, ".y" ))
+        {
+            file = add_generated_source( replace_extension( source->name, ".y", ".tab.c" ), NULL );
+            memcpy( file->files, source->files, sizeof(file->files) );
+        }
+        if (strendswith( source->name, ".l" ))
+        {
+            file = add_generated_source( replace_extension( source->name, ".l", ".yy.c" ), NULL );
+            memcpy( file->files, source->files, sizeof(file->files) );
+        }
+    }
+    if (get_make_variable( "TESTDLL" ))
+    {
+        file = add_generated_source( "testlist.o", "testlist.c" );
+        add_include( file, "wine/test.h", 0 );
+    }
 }
 
 
@@ -1358,18 +1347,19 @@ static struct strarray output_sources(void)
     struct strarray po_files = empty_strarray;
     struct strarray mc_files = empty_strarray;
     struct strarray test_files = empty_strarray;
+    struct strarray dlldata_files = empty_strarray;
+    struct strarray includes = empty_strarray;
     struct strarray subdirs = empty_strarray;
 
-    column = output( "includes = -I." );
-    if (src_dir) output_filename( strmake( "-I%s", src_dir ), &column );
+    strarray_add( &includes, "-I." );
+    if (src_dir) strarray_add( &includes, strmake( "-I%s", src_dir ));
     if (parent_dir)
     {
-        if (src_dir) output_filename( strmake( "-I%s/%s", src_dir, parent_dir ), &column );
-        else output_filename( strmake( "-I%s", parent_dir ), &column );
+        if (src_dir) strarray_add( &includes, strmake( "-I%s/%s", src_dir, parent_dir ));
+        else strarray_add( &includes, strmake( "-I%s", parent_dir ));
     }
-    if (top_src_dir && top_obj_dir) output_filename( strmake( "-I%s/include", top_obj_dir ), &column );
-    output_filenames( &include_args, &column );
-    output( "\n" );
+    if (top_src_dir && top_obj_dir) strarray_add( &includes, strmake( "-I%s/include", top_obj_dir ));
+    strarray_addall( &includes, &include_args );
 
     LIST_FOR_EACH_ENTRY( source, &sources, struct incl_file, entry )
     {
@@ -1406,44 +1396,42 @@ static struct strarray output_sources(void)
             else output( "%s.tab.c: %s\n", obj, sourcedep );
 
             output( "\t$(BISON) $(BISONFLAGS) -p %s_ -o $@ %s\n", obj, source->filename );
-            output( "%s.tab.o: %s.tab.c\n", obj, obj );
-            output( "\t$(CC) -c $(includes) $(ALLCFLAGS) -o $@ %s.tab.c\n", obj );
-            strarray_add( &clean_files, strmake( "%s.tab.c", obj ));
-            strarray_add( &clean_files, strmake( "%s.tab.o", obj ));
-            column += output( "%s.tab.o:", obj );
             free( header );
+            continue;  /* no dependencies */
         }
         else if (!strcmp( ext, "x" ))  /* template file */
         {
             output( "%s.h: $(MAKEXFTMPL) %s\n", obj, sourcedep );
             output( "\t$(MAKEXFTMPL) -H -o $@ %s\n", source->filename );
             strarray_add( &clean_files, strmake( "%s.h", obj ));
-            continue;
+            continue;  /* no dependencies */
         }
         else if (!strcmp( ext, "l" ))  /* lex file */
         {
             output( "%s.yy.c: %s\n", obj, sourcedep );
             output( "\t$(FLEX) $(LEXFLAGS) -o$@ %s\n", source->filename );
-            output( "%s.yy.o: %s.yy.c\n", obj, obj );
-            output( "\t$(CC) -c $(includes) $(ALLCFLAGS) -o $@ %s.yy.c\n", obj );
-            strarray_add( &clean_files, strmake( "%s.yy.c", obj ));
-            strarray_add( &clean_files, strmake( "%s.yy.o", obj ));
-            column += output( "%s.yy.o:", obj );
+            continue;  /* no dependencies */
         }
         else if (!strcmp( ext, "rc" ))  /* resource file */
         {
             if (source->flags & FLAG_RC_PO)
             {
                 output( "%s.res: $(WRC) $(ALL_MO_FILES) %s\n", obj, sourcedep );
-                output( "\t$(WRC) $(includes) $(RCFLAGS) -o $@ %s\n", source->filename );
-                column += output( "%s.res rsrc.pot:", obj );
+                column = output( "\t$(WRC) -o $@ %s", source->filename );
+                output_filenames( &includes, &column );
+                output_filename( "$(RCFLAGS)", &column );
+                output( "\n" );
+                column = output( "%s.res rsrc.pot:", obj );
                 strarray_add( &po_files, source->filename );
             }
             else
             {
                 output( "%s.res: $(WRC) %s\n", obj, sourcedep );
-                output( "\t$(WRC) $(includes) $(RCFLAGS) -o $@ %s\n", source->filename );
-                column += output( "%s.res:", obj );
+                column = output( "\t$(WRC) -o $@ %s", source->filename );
+                output_filenames( &includes, &column );
+                output_filename( "$(RCFLAGS)", &column );
+                output( "\n" );
+                column = output( "%s.res:", obj );
             }
             strarray_add( &clean_files, strmake( "%s.res", obj ));
         }
@@ -1468,13 +1456,18 @@ static struct strarray output_sources(void)
             {
                 if (!(source->flags & idl_outputs[i].flag)) continue;
                 dest = strmake( "%s%s", obj, idl_outputs[i].ext );
-                strarray_add( &clean_files, dest );
+                if (!find_src_file( dest )) strarray_add( &clean_files, dest );
                 strarray_add( &targets, dest );
             }
+            if (source->flags & FLAG_IDL_PROXY) strarray_add( &dlldata_files, source->name );
             column = 0;
             output_filenames( &targets, &column );
             output( ": $(WIDL)\n" );
-            output( "\t$(WIDL) $(includes) $(TARGETFLAGS) $(IDLFLAGS) -o $@ %s\n", source->filename );
+            column = output( "\t$(WIDL) -o $@ %s", source->filename );
+            output_filenames( &includes, &column );
+            output_filename( "$(TARGETFLAGS)", &column );
+            output_filename( "$(IDLFLAGS)", &column );
+            output( "\n" );
             column = 0;
             output_filenames( &targets, &column );
             column += output( ": %s", sourcedep );
@@ -1505,34 +1498,77 @@ static struct strarray output_sources(void)
             output( "\t$(SED_CMD) %s >$@ || ($(RM) $@ && false)\n", source->filename );
             column += output( "%s:", obj );
         }
-        else if (!strcmp( ext, "tlb" ) || !strcmp( ext, "res" ) || !strcmp( ext, "pot" ))
+        else if (!strcmp( ext, "sfd" ))  /* font file */
+        {
+            char *fontforge = get_expanded_make_variable( "FONTFORGE" );
+            if (fontforge && !src_dir)
+            {
+                output( "%s.ttf: %s\n", obj, source->filename );
+                output( "\t%s -script %s/fonts/genttf.ff %s $@\n",
+                        fontforge, top_src_dir ? top_src_dir : top_obj_dir, source->filename );
+            }
+            free( fontforge );
+            continue;  /* no dependencies */
+        }
+        else if (!strcmp( ext, "svg" ))  /* svg file */
+        {
+            char *convert = get_expanded_make_variable( "CONVERT" );
+            char *rsvg = get_expanded_make_variable( "RSVG" );
+            char *icotool = get_expanded_make_variable( "ICOTOOL" );
+            if (convert && rsvg && icotool && !src_dir)
+            {
+                output( "%s.ico %s.bmp: %s\n", obj, obj, source->filename );
+                output( "\tCONVERT=\"%s\" ICOTOOL=\"%s\" RSVG=\"%s\" $(BUILDIMAGE) %s $@\n",
+                        convert, icotool, rsvg, source->filename );
+            }
+            free( convert );
+            free( rsvg );
+            free( icotool );
+            continue;  /* no dependencies */
+        }
+        else if (!strcmp( ext, "res" ))
         {
             strarray_add( &clean_files, source->name );
-            continue;  /* nothing to do for typelib files */
+            continue;  /* no dependencies */
         }
         else
         {
+            if (source->flags & FLAG_GENERATED) strarray_add( &clean_files, source->filename );
             for (i = 0; i < object_extensions.count; i++)
             {
                 strarray_add( &clean_files, strmake( "%s.%s", obj, object_extensions.str[i] ));
                 output( "%s.%s: %s\n", obj, object_extensions.str[i], sourcedep );
                 if (strstr( object_extensions.str[i], "cross" ))
-                    output( "\t$(CROSSCC) -c $(includes) $(ALLCROSSCFLAGS) -o $@ %s\n", source->filename );
+                {
+                    column = output( "\t$(CROSSCC) -c -o $@ %s", source->filename );
+                    output_filenames( &includes, &column );
+                    output_filename( "$(ALLCROSSCFLAGS)", &column );
+                    output( "\n" );
+                }
                 else
-                    output( "\t$(CC) -c $(includes) $(ALLCFLAGS) -o $@ %s\n", source->filename );
+                {
+                    column = output( "\t$(CC) -c -o $@ %s", source->filename );
+                    output_filenames( &includes, &column );
+                    output_filename( "$(ALLCFLAGS)", &column );
+                    output( "\n" );
+                }
             }
             if (source->flags & FLAG_C_IMPLIB)
             {
                 strarray_add( &clean_files, strmake( "%s.cross.o", obj ));
                 output( "%s.cross.o: %s\n", obj, sourcedep );
-                output( "\t$(CROSSCC) -c $(includes) $(ALLCROSSCFLAGS) -o $@ %s\n", source->filename );
+                column = output( "\t$(CROSSCC) -c -o $@ %s", source->filename );
+                output_filenames( &includes, &column );
+                output_filename( "$(ALLCROSSCFLAGS)", &column );
+                output( "\n" );
             }
-            if (is_test && !strcmp( ext, "c" ) && !is_generated_idl( source ))
+            if (is_test && !strcmp( ext, "c" ) && !(source->flags & FLAG_GENERATED))
             {
                 strarray_add( &test_files, source->name );
                 output( "%s.ok:\n", obj );
                 output( "\t$(RUNTEST) $(RUNTESTFLAGS) %s && touch $@\n", obj );
             }
+            column = 0;
             for (i = 0; i < object_extensions.count; i++)
                 column += output( "%s.%s ", obj, object_extensions.str[i] );
             if (source->flags & FLAG_C_IMPLIB) column += output( "%s.cross.o", obj );
@@ -1553,7 +1589,9 @@ static struct strarray output_sources(void)
         column = output( "rsrc.pot: $(WRC)" );
         output_filenames( &po_files, &column );
         output( "\n" );
-        column = output( "\t$(WRC) $(includes) $(RCFLAGS) -O pot -o $@" );
+        column = output( "\t$(WRC) -O pot -o $@" );
+        output_filenames( &includes, &column );
+        output_filename( "$(RCFLAGS)", &column );
         output_filenames( &po_files, &column );
         output( "\n" );
         strarray_add( &clean_files, "rsrc.pot" );
@@ -1570,14 +1608,12 @@ static struct strarray output_sources(void)
         strarray_add( &clean_files, "msg.pot" );
     }
 
-    if (find_src_file( "dlldata.o" ))
+    if (dlldata_files.count)
     {
         output( "dlldata.c: $(WIDL) %s\n", src_dir ? strmake("%s/Makefile.in", src_dir ) : "Makefile.in" );
         column = output( "\t$(WIDL) --dlldata-only -o $@" );
-        LIST_FOR_EACH_ENTRY( source, &sources, struct incl_file, entry )
-            if (source->flags & FLAG_IDL_PROXY) output_filename( source->filename, &column );
+        output_filenames( &dlldata_files, &column );
         output( "\n" );
-        strarray_add( &clean_files, "dlldata.c" );
     }
 
     if (is_test)
@@ -1594,7 +1630,6 @@ static struct strarray output_sources(void)
         column = output( "\t$(RM)" );
         output_filenames( &ok_files, &column );
         output( "\n" );
-        strarray_add( &clean_files, "testlist.c" );
         strarray_addall( &clean_files, &ok_files );
     }
 
@@ -1757,8 +1792,9 @@ static void update_makefile( const char *path )
         "BISON_SRCS",
         "LEX_SRCS",
         "XTEMPLATE_SRCS",
+        "SVG_SRCS",
+        "FONT_SRCS",
         "IN_SRCS",
-        "EXTRA_OBJS",
         "MANPAGES",
         NULL
     };
@@ -1785,7 +1821,7 @@ static void update_makefile( const char *path )
     value = get_expanded_make_var_array( "EXTRAINCL" );
     for (i = 0; i < value.count; i++)
         if (!strncmp( value.str[i], "-I", 2 ))
-            strarray_add( &include_args, value.str[i] );
+            strarray_add_uniq( &include_args, value.str[i] );
 
     init_paths();
 
@@ -1799,20 +1835,59 @@ static void update_makefile( const char *path )
     }
 
     add_generated_sources();
+
+    value = get_expanded_make_var_array( "EXTRA_OBJS" );
+    for (i = 0; i < value.count; i++)
+    {
+        /* default to .c for unknown extra object files */
+        if (strendswith( value.str[i], ".o" ))
+            add_generated_source( value.str[i], replace_extension( value.str[i], ".o", ".c" ) );
+        else
+            add_generated_source( value.str[i], NULL );
+    }
+
     LIST_FOR_EACH_ENTRY( file, &includes, struct incl_file, entry ) parse_file( file, 0 );
     output_dependencies();
 }
 
 
 /*******************************************************************
+ *         parse_makeflags
+ */
+static void parse_makeflags( const char *flags )
+{
+    const char *p = flags;
+    char *var, *buffer = xmalloc( strlen(flags) + 1 );
+
+    while (*p)
+    {
+        while (isspace(*p)) p++;
+        var = buffer;
+        while (*p && !isspace(*p))
+        {
+            if (*p == '\\' && p[1]) p++;
+            *var++ = *p++;
+        }
+        *var = 0;
+        if (var > buffer) set_make_variable( &cmdline_vars, buffer );
+    }
+}
+
+
+/*******************************************************************
  *         parse_option
  */
-static void parse_option( const char *opt )
+static int parse_option( const char *opt )
 {
+    if (opt[0] != '-')
+    {
+        if (strchr( opt, '=' )) return set_make_variable( &cmdline_vars, opt );
+        return 0;
+    }
     switch(opt[1])
     {
     case 'I':
-        if (opt[2]) strarray_add( &include_args, opt );
+        if (opt[2]) strarray_add_uniq( &include_args, opt );
         break;
     case 'C':
         src_dir = opt + 2;
@@ -1846,6 +1921,7 @@ static void parse_option( const char *opt )
         fprintf( stderr, "Unknown option '%s'\n%s", opt, Usage );
         exit(1);
     }
+    return 1;
 }
 
 
@@ -1854,15 +1930,17 @@ static void parse_option( const char *opt )
  */
 int main( int argc, char *argv[] )
 {
+    const char *makeflags = getenv( "MAKEFLAGS" );
     struct incl_file *pFile;
     int i, j;
+
+    if (makeflags) parse_makeflags( makeflags );
 
     i = 1;
     while (i < argc)
     {
-        if (argv[i][0] == '-')
+        if (parse_option( argv[i] ))
         {
-            parse_option( argv[i] );
             for (j = i; j < argc; j++) argv[j] = argv[j+1];
             argc--;
         }

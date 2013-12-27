@@ -5003,7 +5003,7 @@
 @ cdecl -arch=win64 ?uflow@?$basic_streambuf@GU?$char_traits@G@std@@@std@@MEAAGXZ(ptr) basic_streambuf_wchar_uflow
 @ thiscall -arch=win32 ?uflow@?$basic_streambuf@_WU?$char_traits@_W@std@@@std@@MAEGXZ(ptr) basic_streambuf_wchar_uflow
 @ cdecl -arch=win64 ?uflow@?$basic_streambuf@_WU?$char_traits@_W@std@@@std@@MEAAGXZ(ptr) basic_streambuf_wchar_uflow
-@ cdecl ?uncaught_exception@std@@YA_NXZ() msvcrt.__uncaught_exception
+@ cdecl ?uncaught_exception@std@@YA_NXZ() MSVCP__uncaught_exception
 @ thiscall -arch=win32 ?underflow@?$basic_filebuf@DU?$char_traits@D@std@@@std@@MAEHXZ(ptr) basic_filebuf_char_underflow
 @ cdecl -arch=win64 ?underflow@?$basic_filebuf@DU?$char_traits@D@std@@@std@@MEAAHXZ(ptr) basic_filebuf_char_underflow
 @ thiscall -arch=win32 ?underflow@?$basic_filebuf@GU?$char_traits@G@std@@@std@@MAEGXZ(ptr) basic_filebuf_wchar_underflow
@@ -5157,13 +5157,13 @@
 # extern _Xbig
 # extern _Zero
 @ stub __Wcrtomb_lk
-@ cdecl btowc(long) msvcrt.btowc
-@ cdecl mbrlen(ptr long ptr) msvcrt.mbrlen
-@ cdecl mbrtowc(ptr str long ptr) msvcrt.mbrtowc
-@ cdecl mbsrtowcs(ptr ptr long ptr) msvcrt.mbsrtowcs
+@ cdecl btowc(long)
+@ cdecl mbrlen(ptr long ptr)
+@ cdecl mbrtowc(ptr str long ptr)
+@ cdecl mbsrtowcs(ptr ptr long ptr)
 @ cdecl towctrans(long long)
-@ cdecl wcrtomb(ptr long ptr) msvcrt.wcrtomb
-@ cdecl wcsrtombs(ptr ptr long ptr) msvcrt.wcsrtombs
-@ cdecl wctob(long) msvcrt.wctob
+@ cdecl wcrtomb(ptr long ptr)
+@ cdecl wcsrtombs(ptr ptr long ptr)
+@ cdecl wctob(long)
 @ cdecl wctrans(str)
 @ cdecl wctype(str)

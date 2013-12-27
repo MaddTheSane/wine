@@ -271,21 +271,23 @@ test -z "$INSTALL_PROGRAM" && AC_SUBST([INSTALL_PROGRAM],"STRIPPROG=\"\$(STRIP)\
 test -z "$INSTALL_SCRIPT" && AC_SUBST([INSTALL_SCRIPT],"\$(INSTALL)")
 test -z "$INSTALL_DATA" && AC_SUBST([INSTALL_DATA],"\$(INSTALL) -m 644")
 
-dnl Check for various programs
-AC_CHECK_PROGS(FONTFORGE, fontforge, false)
-AC_CHECK_PROGS(RSVG, rsvg, false)
-AC_CHECK_PROGS(CONVERT, convert, false)
-AC_CHECK_PROGS(ICOTOOL, icotool, false)
 AC_CHECK_PROGS(MSGFMT, msgfmt, false)
 WINE_PATH_PKG_CONFIG
 
 if test "x$enable_maintainer_mode" != "xyes"
 then
-  AC_SUBST([MAINTAINER_MODE],[\#])
+  FONTFORGE=""
+  RSVG=""
+  CONVERT=""
+  ICOTOOL=""
 else
   test "$srcdir" = . || AC_MSG_ERROR([Maintainer mode cannot work out of tree.])
-  if test "$FONTFORGE" = "false"; then AC_MSG_ERROR([You need fontforge to rebuild fonts in maintainer mode.]); fi
-  if test "$RSVG" = "false"; then AC_MSG_ERROR([You need rsvg to rebuild icons in maintainer mode.]); fi
+  AC_CHECK_PROGS(FONTFORGE, fontforge, false)
+  AC_CHECK_PROGS(RSVG, rsvg, false)
+  AC_CHECK_PROGS(CONVERT, convert, false)
+  AC_CHECK_PROGS(ICOTOOL, icotool, false)
+  test "$FONTFORGE" != "false" || AC_MSG_ERROR([You need fontforge to rebuild fonts in maintainer mode.])
+  test "$RSVG" != "false" || AC_MSG_ERROR([You need rsvg to rebuild icons in maintainer mode.])
 
   dnl Check the imagemagick version
   if test "$CONVERT" = false
@@ -687,7 +689,6 @@ test "x$enable_win64" != "xyes" || wine_binary="wine64"
 WINE_IGNORE_FILE("loader/wine")
 test "$wine_binary" = wine || WINE_IGNORE_FILE("loader/$wine_binary")
 WINE_IGNORE_FILE("loader/wine-installed")
-WINE_IGNORE_FILE("libs/wine/version.c")
 
 AC_SUBST(LOADER_RULES,["
 all: $wine_binary wine-installed
@@ -747,7 +748,7 @@ uninstall::
 	-cd \$(DESTDIR)\$(libdir) && \$(RM) libwine.a libwine.dll
 
 clean::
-	\$(RM) libwine.dll version.c
+	\$(RM) libwine.dll
 "])
     ;;
 
@@ -879,7 +880,7 @@ uninstall::
 	-cd \$(DESTDIR)\$(libdir) && \$(RM) libwine.dylib libwine.\$(VERSION).dylib libwine.\$(SOVERSION).dylib
 
 clean::
-	\$(RM) libwine.dylib libwine.\$(VERSION).dylib libwine.\$(SOVERSION).dylib version.c
+	\$(RM) libwine.dylib libwine.\$(VERSION).dylib libwine.\$(SOVERSION).dylib
 "])
 
     AS_VAR_APPEND([LOADER_RULES],["
@@ -929,7 +930,7 @@ uninstall::
 	\$(RM) \$(DESTDIR)\$(libdir)/libwine.so
 
 clean::
-	\$(RM) libwine.so version.c
+	\$(RM) libwine.so
 "])
 
     AS_VAR_APPEND([LOADER_RULES],["
@@ -1022,7 +1023,7 @@ uninstall::
 	-cd \$(DESTDIR)\$(libdir) && \$(RM) libwine.so libwine.so.\$(VERSION) libwine.so.\$(SOVERSION)
 
 clean::
-	\$(RM) libwine.so.\$(SOVERSION) libwine.so.\$(VERSION) version.c
+	\$(RM) libwine.so.\$(SOVERSION) libwine.so.\$(VERSION)
 "])
 
     AS_VAR_APPEND([LOADER_RULES],["
@@ -3194,7 +3195,7 @@ WINE_CONFIG_TEST(dlls/sxs/tests)
 WINE_CONFIG_DLL(system.drv16,enable_win16)
 WINE_CONFIG_DLL(t2embed)
 WINE_CONFIG_DLL(tapi32,,[implib])
-WINE_CONFIG_DLL(taskschd)
+WINE_CONFIG_DLL(taskschd,,[clean])
 WINE_CONFIG_DLL(toolhelp.dll16,enable_win16)
 WINE_CONFIG_DLL(traffic)
 WINE_CONFIG_DLL(twain.dll16,enable_win16)
