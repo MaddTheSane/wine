@@ -26,6 +26,8 @@
 #include <windows.h>
 #include <winternl.h>
 #include <ws2tcpip.h>
+#include <wsipx.h>
+#include <wsnwlink.h>
 #include <mswsock.h>
 #include <mstcpip.h>
 #include <stdio.h>
@@ -146,6 +148,38 @@ typedef struct select_thread_params
     SOCKET s;
     BOOL ReadKilled;
 } select_thread_params;
+
+/* Tests used in both getaddrinfo and GetAddrInfoW */
+static const struct addr_hint_tests
+{
+    int family, socktype, protocol;
+    DWORD error;
+} hinttests[] = {
+    {AF_UNSPEC, SOCK_STREAM, IPPROTO_TCP, 0 },
+    {AF_UNSPEC, SOCK_STREAM, IPPROTO_UDP, 0 },
+    {AF_UNSPEC, SOCK_DGRAM,  IPPROTO_TCP, 0 },
+    {AF_UNSPEC, SOCK_DGRAM,  IPPROTO_UDP, 0 },
+    {AF_INET,   SOCK_STREAM, IPPROTO_TCP, 0 },
+    {AF_INET,   SOCK_STREAM, IPPROTO_UDP, 0 },
+    {AF_INET,   SOCK_DGRAM,  IPPROTO_TCP, 0 },
+    {AF_INET,   SOCK_DGRAM,  IPPROTO_UDP, 0 },
+    {AF_UNSPEC, 0,           IPPROTO_TCP, 0 },
+    {AF_UNSPEC, 0,           IPPROTO_UDP, 0 },
+    {AF_UNSPEC, SOCK_STREAM, 0,           0 },
+    {AF_UNSPEC, SOCK_DGRAM,  0,           0 },
+    {AF_INET,   0,           IPPROTO_TCP, 0 },
+    {AF_INET,   0,           IPPROTO_UDP, 0 },
+    {AF_INET,   SOCK_STREAM, 0,           0 },
+    {AF_INET,   SOCK_DGRAM,  0,           0 },
+    {AF_UNSPEC, 999,         IPPROTO_TCP, WSAESOCKTNOSUPPORT },
+    {AF_UNSPEC, 999,         IPPROTO_UDP, WSAESOCKTNOSUPPORT },
+    {AF_INET,   999,         IPPROTO_TCP, WSAESOCKTNOSUPPORT },
+    {AF_INET,   999,         IPPROTO_UDP, WSAESOCKTNOSUPPORT },
+    {AF_UNSPEC, SOCK_STREAM, 999,         0 },
+    {AF_UNSPEC, SOCK_STREAM, 999,         0 },
+    {AF_INET,   SOCK_DGRAM,  999,         0 },
+    {AF_INET,   SOCK_DGRAM,  999,         0 },
+};
 
 /**************** Static variables ***************/
 
@@ -2087,6 +2121,73 @@ static void test_WSASocket(void)
         ok(socktype == SOCK_RAW, "Wrong socket type, expected %d received %d\n",
            SOCK_RAW, socktype);
         closesocket(sock);
+    }
+
+    /* IPX socket tests */
+
+    SetLastError(0xdeadbeef);
+    sock = WSASocketA(AF_IPX, SOCK_DGRAM, NSPROTO_IPX, NULL, 0, 0);
+    if (sock == INVALID_SOCKET)
+    {
+        err = WSAGetLastError();
+        ok(err == WSAEAFNOSUPPORT || broken(err == WSAEPROTONOSUPPORT), "Expected 10047, received %d\n", err);
+        skip("IPX is not supported\n");
+    }
+    else
+    {
+        WSAPROTOCOL_INFOA info;
+        closesocket(sock);
+
+        trace("IPX is supported\n");
+
+        sock = WSASocketA(0, 0, NSPROTO_IPX, NULL, 0, 0);
+        ok(sock != INVALID_SOCKET, "Failed to create socket: %d\n",
+                WSAGetLastError());
+
+        size = sizeof(socktype);
+        socktype = 0xdead;
+        err = getsockopt(sock, SOL_SOCKET, SO_TYPE, (char *) &socktype, &size);
+        ok(!err,"getsockopt failed with %d\n", WSAGetLastError());
+        ok(socktype == SOCK_DGRAM, "Wrong socket type, expected %d received %d\n",
+           SOCK_DGRAM, socktype);
+
+        /* check socket family, type and protocol */
+        size = sizeof(WSAPROTOCOL_INFOA);
+        err = getsockopt(sock, SOL_SOCKET, SO_PROTOCOL_INFOA, (char *) &info, &size);
+        ok(!err,"getsockopt failed with %d\n", WSAGetLastError());
+        ok(info.iProtocol == NSPROTO_IPX, "expected protocol %d, received %d\n",
+           NSPROTO_IPX, info.iProtocol);
+        ok(info.iAddressFamily == AF_IPX, "expected family %d, received %d\n",
+           AF_IPX, info.iProtocol);
+        ok(info.iSocketType == SOCK_DGRAM, "expected type %d, received %d\n",
+           SOCK_DGRAM, info.iSocketType);
+        closesocket(sock);
+
+        /* SOCK_STREAM does not support NSPROTO_IPX */
+        SetLastError(0xdeadbeef);
+        ok(WSASocketA(AF_IPX, SOCK_STREAM, NSPROTO_IPX, NULL, 0, 0) == INVALID_SOCKET,
+           "WSASocketA should have failed\n");
+        err = WSAGetLastError();
+        ok(err == WSAEPROTONOSUPPORT, "Expected 10043, received %d\n", err);
+
+        /* test extended IPX support - that is adding any number between 0 and 255
+         * to the IPX protocol value will make it be used as IPX packet type */
+        for(i = 0;i <= 255;i += 17)
+        {
+          SetLastError(0xdeadbeef);
+          sock = WSASocketA(0, 0, NSPROTO_IPX + i, NULL, 0, 0);
+          ok(sock != INVALID_SOCKET, "Failed to create socket: %d\n",
+                  WSAGetLastError());
+
+          size = sizeof(int);
+          socktype = -1;
+          err = getsockopt(sock, NSPROTO_IPX, IPX_PTYPE, (char *) &socktype, &size);
+          ok(!err, "getsockopt failed with %d\n", WSAGetLastError());
+          ok(socktype == i, "Wrong IPX packet type, expected %d received %d\n",
+             i, socktype);
+
+          closesocket(sock);
+        }
     }
 }
 
@@ -5211,8 +5312,8 @@ static void test_GetAddrInfoW(void)
     static const WCHAR nxdomain[] =
         {'n','x','d','o','m','a','i','n','.','c','o','d','e','w','e','a','v','e','r','s','.','c','o','m',0};
     static const WCHAR zero[] = {'0',0};
-    int ret;
-    ADDRINFOW *result, hint;
+    int i, ret;
+    ADDRINFOW *result, *p, hint;
 
     if (!pGetAddrInfoW || !pFreeAddrInfoW)
     {
@@ -5283,12 +5384,63 @@ static void test_GetAddrInfoW(void)
     ret = pGetAddrInfoW(nxdomain, NULL, NULL, &result);
     ok(ret == WSAHOST_NOT_FOUND, "got %d expected WSAHOST_NOT_FOUND\n", ret);
     ok(result == NULL, "got %p\n", result);
+
+    for (i = 0;i < (sizeof(hinttests) / sizeof(hinttests[0]));i++)
+    {
+        hint.ai_family = hinttests[i].family;
+        hint.ai_socktype = hinttests[i].socktype;
+        hint.ai_protocol = hinttests[i].protocol;
+
+        result = NULL;
+        SetLastError(0xdeadbeef);
+        ret = pGetAddrInfoW(localhost, NULL, &hint, &result);
+        if (!ret)
+        {
+            if (hinttests[i].error)
+                ok(0, "test %d: GetAddrInfoW succeeded unexpectedly\n", i);
+            else
+            {
+                p = result;
+                do
+                {
+                    /* when AF_UNSPEC is used the return will be either AF_INET or AF_INET6 */
+                    if (hinttests[i].family == AF_UNSPEC)
+                        ok(p->ai_family == AF_INET || p->ai_family == AF_INET6,
+                           "test %d: expected AF_INET or AF_INET6, got %d\n",
+                           i, p->ai_family);
+                    else
+                        ok(p->ai_family == hinttests[i].family,
+                           "test %d: expected family %d, got %d\n",
+                           i, hinttests[i].family, p->ai_family);
+
+                    ok(p->ai_socktype == hinttests[i].socktype,
+                       "test %d: expected type %d, got %d\n",
+                       i, hinttests[i].socktype, p->ai_socktype);
+                    ok(p->ai_protocol == hinttests[i].protocol,
+                       "test %d: expected protocol %d, got %d\n",
+                       i, hinttests[i].protocol, p->ai_protocol);
+                    p = p->ai_next;
+                }
+                while (p);
+            }
+            pFreeAddrInfoW(result);
+        }
+        else
+        {
+            DWORD err = WSAGetLastError();
+            if (hinttests[i].error)
+                ok(hinttests[i].error == err, "test %d: GetAddrInfoW failed with error %d, expected %d\n",
+                   i, err, hinttests[i].error);
+            else
+                ok(0, "test %d: GetAddrInfoW failed with %d (err %d)\n", i, ret, err);
+        }
+    }
 }
 
 static void test_getaddrinfo(void)
 {
-    int ret;
-    ADDRINFOA *result, hint;
+    int i, ret;
+    ADDRINFOA *result, *p, hint;
 
     if (!pgetaddrinfo || !pfreeaddrinfo)
     {
@@ -5354,6 +5506,57 @@ static void test_getaddrinfo(void)
     ret = pgetaddrinfo("nxdomain.codeweavers.com", NULL, NULL, &result);
     ok(ret == WSAHOST_NOT_FOUND, "got %d expected WSAHOST_NOT_FOUND\n", ret);
     ok(result == NULL, "got %p\n", result);
+
+    for (i = 0;i < (sizeof(hinttests) / sizeof(hinttests[0]));i++)
+    {
+        hint.ai_family = hinttests[i].family;
+        hint.ai_socktype = hinttests[i].socktype;
+        hint.ai_protocol = hinttests[i].protocol;
+
+        result = NULL;
+        SetLastError(0xdeadbeef);
+        ret = pgetaddrinfo("localhost", NULL, &hint, &result);
+        if(!ret)
+        {
+            if (hinttests[i].error)
+                ok(0, "test %d: getaddrinfo succeeded unexpectedly\n", i);
+            else
+            {
+                p = result;
+                do
+                {
+                    /* when AF_UNSPEC is used the return will be either AF_INET or AF_INET6 */
+                    if (hinttests[i].family == AF_UNSPEC)
+                        ok(p->ai_family == AF_INET || p->ai_family == AF_INET6,
+                           "test %d: expected AF_INET or AF_INET6, got %d\n",
+                           i, p->ai_family);
+                    else
+                        ok(p->ai_family == hinttests[i].family,
+                           "test %d: expected family %d, got %d\n",
+                           i, hinttests[i].family, p->ai_family);
+
+                    ok(p->ai_socktype == hinttests[i].socktype,
+                       "test %d: expected type %d, got %d\n",
+                       i, hinttests[i].socktype, p->ai_socktype);
+                    ok(p->ai_protocol == hinttests[i].protocol,
+                       "test %d: expected protocol %d, got %d\n",
+                       i, hinttests[i].protocol, p->ai_protocol);
+                    p = p->ai_next;
+                }
+                while (p);
+            }
+            pfreeaddrinfo(result);
+        }
+        else
+        {
+            DWORD err = WSAGetLastError();
+            if (hinttests[i].error)
+                ok(hinttests[i].error == err, "test %d: getaddrinfo failed with error %d, expected %d\n",
+                   i, err, hinttests[i].error);
+            else
+                ok(0, "test %d: getaddrinfo failed with %d (err %d)\n", i, ret, err);
+        }
+    }
 }
 
 static void test_ConnectEx(void)

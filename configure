@@ -711,7 +711,6 @@ READELF
 LDD
 LDRPATH_LOCAL
 LDRPATH_INSTALL
-IMPLIBEXT
 DLLFLAGS
 DLLPREFIX
 dlldir
@@ -6908,14 +6907,13 @@ DLLPREFIX=""
 
 DLLFLAGS="-D_REENTRANT"
 
-IMPLIBEXT="def"
-
 LDRPATH_INSTALL=""
 
 LDRPATH_LOCAL=""
 
 LIBEXT="so"
 DLLEXT=".so"
+IMPLIBEXT="def"
 STATIC_IMPLIBEXT="def.a"
 # Extract the first word of "ldd", so it can be a program name with args.
 set dummy ldd; ac_word=$2
@@ -7344,7 +7342,7 @@ $ac_dir/uninstall::
 	\$(RM) \$(DESTDIR)\$(dlldir)/lib$ac_implib.$STATIC_IMPLIBEXT"
         fi
 
-        if test -n "$CROSSTARGET"
+        if test -n "$CROSSTARGET" -a -z "$ac_implibflags"
         then
             wine_fn_append_rule \
 "__builddeps__: $ac_file.cross.a
@@ -7367,7 +7365,7 @@ $ac_dir/uninstall::
 	\$(RM) \$(DESTDIR)\$(dlldir)/lib$ac_implib.$IMPLIBEXT
 install install-dev:: $ac_dir/install-dev
 __uninstall__: $ac_dir/uninstall"
-        if test -n "$CROSSTARGET"
+        if test -n "$CROSSTARGET" -a -z "$ac_implibflags"
         then
             wine_fn_append_rule \
 "__builddeps__: $ac_file.cross.a
@@ -7384,7 +7382,7 @@ dlls/lib$ac_implib.$IMPLIBEXT: $ac_file.$IMPLIBEXT
 clean::
 	\$(RM) dlls/lib$ac_implib.$IMPLIBEXT"
             wine_fn_ignore_file "dlls/lib$ac_implib.$IMPLIBEXT"
-            if test -n "$CROSSTARGET"
+            if test -n "$CROSSTARGET" -a -z "$ac_implibflags"
             then
                 wine_fn_append_rule \
 "__builddeps__: dlls/lib$ac_implib.cross.a
@@ -16551,68 +16549,31 @@ MAKE_IMPLIB_RULES="DLLFLAGS = $DLLFLAGS
 if test -n "$CROSSTARGET"
 then
     as_fn_append MAKE_IMPLIB_RULES "MAKEDEPFLAGS = -xo -xcross.o
-all: \$(STATICLIB:.a=.cross.a)
 "
 fi
 
 
-if test -n "$DLLEXT"
-then
-    deps="\$(MODULE)$DLLEXT \$(MODULE).fake"
-else
-    deps="\$(MODULE)"
-fi
-
 MAKE_DLL_RULES="
 DLLFLAGS    = $DLLFLAGS
-MAINSPEC    = \$(srcdir)/\$(MODULE:%.dll=%).spec
-IDL_TLB_RES = \$(IDL_TLB_SRCS:.idl=_t.res)
-MODULEFLAGS = -shared \$(MAINSPEC) \$(EXTRADLLFLAGS)
-
-all: $deps
-
-manpages:: dummy
-	\$(C2MAN) -o \$(top_builddir)/documentation/man\$(api_manext) -R\$(top_builddir) -C\$(srcdir) \$(PARENTSRC:%=-P%) -I\$(top_srcdir)/include \$(MAINSPEC:%=-w %) \$(C_SRCS)
-htmlpages:: dummy
-	\$(C2MAN) -o \$(top_builddir)/documentation/html -R\$(top_builddir) -C\$(srcdir) \$(PARENTSRC:%=-P%) -I\$(top_srcdir)/include -Th \$(MAINSPEC:%=-w %) \$(C_SRCS)
-sgmlpages:: dummy
-	\$(C2MAN) -o \$(top_builddir)/documentation/api-guide -R\$(top_builddir) -C\$(srcdir) \$(PARENTSRC:%=-P%) -I\$(top_srcdir)/include -Ts \$(MAINSPEC:%=-w %) \$(C_SRCS)
-xmlpages:: dummy
-	\$(C2MAN) -o \$(top_builddir)/documentation/api-guide-xml -R\$(top_builddir) -C\$(srcdir) \$(PARENTSRC:%=-P%) -I\$(top_srcdir)/include -Tx \$(MAINSPEC:%=-w %) \$(C_SRCS)
-.PHONY: manpages htmlpages sgmlpages xmlpages
 "
 
 
 MAKE_PROG_RULES="
 DLLFLAGS    = $DLLFLAGS
-
-all: $deps
 "
 
 
 
 MAKE_TEST_RULES="
 DLLFLAGS     = $DLLFLAGS
-TESTMODULE   = \$(TESTDLL:%.dll=%)_test.exe
-TESTMODULE_STRIPPED = \$(TESTDLL:%.dll=%)_test-stripped.exe$DLLEXT
-WINETEST_RES = \$(top_builddir)/programs/winetest/\$(TESTDLL:%.dll=%)_test.res
-RUNTESTFLAGS = -q -P wine -T \$(top_builddir) -M \$(TESTDLL) -p \$(TESTMODULE)$DLLEXT
+RUNTESTFLAGS = -q -P wine
 EXTRA_OBJS   = testlist.o
-
-all: \$(TESTMODULE)$DLLEXT \$(WINETEST_RES)
-
-\$(C_SRCS:.c=.ok): \$(TESTMODULE)$DLLEXT \$(TESTDLL:%=../%$DLLEXT)
-
-.PHONY: check test testclean crosstest
 "
 
 if test -n "$CROSSTARGET"
 then
     as_fn_append MAKE_TEST_RULES "
 MAKEDEPFLAGS    = -xo -xcross.o
-CROSSTESTMODULE = \$(TESTDLL:%.dll=%)_crosstest.exe
-
-crosstest: \$(CROSSTESTMODULE)
 "
 fi
 
@@ -16977,6 +16938,7 @@ wine_fn_config_dll msls31 enable_msls31
 wine_fn_config_dll msnet32 enable_msnet32
 wine_fn_config_dll mspatcha enable_mspatcha
 wine_fn_config_dll msrle32 enable_msrle32 po
+wine_fn_config_test dlls/msrle32/tests msrle32_test
 wine_fn_config_dll mssign32 enable_mssign32
 wine_fn_config_dll mssip32 enable_mssip32
 wine_fn_config_dll mstask enable_mstask clean
@@ -17425,10 +17387,6 @@ zh_TW"
 
 
 
-wine_fn_ignore_file "*.a"
-wine_fn_ignore_file "*.exe"
-test -n "$DLLEXT" && wine_fn_ignore_file "*$DLLEXT"
-test -n "$DLLEXT" && wine_fn_ignore_file "*.fake"
 wine_fn_ignore_file ".gitignore"
 wine_fn_ignore_file "Makefile"
 wine_fn_ignore_file "TAGS"
@@ -17440,7 +17398,6 @@ wine_fn_ignore_file "config.status"
 wine_fn_ignore_file "configure.lineno"
 wine_fn_ignore_file "include/config.h"
 wine_fn_ignore_file "include/stamp-h"
-wine_fn_ignore_file "dlls/*/*.def"
 test "x$enable_fonts" = xno || wine_fn_ignore_file "fonts/*.fon"
 test "x$enable_winetest" = xno || wine_fn_ignore_file "programs/winetest/build.nfo"
 test "x$enable_winetest" = xno || wine_fn_ignore_file "programs/winetest/build.rc"

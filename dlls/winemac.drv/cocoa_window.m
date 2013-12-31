@@ -57,7 +57,7 @@ static NSUInteger style_mask_for_features(const struct macdrv_window_features* w
         style_mask = NSTitledWindowMask;
         if (wf->close_button) style_mask |= NSClosableWindowMask;
         if (wf->minimize_button) style_mask |= NSMiniaturizableWindowMask;
-        if (wf->resizable) style_mask |= NSResizableWindowMask;
+        if (wf->resizable || wf->maximize_button) style_mask |= NSResizableWindowMask;
         if (wf->utility) style_mask |= NSUtilityWindowMask;
     }
     else style_mask = NSBorderlessWindowMask;
@@ -543,6 +543,7 @@ static inline NSUInteger adjusted_modifiers_for_option_behavior(NSUInteger modif
         WineWindow* window;
         WineContentView* contentView;
         NSTrackingArea* trackingArea;
+        NSNotificationCenter* nc = [NSNotificationCenter defaultCenter];
 
         [[WineApplicationController sharedController] flipRect:&window_frame];
 
@@ -569,6 +570,7 @@ static inline NSUInteger adjusted_modifiers_for_option_behavior(NSUInteger modif
         window.queue = queue;
         window->savedContentMinSize = NSZeroSize;
         window->savedContentMaxSize = NSMakeSize(FLT_MAX, FLT_MAX);
+        window->resizable = wf->resizable;
 
         [window registerForDraggedTypes:[NSArray arrayWithObjects:(NSString*)kUTTypeData,
                                                                   (NSString*)kUTTypeContent,
@@ -594,11 +596,20 @@ static inline NSUInteger adjusted_modifiers_for_option_behavior(NSUInteger modif
         [window setContentView:contentView];
         [window setInitialFirstResponder:contentView];
 
-        [[NSNotificationCenter defaultCenter] addObserver:window
-                                                 selector:@selector(updateFullscreen)
-                                                     name:NSApplicationDidChangeScreenParametersNotification
-                                                   object:NSApp];
+        [nc addObserver:window
+               selector:@selector(updateFullscreen)
+                   name:NSApplicationDidChangeScreenParametersNotification
+                 object:NSApp];
         [window updateFullscreen];
+
+        [nc addObserver:window
+               selector:@selector(applicationWillHide)
+                   name:NSApplicationWillHideNotification
+                 object:NSApp];
+        [nc addObserver:window
+               selector:@selector(applicationDidUnhide)
+                   name:NSApplicationDidUnhideNotification
+                 object:NSApp];
 
         return window;
     }
@@ -613,6 +624,11 @@ static inline NSUInteger adjusted_modifiers_for_option_behavior(NSUInteger modif
         [latentParentWindow release];
         [shape release];
         [super dealloc];
+    }
+
+    - (BOOL) preventResizing
+    {
+        return ([self styleMask] & NSResizableWindowMask) && (disabled || !resizable || maximized);
     }
 
     - (void) adjustFeaturesForState
@@ -630,6 +646,21 @@ static inline NSUInteger adjusted_modifiers_for_option_behavior(NSUInteger modif
             if ([self collectionBehavior] & NSWindowCollectionBehaviorFullScreenPrimary)
                 [[self standardWindowButton:NSWindowFullScreenButton] setEnabled:!self.disabled];
         }
+
+        if ([self preventResizing])
+        {
+            NSSize size = [self contentRectForFrameRect:[self frame]].size;
+            [self setContentMinSize:size];
+            [self setContentMaxSize:size];
+        }
+        else
+        {
+            [self setContentMaxSize:savedContentMaxSize];
+            [self setContentMinSize:savedContentMinSize];
+        }
+
+        if (allow_immovable_windows)
+            [self setMovable:!disabled && !maximized];
     }
 
     - (void) adjustFullScreenBehavior:(NSWindowCollectionBehavior)behavior
@@ -688,13 +719,20 @@ static inline NSUInteger adjusted_modifiers_for_option_behavior(NSUInteger modif
                 [self setTitle:title];
         }
 
+        resizable = wf->resizable;
         [self adjustFeaturesForState];
         [self setHasShadow:wf->shadow];
     }
 
+    // Indicates if the window would be visible if the app were not hidden.
+    - (BOOL) wouldBeVisible
+    {
+        return [NSApp isHidden] ? savedVisibleState : [self isVisible];
+    }
+
     - (BOOL) isOrderedIn
     {
-        return [self isVisible] || [self isMiniaturized];
+        return [self wouldBeVisible] || [self isMiniaturized];
     }
 
     - (NSInteger) minimumLevelForActive:(BOOL)active
@@ -800,20 +838,25 @@ static inline NSUInteger adjusted_modifiers_for_option_behavior(NSUInteger modif
 
         if (state->minimized_valid)
         {
-            BOOL discardUnminimize = TRUE;
+            macdrv_event_mask discard = event_mask_for_type(WINDOW_DID_UNMINIMIZE);
 
             pendingMinimize = FALSE;
             if (state->minimized && ![self isMiniaturized])
             {
-                if ([self isVisible])
+                if ([self wouldBeVisible])
                 {
                     if ([self styleMask] & NSFullScreenWindowMask)
                     {
                         [self postDidUnminimizeEvent];
-                        discardUnminimize = FALSE;
+                        discard &= ~event_mask_for_type(WINDOW_DID_UNMINIMIZE);
                     }
                     else
+                    {
                         [super miniaturize:nil];
+                        discard |= event_mask_for_type(WINDOW_BROUGHT_FORWARD) |
+                                   event_mask_for_type(WINDOW_GOT_FOCUS) |
+                                   event_mask_for_type(WINDOW_LOST_FOCUS);
+                    }
                 }
                 else
                     pendingMinimize = TRUE;
@@ -822,14 +865,17 @@ static inline NSUInteger adjusted_modifiers_for_option_behavior(NSUInteger modif
             {
                 ignore_windowDeminiaturize = TRUE;
                 [self deminiaturize:nil];
+                discard |= event_mask_for_type(WINDOW_LOST_FOCUS);
             }
 
-            if (discardUnminimize)
-            {
-                /* Whatever events regarding minimization might have been in the queue are now stale. */
-                [queue discardEventsMatchingMask:event_mask_for_type(WINDOW_DID_UNMINIMIZE)
-                                       forWindow:self];
-            }
+            if (discard)
+                [queue discardEventsMatchingMask:discard forWindow:self];
+        }
+
+        if (state->maximized != maximized)
+        {
+            maximized = state->maximized;
+            [self adjustFeaturesForState];
         }
     }
 
@@ -1074,9 +1120,11 @@ static inline NSUInteger adjusted_modifiers_for_option_behavior(NSUInteger modif
         if (![self isMiniaturized])
         {
             BOOL needAdjustWindowLevels = FALSE;
-            BOOL wasVisible = [self isVisible];
+            BOOL wasVisible;
 
             [controller transformProcessToForeground];
+            [NSApp unhide:nil];
+            wasVisible = [self isVisible];
 
             if (activate)
                 [NSApp activateIgnoringOtherApps:YES];
@@ -1170,10 +1218,19 @@ static inline NSUInteger adjusted_modifiers_for_option_behavior(NSUInteger modif
         }
         else
             [self orderOut:nil];
+        savedVisibleState = FALSE;
         if (wasVisible && wasOnActiveSpace && fullscreen)
             [controller updateFullscreenWindows];
         [controller adjustWindowLevels];
         [NSApp removeWindowsItem:self];
+
+        [queue discardEventsMatchingMask:event_mask_for_type(WINDOW_BROUGHT_FORWARD) |
+                                         event_mask_for_type(WINDOW_GOT_FOCUS) |
+                                         event_mask_for_type(WINDOW_LOST_FOCUS) |
+                                         event_mask_for_type(WINDOW_MAXIMIZE_REQUESTED) |
+                                         event_mask_for_type(WINDOW_MINIMIZE_REQUESTED) |
+                                         event_mask_for_type(WINDOW_RESTORE_REQUESTED)
+                               forWindow:self];
     }
 
     - (void) updateFullscreen
@@ -1216,6 +1273,16 @@ static inline NSUInteger adjusted_modifiers_for_option_behavior(NSUInteger modif
                 BOOL equalSizes = NSEqualSizes(frame.size, oldFrame.size);
                 BOOL needEnableScreenUpdates = FALSE;
 
+                if ([self preventResizing])
+                {
+                    // Allow the following calls to -setFrame:display: to work even
+                    // if they would violate the content size constraints. This
+                    // shouldn't be necessary since the content size constraints are
+                    // documented to not constrain that method, but it seems to be.
+                    [self setContentMinSize:NSZeroSize];
+                    [self setContentMaxSize:NSMakeSize(FLT_MAX, FLT_MAX)];
+                }
+
                 if (equalSizes && [[self childWindows] count])
                 {
                     // If we change the window frame such that the origin moves
@@ -1234,6 +1301,11 @@ static inline NSUInteger adjusted_modifiers_for_option_behavior(NSUInteger modif
                 }
 
                 [self setFrame:frame display:YES];
+                if ([self preventResizing])
+                {
+                    [self setContentMinSize:contentRect.size];
+                    [self setContentMaxSize:contentRect.size];
+                }
 
                 if (needEnableScreenUpdates)
                     NSEnableScreenUpdates();
@@ -1275,18 +1347,6 @@ static inline NSUInteger adjusted_modifiers_for_option_behavior(NSUInteger modif
         {
             disabled = newValue;
             [self adjustFeaturesForState];
-
-            if (disabled)
-            {
-                NSSize size = [self contentRectForFrameRect:[self frame]].size;
-                [self setContentMinSize:size];
-                [self setContentMaxSize:size];
-            }
-            else
-            {
-                [self setContentMaxSize:savedContentMaxSize];
-                [self setContentMinSize:savedContentMinSize];
-            }
         }
     }
 
@@ -1349,6 +1409,10 @@ static inline NSUInteger adjusted_modifiers_for_option_behavior(NSUInteger modif
         causing_becomeKeyWindow = self;
         [self makeKeyWindow];
         causing_becomeKeyWindow = nil;
+
+        [queue discardEventsMatchingMask:event_mask_for_type(WINDOW_GOT_FOCUS) |
+                                         event_mask_for_type(WINDOW_LOST_FOCUS)
+                               forWindow:self];
     }
 
     - (void) postKey:(uint16_t)keyCode
@@ -1396,7 +1460,7 @@ static inline NSUInteger adjusted_modifiers_for_option_behavior(NSUInteger modif
     {
         savedContentMinSize = minSize;
         savedContentMaxSize = maxSize;
-        if (!self.disabled)
+        if (![self preventResizing])
         {
             [self setContentMinSize:minSize];
             [self setContentMaxSize:maxSize];
@@ -1606,6 +1670,17 @@ static inline NSUInteger adjusted_modifiers_for_option_behavior(NSUInteger modif
         }
     }
 
+    - (void) applicationWillHide
+    {
+        savedVisibleState = [self isVisible];
+    }
+
+    - (void) applicationDidUnhide
+    {
+        if ([self isVisible])
+            [self becameEligibleParentOrChild];
+    }
+
 
     /*
      * ---------- NSWindowDelegate methods ----------
@@ -1732,7 +1807,7 @@ static inline NSUInteger adjusted_modifiers_for_option_behavior(NSUInteger modif
 
         if (ignore_windowResize || exitingFullScreen) return;
 
-        if (self.disabled)
+        if ([self preventResizing])
         {
             [self setContentMinSize:frame.size];
             [self setContentMaxSize:frame.size];
@@ -1761,6 +1836,26 @@ static inline NSUInteger adjusted_modifiers_for_option_behavior(NSUInteger modif
         [queue postEvent:event];
         macdrv_release_event(event);
         return NO;
+    }
+
+    - (BOOL) windowShouldZoom:(NSWindow*)window toFrame:(NSRect)newFrame
+    {
+        if (maximized)
+        {
+            macdrv_event* event = macdrv_create_event(WINDOW_RESTORE_REQUESTED, self);
+            [queue postEvent:event];
+            macdrv_release_event(event);
+            return NO;
+        }
+        else if (!resizable)
+        {
+            macdrv_event* event = macdrv_create_event(WINDOW_MAXIMIZE_REQUESTED, self);
+            [queue postEvent:event];
+            macdrv_release_event(event);
+            return NO;
+        }
+
+        return YES;
     }
 
     - (void) windowWillClose:(NSNotification*)notification
@@ -2087,6 +2182,10 @@ void macdrv_order_cocoa_window(macdrv_window w, macdrv_window p,
                    orAbove:next
                   activate:activate];
     });
+    [window.queue discardEventsMatchingMask:event_mask_for_type(WINDOW_BROUGHT_FORWARD)
+                                  forWindow:window];
+    [next.queue discardEventsMatchingMask:event_mask_for_type(WINDOW_BROUGHT_FORWARD)
+                                forWindow:next];
 }
 
 /***********************************************************************

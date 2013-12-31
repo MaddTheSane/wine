@@ -28,6 +28,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdarg.h>
+#include <signal.h>
 #include <string.h>
 #ifdef HAVE_UNISTD_H
 # include <unistd.h>
@@ -104,9 +105,12 @@ static const char *parent_dir;
 static const char *makefile_name = "Makefile";
 static const char *Separator = "### Dependencies";
 static const char *input_file_name;
+static const char *output_file_name;
+static const char *temp_file_name;
 static int parse_makefile_mode;
 static int relative_dir_mode;
 static int input_line;
+static int output_column;
 static FILE *output_file;
 
 static const char Usage[] =
@@ -129,7 +133,7 @@ static const char Usage[] =
 
 static void fatal_error( const char *msg, ... ) __attribute__ ((__format__ (__printf__, 1, 2)));
 static void fatal_perror( const char *msg, ... ) __attribute__ ((__format__ (__printf__, 1, 2)));
-static int output( const char *format, ... ) __attribute__ ((__format__ (__printf__, 1, 2)));
+static void output( const char *format, ... ) __attribute__ ((__format__ (__printf__, 1, 2)));
 static char *strmake( const char* fmt, ... ) __attribute__ ((__format__ (__printf__, 1, 2)));
 
 /*******************************************************************
@@ -170,6 +174,25 @@ static void fatal_perror( const char *msg, ... )
     perror( " " );
     va_end( valist );
     exit(1);
+}
+
+
+/*******************************************************************
+ *         cleanup_files
+ */
+static void cleanup_files(void)
+{
+    if (temp_file_name) unlink( temp_file_name );
+    if (output_file_name) unlink( output_file_name );
+}
+
+
+/*******************************************************************
+ *         exit_on_signal
+ */
+static void exit_on_signal( int sig )
+{
+    exit( 1 );  /* this will call the atexit functions */
 }
 
 
@@ -246,7 +269,7 @@ static int strendswith( const char* str, const char* end )
 /*******************************************************************
  *         output
  */
-static int output( const char *format, ... )
+static void output( const char *format, ... )
 {
     int ret;
     va_list valist;
@@ -255,7 +278,8 @@ static int output( const char *format, ... )
     ret = vfprintf( output_file, format, valist );
     va_end( valist );
     if (ret < 0) fatal_perror( "output" );
-    return ret;
+    if (format[0] && format[strlen(format) - 1] == '\n') output_column = 0;
+    else output_column += ret;
 }
 
 
@@ -277,11 +301,11 @@ static void strarray_add( struct strarray *array, const char *str )
 /*******************************************************************
  *         strarray_addall
  */
-static void strarray_addall( struct strarray *array, const struct strarray *added )
+static void strarray_addall( struct strarray *array, struct strarray added )
 {
     unsigned int i;
 
-    for (i = 0; i < added->count; i++) strarray_add( array, added->str[i] );
+    for (i = 0; i < added.count; i++) strarray_add( array, added.str[i] );
 }
 
 
@@ -313,26 +337,26 @@ static void strarray_add_uniq( struct strarray *array, const char *str )
 /*******************************************************************
  *         output_filename
  */
-static void output_filename( const char *name, int *column )
+static void output_filename( const char *name )
 {
-    if (*column + strlen(name) + 1 > 100)
+    if (output_column + strlen(name) + 1 > 100)
     {
-        output( " \\\n  " );
-        *column = 2;
+        output( " \\\n" );
+        output( "  " );
     }
-    else if (*column) *column += output( " " );
-    *column += output( "%s", name );
+    else if (output_column) output( " " );
+    output( "%s", name );
 }
 
 
 /*******************************************************************
  *         output_filenames
  */
-static void output_filenames( struct strarray *array, int *column )
+static void output_filenames( struct strarray array )
 {
     unsigned int i;
 
-    for (i = 0; i < array->count; i++) output_filename( array->str[i], column );
+    for (i = 0; i < array.count; i++) output_filename( array.str[i] );
 }
 
 
@@ -1322,16 +1346,16 @@ static void add_generated_sources(void)
 /*******************************************************************
  *         output_include
  */
-static void output_include( struct incl_file *pFile, struct incl_file *owner, int *column )
+static void output_include( struct incl_file *pFile, struct incl_file *owner )
 {
     int i;
 
     if (pFile->owner == owner) return;
     if (!pFile->filename) return;
     pFile->owner = owner;
-    output_filename( pFile->filename, column );
+    output_filename( pFile->filename );
     for (i = 0; i < MAX_INCLUDES; i++)
-        if (pFile->files[i]) output_include( pFile->files[i], owner, column );
+        if (pFile->files[i]) output_include( pFile->files[i], owner );
 }
 
 
@@ -1341,15 +1365,32 @@ static void output_include( struct incl_file *pFile, struct incl_file *owner, in
 static struct strarray output_sources(void)
 {
     struct incl_file *source;
-    int i, column;
-    int is_test = find_src_file( "testlist.o" ) != NULL;
+    int i;
+    const char *dllext = ".so";
+    struct strarray object_files = empty_strarray;
+    struct strarray crossobj_files = empty_strarray;
+    struct strarray res_files = empty_strarray;
     struct strarray clean_files = empty_strarray;
     struct strarray po_files = empty_strarray;
     struct strarray mc_files = empty_strarray;
     struct strarray test_files = empty_strarray;
     struct strarray dlldata_files = empty_strarray;
+    struct strarray c2man_files = empty_strarray;
+    struct strarray implib_objs = empty_strarray;
     struct strarray includes = empty_strarray;
     struct strarray subdirs = empty_strarray;
+    struct strarray all_targets = empty_strarray;
+    struct strarray phony_targets = empty_strarray;
+    struct strarray imports = get_expanded_make_var_array( "IMPORTS" );
+    struct strarray delayimports = get_expanded_make_var_array( "DELAYIMPORTS" );
+    char *module = get_expanded_make_variable( "MODULE" );
+    char *exeext = get_expanded_make_variable( "EXEEXT" );
+    char *testdll = get_expanded_make_variable( "TESTDLL" );
+    char *appmode = get_expanded_make_variable( "APPMODE" );
+    char *staticlib = get_expanded_make_variable( "STATICLIB" );
+    char *crosstarget = get_expanded_make_variable( "CROSSTARGET" );
+
+    if (exeext && !strcmp( exeext, ".exe" )) dllext = "";
 
     strarray_add( &includes, "-I." );
     if (src_dir) strarray_add( &includes, strmake( "-I%s", src_dir ));
@@ -1359,7 +1400,7 @@ static struct strarray output_sources(void)
         else strarray_add( &includes, strmake( "-I%s", parent_dir ));
     }
     if (top_src_dir && top_obj_dir) strarray_add( &includes, strmake( "-I%s/include", top_obj_dir ));
-    strarray_addall( &includes, &include_args );
+    strarray_addall( &includes, include_args );
 
     LIST_FOR_EACH_ENTRY( source, &sources, struct incl_file, entry )
     {
@@ -1369,7 +1410,6 @@ static struct strarray output_sources(void)
 
         if (!ext) fatal_error( "unsupported file type %s\n", source->name );
         *ext++ = 0;
-        column = 0;
 
         if (src_dir && strchr( obj, '/' ))
         {
@@ -1417,31 +1457,31 @@ static struct strarray output_sources(void)
             if (source->flags & FLAG_RC_PO)
             {
                 output( "%s.res: $(WRC) $(ALL_MO_FILES) %s\n", obj, sourcedep );
-                column = output( "\t$(WRC) -o $@ %s", source->filename );
-                output_filenames( &includes, &column );
-                output_filename( "$(RCFLAGS)", &column );
+                output( "\t$(WRC) -o $@ %s", source->filename );
+                output_filenames( includes );
+                output_filename( "$(RCFLAGS)" );
                 output( "\n" );
-                column = output( "%s.res rsrc.pot:", obj );
+                output( "%s.res rsrc.pot:", obj );
                 strarray_add( &po_files, source->filename );
             }
             else
             {
                 output( "%s.res: $(WRC) %s\n", obj, sourcedep );
-                column = output( "\t$(WRC) -o $@ %s", source->filename );
-                output_filenames( &includes, &column );
-                output_filename( "$(RCFLAGS)", &column );
+                output( "\t$(WRC) -o $@ %s", source->filename );
+                output_filenames( includes );
+                output_filename( "$(RCFLAGS)" );
                 output( "\n" );
-                column = output( "%s.res:", obj );
+                output( "%s.res:", obj );
             }
-            strarray_add( &clean_files, strmake( "%s.res", obj ));
+            strarray_add( &res_files, strmake( "%s.res", obj ));
         }
         else if (!strcmp( ext, "mc" ))  /* message file */
         {
             output( "%s.res: $(WMC) $(ALL_MO_FILES) %s\n", obj, sourcedep );
             output( "\t$(WMC) -U -O res $(PORCFLAGS) -o $@ %s\n", source->filename );
-            strarray_add( &clean_files, strmake( "%s.res", obj ));
+            strarray_add( &res_files, strmake( "%s.res", obj ));
             strarray_add( &mc_files, source->filename );
-            column += output( "msg.pot %s.res:", obj );
+            output( "msg.pot %s.res:", obj );
         }
         else if (!strcmp( ext, "idl" ))  /* IDL file */
         {
@@ -1460,17 +1500,15 @@ static struct strarray output_sources(void)
                 strarray_add( &targets, dest );
             }
             if (source->flags & FLAG_IDL_PROXY) strarray_add( &dlldata_files, source->name );
-            column = 0;
-            output_filenames( &targets, &column );
+            output_filenames( targets );
             output( ": $(WIDL)\n" );
-            column = output( "\t$(WIDL) -o $@ %s", source->filename );
-            output_filenames( &includes, &column );
-            output_filename( "$(TARGETFLAGS)", &column );
-            output_filename( "$(IDLFLAGS)", &column );
+            output( "\t$(WIDL) -o $@ %s", source->filename );
+            output_filenames( includes );
+            output_filename( "$(TARGETFLAGS)" );
+            output_filename( "$(IDLFLAGS)" );
             output( "\n" );
-            column = 0;
-            output_filenames( &targets, &column );
-            column += output( ": %s", sourcedep );
+            output_filenames( targets );
+            output( ": %s", sourcedep );
         }
         else if (!strcmp( ext, "in" ))  /* .in file or man page */
         {
@@ -1492,11 +1530,12 @@ static struct strarray output_sources(void)
                         dir, dest, source->sourcename );
                 free( dest );
                 free( dir );
+                strarray_add_uniq( &phony_targets, "install-man-pages" );
             }
             strarray_add( &clean_files, xstrdup(obj) );
             output( "%s: %s\n", obj, sourcedep );
             output( "\t$(SED_CMD) %s >$@ || ($(RM) $@ && false)\n", source->filename );
-            column += output( "%s:", obj );
+            output( "%s:", obj );
         }
         else if (!strcmp( ext, "sfd" ))  /* font file */
         {
@@ -1528,57 +1567,61 @@ static struct strarray output_sources(void)
         }
         else if (!strcmp( ext, "res" ))
         {
-            strarray_add( &clean_files, source->name );
+            strarray_add( &res_files, source->name );
             continue;  /* no dependencies */
         }
         else
         {
             if (source->flags & FLAG_GENERATED) strarray_add( &clean_files, source->filename );
+            if (source->flags & FLAG_C_IMPLIB) strarray_add( &implib_objs, strmake( "%s.o", obj ));
             for (i = 0; i < object_extensions.count; i++)
             {
-                strarray_add( &clean_files, strmake( "%s.%s", obj, object_extensions.str[i] ));
                 output( "%s.%s: %s\n", obj, object_extensions.str[i], sourcedep );
                 if (strstr( object_extensions.str[i], "cross" ))
                 {
-                    column = output( "\t$(CROSSCC) -c -o $@ %s", source->filename );
-                    output_filenames( &includes, &column );
-                    output_filename( "$(ALLCROSSCFLAGS)", &column );
+                    strarray_add( &crossobj_files, strmake( "%s.%s", obj, object_extensions.str[i] ));
+                    output( "\t$(CROSSCC) -c -o $@ %s", source->filename );
+                    output_filenames( includes );
+                    output_filename( "$(ALLCROSSCFLAGS)" );
                     output( "\n" );
                 }
                 else
                 {
-                    column = output( "\t$(CC) -c -o $@ %s", source->filename );
-                    output_filenames( &includes, &column );
-                    output_filename( "$(ALLCFLAGS)", &column );
+                    strarray_add( &object_files, strmake( "%s.%s", obj, object_extensions.str[i] ));
+                    output( "\t$(CC) -c -o $@ %s", source->filename );
+                    output_filenames( includes );
+                    output_filename( "$(ALLCFLAGS)" );
                     output( "\n" );
                 }
             }
-            if (source->flags & FLAG_C_IMPLIB)
+            if (crosstarget && (source->flags & FLAG_C_IMPLIB))
             {
-                strarray_add( &clean_files, strmake( "%s.cross.o", obj ));
+                strarray_add( &crossobj_files, strmake( "%s.cross.o", obj ));
                 output( "%s.cross.o: %s\n", obj, sourcedep );
-                column = output( "\t$(CROSSCC) -c -o $@ %s", source->filename );
-                output_filenames( &includes, &column );
-                output_filename( "$(ALLCROSSCFLAGS)", &column );
+                output( "\t$(CROSSCC) -c -o $@ %s", source->filename );
+                output_filenames( includes );
+                output_filename( "$(ALLCROSSCFLAGS)" );
                 output( "\n" );
             }
-            if (is_test && !strcmp( ext, "c" ) && !(source->flags & FLAG_GENERATED))
+            if (testdll && !strcmp( ext, "c" ) && !(source->flags & FLAG_GENERATED))
             {
                 strarray_add( &test_files, source->name );
                 output( "%s.ok:\n", obj );
-                output( "\t$(RUNTEST) $(RUNTESTFLAGS) %s && touch $@\n", obj );
+                output( "\t$(RUNTEST) $(RUNTESTFLAGS) -T %s -M %s -p %s%s %s && touch $@\n", top_obj_dir,
+                        testdll, replace_extension( testdll, ".dll", "_test.exe" ), dllext, obj );
             }
-            column = 0;
+            if (!strcmp( ext, "c" ) && !(source->flags & FLAG_GENERATED))
+                strarray_add( &c2man_files, source->filename );
             for (i = 0; i < object_extensions.count; i++)
-                column += output( "%s.%s ", obj, object_extensions.str[i] );
-            if (source->flags & FLAG_C_IMPLIB) column += output( "%s.cross.o", obj );
-            column += output( ":" );
+                output( "%s.%s ", obj, object_extensions.str[i] );
+            if (source->flags & FLAG_C_IMPLIB) output( "%s.cross.o", obj );
+            output( ":" );
         }
         free( obj );
         free( sourcedep );
 
         for (i = 0; i < MAX_INCLUDES; i++)
-            if (source->files[i]) output_include( source->files[i], source, &column );
+            if (source->files[i]) output_include( source->files[i], source );
         output( "\n" );
     }
 
@@ -1586,24 +1629,24 @@ static struct strarray output_sources(void)
 
     if (po_files.count)
     {
-        column = output( "rsrc.pot: $(WRC)" );
-        output_filenames( &po_files, &column );
+        output( "rsrc.pot: $(WRC)" );
+        output_filenames( po_files );
         output( "\n" );
-        column = output( "\t$(WRC) -O pot -o $@" );
-        output_filenames( &includes, &column );
-        output_filename( "$(RCFLAGS)", &column );
-        output_filenames( &po_files, &column );
+        output( "\t$(WRC) -O pot -o $@" );
+        output_filenames( includes );
+        output_filename( "$(RCFLAGS)" );
+        output_filenames( po_files );
         output( "\n" );
         strarray_add( &clean_files, "rsrc.pot" );
     }
 
     if (mc_files.count)
     {
-        column = output( "msg.pot: $(WMC)" );
-        output_filenames( &mc_files, &column );
+        output( "msg.pot: $(WMC)" );
+        output_filenames( mc_files );
         output( "\n" );
-        column = output( "\t$(WMC) -O pot -o $@" );
-        output_filenames( &mc_files, &column );
+        output( "\t$(WMC) -O pot -o $@" );
+        output_filenames( mc_files );
         output( "\n" );
         strarray_add( &clean_files, "msg.pot" );
     }
@@ -1611,43 +1654,281 @@ static struct strarray output_sources(void)
     if (dlldata_files.count)
     {
         output( "dlldata.c: $(WIDL) %s\n", src_dir ? strmake("%s/Makefile.in", src_dir ) : "Makefile.in" );
-        column = output( "\t$(WIDL) --dlldata-only -o $@" );
-        output_filenames( &dlldata_files, &column );
+        output( "\t$(WIDL) --dlldata-only -o $@" );
+        output_filenames( dlldata_files );
         output( "\n" );
     }
 
-    if (is_test)
+    if (module)
+    {
+        int is_win16 = strendswith( module, "16" );
+        char *importlib = get_expanded_make_variable( "IMPORTLIB" );
+        struct strarray all_libs = empty_strarray;
+        char *spec_file = appmode ? NULL : replace_extension( module, ".dll", ".spec" );
+
+        if (spec_file && src_dir) spec_file = strmake( "%s/%s", src_dir, spec_file );
+        for (i = 0; i < delayimports.count; i++)
+            strarray_add( &all_libs, strmake( "-l%s", delayimports.str[i] ));
+        for (i = 0; i < imports.count; i++)
+            strarray_add( &all_libs, strmake( "-l%s", imports.str[i] ));
+        for (i = 0; i < delayimports.count; i++)
+            strarray_add( &all_libs, strmake( "-Wb,-d%s", delayimports.str[i] ));
+        strarray_add( &all_libs, "-lwine" );
+        strarray_addall( &all_libs, get_expanded_make_var_array( "LIBPORT" ));
+        strarray_addall( &all_libs, get_expanded_make_var_array( "EXTRALIBS" ));
+        strarray_addall( &all_libs, get_expanded_make_var_array( "LIBS" ));
+
+        if (*dllext)
+        {
+            strarray_add( &all_targets, strmake( "%s%s", module, dllext ));
+            strarray_add( &all_targets, strmake( "%s.fake", module ));
+            output( "%s%s %s.fake:", module, dllext, module );
+        }
+        else
+        {
+            strarray_add( &all_targets, module );
+            output( "%s:", module );
+        }
+        if (spec_file) output_filename( spec_file );
+        output_filenames( object_files );
+        output_filenames( res_files );
+        output( "\n" );
+        output( "\t$(WINEGCC) -o $@" );
+        if (spec_file)
+        {
+            output( " -shared %s", spec_file );
+            output_filenames( get_expanded_make_var_array( "EXTRADLLFLAGS" ));
+        }
+        else output_filename( appmode );
+        output_filenames( object_files );
+        output_filenames( res_files );
+        output_filenames( all_libs );
+        output_filename( "$(LDFLAGS)" );
+        output( "\n" );
+
+        if (spec_file && importlib)
+        {
+            if (*dllext)
+            {
+                strarray_add( &clean_files, strmake( "lib%s.def", importlib ));
+                output( "lib%s.def: %s\n", importlib, spec_file );
+                output( "\t$(WINEBUILD) -w --def -o $@ --export %s", spec_file );
+                output_filenames( get_expanded_make_var_array( "TARGETFLAGS" ));
+                if (is_win16) output_filename( "-m16" );
+                output( "\n" );
+                if (implib_objs.count)
+                {
+                    strarray_add( &clean_files, strmake( "lib%s.def.a", importlib ));
+                    output( "lib%s.def.a:", importlib );
+                    output_filenames( implib_objs );
+                    output( "\n" );
+                    output( "\t$(RM) $@\n" );
+                    output( "\t$(AR) $(ARFLAGS) $@" );
+                    output_filenames( implib_objs );
+                    output( "\n" );
+                    output( "\t$(RANLIB) $@\n" );
+                }
+            }
+            else
+            {
+                strarray_add( &clean_files, strmake( "lib%s.a", importlib ));
+                output( "lib%s.a: %s", importlib, spec_file );
+                output_filenames( implib_objs );
+                output( "\n" );
+                output( "\t$(WINEBUILD) -w --implib -o $@ --export %s", spec_file );
+                output_filenames( get_expanded_make_var_array( "TARGETFLAGS" ));
+                output_filenames( implib_objs );
+                output( "\n" );
+            }
+            if (crosstarget && !is_win16)
+            {
+                struct strarray cross_files = strarray_replace_extension( &implib_objs, ".o", ".cross.o" );
+                strarray_add( &clean_files, strmake( "lib%s.cross.a", importlib ));
+                output( "lib%s.cross.a: %s", importlib, spec_file );
+                output_filenames( cross_files );
+                output( "\n" );
+                output( "\t$(WINEBUILD) -b %s -w --implib -o $@ --export %s", crosstarget, spec_file );
+                output_filenames( cross_files );
+                output( "\n" );
+            }
+        }
+
+        if (spec_file)
+        {
+            if (c2man_files.count && top_obj_dir)
+            {
+                char *manext = get_expanded_make_variable( "api_manext" );
+
+                output( "manpages::\n" );
+                output( "\t$(C2MAN) -w %s -R%s", spec_file, top_obj_dir );
+                output_filename( strmake( "-I%s/include", top_src_dir ? top_src_dir : top_obj_dir ));
+                output_filename( strmake( "-o %s/documentation/man%s", top_obj_dir, manext ? manext : "3w" ));
+                output_filenames( c2man_files );
+                output( "\n" );
+                output( "htmlpages::\n" );
+                output( "\t$(C2MAN) -Th -w %s -R%s", spec_file, top_obj_dir );
+                output_filename( strmake( "-I%s/include", top_src_dir ? top_src_dir : top_obj_dir ));
+                output_filename( strmake( "-o %s/documentation/html", top_obj_dir ));
+                output_filenames( c2man_files );
+                output( "\n" );
+                output( "sgmlpages::\n" );
+                output( "\t$(C2MAN) -Ts -w %s -R%s", spec_file, top_obj_dir );
+                output_filename( strmake( "-I%s/include", top_src_dir ? top_src_dir : top_obj_dir ));
+                output_filename( strmake( "-o %s/documentation/api-guide", top_obj_dir ));
+                output_filenames( c2man_files );
+                output( "\n" );
+                output( "xmlpages::\n" );
+                output( "\t$(C2MAN) -Tx -w %s -R%s", spec_file, top_obj_dir );
+                output_filename( strmake( "-I%s/include", top_src_dir ? top_src_dir : top_obj_dir ));
+                output_filename( strmake( "-o %s/documentation/api-guide-xml", top_obj_dir ));
+                output_filenames( c2man_files );
+                output( "\n" );
+                strarray_add( &phony_targets, "manpages" );
+                strarray_add( &phony_targets, "htmlpages" );
+                strarray_add( &phony_targets, "sgmlpages" );
+                strarray_add( &phony_targets, "xmlpages" );
+            }
+            else output( "manpages htmlpages sgmlpages xmlpages::\n" );
+        }
+    }
+
+    if (staticlib)
+    {
+        strarray_add( &all_targets, staticlib );
+        output( "%s:", staticlib );
+        output_filenames( object_files );
+        output( "\n\t$(RM) $@\n" );
+        output( "\t$(AR) $(ARFLAGS) $@" );
+        output_filenames( object_files );
+        output( "\n\t$(RANLIB) $@\n" );
+        if (crosstarget && object_extensions.count > 1)
+        {
+            char *name = replace_extension( staticlib, ".a", ".cross.a" );
+
+            strarray_add( &all_targets, name );
+            output( "%s:", name );
+            output_filenames( crossobj_files );
+            output( "\n\t$(RM) $@\n" );
+            output( "\t%s-ar $(ARFLAGS) $@", crosstarget );
+            output_filenames( crossobj_files );
+            output( "\n\t%s-ranlib $@\n", crosstarget );
+        }
+    }
+
+    if (testdll)
     {
         struct strarray ok_files = strarray_replace_extension( &test_files, ".c", ".ok" );
-        output( "testlist.c: $(MAKECTESTS) %s\n", src_dir ? strmake("%s/Makefile.in", src_dir ) : "Makefile.in" );
-        column = output( "\t$(MAKECTESTS) -o $@" );
-        output_filenames( &test_files, &column );
+        char *testmodule = replace_extension( testdll, ".dll", "_test.exe" );
+        char *stripped = replace_extension( testdll, ".dll", "_test-stripped.exe" );
+        struct strarray all_libs = empty_strarray;
+
+        for (i = 0; i < imports.count; i++) strarray_add( &all_libs, strmake( "-l%s", imports.str[i] ));
+        strarray_addall( &all_libs, get_expanded_make_var_array( "LIBS" ));
+
+        strarray_add( &all_targets, strmake( "%s%s", testmodule, dllext ));
+        strarray_add( &clean_files, strmake( "%s%s", stripped, dllext ));
+        output( "%s%s:\n", testmodule, dllext );
+        output( "\t$(WINEGCC) -o $@" );
+        if (appmode) output_filename( appmode );
+        output_filenames( object_files );
+        output_filenames( res_files );
+        output_filenames( all_libs );
+        output_filename( "$(LDFLAGS)" );
         output( "\n" );
-        column = output( "check test:" );
-        output_filenames( &ok_files, &column );
+        output( "%s%s:\n", stripped, dllext );
+        output( "\t$(WINEGCC) -s -o $@ -Wb,-F,%s", testmodule );
+        if (appmode) output_filename( appmode );
+        output_filenames( object_files );
+        output_filenames( res_files );
+        output_filenames( all_libs );
+        output_filename( "$(LDFLAGS)" );
+        output( "\n" );
+        output( "%s%s %s%s:", testmodule, dllext, stripped, dllext );
+        output_filenames( object_files );
+        output_filenames( res_files );
+        output( "\n" );
+
+        if (top_obj_dir)
+        {
+            char *testres = replace_extension( testdll, ".dll", "_test.res" );
+            output( "all: %s/programs/winetest/%s\n", top_obj_dir, testres );
+            output( "%s/programs/winetest/%s: %s%s\n", top_obj_dir, testres, stripped, dllext );
+            output( "\techo \"%s TESTRES \\\"%s%s\\\"\" | $(WRC) $(RCFLAGS) -o $@\n",
+                    testmodule, stripped, dllext );
+        }
+
+        if (crosstarget)
+        {
+            char *crosstest = replace_extension( testdll, ".dll", "_crosstest.exe" );
+
+            strarray_add( &clean_files, crosstest );
+            output( "crosstest: %s\n", crosstest );
+            output( "%s:", crosstest );
+            output_filenames( crossobj_files );
+            output_filenames( res_files );
+            output( "\n" );
+            output( "\t$(CROSSWINEGCC) -o $@" );
+            output_filenames( crossobj_files );
+            output_filenames( res_files );
+            output_filenames( all_libs );
+            output_filename( "$(LDFLAGS)" );
+            output( "\n" );
+            strarray_add( &phony_targets, "crosstest" );
+        }
+
+        output( "testlist.c: $(MAKECTESTS) %s\n", src_dir ? strmake("%s/Makefile.in", src_dir ) : "Makefile.in" );
+        output( "\t$(MAKECTESTS) -o $@" );
+        output_filenames( test_files );
+        output( "\n" );
+        output_filenames( ok_files );
+        output( ": %s%s ../%s%s\n", testmodule, dllext, testdll, dllext );
+        output( "check test:" );
+        output_filenames( ok_files );
         output( "\n" );
         output( "testclean::\n" );
-        column = output( "\t$(RM)" );
-        output_filenames( &ok_files, &column );
+        output( "\t$(RM)" );
+        output_filenames( ok_files );
         output( "\n" );
-        strarray_addall( &clean_files, &ok_files );
+        strarray_addall( &clean_files, ok_files );
+        strarray_add( &phony_targets, "check" );
+        strarray_add( &phony_targets, "test" );
+        strarray_add( &phony_targets, "testclean" );
     }
+
+    if (all_targets.count)
+    {
+        output( "all:" );
+        output_filenames( all_targets );
+        output( "\n" );
+    }
+
+    strarray_addall( &clean_files, object_files );
+    strarray_addall( &clean_files, crossobj_files );
+    strarray_addall( &clean_files, res_files );
+    strarray_addall( &clean_files, all_targets );
 
     if (clean_files.count)
     {
         output( "clean::\n" );
-        column = output( "\t$(RM)" );
-        output_filenames( &clean_files, &column );
+        output( "\t$(RM)" );
+        output_filenames( clean_files );
         output( "\n" );
     }
 
     if (subdirs.count)
     {
-        column = 0;
-        output_filenames( &subdirs, &column );
+        output_filenames( subdirs );
         output( ":\n" );
         output( "\t$(MKDIR_P) -m 755 $@\n" );
     }
+
+    if (phony_targets.count)
+    {
+        output( ".PHONY:" );
+        output_filenames( phony_targets );
+        output( "\n" );
+    }
+
     return clean_files;
 }
 
@@ -1655,7 +1936,7 @@ static struct strarray output_sources(void)
 /*******************************************************************
  *         create_temp_file
  */
-static FILE *create_temp_file( const char *orig, char **tmp_name )
+static FILE *create_temp_file( const char *orig )
 {
     char *name = xmalloc( strlen(orig) + 13 );
     unsigned int i, id = getpid();
@@ -1674,7 +1955,7 @@ static FILE *create_temp_file( const char *orig, char **tmp_name )
         id += 7777;
     }
     if (!ret) fatal_error( "failed to create output file for '%s'\n", orig );
-    *tmp_name = name;
+    temp_file_name = name;
     return ret;
 }
 
@@ -1682,20 +1963,17 @@ static FILE *create_temp_file( const char *orig, char **tmp_name )
 /*******************************************************************
  *         rename_temp_file
  */
-static void rename_temp_file( const char *tmp_name, const char *dest )
+static void rename_temp_file( const char *dest )
 {
-    int ret = rename( tmp_name, dest );
+    int ret = rename( temp_file_name, dest );
     if (ret == -1 && errno == EEXIST)
     {
         /* rename doesn't overwrite on windows */
         unlink( dest );
-        ret = rename( tmp_name, dest );
+        ret = rename( temp_file_name, dest );
     }
-    if (ret == -1)
-    {
-        unlink( tmp_name );
-        fatal_error( "failed to rename output file to '%s'\n", dest );
-    }
+    if (ret == -1) fatal_error( "failed to rename output file to '%s'\n", dest );
+    temp_file_name = NULL;
 }
 
 
@@ -1704,10 +1982,9 @@ static void rename_temp_file( const char *tmp_name, const char *dest )
  */
 static void output_gitignore( const char *dest, const struct strarray *files )
 {
-    char *tmp_name;
     int i;
 
-    output_file = create_temp_file( dest, &tmp_name );
+    output_file = create_temp_file( dest );
 
     output( "# Automatically generated by make depend; DO NOT EDIT!!\n" );
     output( "/.gitignore\n" );
@@ -1718,37 +1995,33 @@ static void output_gitignore( const char *dest, const struct strarray *files )
         output( "%s\n", files->str[i] );
     }
 
-    fclose( output_file );
+    if (fclose( output_file )) fatal_perror( "write" );
     output_file = NULL;
-    rename_temp_file( tmp_name, dest );
-    free( tmp_name );
+    rename_temp_file( dest );
 }
 
 
 /*******************************************************************
  *         output_dependencies
  */
-static void output_dependencies(void)
+static void output_dependencies( const char *path )
 {
-    char *tmp_name = NULL;
-    char *path = strmake( "%s/%s", base_dir, makefile_name );
     struct strarray targets = empty_strarray;
 
     if (Separator && ((output_file = fopen( path, "r" ))))
     {
         char buffer[1024];
-        FILE *tmp_file = create_temp_file( path, &tmp_name );
+        FILE *tmp_file = create_temp_file( path );
         int found = 0;
 
         while (fgets( buffer, sizeof(buffer), output_file ) && !found)
         {
-            if (fwrite( buffer, 1, strlen(buffer), tmp_file ) != strlen(buffer))
-                fatal_error( "failed to write to %s\n", tmp_name );
+            if (fwrite( buffer, 1, strlen(buffer), tmp_file ) != strlen(buffer)) fatal_perror( "write" );
             found = !strncmp( buffer, Separator, strlen(Separator) );
         }
-        fclose( output_file );
+        if (fclose( output_file )) fatal_perror( "write" );
         output_file = tmp_file;
-        if (!found && !list_empty(&sources)) output( "\n%s\n", Separator );
+        if (!found) output( "\n%s\n", Separator );
     }
     else
     {
@@ -1756,16 +2029,11 @@ static void output_dependencies(void)
             fatal_perror( "%s", path );
     }
 
-    if (!list_empty( &sources )) targets = output_sources();
+    targets = output_sources();
 
     fclose( output_file );
     output_file = NULL;
-    if (tmp_name)
-    {
-        rename_temp_file( tmp_name, path );
-        free( tmp_name );
-    }
-    free( path );
+    if (temp_file_name) rename_temp_file( path );
 
     if (!src_dir) output_gitignore( strmake( "%s/.gitignore", base_dir ), &targets );
 }
@@ -1804,6 +2072,7 @@ static void update_makefile( const char *path )
     struct incl_file *file;
 
     base_dir = path;
+    output_file_name = strmake( "%s/%s", base_dir, makefile_name );
     parse_makefile();
 
     src_dir     = get_expanded_make_variable( "srcdir" );
@@ -1847,7 +2116,8 @@ static void update_makefile( const char *path )
     }
 
     LIST_FOR_EACH_ENTRY( file, &includes, struct incl_file, entry ) parse_file( file, 0 );
-    output_dependencies();
+    output_dependencies( output_file_name );
+    output_file_name = NULL;
 }
 
 
@@ -1961,6 +2231,13 @@ int main( int argc, char *argv[] )
         exit( 0 );
     }
 
+    atexit( cleanup_files );
+    signal( SIGTERM, exit_on_signal );
+    signal( SIGINT, exit_on_signal );
+#ifdef SIGHUP
+    signal( SIGHUP, exit_on_signal );
+#endif
+
     if (parse_makefile_mode)
     {
         for (i = 1; i < argc; i++) update_makefile( argv[i] );
@@ -1972,6 +2249,6 @@ int main( int argc, char *argv[] )
     add_generated_sources();
 
     LIST_FOR_EACH_ENTRY( pFile, &includes, struct incl_file, entry ) parse_file( pFile, 0 );
-    output_dependencies();
+    output_dependencies( makefile_name );
     return 0;
 }

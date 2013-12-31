@@ -56,8 +56,10 @@ static const char *dbgstr_event(int type)
         "WINDOW_FRAME_CHANGED",
         "WINDOW_GOT_FOCUS",
         "WINDOW_LOST_FOCUS",
+        "WINDOW_MAXIMIZE_REQUESTED",
         "WINDOW_MINIMIZE_REQUESTED",
         "WINDOW_RESIZE_ENDED",
+        "WINDOW_RESTORE_REQUESTED",
     };
 
     if (0 <= type && type < NUM_EVENT_TYPES) return event_names[type];
@@ -104,7 +106,6 @@ static macdrv_event_mask get_event_mask(DWORD mask)
         event_mask |= event_mask_for_type(IM_SET_TEXT);
         event_mask |= event_mask_for_type(STATUS_ITEM_MOUSE_BUTTON);
         event_mask |= event_mask_for_type(STATUS_ITEM_MOUSE_MOVE);
-        event_mask |= event_mask_for_type(WINDOW_CLOSE_REQUESTED);
         event_mask |= event_mask_for_type(WINDOW_DID_UNMINIMIZE);
         event_mask |= event_mask_for_type(WINDOW_FRAME_CHANGED);
         event_mask |= event_mask_for_type(WINDOW_GOT_FOCUS);
@@ -116,10 +117,13 @@ static macdrv_event_mask get_event_mask(DWORD mask)
         event_mask |= event_mask_for_type(QUERY_EVENT);
         event_mask |= event_mask_for_type(RELEASE_CAPTURE);
         event_mask |= event_mask_for_type(WINDOW_BROUGHT_FORWARD);
+        event_mask |= event_mask_for_type(WINDOW_CLOSE_REQUESTED);
         event_mask |= event_mask_for_type(WINDOW_DRAG_BEGIN);
         event_mask |= event_mask_for_type(WINDOW_DRAG_END);
+        event_mask |= event_mask_for_type(WINDOW_MAXIMIZE_REQUESTED);
         event_mask |= event_mask_for_type(WINDOW_MINIMIZE_REQUESTED);
         event_mask |= event_mask_for_type(WINDOW_RESIZE_ENDED);
+        event_mask |= event_mask_for_type(WINDOW_RESTORE_REQUESTED);
     }
 
     return event_mask;
@@ -262,11 +266,17 @@ void macdrv_handle_event(const macdrv_event *event)
     case WINDOW_LOST_FOCUS:
         macdrv_window_lost_focus(hwnd, event);
         break;
+    case WINDOW_MAXIMIZE_REQUESTED:
+        macdrv_window_maximize_requested(hwnd);
+        break;
     case WINDOW_MINIMIZE_REQUESTED:
         macdrv_window_minimize_requested(hwnd);
         break;
     case WINDOW_RESIZE_ENDED:
         macdrv_window_resize_ended(hwnd);
+        break;
+    case WINDOW_RESTORE_REQUESTED:
+        macdrv_window_restore_requested(hwnd);
         break;
     default:
         TRACE("    ignoring\n");

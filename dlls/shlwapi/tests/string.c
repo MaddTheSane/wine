@@ -64,7 +64,7 @@ static LPWSTR  (WINAPI *pStrStrNW)(LPCWSTR,LPCWSTR,UINT);
 static LPWSTR  (WINAPI *pStrStrNIW)(LPCWSTR,LPCWSTR,UINT);
 static INT     (WINAPIV *pwnsprintfA)(LPSTR,INT,LPCSTR, ...);
 static INT     (WINAPIV *pwnsprintfW)(LPWSTR,INT,LPCWSTR, ...);
-static LPWSTR  (WINAPI *pStrChrNW)(LPWSTR,WCHAR,UINT);
+static LPWSTR  (WINAPI *pStrChrNW)(LPCWSTR,WCHAR,UINT);
 static BOOL    (WINAPI *pStrToInt64ExA)(LPCSTR,DWORD,LONGLONG*);
 static BOOL    (WINAPI *pStrToInt64ExW)(LPCWSTR,DWORD,LONGLONG*);
 
@@ -433,7 +433,7 @@ static void test_StrCpyW(void)
 
 static void test_StrChrNW(void)
 {
-    static WCHAR string[] = {'T','e','s','t','i','n','g',' ','S','t','r','i','n','g',0};
+    static const WCHAR string[] = {'T','e','s','t','i','n','g',' ','S','t','r','i','n','g',0};
     LPWSTR p;
 
     if (!pStrChrNW)

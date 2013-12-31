@@ -488,14 +488,19 @@ int macdrv_err_on;
 
     - (void) adjustWindowLevels:(BOOL)active
     {
-        NSArray* windowNumbers = [NSWindow windowNumbersWithOptions:0];
-        NSMutableArray* wineWindows = [[NSMutableArray alloc] initWithCapacity:[windowNumbers count]];
+        NSArray* windowNumbers;
+        NSMutableArray* wineWindows;
         NSNumber* windowNumber;
         NSUInteger nextFloatingIndex = 0;
         __block NSInteger maxLevel = NSIntegerMin;
         __block NSInteger maxNonfloatingLevel = NSNormalWindowLevel;
         __block WineWindow* prev = nil;
         WineWindow* window;
+
+        if ([NSApp isHidden]) return;
+
+        windowNumbers = [NSWindow windowNumbersWithOptions:0];
+        wineWindows = [[NSMutableArray alloc] initWithCapacity:[windowNumbers count]];
 
         // For the most part, we rely on the window server's ordering of the windows
         // to be authoritative.  The one exception is if the "floating" property of
@@ -2127,6 +2132,11 @@ int macdrv_err_on;
         [self releaseMouseCapture];
     }
 
+    - (void) applicationDidUnhide:(NSNotification*)aNotification
+    {
+        [self adjustWindowLevels];
+    }
+
     - (BOOL) applicationShouldHandleReopen:(NSApplication*)theApplication hasVisibleWindows:(BOOL)flag
     {
         // Note that "flag" is often wrong.  WineWindows are NSPanels and NSPanels
@@ -2504,6 +2514,8 @@ int macdrv_using_input_method(void)
 void macdrv_set_mouse_capture_window(macdrv_window window)
 {
     WineWindow* w = (WineWindow*)window;
+
+    [w.queue discardEventsMatchingMask:event_mask_for_type(RELEASE_CAPTURE) forWindow:w];
 
     OnMainThread(^{
         [[WineApplicationController sharedController] setMouseCaptureWindow:w];

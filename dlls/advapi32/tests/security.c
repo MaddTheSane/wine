@@ -42,6 +42,10 @@
 #define EVENT_QUERY_STATE 0x0001
 #endif
 
+#ifndef SEMAPHORE_QUERY_STATE
+#define SEMAPHORE_QUERY_STATE 0x0001
+#endif
+
 /* copied from Wine winternl.h - not included in the Windows SDK */
 typedef enum _OBJECT_INFORMATION_CLASS {
     ObjectBasicInformation,
@@ -4499,13 +4503,37 @@ todo_wine {
     HeapFree(GetProcessHeap(), 0, sd);
 }
 
+static ACCESS_MASK get_obj_access(HANDLE obj)
+{
+    OBJECT_BASIC_INFORMATION info;
+    NTSTATUS status;
+
+    if (!pNtQueryObject) return 0;
+
+    status = pNtQueryObject(obj, ObjectBasicInformation, &info, sizeof(info), NULL);
+    ok(!status, "NtQueryObject error %#x\n", status);
+
+    return info.GrantedAccess;
+}
+
 static void test_mutex_security(HANDLE token)
 {
-    HANDLE mutex;
+    DWORD ret, i, access;
+    HANDLE mutex, dup;
     GENERIC_MAPPING mapping = { STANDARD_RIGHTS_READ | MUTANT_QUERY_STATE | SYNCHRONIZE,
                                 STANDARD_RIGHTS_WRITE | MUTEX_MODIFY_STATE | SYNCHRONIZE,
                                 STANDARD_RIGHTS_EXECUTE | SYNCHRONIZE,
                                 STANDARD_RIGHTS_ALL | MUTEX_ALL_ACCESS };
+    static const struct
+    {
+        int todo, generic, mapped;
+    } map[] =
+    {
+        { 1, GENERIC_READ, STANDARD_RIGHTS_READ | MUTANT_QUERY_STATE },
+        { 0, GENERIC_WRITE, STANDARD_RIGHTS_WRITE },
+        { 0, GENERIC_EXECUTE, STANDARD_RIGHTS_EXECUTE | SYNCHRONIZE },
+        { 0, GENERIC_ALL, STANDARD_RIGHTS_ALL | MUTANT_QUERY_STATE }
+    };
 
     SetLastError(0xdeadbeef);
     mutex = OpenMutexA(0, FALSE, "WineTestMutex");
@@ -4516,6 +4544,26 @@ static void test_mutex_security(HANDLE token)
     mutex = CreateMutexA(NULL, FALSE, "WineTestMutex");
     ok(mutex != 0, "CreateMutex error %d\n", GetLastError());
 
+    access = get_obj_access(mutex);
+    ok(access == MUTANT_ALL_ACCESS, "expected MUTANT_ALL_ACCESS, got %#x\n", access);
+
+    for (i = 0; i < sizeof(map)/sizeof(map[0]); i++)
+    {
+        SetLastError( 0xdeadbeef );
+        ret = DuplicateHandle(GetCurrentProcess(), mutex, GetCurrentProcess(), &dup,
+                              map[i].generic, FALSE, 0);
+        ok(ret, "DuplicateHandle error %d\n", GetLastError());
+
+        access = get_obj_access(dup);
+        if (map[i].todo)
+todo_wine
+        ok(access == map[i].mapped, "%d: expected %#x, got %#x\n", i, map[i].mapped, access);
+        else
+        ok(access == map[i].mapped, "%d: expected %#x, got %#x\n", i, map[i].mapped, access);
+
+        CloseHandle(dup);
+    }
+
     test_default_handle_security(token, mutex, &mapping);
 
     CloseHandle (mutex);
@@ -4523,11 +4571,22 @@ static void test_mutex_security(HANDLE token)
 
 static void test_event_security(HANDLE token)
 {
-    HANDLE event;
+    DWORD ret, i, access;
+    HANDLE event, dup;
     GENERIC_MAPPING mapping = { STANDARD_RIGHTS_READ | EVENT_QUERY_STATE | SYNCHRONIZE,
                                 STANDARD_RIGHTS_WRITE | EVENT_MODIFY_STATE | SYNCHRONIZE,
                                 STANDARD_RIGHTS_EXECUTE | SYNCHRONIZE,
                                 STANDARD_RIGHTS_ALL | EVENT_ALL_ACCESS };
+    static const struct
+    {
+        int todo, generic, mapped;
+    } map[] =
+    {
+        { 1, GENERIC_READ, STANDARD_RIGHTS_READ | EVENT_QUERY_STATE },
+        { 1, GENERIC_WRITE, STANDARD_RIGHTS_WRITE | EVENT_MODIFY_STATE },
+        { 1, GENERIC_EXECUTE, STANDARD_RIGHTS_EXECUTE | SYNCHRONIZE },
+        { 0, GENERIC_ALL, STANDARD_RIGHTS_ALL | EVENT_QUERY_STATE | EVENT_MODIFY_STATE }
+    };
 
     SetLastError(0xdeadbeef);
     event = OpenEventA(0, FALSE, "WineTestEvent");
@@ -4538,19 +4597,103 @@ static void test_event_security(HANDLE token)
     event = CreateEventA(NULL, FALSE, FALSE, "WineTestEvent");
     ok(event != 0, "CreateEvent error %d\n", GetLastError());
 
+    access = get_obj_access(event);
+    ok(access == EVENT_ALL_ACCESS, "expected EVENT_ALL_ACCESS, got %#x\n", access);
+
+    for (i = 0; i < sizeof(map)/sizeof(map[0]); i++)
+    {
+        SetLastError( 0xdeadbeef );
+        ret = DuplicateHandle(GetCurrentProcess(), event, GetCurrentProcess(), &dup,
+                              map[i].generic, FALSE, 0);
+        ok(ret, "DuplicateHandle error %d\n", GetLastError());
+
+        access = get_obj_access(dup);
+        if (map[i].todo)
+todo_wine
+        ok(access == map[i].mapped, "%d: expected %#x, got %#x\n", i, map[i].mapped, access);
+        else
+        ok(access == map[i].mapped, "%d: expected %#x, got %#x\n", i, map[i].mapped, access);
+
+        CloseHandle(dup);
+    }
+
     test_default_handle_security(token, event, &mapping);
 
     CloseHandle(event);
 }
 
+static void test_semaphore_security(HANDLE token)
+{
+    DWORD ret, i, access;
+    HANDLE sem, dup;
+    GENERIC_MAPPING mapping = { STANDARD_RIGHTS_READ | SEMAPHORE_QUERY_STATE,
+                                STANDARD_RIGHTS_WRITE | SEMAPHORE_MODIFY_STATE,
+                                STANDARD_RIGHTS_EXECUTE | SYNCHRONIZE,
+                                STANDARD_RIGHTS_ALL | SEMAPHORE_ALL_ACCESS };
+    static const struct
+    {
+        int todo, generic, mapped;
+    } map[] =
+    {
+        { 1, GENERIC_READ, STANDARD_RIGHTS_READ | SEMAPHORE_QUERY_STATE },
+        { 0, GENERIC_WRITE, STANDARD_RIGHTS_WRITE | SEMAPHORE_MODIFY_STATE },
+        { 1, GENERIC_EXECUTE, STANDARD_RIGHTS_EXECUTE | SYNCHRONIZE },
+        { 0, GENERIC_ALL, STANDARD_RIGHTS_ALL | SEMAPHORE_QUERY_STATE | SEMAPHORE_MODIFY_STATE }
+    };
+
+    SetLastError(0xdeadbeef);
+    sem = OpenSemaphoreA(0, FALSE, "WineTestSemaphore");
+    ok(!sem, "semaphore should not exist\n");
+    ok(GetLastError() == ERROR_FILE_NOT_FOUND, "wrong error %u\n", GetLastError());
+
+    SetLastError(0xdeadbeef);
+    sem = CreateSemaphoreA(NULL, 0, 10, "WineTestSemaphore");
+    ok(sem != 0, "CreateSemaphore error %d\n", GetLastError());
+
+    access = get_obj_access(sem);
+    ok(access == SEMAPHORE_ALL_ACCESS, "expected SEMAPHORE_ALL_ACCESS, got %#x\n", access);
+
+    for (i = 0; i < sizeof(map)/sizeof(map[0]); i++)
+    {
+        SetLastError( 0xdeadbeef );
+        ret = DuplicateHandle(GetCurrentProcess(), sem, GetCurrentProcess(), &dup,
+                              map[i].generic, FALSE, 0);
+        ok(ret, "DuplicateHandle error %d\n", GetLastError());
+
+        access = get_obj_access(dup);
+        if (map[i].todo)
+todo_wine
+        ok(access == map[i].mapped, "%d: expected %#x, got %#x\n", i, map[i].mapped, access);
+        else
+        ok(access == map[i].mapped, "%d: expected %#x, got %#x\n", i, map[i].mapped, access);
+
+        CloseHandle(dup);
+    }
+
+    test_default_handle_security(token, sem, &mapping);
+
+    CloseHandle(sem);
+}
+
 #define WINE_TEST_PIPE "\\\\.\\pipe\\WineTestPipe"
 static void test_named_pipe_security(HANDLE token)
 {
-    HANDLE pipe, file;
+    DWORD ret, i, access;
+    HANDLE pipe, file, dup;
     GENERIC_MAPPING mapping = { FILE_GENERIC_READ,
                                 FILE_GENERIC_WRITE,
                                 FILE_GENERIC_EXECUTE,
                                 STANDARD_RIGHTS_ALL | FILE_ALL_ACCESS };
+    static const struct
+    {
+        int todo, generic, mapped;
+    } map[] =
+    {
+        { 1, GENERIC_READ, FILE_GENERIC_READ },
+        { 1, GENERIC_WRITE, FILE_GENERIC_WRITE },
+        { 1, GENERIC_EXECUTE, FILE_GENERIC_EXECUTE },
+        { 1, GENERIC_ALL, STANDARD_RIGHTS_ALL | FILE_ALL_ACCESS }
+    };
 
     SetLastError(0xdeadbeef);
     pipe = CreateNamedPipeA(WINE_TEST_PIPE, PIPE_ACCESS_DUPLEX | FILE_FLAG_FIRST_PIPE_INSTANCE,
@@ -4563,14 +4706,98 @@ static void test_named_pipe_security(HANDLE token)
     SetLastError(0xdeadbeef);
     file = CreateFileA(WINE_TEST_PIPE, FILE_ALL_ACCESS, 0, NULL, OPEN_EXISTING, 0, 0);
     ok(file != INVALID_HANDLE_VALUE, "CreateFile error %d\n", GetLastError());
-    CloseHandle(file);
 
+    access = get_obj_access(file);
+    ok(access == FILE_ALL_ACCESS, "expected FILE_ALL_ACCESS, got %#x\n", access);
+
+    for (i = 0; i < sizeof(map)/sizeof(map[0]); i++)
+    {
+        SetLastError( 0xdeadbeef );
+        ret = DuplicateHandle(GetCurrentProcess(), file, GetCurrentProcess(), &dup,
+                              map[i].generic, FALSE, 0);
+        ok(ret, "DuplicateHandle error %d\n", GetLastError());
+
+        access = get_obj_access(dup);
+        ok(access == map[i].mapped, "%d: expected %#x, got %#x\n", i, map[i].mapped, access);
+
+        CloseHandle(dup);
+    }
+
+    CloseHandle(file);
     CloseHandle(pipe);
 
     SetLastError(0xdeadbeef);
     file = CreateFileA("\\\\.\\pipe\\", FILE_ALL_ACCESS, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, 0, 0);
     ok(file != INVALID_HANDLE_VALUE || broken(file == INVALID_HANDLE_VALUE) /* before Vista */, "CreateFile error %d\n", GetLastError());
+
+    if (file != INVALID_HANDLE_VALUE)
+    {
+        access = get_obj_access(file);
+        ok(access == FILE_ALL_ACCESS, "expected FILE_ALL_ACCESS, got %#x\n", access);
+
+        for (i = 0; i < sizeof(map)/sizeof(map[0]); i++)
+        {
+            SetLastError( 0xdeadbeef );
+            ret = DuplicateHandle(GetCurrentProcess(), file, GetCurrentProcess(), &dup,
+                                  map[i].generic, FALSE, 0);
+            ok(ret, "DuplicateHandle error %d\n", GetLastError());
+
+            access = get_obj_access(dup);
+            if (map[i].todo)
+todo_wine
+            ok(access == map[i].mapped, "%d: expected %#x, got %#x\n", i, map[i].mapped, access);
+            else
+            ok(access == map[i].mapped, "%d: expected %#x, got %#x\n", i, map[i].mapped, access);
+
+            CloseHandle(dup);
+        }
+    }
+
     CloseHandle(file);
+}
+
+static void test_file_security(HANDLE token)
+{
+    DWORD ret, i, access;
+    HANDLE file, dup;
+    static const struct
+    {
+        int generic, mapped;
+    } map[] =
+    {
+        { GENERIC_READ, FILE_GENERIC_READ },
+        { GENERIC_WRITE, FILE_GENERIC_WRITE },
+        { GENERIC_EXECUTE, FILE_GENERIC_EXECUTE },
+        { GENERIC_ALL, STANDARD_RIGHTS_ALL | FILE_ALL_ACCESS }
+    };
+    char temp_path[MAX_PATH];
+    char file_name[MAX_PATH];
+
+    GetTempPathA(MAX_PATH, temp_path);
+    GetTempFileNameA(temp_path, "tmp", 0, file_name);
+
+    SetLastError(0xdeadbeef);
+    file = CreateFileA(file_name, GENERIC_ALL, 0, NULL, CREATE_ALWAYS, 0, NULL);
+    ok(file != INVALID_HANDLE_VALUE, "CreateFile error %d\n", GetLastError());
+
+    access = get_obj_access(file);
+    ok(access == FILE_ALL_ACCESS, "expected FILE_ALL_ACCESS, got %#x\n", access);
+
+    for (i = 0; i < sizeof(map)/sizeof(map[0]); i++)
+    {
+        SetLastError( 0xdeadbeef );
+        ret = DuplicateHandle(GetCurrentProcess(), file, GetCurrentProcess(), &dup,
+                              map[i].generic, FALSE, 0);
+        ok(ret, "DuplicateHandle error %d\n", GetLastError());
+
+        access = get_obj_access(dup);
+        ok(access == map[i].mapped, "%d: expected %#x, got %#x\n", i, map[i].mapped, access);
+
+        CloseHandle(dup);
+    }
+
+    CloseHandle(file);
+    DeleteFileA(file_name);
 }
 
 static BOOL validate_impersonation_token(HANDLE token, DWORD *token_type)
@@ -4646,6 +4873,8 @@ static void test_kernel_objects_security(void)
     test_mutex_security(token);
     test_event_security(token);
     test_named_pipe_security(token);
+    test_semaphore_security(token);
+    test_file_security(token);
     /* FIXME: test other kernel object types */
 
     CloseHandle(process_token);

@@ -625,7 +625,6 @@ HDC WINAPI CreateDCW( LPCWSTR driver, LPCWSTR device, LPCWSTR output,
     HDC hdc;
     DC * dc;
     const struct gdi_dc_funcs *funcs;
-    HMODULE module;
     WCHAR buf[300];
 
     GDI_CheckNotLock();
@@ -640,7 +639,7 @@ HDC WINAPI CreateDCW( LPCWSTR driver, LPCWSTR device, LPCWSTR output,
         strcpyW(buf, driver);
     }
 
-    if (!(funcs = DRIVER_load_driver( buf, &module )))
+    if (!(funcs = DRIVER_load_driver( buf )))
     {
         ERR( "no driver found for %s\n", debugstr_w(buf) );
         return 0;
@@ -740,7 +739,7 @@ HDC WINAPI CreateCompatibleDC( HDC hdc )
 {
     DC *dc, *origDC;
     HDC ret;
-    const struct gdi_dc_funcs *funcs = &null_driver;
+    const struct gdi_dc_funcs *funcs;
     PHYSDEV physDev = NULL;
 
     GDI_CheckNotLock();
@@ -752,6 +751,7 @@ HDC WINAPI CreateCompatibleDC( HDC hdc )
         funcs = physDev->funcs;
         release_dc_ptr( origDC );
     }
+    else funcs = DRIVER_load_driver( displayW );
 
     if (!(dc = alloc_dc_ptr( OBJ_MEMDC ))) return 0;
 
@@ -766,7 +766,7 @@ HDC WINAPI CreateCompatibleDC( HDC hdc )
 
     ret = dc->hSelf;
 
-    if (!funcs->pCreateCompatibleDC( physDev, &dc->physDev ))
+    if (funcs->pCreateCompatibleDC && !funcs->pCreateCompatibleDC( physDev, &dc->physDev ))
     {
         WARN("creation aborted by device\n");
         free_dc_ptr( dc );
