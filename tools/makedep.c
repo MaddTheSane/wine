@@ -1379,9 +1379,9 @@ static struct strarray output_sources(void)
     struct strarray implib_objs = empty_strarray;
     struct strarray includes = empty_strarray;
     struct strarray subdirs = empty_strarray;
-    struct strarray all_targets = empty_strarray;
     struct strarray phony_targets = empty_strarray;
     struct strarray imports = get_expanded_make_var_array( "IMPORTS" );
+    struct strarray all_targets = get_expanded_make_var_array( "PROGRAMS" );
     struct strarray delayimports = get_expanded_make_var_array( "DELAYIMPORTS" );
     char *module = get_expanded_make_variable( "MODULE" );
     char *exeext = get_expanded_make_variable( "EXEEXT" );
@@ -1530,9 +1530,10 @@ static struct strarray output_sources(void)
                         dir, dest, source->sourcename );
                 free( dest );
                 free( dir );
+                strarray_add( &all_targets, xstrdup(obj) );
                 strarray_add_uniq( &phony_targets, "install-man-pages" );
             }
-            strarray_add( &clean_files, xstrdup(obj) );
+            else strarray_add( &clean_files, xstrdup(obj) );
             output( "%s: %s\n", obj, sourcedep );
             output( "\t$(SED_CMD) %s >$@ || ($(RM) $@ && false)\n", source->filename );
             output( "%s:", obj );
@@ -1906,6 +1907,7 @@ static struct strarray output_sources(void)
     strarray_addall( &clean_files, crossobj_files );
     strarray_addall( &clean_files, res_files );
     strarray_addall( &clean_files, all_targets );
+    strarray_addall( &clean_files, get_expanded_make_var_array( "EXTRA_TARGETS" ));
 
     if (clean_files.count)
     {
@@ -2050,13 +2052,7 @@ static void update_makefile( const char *path )
         "OBJC_SRCS",
         "RC_SRCS",
         "MC_SRCS",
-        "IDL_H_SRCS",
-        "IDL_C_SRCS",
-        "IDL_I_SRCS",
-        "IDL_P_SRCS",
-        "IDL_S_SRCS",
-        "IDL_R_SRCS",
-        "IDL_TLB_SRCS",
+        "IDL_SRCS",
         "BISON_SRCS",
         "LEX_SRCS",
         "XTEMPLATE_SRCS",
