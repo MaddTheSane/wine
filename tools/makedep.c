@@ -93,7 +93,6 @@ struct strarray
 static const struct strarray empty_strarray;
 
 static struct strarray include_args;
-static struct strarray object_extensions;
 static struct strarray make_vars;
 static struct strarray cmdline_vars;
 
@@ -475,9 +474,6 @@ static void init_paths(void)
 
     if (top_src_dir) strarray_insert( &include_args, 0, strmake( "-I%s/include", top_src_dir ));
     else if (top_obj_dir) strarray_insert( &include_args, 0, strmake( "-I%s/include", top_obj_dir ));
-
-    /* set the default extension list for object files */
-    if (!object_extensions.count) strarray_add( &object_extensions, "o" );
 }
 
 
@@ -1365,7 +1361,7 @@ static void output_include( struct incl_file *pFile, struct incl_file *owner )
 static struct strarray output_sources(void)
 {
     struct incl_file *source;
-    int i;
+    int i, is_win16 = 0;
     const char *dllext = ".so";
     struct strarray object_files = empty_strarray;
     struct strarray crossobj_files = empty_strarray;
@@ -1380,9 +1376,12 @@ static struct strarray output_sources(void)
     struct strarray includes = empty_strarray;
     struct strarray subdirs = empty_strarray;
     struct strarray phony_targets = empty_strarray;
+    struct strarray dllflags = get_expanded_make_var_array( "DLLFLAGS" );
     struct strarray imports = get_expanded_make_var_array( "IMPORTS" );
     struct strarray all_targets = get_expanded_make_var_array( "PROGRAMS" );
+    struct strarray targetflags = get_expanded_make_var_array( "TARGETFLAGS" );
     struct strarray delayimports = get_expanded_make_var_array( "DELAYIMPORTS" );
+    struct strarray extradllflags = get_expanded_make_var_array( "EXTRADLLFLAGS" );
     char *module = get_expanded_make_variable( "MODULE" );
     char *exeext = get_expanded_make_variable( "EXEEXT" );
     char *testdll = get_expanded_make_variable( "TESTDLL" );
@@ -1391,6 +1390,8 @@ static struct strarray output_sources(void)
     char *crosstarget = get_expanded_make_variable( "CROSSTARGET" );
 
     if (exeext && !strcmp( exeext, ".exe" )) dllext = "";
+    if (module && strendswith( module, ".a" )) staticlib = module;
+    for (i = 0; i < extradllflags.count; i++) if (!strcmp( extradllflags.str[i], "-m16" )) is_win16 = 1;
 
     strarray_add( &includes, "-I." );
     if (src_dir) strarray_add( &includes, strmake( "-I%s", src_dir ));
@@ -1459,6 +1460,8 @@ static struct strarray output_sources(void)
                 output( "%s.res: $(WRC) $(ALL_MO_FILES) %s\n", obj, sourcedep );
                 output( "\t$(WRC) -o $@ %s", source->filename );
                 output_filenames( includes );
+                if (is_win16) output_filename( "-m16" );
+                else output_filenames( targetflags );
                 output_filename( "$(RCFLAGS)" );
                 output( "\n" );
                 output( "%s.res rsrc.pot:", obj );
@@ -1469,6 +1472,8 @@ static struct strarray output_sources(void)
                 output( "%s.res: $(WRC) %s\n", obj, sourcedep );
                 output( "\t$(WRC) -o $@ %s", source->filename );
                 output_filenames( includes );
+                if (is_win16) output_filename( "-m16" );
+                else output_filenames( targetflags );
                 output_filename( "$(RCFLAGS)" );
                 output( "\n" );
                 output( "%s.res:", obj );
@@ -1504,7 +1509,7 @@ static struct strarray output_sources(void)
             output( ": $(WIDL)\n" );
             output( "\t$(WIDL) -o $@ %s", source->filename );
             output_filenames( includes );
-            output_filename( "$(TARGETFLAGS)" );
+            output_filenames( targetflags );
             output_filename( "$(IDLFLAGS)" );
             output( "\n" );
             output_filenames( targets );
@@ -1573,29 +1578,18 @@ static struct strarray output_sources(void)
         }
         else
         {
+            int need_cross = testdll || (source->flags & FLAG_C_IMPLIB) || (module && staticlib);
+
             if (source->flags & FLAG_GENERATED) strarray_add( &clean_files, source->filename );
             if (source->flags & FLAG_C_IMPLIB) strarray_add( &implib_objs, strmake( "%s.o", obj ));
-            for (i = 0; i < object_extensions.count; i++)
-            {
-                output( "%s.%s: %s\n", obj, object_extensions.str[i], sourcedep );
-                if (strstr( object_extensions.str[i], "cross" ))
-                {
-                    strarray_add( &crossobj_files, strmake( "%s.%s", obj, object_extensions.str[i] ));
-                    output( "\t$(CROSSCC) -c -o $@ %s", source->filename );
-                    output_filenames( includes );
-                    output_filename( "$(ALLCROSSCFLAGS)" );
-                    output( "\n" );
-                }
-                else
-                {
-                    strarray_add( &object_files, strmake( "%s.%s", obj, object_extensions.str[i] ));
-                    output( "\t$(CC) -c -o $@ %s", source->filename );
-                    output_filenames( includes );
-                    output_filename( "$(ALLCFLAGS)" );
-                    output( "\n" );
-                }
-            }
-            if (crosstarget && (source->flags & FLAG_C_IMPLIB))
+            strarray_add( &object_files, strmake( "%s.o", obj ));
+            output( "%s.o: %s\n", obj, sourcedep );
+            output( "\t$(CC) -c -o $@ %s", source->filename );
+            output_filenames( includes );
+            if (module || staticlib || testdll) output_filenames( dllflags );
+            output_filename( "$(ALLCFLAGS)" );
+            output( "\n" );
+            if (crosstarget && need_cross)
             {
                 strarray_add( &crossobj_files, strmake( "%s.cross.o", obj ));
                 output( "%s.cross.o: %s\n", obj, sourcedep );
@@ -1613,9 +1607,8 @@ static struct strarray output_sources(void)
             }
             if (!strcmp( ext, "c" ) && !(source->flags & FLAG_GENERATED))
                 strarray_add( &c2man_files, source->filename );
-            for (i = 0; i < object_extensions.count; i++)
-                output( "%s.%s ", obj, object_extensions.str[i] );
-            if (source->flags & FLAG_C_IMPLIB) output( "%s.cross.o", obj );
+            output( "%s.o", obj );
+            if (crosstarget && need_cross) output( " %s.cross.o", obj );
             output( ":" );
         }
         free( obj );
@@ -1635,6 +1628,8 @@ static struct strarray output_sources(void)
         output( "\n" );
         output( "\t$(WRC) -O pot -o $@" );
         output_filenames( includes );
+        if (is_win16) output_filename( "-m16" );
+        else output_filenames( targetflags );
         output_filename( "$(RCFLAGS)" );
         output_filenames( po_files );
         output( "\n" );
@@ -1660,9 +1655,8 @@ static struct strarray output_sources(void)
         output( "\n" );
     }
 
-    if (module)
+    if (module && !staticlib)
     {
-        int is_win16 = strendswith( module, "16" );
         char *importlib = get_expanded_make_variable( "IMPORTLIB" );
         struct strarray all_libs = empty_strarray;
         char *spec_file = appmode ? NULL : replace_extension( module, ".dll", ".spec" );
@@ -1695,10 +1689,11 @@ static struct strarray output_sources(void)
         output_filenames( res_files );
         output( "\n" );
         output( "\t$(WINEGCC) -o $@" );
+        output_filenames( targetflags );
         if (spec_file)
         {
             output( " -shared %s", spec_file );
-            output_filenames( get_expanded_make_var_array( "EXTRADLLFLAGS" ));
+            output_filenames( extradllflags );
         }
         else output_filename( appmode );
         output_filenames( object_files );
@@ -1714,7 +1709,7 @@ static struct strarray output_sources(void)
                 strarray_add( &clean_files, strmake( "lib%s.def", importlib ));
                 output( "lib%s.def: %s\n", importlib, spec_file );
                 output( "\t$(WINEBUILD) -w --def -o $@ --export %s", spec_file );
-                output_filenames( get_expanded_make_var_array( "TARGETFLAGS" ));
+                output_filenames( targetflags );
                 if (is_win16) output_filename( "-m16" );
                 output( "\n" );
                 if (implib_objs.count)
@@ -1737,7 +1732,7 @@ static struct strarray output_sources(void)
                 output_filenames( implib_objs );
                 output( "\n" );
                 output( "\t$(WINEBUILD) -w --implib -o $@ --export %s", spec_file );
-                output_filenames( get_expanded_make_var_array( "TARGETFLAGS" ));
+                output_filenames( targetflags );
                 output_filenames( implib_objs );
                 output( "\n" );
             }
@@ -1802,7 +1797,7 @@ static struct strarray output_sources(void)
         output( "\t$(AR) $(ARFLAGS) $@" );
         output_filenames( object_files );
         output( "\n\t$(RANLIB) $@\n" );
-        if (crosstarget && object_extensions.count > 1)
+        if (crosstarget && module)
         {
             char *name = replace_extension( staticlib, ".a", ".cross.a" );
 
@@ -1830,6 +1825,7 @@ static struct strarray output_sources(void)
         strarray_add( &clean_files, strmake( "%s%s", stripped, dllext ));
         output( "%s%s:\n", testmodule, dllext );
         output( "\t$(WINEGCC) -o $@" );
+        output_filenames( targetflags );
         if (appmode) output_filename( appmode );
         output_filenames( object_files );
         output_filenames( res_files );
@@ -1837,7 +1833,9 @@ static struct strarray output_sources(void)
         output_filename( "$(LDFLAGS)" );
         output( "\n" );
         output( "%s%s:\n", stripped, dllext );
-        output( "\t$(WINEGCC) -s -o $@ -Wb,-F,%s", testmodule );
+        output( "\t$(WINEGCC) -s -o $@" );
+        output_filenames( targetflags );
+        output_filename( strmake( "-Wb,-F,%s", testmodule ));
         if (appmode) output_filename( appmode );
         output_filenames( object_files );
         output_filenames( res_files );
@@ -1854,7 +1852,7 @@ static struct strarray output_sources(void)
             char *testres = replace_extension( testdll, ".dll", "_test.res" );
             output( "all: %s/programs/winetest/%s\n", top_obj_dir, testres );
             output( "%s/programs/winetest/%s: %s%s\n", top_obj_dir, testres, stripped, dllext );
-            output( "\techo \"%s TESTRES \\\"%s%s\\\"\" | $(WRC) $(RCFLAGS) -o $@\n",
+            output( "\techo \"%s TESTRES \\\"%s%s\\\"\" | $(WRC) -o $@\n",
                     testmodule, stripped, dllext );
         }
 
@@ -1868,7 +1866,7 @@ static struct strarray output_sources(void)
             output_filenames( crossobj_files );
             output_filenames( res_files );
             output( "\n" );
-            output( "\t$(CROSSWINEGCC) -o $@" );
+            output( "\t$(CROSSWINEGCC) -o $@ -b %s", crosstarget );
             output_filenames( crossobj_files );
             output_filenames( res_files );
             output_filenames( all_libs );
@@ -2076,12 +2074,6 @@ static void update_makefile( const char *path )
     top_obj_dir = get_expanded_make_variable( "top_builddir" );
     parent_dir  = get_expanded_make_variable( "PARENTSRC" );
 
-    object_extensions = empty_strarray;
-    value = get_expanded_make_var_array( "MAKEDEPFLAGS" );
-    for (i = 0; i < value.count; i++)
-        if (!strncmp( value.str[i], "-x", 2 ))
-            strarray_add( &object_extensions, value.str[i] + 2 );
-
     include_args = empty_strarray;
     value = get_expanded_make_var_array( "EXTRAINCL" );
     for (i = 0; i < value.count; i++)
@@ -2181,8 +2173,7 @@ static int parse_option( const char *opt )
         else Separator = NULL;
         break;
     case 'x':
-        if (opt[2]) strarray_add( &object_extensions, xstrdup( opt + 2 ));
-        break;
+        break;  /* ignored */
     default:
         fprintf( stderr, "Unknown option '%s'\n%s", opt, Usage );
         exit(1);

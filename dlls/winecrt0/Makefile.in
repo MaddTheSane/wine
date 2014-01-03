@@ -1,4 +1,4 @@
-STATICLIB = libwinecrt0.a
+MODULE    = libwinecrt0.a
 
 C_SRCS = \
 	delay_load.c \
@@ -14,5 +14,3 @@ C_SRCS = \
 	init.c \
 	register.c \
 	stub.c
-
-@MAKE_IMPLIB_RULES@

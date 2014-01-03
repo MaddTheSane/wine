@@ -2591,39 +2591,6 @@ AH_BOTTOM([#endif /* WINE_CROSSTEST */
 AC_CONFIG_COMMANDS([include/stamp-h], [echo timestamp > include/stamp-h])
 AS_ECHO_N("creating Makefile rules...") >&AS_MESSAGE_FD
 
-dnl Import library rules
-
-AC_SUBST(MAKE_IMPLIB_RULES,"DLLFLAGS = $DLLFLAGS
-")
-if test -n "$CROSSTARGET"
-then
-    AS_VAR_APPEND([MAKE_IMPLIB_RULES],"MAKEDEPFLAGS = -xo -xcross.o
-")
-fi
-
-dnl Dll and program rules
-
-AC_SUBST(MAKE_DLL_RULES,"
-DLLFLAGS    = $DLLFLAGS
-")
-
-AC_SUBST(MAKE_PROG_RULES,"
-DLLFLAGS    = $DLLFLAGS
-")
-
-dnl Test rules
-
-AC_SUBST(MAKE_TEST_RULES,"
-DLLFLAGS     = $DLLFLAGS
-RUNTESTFLAGS = -q -P wine
-")
-if test -n "$CROSSTARGET"
-then
-    AS_VAR_APPEND([MAKE_TEST_RULES],"
-MAKEDEPFLAGS    = -xo -xcross.o
-")
-fi
-
 dnl Main makefile
 
 WINE_APPEND_RULE([
