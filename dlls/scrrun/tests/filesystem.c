@@ -794,6 +794,8 @@ static void test_FolderCollection(void)
     LONG count, count2, ref, ref2;
     IUnknown *unk, *unk2;
     IFolder *folder;
+    ULONG fetched;
+    VARIANT var;
     HRESULT hr;
     BSTR str;
 
@@ -813,6 +815,7 @@ static void test_FolderCollection(void)
 
     hr = IFolder_get_SubFolders(folder, &folders);
     ok(hr == S_OK, "got 0x%08x\n", hr);
+    IFolder_Release(folder);
 
     count = 0;
     hr = IFolderCollection_get_Count(folders, &count);
@@ -870,6 +873,24 @@ if (hr == S_OK) {
     hr = IEnumVARIANT_Reset(enumvar);
     ok(hr == S_OK, "got 0x%08x\n", hr);
 
+    VariantInit(&var);
+    fetched = 0;
+    hr = IEnumVARIANT_Next(enumvar, 1, &var, &fetched);
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+    ok(fetched == 1, "got %d\n", fetched);
+    ok(V_VT(&var) == VT_DISPATCH, "got type %d\n", V_VT(&var));
+
+    hr = IDispatch_QueryInterface(V_DISPATCH(&var), &IID_IFolder, (void**)&folder);
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+
+    str = NULL;
+    hr = IFolder_get_Name(folder, &str);
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+    SysFreeString(str);
+
+    IFolder_Release(folder);
+    VariantClear(&var);
+
     IEnumVARIANT_Release(enumvar);
     IUnknown_Release(unk);
 
@@ -877,6 +898,30 @@ if (hr == S_OK) {
     RemoveDirectoryW(path2W);
 
     IFolderCollection_Release(folders);
+}
+
+static void test_FileCollection(void)
+{
+    IFileCollection *files;
+    WCHAR buffW[MAX_PATH];
+    IFolder *folder;
+    HRESULT hr;
+    BSTR str;
+
+    GetWindowsDirectoryW(buffW, MAX_PATH);
+
+    str = SysAllocString(buffW);
+    hr = IFileSystem3_GetFolder(fs3, str, &folder);
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+    SysFreeString(str);
+
+    hr = IFolder_get_Files(folder, NULL);
+    ok(hr == E_POINTER, "got 0x%08x\n", hr);
+
+    hr = IFolder_get_Files(folder, &files);
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+    IFileCollection_Release(files);
+
     IFolder_Release(folder);
 }
 
@@ -906,6 +951,7 @@ START_TEST(filesystem)
     test_BuildPath();
     test_GetFolder();
     test_FolderCollection();
+    test_FileCollection();
 
     IFileSystem3_Release(fs3);
 

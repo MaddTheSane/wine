@@ -1178,6 +1178,8 @@ static int set_ipx_packettype(int sock, int ptype)
     int fd = get_sock_fd( sock, 0, NULL ), ret = 0;
     TRACE("trying to set IPX_PTYPE: %d (fd: %d)\n", ptype, fd);
 
+    if (fd == -1) return SOCKET_ERROR;
+
     /* We try to set the ipx type on ipx socket level. */
 #ifdef SOL_IPX
     if(setsockopt(fd, SOL_IPX, IPX_TYPE, &ptype, sizeof(ptype)) == -1)
@@ -1473,7 +1475,9 @@ static BOOL is_sockaddr_bound(const struct sockaddr *uaddr, int uaddrlen)
         {
             static const struct sockaddr_ipx emptyAddr;
             struct sockaddr_ipx *ipx = (struct sockaddr_ipx*) uaddr;
-            return ipx->sipx_port || ipx->sipx_network || memcmp(&ipx->sipx_node, &emptyAddr.sipx_node, sizeof(emptyAddr.sipx_node));
+            return ipx->sipx_port
+            || memcmp(&ipx->sipx_network, &emptyAddr.sipx_network, sizeof(emptyAddr.sipx_network))
+            || memcmp(&ipx->sipx_node, &emptyAddr.sipx_node, sizeof(emptyAddr.sipx_node));
         }
 #endif
         case AF_INET6:
@@ -5477,6 +5481,7 @@ int WINAPI WS_getaddrinfo(LPCSTR nodename, LPCSTR servname, const struct WS_addr
         if (punixhints->ai_socktype < 0)
         {
             WSASetLastError(WSAESOCKTNOSUPPORT);
+            HeapFree(GetProcessHeap(), 0, hostname);
             return SOCKET_ERROR;
         }
 
