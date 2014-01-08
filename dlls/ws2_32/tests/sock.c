@@ -1027,12 +1027,39 @@ static void test_WithWSAStartup(void)
     WORD version = MAKEWORD( 2, 2 );
     INT res;
     LPVOID ptr;
+    SOCKET src, dst;
+    DWORD error;
 
     res = WSAStartup( version, &data );
     ok(res == 0, "WSAStartup() failed unexpectedly: %d\n", res);
 
     ptr = gethostbyname("localhost");
     ok(ptr != NULL, "gethostbyname() failed unexpectedly: %d\n", WSAGetLastError());
+
+    ok(!tcp_socketpair(&src, &dst), "creating socket pair failed\n");
+
+    res = send(src, "TEST", 4, 0);
+    ok(res == 4, "send failed with error %d\n", WSAGetLastError());
+
+    WSACleanup();
+
+    res = WSAStartup( version, &data );
+    ok(res == 0, "WSAStartup() failed unexpectedly: %d\n", res);
+
+    /* show that sockets are destroyed automatically after WSACleanup */
+    todo_wine {
+    SetLastError(0xdeadbeef);
+    res = send(src, "TEST", 4, 0);
+    error = WSAGetLastError();
+    ok(res == SOCKET_ERROR, "send should have failed\n");
+    ok(error == WSAENOTSOCK, "expected 10038, got %d\n", error);
+
+    SetLastError(0xdeadbeef);
+    res = closesocket(dst);
+    error = WSAGetLastError();
+    ok(res == SOCKET_ERROR, "closesocket should have failed\n");
+    ok(error == WSAENOTSOCK, "expected 10038, got %d\n", error);
+    }
 
     WSACleanup();
 }
@@ -3859,7 +3886,7 @@ static void test_addr_to_print(void)
 
 static void test_ioctlsocket(void)
 {
-    SOCKET sock;
+    SOCKET sock, src, dst;
     struct tcp_keepalive kalive;
     int ret, optval;
     static const LONG cmds[] = {FIONBIO, FIONREAD, SIOCATMARK};
@@ -3943,6 +3970,32 @@ static void test_ioctlsocket(void)
     ok(ret == 0 || broken(ret == SOCKET_ERROR), "WSAIoctl failed unexpectedly\n");
 
     closesocket(sock);
+
+    if (tcp_socketpair(&src, &dst) != 0)
+    {
+        ok(0, "creating socket pair failed, skipping test\n");
+        return;
+    }
+
+    /* test FIONREAD on TCP sockets */
+    optval = 0xdeadbeef;
+    ret = WSAIoctl(dst, FIONREAD, NULL, 0, &optval, sizeof(optval), &arg, NULL, NULL);
+    ok(ret == 0, "WSAIoctl failed unexpectedly with error %d\n", WSAGetLastError());
+    ok(optval == 0, "FIONREAD should have returned 0 bytes, got %d instead\n", optval);
+
+    optval = 0xdeadbeef;
+    ok(send(src, "TEST", 4, 0) == 4, "failed to send test data\n");
+    Sleep(100);
+    ret = WSAIoctl(dst, FIONREAD, NULL, 0, &optval, sizeof(optval), &arg, NULL, NULL);
+    ok(ret == 0, "WSAIoctl failed unexpectedly with error %d\n", WSAGetLastError());
+    ok(optval == 4, "FIONREAD should have returned 4 bytes, got %d instead\n", optval);
+
+    closesocket(dst);
+    optval = 0xdeadbeef;
+    ret = WSAIoctl(dst, FIONREAD, NULL, 0, &optval, sizeof(optval), &arg, NULL, NULL);
+    ok(ret == SOCKET_ERROR, "WSAIoctl succeeded unexpectedly\n");
+    ok(optval == 0xdeadbeef, "FIONREAD should not have changed last error, got %d instead\n", optval);
+    closesocket(src);
 }
 
 static BOOL drain_pause = FALSE;

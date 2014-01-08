@@ -92,6 +92,7 @@ struct strarray
 static const struct strarray empty_strarray;
 
 static struct strarray include_args;
+static struct strarray define_args;
 static struct strarray make_vars;
 static struct strarray cmdline_vars;
 
@@ -1421,6 +1422,7 @@ static struct strarray output_sources(void)
 
     LIST_FOR_EACH_ENTRY( source, &sources, struct incl_file, entry )
     {
+        struct strarray extradefs;
         char *sourcedep;
         char *obj = xstrdup( source->name );
         char *ext = get_extension( obj );
@@ -1436,6 +1438,8 @@ static struct strarray output_sources(void)
             sourcedep = strmake( "%s %s", dir, source->filename );
         }
         else sourcedep = xstrdup( source->filename );
+
+        extradefs = get_expanded_make_var_array( strmake( "%s_EXTRADEFS", obj ));
 
         if (!strcmp( ext, "y" ))  /* yacc file */
         {
@@ -1475,9 +1479,11 @@ static struct strarray output_sources(void)
             {
                 output( "%s.res: $(WRC) $(ALL_MO_FILES) %s\n", obj, sourcedep );
                 output( "\t$(WRC) -o $@ %s", source->filename );
-                output_filenames( includes );
                 if (is_win16) output_filename( "-m16" );
                 else output_filenames( targetflags );
+                output_filenames( includes );
+                output_filenames( define_args );
+                output_filenames( extradefs );
                 output_filename( "$(RCFLAGS)" );
                 output( "\n" );
                 output( "%s.res rsrc.pot:", obj );
@@ -1487,9 +1493,11 @@ static struct strarray output_sources(void)
             {
                 output( "%s.res: $(WRC) %s\n", obj, sourcedep );
                 output( "\t$(WRC) -o $@ %s", source->filename );
-                output_filenames( includes );
                 if (is_win16) output_filename( "-m16" );
                 else output_filenames( targetflags );
+                output_filenames( includes );
+                output_filenames( define_args );
+                output_filenames( extradefs );
                 output_filename( "$(RCFLAGS)" );
                 output( "\n" );
                 output( "%s.res:", obj );
@@ -1524,8 +1532,10 @@ static struct strarray output_sources(void)
             output_filenames( targets );
             output( ": $(WIDL)\n" );
             output( "\t$(WIDL) -o $@ %s", source->filename );
-            output_filenames( includes );
             output_filenames( targetflags );
+            output_filenames( includes );
+            output_filenames( define_args );
+            output_filenames( extradefs );
             output_filename( "$(IDLFLAGS)" );
             output( "\n" );
             output_filenames( targets );
@@ -1602,6 +1612,8 @@ static struct strarray output_sources(void)
             output( "%s.o: %s\n", obj, sourcedep );
             output( "\t$(CC) -c -o $@ %s", source->filename );
             output_filenames( includes );
+            output_filenames( define_args );
+            output_filenames( extradefs );
             if (module || staticlib || testdll) output_filenames( dllflags );
             output_filename( "$(ALLCFLAGS)" );
             output( "\n" );
@@ -1611,6 +1623,9 @@ static struct strarray output_sources(void)
                 output( "%s.cross.o: %s\n", obj, sourcedep );
                 output( "\t$(CROSSCC) -c -o $@ %s", source->filename );
                 output_filenames( includes );
+                output_filenames( define_args );
+                output_filenames( extradefs );
+                output_filename( "-DWINE_CROSSTEST" );
                 output_filename( "$(ALLCROSSCFLAGS)" );
                 output( "\n" );
             }
@@ -1642,9 +1657,10 @@ static struct strarray output_sources(void)
         output_filenames( po_files );
         output( "\n" );
         output( "\t$(WRC) -O pot -o $@" );
-        output_filenames( includes );
         if (is_win16) output_filename( "-m16" );
         else output_filenames( targetflags );
+        output_filenames( includes );
+        output_filenames( define_args );
         output_filename( "$(RCFLAGS)" );
         output_filenames( po_files );
         output( "\n" );
@@ -1928,6 +1944,7 @@ static struct strarray output_sources(void)
         output( "\t$(RM)" );
         output_filenames( clean_files );
         output( "\n" );
+        strarray_add( &phony_targets, "clean" );
     }
 
     if (subdirs.count)
@@ -1935,6 +1952,13 @@ static struct strarray output_sources(void)
         output_filenames( subdirs );
         output( ":\n" );
         output( "\t$(MKDIR_P) -m 755 $@\n" );
+    }
+
+    if (top_obj_dir)
+    {
+        output( "depend:\n" );
+        output( "\t@cd %s && $(MAKE) %s/depend\n", top_obj_dir, base_dir );
+        strarray_add( &phony_targets, "depend" );
     }
 
     if (phony_targets.count)
@@ -2090,10 +2114,16 @@ static void update_makefile( const char *path )
     parent_dir  = get_expanded_make_variable( "PARENTSRC" );
 
     include_args = empty_strarray;
+    define_args = empty_strarray;
+    strarray_add( &define_args, "-D__WINESRC__" );
+
     value = get_expanded_make_var_array( "EXTRAINCL" );
     for (i = 0; i < value.count; i++)
         if (!strncmp( value.str[i], "-I", 2 ))
             strarray_add_uniq( &include_args, value.str[i] );
+        else
+            strarray_add_uniq( &define_args, value.str[i] );
+    strarray_addall( &define_args, get_expanded_make_var_array( "EXTRADEFS" ));
 
     init_paths();
 

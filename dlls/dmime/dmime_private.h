@@ -126,9 +126,7 @@ typedef struct DMUSIC_PRIVATE_PCHANNEL_ {
  * IDirectMusicSegment8Impl implementation structure
  */
 struct IDirectMusicSegment8Impl {
-  /* IUnknown fields */
-  const IUnknownVtbl *UnknownVtbl;
-  const IDirectMusicSegment8Vtbl *SegmentVtbl;
+  IDirectMusicSegment8 IDirectMusicSegment8_iface;
   const IDirectMusicObjectVtbl *ObjectVtbl;
   const IPersistStreamVtbl *PersistStreamVtbl;
   LONG           ref;

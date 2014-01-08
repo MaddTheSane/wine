@@ -929,7 +929,7 @@
 @ cdecl __crtLCMapStringW(long long wstr long ptr long long long) msvcrt.__crtLCMapStringW
 @ stub -arch=i386,win64 __crtSetThreadStackGuarantee
 @ cdecl __crtSetUnhandledExceptionFilter(ptr) MSVCR110__crtSetUnhandledExceptionFilter
-@ stub -arch=i386,win64 __crtTerminateProcess
+@ cdecl -arch=i386,win64 __crtTerminateProcess(long) MSVCR110__crtTerminateProcess
 @ stub -arch=i386,win64 __crtUnhandledException
 @ cdecl __daylight() msvcrt.__daylight
 @ cdecl __dllonexit(ptr ptr ptr) msvcrt.__dllonexit
@@ -1394,7 +1394,7 @@
 @ cdecl -arch=i386  _libm_sse2_log_precise() msvcrt.__libm_sse2_log
 @ cdecl -arch=i386  _libm_sse2_pow_precise() msvcrt.__libm_sse2_pow
 @ cdecl -arch=i386  _libm_sse2_sin_precise() msvcrt.__libm_sse2_sin
-@ stub -arch=i386  _libm_sse2_sqrt_precise
+@ cdecl -arch=i386  _libm_sse2_sqrt_precise() msvcrt.__libm_sse2_sqrt_precise
 @ cdecl -arch=i386  _libm_sse2_tan_precise() msvcrt.__libm_sse2_tan
 @ cdecl _loaddll(str) msvcrt._loaddll
 @ cdecl -arch=x86_64 _local_unwind(ptr ptr) msvcrt._local_unwind

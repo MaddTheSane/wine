@@ -47,6 +47,12 @@ struct enumdata {
             HANDLE find;
             BSTR path;
         } foldercoll;
+        struct
+        {
+            IFileCollection *coll;
+            HANDLE find;
+            BSTR path;
+        } filecoll;
     } u;
 };
 
@@ -66,6 +72,7 @@ struct foldercollection {
 struct filecollection {
     IFileCollection IFileCollection_iface;
     LONG ref;
+    BSTR path;
 };
 
 struct folder {
@@ -138,6 +145,7 @@ static inline HRESULT create_error(DWORD err)
 }
 
 static HRESULT create_folder(const WCHAR*, IFolder**);
+static HRESULT create_file(BSTR, IFile**);
 
 static inline BOOL is_dir_data(const WIN32_FIND_DATAW *data)
 {
@@ -147,6 +155,11 @@ static inline BOOL is_dir_data(const WIN32_FIND_DATAW *data)
     return (data->dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) &&
             strcmpW(data->cFileName, dotdotW) &&
             strcmpW(data->cFileName, dotW);
+}
+
+static inline BOOL is_file_data(const WIN32_FIND_DATAW *data)
+{
+    return !(data->dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY);
 }
 
 static BSTR get_full_path(BSTR path, const WIN32_FIND_DATAW *data)
@@ -592,6 +605,158 @@ static HRESULT create_foldercoll_enum(struct foldercollection *collection, IUnkn
     return S_OK;
 }
 
+static ULONG WINAPI filecoll_enumvariant_Release(IEnumVARIANT *iface)
+{
+    struct enumvariant *This = impl_from_IEnumVARIANT(iface);
+    ULONG ref = InterlockedDecrement(&This->ref);
+
+    TRACE("(%p)->(%d)\n", This, ref);
+
+    if (!ref)
+    {
+        IFileCollection_Release(This->data.u.filecoll.coll);
+        SysFreeString(This->data.u.filecoll.path);
+        heap_free(This);
+    }
+
+    return ref;
+}
+
+static HRESULT WINAPI filecoll_enumvariant_Next(IEnumVARIANT *iface, ULONG celt, VARIANT *var, ULONG *fetched)
+{
+    struct enumvariant *This = impl_from_IEnumVARIANT(iface);
+    HANDLE handle = This->data.u.filecoll.find;
+    WIN32_FIND_DATAW data;
+    ULONG count = 0;
+
+    TRACE("(%p)->(%d %p %p)\n", This, celt, var, fetched);
+
+    if (fetched)
+        *fetched = 0;
+
+    if (!handle)
+    {
+        static const WCHAR allW[] = {'*',0};
+        WCHAR pathW[MAX_PATH];
+        BSTR parent = This->data.u.filecoll.path;
+        int len;
+
+        strcpyW(pathW, parent);
+        len = SysStringLen(parent);
+        if (parent[len-1] != '\\')
+            strcatW(pathW, bsW);
+        strcatW(pathW, allW);
+        handle = FindFirstFileW(pathW, &data);
+        if (handle == INVALID_HANDLE_VALUE)
+            return S_FALSE;
+
+        while (1)
+        {
+            if (is_file_data(&data))
+                break;
+            else
+                if (!FindNextFileW(handle, &data))
+                {
+                    FindClose(handle);
+                    return S_FALSE;
+                }
+        }
+
+        This->data.u.filecoll.find = handle;
+    }
+
+    do
+    {
+        if (count >= celt) break;
+
+        if (is_file_data(&data))
+        {
+            IFile *file;
+            HRESULT hr;
+            BSTR str;
+
+            str = get_full_path(This->data.u.filecoll.path, &data);
+            hr = create_file(str, &file);
+            SysFreeString(str);
+            if (FAILED(hr)) return hr;
+
+            V_VT(&var[count]) = VT_DISPATCH;
+            V_DISPATCH(&var[count]) = (IDispatch*)file;
+            count++;
+        }
+    } while (FindNextFileW(handle, &data));
+
+    if (count < celt)
+        return S_FALSE;
+
+    if (fetched)
+        *fetched = count;
+
+    return S_OK;
+}
+
+static HRESULT WINAPI filecoll_enumvariant_Skip(IEnumVARIANT *iface, ULONG celt)
+{
+    struct enumvariant *This = impl_from_IEnumVARIANT(iface);
+    FIXME("(%p)->(%d): stub\n", This, celt);
+    return E_NOTIMPL;
+}
+
+static HRESULT WINAPI filecoll_enumvariant_Reset(IEnumVARIANT *iface)
+{
+    struct enumvariant *This = impl_from_IEnumVARIANT(iface);
+
+    TRACE("(%p)\n", This);
+
+    FindClose(This->data.u.filecoll.find);
+    This->data.u.filecoll.find = NULL;
+
+    return S_OK;
+}
+
+static HRESULT WINAPI filecoll_enumvariant_Clone(IEnumVARIANT *iface, IEnumVARIANT **pclone)
+{
+    struct enumvariant *This = impl_from_IEnumVARIANT(iface);
+    FIXME("(%p)->(%p): stub\n", This, pclone);
+    return E_NOTIMPL;
+}
+
+static const IEnumVARIANTVtbl filecollenumvariantvtbl = {
+    enumvariant_QueryInterface,
+    enumvariant_AddRef,
+    filecoll_enumvariant_Release,
+    filecoll_enumvariant_Next,
+    filecoll_enumvariant_Skip,
+    filecoll_enumvariant_Reset,
+    filecoll_enumvariant_Clone
+};
+
+static HRESULT create_filecoll_enum(struct filecollection *collection, IUnknown **newenum)
+{
+    struct enumvariant *This;
+
+    *newenum = NULL;
+
+    This = heap_alloc(sizeof(*This));
+    if (!This) return E_OUTOFMEMORY;
+
+    This->IEnumVARIANT_iface.lpVtbl = &filecollenumvariantvtbl;
+    This->ref = 1;
+    This->data.u.filecoll.path = SysAllocString(collection->path);
+    if (!This->data.u.filecoll.path)
+    {
+        heap_free(This);
+        return E_OUTOFMEMORY;
+    }
+
+    This->data.u.filecoll.coll = &collection->IFileCollection_iface;
+    IFileCollection_AddRef(This->data.u.filecoll.coll);
+
+    *newenum = (IUnknown*)&This->IEnumVARIANT_iface;
+
+    return S_OK;
+}
+
 static HRESULT WINAPI foldercoll_QueryInterface(IFolderCollection *iface, REFIID riid, void **obj)
 {
     struct foldercollection *This = impl_from_IFolderCollection(iface);
@@ -825,7 +990,10 @@ static ULONG WINAPI filecoll_Release(IFileCollection *iface)
     TRACE("(%p)->(%d)\n", This, ref);
 
     if (!ref)
+    {
+        SysFreeString(This->path);
         heap_free(This);
+    }
 
     return ref;
 }
@@ -899,8 +1067,13 @@ static HRESULT WINAPI filecoll_get_Item(IFileCollection *iface, VARIANT Key, IFi
 static HRESULT WINAPI filecoll_get__NewEnum(IFileCollection *iface, IUnknown **ppenum)
 {
     struct filecollection *This = impl_from_IFileCollection(iface);
-    FIXME("(%p)->(%p)\n", This, ppenum);
-    return E_NOTIMPL;
+
+    TRACE("(%p)->(%p)\n", This, ppenum);
+
+    if(!ppenum)
+        return E_POINTER;
+
+    return create_filecoll_enum(This, ppenum);
 }
 
 static HRESULT WINAPI filecoll_get_Count(IFileCollection *iface, LONG *count)
@@ -923,7 +1096,7 @@ static const IFileCollectionVtbl filecollectionvtbl = {
     filecoll_get_Count
 };
 
-static HRESULT create_filecoll(IFileCollection **files)
+static HRESULT create_filecoll(BSTR path, IFileCollection **files)
 {
     struct filecollection *This;
 
@@ -934,6 +1107,12 @@ static HRESULT create_filecoll(IFileCollection **files)
 
     This->IFileCollection_iface.lpVtbl = &filecollectionvtbl;
     This->ref = 1;
+    This->path = SysAllocString(path);
+    if (!This->path)
+    {
+        heap_free(This);
+        return E_OUTOFMEMORY;
+    }
 
     *files = &This->IFileCollection_iface;
     return S_OK;
@@ -1207,7 +1386,7 @@ static HRESULT WINAPI folder_get_Files(IFolder *iface, IFileCollection **files)
     if(!files)
         return E_POINTER;
 
-    return create_filecoll(files);
+    return create_filecoll(This->path, files);
 }
 
 static HRESULT WINAPI folder_CreateTextFile(IFolder *iface, BSTR filename, VARIANT_BOOL overwrite,
@@ -1380,11 +1559,29 @@ static HRESULT WINAPI file_get_Path(IFile *iface, BSTR *pbstrPath)
     return E_NOTIMPL;
 }
 
-static HRESULT WINAPI file_get_Name(IFile *iface, BSTR *pbstrName)
+static HRESULT WINAPI file_get_Name(IFile *iface, BSTR *name)
 {
     struct file *This = impl_from_IFile(iface);
-    FIXME("(%p)->(%p)\n", This, pbstrName);
-    return E_NOTIMPL;
+    WCHAR *ptr;
+
+    TRACE("(%p)->(%p)\n", This, name);
+
+    if(!name)
+        return E_POINTER;
+
+    *name = NULL;
+
+    ptr = strrchrW(This->path, '\\');
+    if (ptr)
+    {
+        *name = SysAllocString(ptr+1);
+        TRACE("%s\n", debugstr_w(*name));
+        if (!*name) return E_OUTOFMEMORY;
+    }
+    else
+        return E_FAIL;
+
+    return S_OK;
 }
 
 static HRESULT WINAPI file_put_Name(IFile *iface, BSTR pbstrName)

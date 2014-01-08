@@ -310,23 +310,52 @@ ME_DisplayItem *
 ME_InsertRunAtCursor(ME_TextEditor *editor, ME_Cursor *cursor, ME_Style *style,
                      const WCHAR *str, int len, int flags)
 {
-  ME_DisplayItem *pDI;
+  ME_DisplayItem *pDI, *insert_before = cursor->pRun, *prev;
 
   if (cursor->nOffset)
-    ME_SplitRunSimple(editor, cursor);
+  {
+    if (cursor->nOffset == cursor->pRun->member.run.len)
+    {
+      insert_before = ME_FindItemFwd( cursor->pRun, diRun );
+      if (!insert_before) insert_before = cursor->pRun; /* Always insert before the final eop run */
+    }
+    else
+    {
+      ME_SplitRunSimple( editor, cursor );
+      insert_before = cursor->pRun;
+    }
+  }
 
-  add_undo_delete_run( editor, cursor->pPara->member.para.nCharOfs +
-                       cursor->pRun->member.run.nCharOfs, len );
+  add_undo_delete_run( editor, insert_before->member.run.para->nCharOfs +
+                       insert_before->member.run.nCharOfs, len );
 
   pDI = ME_MakeRun(style, flags);
-  pDI->member.run.nCharOfs = cursor->pRun->member.run.nCharOfs;
+  pDI->member.run.nCharOfs = insert_before->member.run.nCharOfs;
   pDI->member.run.len = len;
-  pDI->member.run.para = cursor->pRun->member.run.para;
+  pDI->member.run.para = insert_before->member.run.para;
   ME_InsertString( pDI->member.run.para->text, pDI->member.run.nCharOfs, str, len );
-  ME_InsertBefore(cursor->pRun, pDI);
+  ME_InsertBefore( insert_before, pDI );
   TRACE("Shift length:%d\n", len);
-  ME_PropagateCharOffset(cursor->pRun, len);
-  cursor->pPara->member.para.nFlags |= MEPF_REWRAP;
+  ME_PropagateCharOffset( insert_before, len );
+  insert_before->member.run.para->nFlags |= MEPF_REWRAP;
+
+  /* Move any cursors that were at the end of the previous run to the end of the inserted run */
+  prev = ME_FindItemBack( pDI, diRun );
+  if (prev)
+  {
+    int i;
+
+    for (i = 0; i < editor->nCursors; i++)
+    {
+      if (editor->pCursors[i].pRun == prev &&
+          editor->pCursors[i].nOffset == prev->member.run.len)
+      {
+        editor->pCursors[i].pRun = pDI;
+        editor->pCursors[i].nOffset = len;
+      }
+    }
+  }
+
   return pDI;
 }
 
@@ -658,19 +687,20 @@ void ME_SetSelectionCharFormat(ME_TextEditor *editor, CHARFORMAT2W *pFmt)
  */
 void ME_SetCharFormat(ME_TextEditor *editor, ME_Cursor *start, ME_Cursor *end, CHARFORMAT2W *pFmt)
 {
-  ME_DisplayItem *para;
-  ME_DisplayItem *run;
-  ME_DisplayItem *end_run = NULL;
+  ME_DisplayItem *run, *start_run = start->pRun, *end_run = NULL;
 
   if (end && start->pRun == end->pRun && start->nOffset == end->nOffset)
     return;
 
-  if (start->nOffset)
+  if (start->nOffset == start->pRun->member.run.len)
+    start_run = ME_FindItemFwd( start->pRun, diRun );
+  else if (start->nOffset)
   {
     /* SplitRunSimple may or may not update the cursors, depending on whether they
      * are selection cursors, but we need to make sure they are valid. */
     int split_offset = start->nOffset;
     ME_DisplayItem *split_run = ME_SplitRunSimple(editor, start);
+    start_run = start->pRun;
     if (end && end->pRun == split_run)
     {
       end->pRun = start->pRun;
@@ -678,31 +708,26 @@ void ME_SetCharFormat(ME_TextEditor *editor, ME_Cursor *start, ME_Cursor *end, C
     }
   }
 
-  if (end && end->nOffset)
-    ME_SplitRunSimple(editor, end);
-  end_run = end ? end->pRun : NULL;
+  if (end)
+  {
+    if (end->nOffset == end->pRun->member.run.len)
+      end_run = ME_FindItemFwd( end->pRun, diRun );
+    else
+    {
+      if (end->nOffset) ME_SplitRunSimple(editor, end);
+      end_run = end->pRun;
+    }
+  }
 
-  run = start->pRun;
-  para = start->pPara;
-  para->member.para.nFlags |= MEPF_REWRAP;
-
-  while(run != end_run)
+  for (run = start_run; run != end_run; run = ME_FindItemFwd( run, diRun ))
   {
     ME_Style *new_style = ME_ApplyStyle(run->member.run.style, pFmt);
-    /* ME_DumpStyle(new_style); */
 
-    add_undo_set_char_fmt( editor, para->member.para.nCharOfs + run->member.run.nCharOfs,
+    add_undo_set_char_fmt( editor, run->member.run.para->nCharOfs + run->member.run.nCharOfs,
                            run->member.run.len, &run->member.run.style->fmt );
     ME_ReleaseStyle(run->member.run.style);
     run->member.run.style = new_style;
-    run = ME_FindItemFwd(run, diRunOrParagraph);
-    if (run && run->type == diParagraph)
-    {
-      para = run;
-      run = ME_FindItemFwd(run, diRun);
-      if (run != end_run)
-        para->member.para.nFlags |= MEPF_REWRAP;
-    }
+    run->member.run.para->nFlags |= MEPF_REWRAP;
   }
 }
 
