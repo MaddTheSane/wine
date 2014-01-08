@@ -1994,6 +1994,8 @@ install install-lib:: $wine_binary-preloader
 
 uninstall::
 	\$(RM) \$(DESTDIR)\$(bindir)/$wine_binary-preloader
+
+preloader_EXTRADEFS = $BUILTINFLAG
 "]) ;;
     esac
     ;;
@@ -2623,8 +2625,16 @@ WINE_CONFIG_DLL(advpack,,[implib])
 WINE_CONFIG_TEST(dlls/advpack/tests)
 WINE_CONFIG_DLL(amstream,,[clean])
 WINE_CONFIG_TEST(dlls/amstream/tests)
+WINE_CONFIG_DLL(api-ms-win-core-debug-l1-1-1)
+WINE_CONFIG_DLL(api-ms-win-core-errorhandling-l1-1-1)
+WINE_CONFIG_DLL(api-ms-win-core-interlocked-l1-2-0)
 WINE_CONFIG_DLL(api-ms-win-core-localregistry-l1-1-0)
 WINE_CONFIG_DLL(api-ms-win-core-processthreads-l1-1-0)
+WINE_CONFIG_DLL(api-ms-win-core-processthreads-l1-1-1)
+WINE_CONFIG_DLL(api-ms-win-core-profile-l1-1-0)
+WINE_CONFIG_DLL(api-ms-win-core-string-l1-1-0)
+WINE_CONFIG_DLL(api-ms-win-core-sysinfo-l1-2-0)
+WINE_CONFIG_DLL(api-ms-win-core-util-l1-1-0)
 WINE_CONFIG_DLL(api-ms-win-core-winrt-error-l1-1-0)
 WINE_CONFIG_DLL(api-ms-win-core-winrt-string-l1-1-0)
 WINE_CONFIG_DLL(api-ms-win-downlevel-advapi32-l1-1-0)

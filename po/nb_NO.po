@@ -10145,6 +10145,16 @@ msgstr "Bruk: dxdiag [/whql:off | /whql:on] [/t filnavn | /x filnavn]"
 msgid "Wine Explorer"
 msgstr "Wine Utforsker"
 
+#: explorer.rc:33
+#, fuzzy
+#| msgid "StartUp"
+msgid "Start"
+msgstr "Start"
+
+#: explorer.rc:34 winefile.rc:36
+msgid "&Run..."
+msgstr "Kjø&r..."
+
 #: hostname.rc:30
 msgid "Usage: hostname\n"
 msgstr "Bruk: hostname\n"
@@ -13440,10 +13450,6 @@ msgstr "Gi &nytt navn..."
 #: winefile.rc:34
 msgid "Propert&ies\tAlt+Enter"
 msgstr "&Egenskaper …\tAlt+Enter"
-
-#: winefile.rc:36
-msgid "&Run..."
-msgstr "Kjø&r..."
 
 #: winefile.rc:38
 msgid "Cr&eate Directory..."

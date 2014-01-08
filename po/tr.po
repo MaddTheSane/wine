@@ -10116,6 +10116,16 @@ msgstr "Kullanım: dxdiag [/whql:off | /whql:on] [/t dosyaadı | /x dosyaadı]"
 msgid "Wine Explorer"
 msgstr "Wine Gezgin"
 
+#: explorer.rc:33
+#, fuzzy
+#| msgid "StartUp"
+msgid "Start"
+msgstr "Başlangıç"
+
+#: explorer.rc:34 winefile.rc:36
+msgid "&Run..."
+msgstr "&Çalıştır..."
+
 #: hostname.rc:30
 msgid "Usage: hostname\n"
 msgstr "Kullanım: hostname\n"
@@ -13385,10 +13395,6 @@ msgstr "Ye&niden Adlandır..."
 #: winefile.rc:34
 msgid "Propert&ies\tAlt+Enter"
 msgstr "&Özellikler\tAlt+Enter"
-
-#: winefile.rc:36
-msgid "&Run..."
-msgstr "&Çalıştır..."
 
 #: winefile.rc:38
 msgid "Cr&eate Directory..."

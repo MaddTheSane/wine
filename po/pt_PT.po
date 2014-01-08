@@ -10206,6 +10206,16 @@ msgstr "Uso: dxdiag [/whql:off | /whql:on] [/t ficheiro | /x ficheiro]"
 msgid "Wine Explorer"
 msgstr "Explorador do Wine"
 
+#: explorer.rc:33
+#, fuzzy
+#| msgid "StartUp"
+msgid "Start"
+msgstr "Inicialização"
+
+#: explorer.rc:34 winefile.rc:36
+msgid "&Run..."
+msgstr "Exec&utar..."
+
 #: hostname.rc:30
 msgid "Usage: hostname\n"
 msgstr "Uso: hostname\n"
@@ -13563,10 +13573,6 @@ msgstr "Re&nomear..."
 #: winefile.rc:34
 msgid "Propert&ies\tAlt+Enter"
 msgstr "Propri&edades\tAlt+Enter"
-
-#: winefile.rc:36
-msgid "&Run..."
-msgstr "Exec&utar..."
 
 #: winefile.rc:38
 msgid "Cr&eate Directory..."
