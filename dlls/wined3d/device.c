@@ -603,7 +603,7 @@ static void device_load_logo(struct wined3d_device *device, const char *filename
 
         color_key.color_space_low_value = 0;
         color_key.color_space_high_value = 0;
-        wined3d_surface_set_color_key(surface, WINEDDCKEY_SRCBLT, &color_key);
+        wined3d_texture_set_color_key(device->logo_texture, WINEDDCKEY_SRCBLT, &color_key);
     }
     else
     {
@@ -4406,6 +4406,7 @@ HRESULT CDECL wined3d_device_reset(struct wined3d_device *device,
             wined3d_stateblock_decref(device->recording);
             device->recording = NULL;
         }
+        wined3d_cs_emit_reset_state(device->cs);
         state_cleanup(&device->state);
 
         if (device->d3d_initialized)

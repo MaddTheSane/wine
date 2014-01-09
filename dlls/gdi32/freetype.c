@@ -2148,6 +2148,9 @@ static INT AddFontToList(const char *file, void *font_data_ptr, DWORD font_data_
 #endif /* HAVE_CARBON_CARBON_H */
 
     do {
+        const DWORD FS_DBCS_MASK = FS_JISJAPAN|FS_CHINESESIMP|FS_WANSUNG|FS_CHINESETRAD|FS_JOHAB;
+        FONTSIGNATURE fs;
+
         ft_face = new_ft_face( file, font_data_ptr, font_data_size, face_index, flags & ADDFONT_ALLOW_BITMAP );
         if (!ft_face) return 0;
 
@@ -2161,7 +2164,8 @@ static INT AddFontToList(const char *file, void *font_data_ptr, DWORD font_data_
         AddFaceToList(ft_face, file, font_data_ptr, font_data_size, face_index, flags);
         ++ret;
 
-        if (FT_HAS_VERTICAL(ft_face))
+        get_fontsig(ft_face, &fs);
+        if (fs.fsCsb[0] & FS_DBCS_MASK)
         {
             AddFaceToList(ft_face, file, font_data_ptr, font_data_size, face_index,
                           flags | ADDFONT_VERTICAL_FONT);
@@ -6218,7 +6222,7 @@ static DWORD get_glyph_outline(GdiFont *incoming_font, UINT glyph, UINT format,
     if(format & GGO_GLYPH_INDEX) {
         if(font->ft_face->charmap->encoding == FT_ENCODING_NONE) {
             /* Windows bitmap font, e.g. Small Fonts, uses ANSI character code
-               as glyph index. "Tresure Adventure Game" depends on this. */
+               as glyph index. "Treasure Adventure Game" depends on this. */
             glyph_index = pFT_Get_Char_Index(font->ft_face, glyph);
             TRACE("translate glyph index %04x -> %04x\n", glyph, glyph_index);
         } else

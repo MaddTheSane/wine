@@ -604,7 +604,8 @@ static void surface_prepare_system_memory(struct wined3d_surface *surface)
 
 static void surface_evict_sysmem(struct wined3d_surface *surface)
 {
-    if (surface->resource.map_count || (surface->flags & SFLAG_DONOTFREE))
+    if (surface->resource.map_count || (surface->flags & SFLAG_DONOTFREE)
+            || surface->user_memory)
         return;
 
     wined3d_resource_free_sysmem(&surface->resource);
@@ -1674,8 +1675,8 @@ static void surface_download_data(struct wined3d_surface *surface, const struct 
              * |444444444444444444|    \/
              * --------------------
              *
-             * this also means that any references to surface memory should work with the data as if were a
-             * standard texture with a non-power2 width instead of texture boxed up to be a power2 texture.
+             * This also means that any references to surface memory should work with the data as if it were a
+             * standard texture with a non-power2 width instead of a texture boxed up to be a power2 texture.
              *
              * internally the texture is still stored in a boxed format so any references to textureName will
              * get a boxed texture with width pow2width and not a texture of width resource.width.
@@ -1814,7 +1815,7 @@ static void surface_upload_data(struct wined3d_surface *surface, const struct wi
 static HRESULT d3dfmt_get_conv(const struct wined3d_surface *surface, BOOL need_alpha_ck, BOOL use_texturing,
         struct wined3d_format *format, enum wined3d_conversion_type *conversion_type)
 {
-    BOOL colorkey_active = need_alpha_ck && (surface->CKeyFlags & WINEDDSD_CKSRCBLT);
+    BOOL colorkey_active = need_alpha_ck && (surface->container->color_key_flags & WINEDDSD_CKSRCBLT);
     const struct wined3d_device *device = surface->resource.device;
     const struct wined3d_gl_info *gl_info = &device->adapter->gl_info;
     BOOL blit_supported = FALSE;
@@ -2269,13 +2270,15 @@ void surface_load(struct wined3d_surface *surface, BOOL srgb)
     if (surface->resource.pool == WINED3D_POOL_SCRATCH)
         ERR("Not supported on scratch surfaces.\n");
 
-    ck_changed = !(surface->flags & SFLAG_GLCKEY) != !(surface->CKeyFlags & WINEDDSD_CKSRCBLT);
+    ck_changed = !(surface->flags & SFLAG_GLCKEY) != !(surface->container->color_key_flags & WINEDDSD_CKSRCBLT);
 
     /* Reload if either the texture and sysmem have different ideas about the
      * color key, or the actual key values changed. */
-    if (ck_changed || ((surface->CKeyFlags & WINEDDSD_CKSRCBLT)
-            && (surface->gl_color_key.color_space_low_value != surface->src_blt_color_key.color_space_low_value
-            || surface->gl_color_key.color_space_high_value != surface->src_blt_color_key.color_space_high_value)))
+    if (ck_changed || ((surface->container->color_key_flags & WINEDDSD_CKSRCBLT)
+            && (surface->gl_color_key.color_space_low_value
+            != surface->container->src_blt_color_key.color_space_low_value
+            || surface->gl_color_key.color_space_high_value
+            != surface->container->src_blt_color_key.color_space_high_value)))
     {
         TRACE("Reloading because of color keying\n");
         /* To perform the color key conversion we need a sysmem copy of
@@ -2511,68 +2514,6 @@ void CDECL wined3d_surface_set_palette(struct wined3d_surface *surface, struct w
         surface->surface_ops->surface_realize_palette(surface);
 }
 
-HRESULT CDECL wined3d_surface_set_color_key(struct wined3d_surface *surface,
-        DWORD flags, const struct wined3d_color_key *color_key)
-{
-    TRACE("surface %p, flags %#x, color_key %p.\n", surface, flags, color_key);
-
-    if (flags & WINEDDCKEY_COLORSPACE)
-    {
-        FIXME(" colorkey value not supported (%08x) !\n", flags);
-        return WINED3DERR_INVALIDCALL;
-    }
-
-    /* Dirtify the surface, but only if a key was changed. */
-    if (color_key)
-    {
-        switch (flags & ~WINEDDCKEY_COLORSPACE)
-        {
-            case WINEDDCKEY_DESTBLT:
-                surface->dst_blt_color_key = *color_key;
-                surface->CKeyFlags |= WINEDDSD_CKDESTBLT;
-                break;
-
-            case WINEDDCKEY_DESTOVERLAY:
-                surface->dst_overlay_color_key = *color_key;
-                surface->CKeyFlags |= WINEDDSD_CKDESTOVERLAY;
-                break;
-
-            case WINEDDCKEY_SRCOVERLAY:
-                surface->src_overlay_color_key = *color_key;
-                surface->CKeyFlags |= WINEDDSD_CKSRCOVERLAY;
-                break;
-
-            case WINEDDCKEY_SRCBLT:
-                surface->src_blt_color_key = *color_key;
-                surface->CKeyFlags |= WINEDDSD_CKSRCBLT;
-                break;
-        }
-    }
-    else
-    {
-        switch (flags & ~WINEDDCKEY_COLORSPACE)
-        {
-            case WINEDDCKEY_DESTBLT:
-                surface->CKeyFlags &= ~WINEDDSD_CKDESTBLT;
-                break;
-
-            case WINEDDCKEY_DESTOVERLAY:
-                surface->CKeyFlags &= ~WINEDDSD_CKDESTOVERLAY;
-                break;
-
-            case WINEDDCKEY_SRCOVERLAY:
-                surface->CKeyFlags &= ~WINEDDSD_CKSRCOVERLAY;
-                break;
-
-            case WINEDDCKEY_SRCBLT:
-                surface->CKeyFlags &= ~WINEDDSD_CKSRCBLT;
-                break;
-        }
-    }
-
-    return WINED3D_OK;
-}
-
 struct wined3d_palette * CDECL wined3d_surface_get_palette(const struct wined3d_surface *surface)
 {
     TRACE("surface %p.\n", surface);
@@ -2775,7 +2716,7 @@ HRESULT CDECL wined3d_surface_update_desc(struct wined3d_surface *surface,
         create_dib = TRUE;
     }
 
-    surface->flags &= ~(SFLAG_LOCATIONS | SFLAG_USERPTR);
+    surface->flags &= ~SFLAG_LOCATIONS;
     surface->resource.allocatedMemory = NULL;
     wined3d_resource_free_sysmem(&surface->resource);
 
@@ -2801,13 +2742,8 @@ HRESULT CDECL wined3d_surface_update_desc(struct wined3d_surface *surface,
     else
         surface->flags &= ~SFLAG_NONPOW2;
 
-    if (mem)
-    {
-        surface->user_memory = mem;
-        surface->flags |= SFLAG_USERPTR;
-    }
+    surface->user_memory = mem;
     surface->pitch = pitch;
-
     surface->resource.format = format;
     surface->resource.multisample_type = multisample_type;
     surface->resource.multisample_quality = multisample_quality;
@@ -2824,6 +2760,7 @@ HRESULT CDECL wined3d_surface_update_desc(struct wined3d_surface *surface,
             return hr;
         }
         surface->resource.allocatedMemory = surface->dib.bitmap_data;
+        surface->flags |= SFLAG_INSYSMEM;
     }
     else if (!surface_init_sysmem(surface))
         return E_OUTOFMEMORY;
@@ -3280,7 +3217,7 @@ HRESULT CDECL wined3d_surface_getdc(struct wined3d_surface *surface, HDC *dc)
             return WINED3DERR_INVALIDCALL;
 
         /* Use the DIB section from now on if we are not using a PBO or user memory. */
-        if (!(surface->flags & (SFLAG_PBO | SFLAG_PIN_SYSMEM | SFLAG_USERPTR)))
+        if (!(surface->flags & (SFLAG_PBO | SFLAG_PIN_SYSMEM) || surface->user_memory))
         {
             wined3d_resource_free_sysmem(&surface->resource);
             surface->resource.allocatedMemory = surface->dib.bitmap_data;
@@ -3721,7 +3658,7 @@ void d3dfmt_p8_init_palette(const struct wined3d_surface *surface, BYTE table[25
              * alpha component of pixels that should be masked away is set to 0. */
             if (index_in_alpha)
                 table[i][3] = i;
-            else if (colorkey && color_in_range(&surface->src_blt_color_key, i))
+            else if (colorkey && color_in_range(&surface->container->src_blt_color_key, i))
                 table[i][3] = 0x00;
             else if (pal->flags & WINED3D_PALETTE_ALPHA)
                 table[i][3] = pal->palents[i].peFlags;
@@ -3796,7 +3733,7 @@ static HRESULT d3dfmt_convert_surface(const BYTE *src, BYTE *dst, UINT pitch, UI
                 for (x = 0; x < width; x++ ) {
                     WORD color = *Source++;
                     *Dest = ((color & 0xffc0) | ((color & 0x1f) << 1));
-                    if (!color_in_range(&surface->src_blt_color_key, color))
+                    if (!color_in_range(&surface->container->src_blt_color_key, color))
                         *Dest |= 0x0001;
                     Dest++;
                 }
@@ -3817,7 +3754,7 @@ static HRESULT d3dfmt_convert_surface(const BYTE *src, BYTE *dst, UINT pitch, UI
                 for (x = 0; x < width; x++ ) {
                     WORD color = *Source++;
                     *Dest = color;
-                    if (!color_in_range(&surface->src_blt_color_key, color))
+                    if (!color_in_range(&surface->container->src_blt_color_key, color))
                         *Dest |= (1 << 15);
                     else
                         *Dest &= ~(1 << 15);
@@ -3838,7 +3775,7 @@ static HRESULT d3dfmt_convert_surface(const BYTE *src, BYTE *dst, UINT pitch, UI
                 for (x = 0; x < width; x++) {
                     DWORD color = ((DWORD)source[0] << 16) + ((DWORD)source[1] << 8) + (DWORD)source[2] ;
                     DWORD dstcolor = color << 8;
-                    if (!color_in_range(&surface->src_blt_color_key, color))
+                    if (!color_in_range(&surface->container->src_blt_color_key, color))
                         dstcolor |= 0xff;
                     *(DWORD*)dest = dstcolor;
                     source += 3;
@@ -3859,7 +3796,7 @@ static HRESULT d3dfmt_convert_surface(const BYTE *src, BYTE *dst, UINT pitch, UI
                 for (x = 0; x < width; x++) {
                     DWORD color = 0xffffff & *(const DWORD*)source;
                     DWORD dstcolor = color << 8;
-                    if (!color_in_range(&surface->src_blt_color_key, color))
+                    if (!color_in_range(&surface->container->src_blt_color_key, color))
                         dstcolor |= 0xff;
                     *(DWORD*)dest = dstcolor;
                     source += 4;
@@ -3879,7 +3816,7 @@ static HRESULT d3dfmt_convert_surface(const BYTE *src, BYTE *dst, UINT pitch, UI
                 for (x = 0; x < width; ++x)
                 {
                     DWORD color = *(const DWORD *)source;
-                    if (color_in_range(&surface->src_blt_color_key, color))
+                    if (color_in_range(&surface->container->src_blt_color_key, color))
                         color &= ~0xff000000;
                     *(DWORD*)dest = color;
                     source += 4;
@@ -4422,7 +4359,7 @@ static void surface_blt_to_drawable(const struct wined3d_device *device,
          * away have alpha set to 0. */
         if (swapchain_is_p8(context->swapchain))
             gl_info->gl_ops.gl.p_glAlphaFunc(GL_NOTEQUAL,
-                    (float)src_surface->src_blt_color_key.color_space_low_value / 256.0f);
+                    (float)src_surface->container->src_blt_color_key.color_space_low_value / 256.0f);
         else
             gl_info->gl_ops.gl.p_glAlphaFunc(GL_NOTEQUAL, 0.0f);
         checkGLcall("glAlphaFunc");
@@ -4598,8 +4535,8 @@ static HRESULT surface_blt_special(struct wined3d_surface *dst_surface, const RE
     else if (src_surface)
     {
         /* Blit from offscreen surface to render target */
-        struct wined3d_color_key old_blt_key = src_surface->src_blt_color_key;
-        DWORD oldCKeyFlags = src_surface->CKeyFlags;
+        struct wined3d_color_key old_blt_key = src_surface->container->src_blt_color_key;
+        DWORD old_color_key_flags = src_surface->container->color_key_flags;
 
         TRACE("Blt from surface %p to rendertarget %p\n", src_surface, dst_surface);
 
@@ -4625,21 +4562,21 @@ static HRESULT surface_blt_special(struct wined3d_surface *dst_surface, const RE
         else if (flags & WINEDDBLT_KEYSRCOVERRIDE)
         {
             /* Use color key from DDBltFx */
-            src_surface->CKeyFlags |= WINEDDSD_CKSRCBLT;
-            src_surface->src_blt_color_key = DDBltFx->ddckSrcColorkey;
+            src_surface->container->color_key_flags |= WINEDDSD_CKSRCBLT;
+            src_surface->container->src_blt_color_key = DDBltFx->ddckSrcColorkey;
         }
         else
         {
             /* Do not use color key */
-            src_surface->CKeyFlags &= ~WINEDDSD_CKSRCBLT;
+            src_surface->container->color_key_flags &= ~WINEDDSD_CKSRCBLT;
         }
 
         surface_blt_to_drawable(device, filter, flags & (WINEDDBLT_KEYSRC | WINEDDBLT_KEYSRCOVERRIDE),
                 src_surface, src_rect, dst_surface, dst_rect);
 
         /* Restore the color key parameters */
-        src_surface->CKeyFlags = oldCKeyFlags;
-        src_surface->src_blt_color_key = old_blt_key;
+        src_surface->container->color_key_flags = old_color_key_flags;
+        src_surface->container->src_blt_color_key = old_blt_key;
 
         surface_validate_location(dst_surface, dst_surface->draw_binding);
         surface_invalidate_location(dst_surface, ~dst_surface->draw_binding);
@@ -5071,10 +5008,10 @@ static HRESULT surface_load_texture(struct wined3d_surface *surface,
     surface_prepare_texture(surface, context, srgb);
     wined3d_texture_bind_and_dirtify(surface->container, context, srgb);
 
-    if (surface->CKeyFlags & WINEDDSD_CKSRCBLT)
+    if (surface->container->color_key_flags & WINEDDSD_CKSRCBLT)
     {
         surface->flags |= SFLAG_GLCKEY;
-        surface->gl_color_key = surface->src_blt_color_key;
+        surface->gl_color_key = surface->container->src_blt_color_key;
     }
     else surface->flags &= ~SFLAG_GLCKEY;
 
@@ -5806,8 +5743,8 @@ do { \
                 /* The color keying flags are checked for correctness in ddraw */
                 if (flags & WINEDDBLT_KEYSRC)
                 {
-                    keylow  = src_surface->src_blt_color_key.color_space_low_value;
-                    keyhigh = src_surface->src_blt_color_key.color_space_high_value;
+                    keylow  = src_surface->container->src_blt_color_key.color_space_low_value;
+                    keyhigh = src_surface->container->src_blt_color_key.color_space_high_value;
                 }
                 else if (flags & WINEDDBLT_KEYSRCOVERRIDE)
                 {
@@ -5818,8 +5755,8 @@ do { \
                 if (flags & WINEDDBLT_KEYDEST)
                 {
                     /* Destination color keys are taken from the source surface! */
-                    destkeylow = src_surface->dst_blt_color_key.color_space_low_value;
-                    destkeyhigh = src_surface->dst_blt_color_key.color_space_high_value;
+                    destkeylow = src_surface->container->dst_blt_color_key.color_space_low_value;
+                    destkeyhigh = src_surface->container->dst_blt_color_key.color_space_high_value;
                 }
                 else if (flags & WINEDDBLT_KEYDESTOVERRIDE)
                 {

@@ -2082,6 +2082,13 @@ struct wined3d_texture
     const struct min_lookup *min_mip_lookup;
     const GLenum *mag_lookup;
     GLenum target;
+
+    /* Color keys for DDraw */
+    struct wined3d_color_key dst_blt_color_key;
+    struct wined3d_color_key src_blt_color_key;
+    struct wined3d_color_key dst_overlay_color_key;
+    struct wined3d_color_key src_overlay_color_key;
+    DWORD color_key_flags;
 };
 
 static inline struct wined3d_texture *wined3d_texture_from_resource(struct wined3d_resource *resource)
@@ -2212,13 +2219,6 @@ struct wined3d_surface
     HDC                       hDC;
     void                      *getdc_map_mem;
 
-    /* Color keys for DDraw */
-    struct wined3d_color_key dst_blt_color_key;
-    struct wined3d_color_key src_blt_color_key;
-    struct wined3d_color_key dst_overlay_color_key;
-    struct wined3d_color_key src_overlay_color_key;
-    DWORD                     CKeyFlags;
-
     struct wined3d_color_key gl_color_key;
 
     struct list               renderbuffers;
@@ -2294,17 +2294,16 @@ void flip_surface(struct wined3d_surface *front, struct wined3d_surface *back) D
 #define SFLAG_GLCKEY            0x00000100 /* The GL texture was created with a color key. */
 #define SFLAG_CLIENT            0x00000200 /* GL_APPLE_client_storage is used with this surface. */
 #define SFLAG_DIBSECTION        0x00000400 /* Has a DIB section attached for GetDC. */
-#define SFLAG_USERPTR           0x00000800 /* The application allocated the memory for this surface. */
-#define SFLAG_ALLOCATED         0x00001000 /* A GL texture is allocated for this surface. */
-#define SFLAG_SRGBALLOCATED     0x00002000 /* A sRGB GL texture is allocated for this surface. */
-#define SFLAG_PBO               0x00004000 /* The surface has a PBO. */
-#define SFLAG_INSYSMEM          0x00008000 /* The system memory copy is current. */
-#define SFLAG_INTEXTURE         0x00010000 /* The GL texture is current. */
-#define SFLAG_INSRGBTEX         0x00020000 /* The GL sRGB texture is current. */
-#define SFLAG_INDRAWABLE        0x00040000 /* The GL drawable is current. */
-#define SFLAG_INRB_MULTISAMPLE  0x00080000 /* The multisample renderbuffer is current. */
-#define SFLAG_INRB_RESOLVED     0x00100000 /* The resolved renderbuffer is current. */
-#define SFLAG_DISCARDED         0x00200000 /* Surface was discarded, allocating new location is enough. */
+#define SFLAG_ALLOCATED         0x00000800 /* A GL texture is allocated for this surface. */
+#define SFLAG_SRGBALLOCATED     0x00001000 /* A sRGB GL texture is allocated for this surface. */
+#define SFLAG_PBO               0x00002000 /* The surface has a PBO. */
+#define SFLAG_INSYSMEM          0x00004000 /* The system memory copy is current. */
+#define SFLAG_INTEXTURE         0x00008000 /* The GL texture is current. */
+#define SFLAG_INSRGBTEX         0x00010000 /* The GL sRGB texture is current. */
+#define SFLAG_INDRAWABLE        0x00020000 /* The GL drawable is current. */
+#define SFLAG_INRB_MULTISAMPLE  0x00040000 /* The multisample renderbuffer is current. */
+#define SFLAG_INRB_RESOLVED     0x00080000 /* The resolved renderbuffer is current. */
+#define SFLAG_DISCARDED         0x00100000 /* Surface was discarded, allocating new location is enough. */
 
 /* In some conditions the surface memory must not be freed:
  * SFLAG_CONVERTED: Converting the data back would take too long
@@ -2317,7 +2316,6 @@ void flip_surface(struct wined3d_surface *front, struct wined3d_surface *back) D
                              SFLAG_DYNLOCK          | \
                              SFLAG_CLIENT           | \
                              SFLAG_DIBSECTION       | \
-                             SFLAG_USERPTR          | \
                              SFLAG_PBO              | \
                              SFLAG_PIN_SYSMEM)
 
@@ -2473,6 +2471,7 @@ void wined3d_cs_emit_draw(struct wined3d_cs *cs, UINT start_idx, UINT index_coun
 void wined3d_cs_emit_present(struct wined3d_cs *cs, struct wined3d_swapchain *swapchain,
         const RECT *src_rect, const RECT *dst_rect, HWND dst_window_override,
         const RGNDATA *dirty_region, DWORD flags) DECLSPEC_HIDDEN;
+void wined3d_cs_emit_reset_state(struct wined3d_cs *cs) DECLSPEC_HIDDEN;
 void wined3d_cs_emit_set_clip_plane(struct wined3d_cs *cs, UINT plane_idx,
         const struct wined3d_vec4 *plane) DECLSPEC_HIDDEN;
 void wined3d_cs_emit_set_constant_buffer(struct wined3d_cs *cs, enum wined3d_shader_type type,

@@ -4494,132 +4494,97 @@ static HRESULT WINAPI ddraw_surface1_GetPalette(IDirectDrawSurface *iface, IDire
     return ddraw_surface7_GetPalette(&surface->IDirectDrawSurface7_iface, palette);
 }
 
-/*****************************************************************************
- * SetColorKeyEnum
- *
- * EnumAttachedSurface callback for SetColorKey. Used to set color keys
- * recursively in the surface tree
- *
- *****************************************************************************/
-struct SCKContext
+static HRESULT ddraw_surface_set_color_key(struct ddraw_surface *surface, DWORD flags, DDCOLORKEY *color_key)
 {
-    HRESULT ret;
-    struct wined3d_color_key *color_key;
-    DWORD Flags;
-};
-
-static HRESULT WINAPI SetColorKeyEnum(IDirectDrawSurface7 *surface, DDSURFACEDESC2 *desc, void *context)
-{
-    struct ddraw_surface *surface_impl = impl_from_IDirectDrawSurface7(surface);
-    struct SCKContext *ctx = context;
-    HRESULT hr;
-
-    hr = wined3d_surface_set_color_key(surface_impl->wined3d_surface, ctx->Flags, ctx->color_key);
-    if (FAILED(hr))
-    {
-        WARN("IWineD3DSurface_SetColorKey failed, hr = %08x\n", hr);
-        ctx->ret = hr;
-    }
-
-    ddraw_surface7_EnumAttachedSurfaces(surface, context, SetColorKeyEnum);
-    ddraw_surface7_Release(surface);
-
-    return DDENUMRET_OK;
-}
-
-/*****************************************************************************
- * IDirectDrawSurface7::SetColorKey
- *
- * Sets the color keying options for the surface. Observations showed that
- * in case of complex surfaces the color key has to be assigned to all
- * sublevels.
- *
- * Params:
- *  Flags: DDCKEY_*
- *  CKey: The new color key
- *
- * Returns:
- *  DD_OK on success
- *  See IWineD3DSurface::SetColorKey for details
- *
- *****************************************************************************/
-static HRESULT WINAPI ddraw_surface7_SetColorKey(IDirectDrawSurface7 *iface, DWORD Flags, DDCOLORKEY *CKey)
-{
-    struct ddraw_surface *This = impl_from_IDirectDrawSurface7(iface);
-    DDCOLORKEY FixedCKey;
-    struct SCKContext ctx = { DD_OK, (struct wined3d_color_key *)(CKey ? &FixedCKey : NULL), Flags };
-
-    TRACE("iface %p, flags %#x, color_key %p.\n", iface, Flags, CKey);
+    DDCOLORKEY fixed_color_key;
+    HRESULT hr = WINED3D_OK;
 
     wined3d_mutex_lock();
-    if (CKey)
+
+    if (color_key)
     {
-        FixedCKey = *CKey;
+        fixed_color_key = *color_key;
         /* Handle case where dwColorSpaceHighValue < dwColorSpaceLowValue */
-        if (FixedCKey.dwColorSpaceHighValue < FixedCKey.dwColorSpaceLowValue)
-            FixedCKey.dwColorSpaceHighValue = FixedCKey.dwColorSpaceLowValue;
+        if (fixed_color_key.dwColorSpaceHighValue < fixed_color_key.dwColorSpaceLowValue)
+            fixed_color_key.dwColorSpaceHighValue = fixed_color_key.dwColorSpaceLowValue;
 
-        switch (Flags & ~DDCKEY_COLORSPACE)
+        switch (flags & ~DDCKEY_COLORSPACE)
         {
-        case DDCKEY_DESTBLT:
-            This->surface_desc.ddckCKDestBlt = FixedCKey;
-            This->surface_desc.dwFlags |= DDSD_CKDESTBLT;
-            break;
+            case DDCKEY_DESTBLT:
+                surface->surface_desc.ddckCKDestBlt = fixed_color_key;
+                surface->surface_desc.dwFlags |= DDSD_CKDESTBLT;
+                break;
 
-        case DDCKEY_DESTOVERLAY:
-            This->surface_desc.u3.ddckCKDestOverlay = FixedCKey;
-            This->surface_desc.dwFlags |= DDSD_CKDESTOVERLAY;
-            break;
+            case DDCKEY_DESTOVERLAY:
+                surface->surface_desc.u3.ddckCKDestOverlay = fixed_color_key;
+                surface->surface_desc.dwFlags |= DDSD_CKDESTOVERLAY;
+                break;
 
-        case DDCKEY_SRCOVERLAY:
-            This->surface_desc.ddckCKSrcOverlay = FixedCKey;
-            This->surface_desc.dwFlags |= DDSD_CKSRCOVERLAY;
-            break;
+            case DDCKEY_SRCOVERLAY:
+                surface->surface_desc.ddckCKSrcOverlay = fixed_color_key;
+                surface->surface_desc.dwFlags |= DDSD_CKSRCOVERLAY;
+                break;
 
-        case DDCKEY_SRCBLT:
-            This->surface_desc.ddckCKSrcBlt = FixedCKey;
-            This->surface_desc.dwFlags |= DDSD_CKSRCBLT;
-            break;
+            case DDCKEY_SRCBLT:
+                surface->surface_desc.ddckCKSrcBlt = fixed_color_key;
+                surface->surface_desc.dwFlags |= DDSD_CKSRCBLT;
+                break;
 
-        default:
-            wined3d_mutex_unlock();
-            return DDERR_INVALIDPARAMS;
+            default:
+                wined3d_mutex_unlock();
+                return DDERR_INVALIDPARAMS;
         }
     }
     else
     {
-        switch (Flags & ~DDCKEY_COLORSPACE)
+        switch (flags & ~DDCKEY_COLORSPACE)
         {
-        case DDCKEY_DESTBLT:
-            This->surface_desc.dwFlags &= ~DDSD_CKDESTBLT;
-            break;
+            case DDCKEY_DESTBLT:
+                surface->surface_desc.dwFlags &= ~DDSD_CKDESTBLT;
+                break;
 
-        case DDCKEY_DESTOVERLAY:
-            This->surface_desc.dwFlags &= ~DDSD_CKDESTOVERLAY;
-            break;
+            case DDCKEY_DESTOVERLAY:
+                surface->surface_desc.dwFlags &= ~DDSD_CKDESTOVERLAY;
+                break;
 
-        case DDCKEY_SRCOVERLAY:
-            This->surface_desc.dwFlags &= ~DDSD_CKSRCOVERLAY;
-            break;
+            case DDCKEY_SRCOVERLAY:
+                surface->surface_desc.dwFlags &= ~DDSD_CKSRCOVERLAY;
+                break;
 
-        case DDCKEY_SRCBLT:
-            This->surface_desc.dwFlags &= ~DDSD_CKSRCBLT;
-            break;
+            case DDCKEY_SRCBLT:
+                surface->surface_desc.dwFlags &= ~DDSD_CKSRCBLT;
+                break;
 
-        default:
-            wined3d_mutex_unlock();
-            return DDERR_INVALIDPARAMS;
+            default:
+                wined3d_mutex_unlock();
+                return DDERR_INVALIDPARAMS;
         }
     }
-    ctx.ret = wined3d_surface_set_color_key(This->wined3d_surface, Flags, ctx.color_key);
-    ddraw_surface7_EnumAttachedSurfaces(iface, &ctx, SetColorKeyEnum);
+
+    if (surface->wined3d_texture)
+        hr = wined3d_texture_set_color_key(surface->wined3d_texture, flags,
+                color_key ? (struct wined3d_color_key *)&fixed_color_key : NULL);
+
     wined3d_mutex_unlock();
 
-    switch(ctx.ret)
+    return hr_ddraw_from_wined3d(hr);
+}
+
+static HRESULT WINAPI ddraw_surface7_SetColorKey(IDirectDrawSurface7 *iface, DWORD flags, DDCOLORKEY *color_key)
+{
+    struct ddraw_surface *surface = impl_from_IDirectDrawSurface7(iface);
+
+    TRACE("iface %p, flags %#x, color_key %p.\n", iface, flags, color_key);
+
+    wined3d_mutex_lock();
+    if (!surface->wined3d_texture)
     {
-        case WINED3DERR_INVALIDCALL:        return DDERR_INVALIDPARAMS;
-        default:                            return ctx.ret;
+        wined3d_mutex_unlock();
+        return DDERR_NOTONMIPMAPSUBLEVEL;
     }
+    wined3d_mutex_unlock();
+
+    return ddraw_surface_set_color_key(surface, flags, color_key);
 }
 
 static HRESULT WINAPI ddraw_surface4_SetColorKey(IDirectDrawSurface4 *iface, DWORD flags, DDCOLORKEY *color_key)
@@ -4628,7 +4593,7 @@ static HRESULT WINAPI ddraw_surface4_SetColorKey(IDirectDrawSurface4 *iface, DWO
 
     TRACE("iface %p, flags %#x, color_key %p.\n", iface, flags, color_key);
 
-    return ddraw_surface7_SetColorKey(&surface->IDirectDrawSurface7_iface, flags, color_key);
+    return ddraw_surface_set_color_key(surface, flags, color_key);
 }
 
 static HRESULT WINAPI ddraw_surface3_SetColorKey(IDirectDrawSurface3 *iface, DWORD flags, DDCOLORKEY *color_key)
@@ -4637,7 +4602,7 @@ static HRESULT WINAPI ddraw_surface3_SetColorKey(IDirectDrawSurface3 *iface, DWO
 
     TRACE("iface %p, flags %#x, color_key %p.\n", iface, flags, color_key);
 
-    return ddraw_surface7_SetColorKey(&surface->IDirectDrawSurface7_iface, flags, color_key);
+    return ddraw_surface_set_color_key(surface, flags, color_key);
 }
 
 static HRESULT WINAPI ddraw_surface2_SetColorKey(IDirectDrawSurface2 *iface, DWORD flags, DDCOLORKEY *color_key)
@@ -4646,7 +4611,7 @@ static HRESULT WINAPI ddraw_surface2_SetColorKey(IDirectDrawSurface2 *iface, DWO
 
     TRACE("iface %p, flags %#x, color_key %p.\n", iface, flags, color_key);
 
-    return ddraw_surface7_SetColorKey(&surface->IDirectDrawSurface7_iface, flags, color_key);
+    return ddraw_surface_set_color_key(surface, flags, color_key);
 }
 
 static HRESULT WINAPI ddraw_surface1_SetColorKey(IDirectDrawSurface *iface, DWORD flags, DDCOLORKEY *color_key)
@@ -4655,7 +4620,7 @@ static HRESULT WINAPI ddraw_surface1_SetColorKey(IDirectDrawSurface *iface, DWOR
 
     TRACE("iface %p, flags %#x, color_key %p.\n", iface, flags, color_key);
 
-    return ddraw_surface7_SetColorKey(&surface->IDirectDrawSurface7_iface, flags, color_key);
+    return ddraw_surface_set_color_key(surface, flags, color_key);
 }
 
 static HRESULT WINAPI ddraw_surface7_SetPalette(IDirectDrawSurface7 *iface, IDirectDrawPalette *palette)
@@ -5897,6 +5862,19 @@ HRESULT ddraw_surface_create(struct ddraw *ddraw, const DDSURFACEDESC2 *surface_
     root->is_complex_root = TRUE;
     texture->root = root;
 
+    if (desc->dwFlags & DDSD_CKDESTOVERLAY)
+        wined3d_texture_set_color_key(wined3d_texture, DDCKEY_DESTOVERLAY,
+                (struct wined3d_color_key *)&desc->u3.ddckCKDestOverlay);
+    if (desc->dwFlags & DDSD_CKDESTBLT)
+        wined3d_texture_set_color_key(wined3d_texture, DDCKEY_DESTBLT,
+                (struct wined3d_color_key *)&desc->ddckCKDestBlt);
+    if (desc->dwFlags & DDSD_CKSRCOVERLAY)
+        wined3d_texture_set_color_key(wined3d_texture, DDCKEY_SRCOVERLAY,
+                (struct wined3d_color_key *)&desc->ddckCKSrcOverlay);
+    if (desc->dwFlags & DDSD_CKSRCBLT)
+        wined3d_texture_set_color_key(wined3d_texture, DDCKEY_SRCBLT,
+                (struct wined3d_color_key *)&desc->ddckCKSrcBlt);
+
     for (i = 0; i < layers; ++i)
     {
         attach = &root->complex_array[layers - 1 - i];
@@ -5987,6 +5965,19 @@ HRESULT ddraw_surface_create(struct ddraw *ddraw, const DDSURFACEDESC2 *surface_
             last->wined3d_texture = wined3d_texture;
             texture->root = last;
 
+            if (desc->dwFlags & DDSD_CKDESTOVERLAY)
+                wined3d_texture_set_color_key(wined3d_texture, DDCKEY_DESTOVERLAY,
+                        (struct wined3d_color_key *)&desc->u3.ddckCKDestOverlay);
+            if (desc->dwFlags & DDSD_CKDESTBLT)
+                wined3d_texture_set_color_key(wined3d_texture, DDCKEY_DESTBLT,
+                        (struct wined3d_color_key *)&desc->ddckCKDestBlt);
+            if (desc->dwFlags & DDSD_CKSRCOVERLAY)
+                wined3d_texture_set_color_key(wined3d_texture, DDCKEY_SRCOVERLAY,
+                        (struct wined3d_color_key *)&desc->ddckCKSrcOverlay);
+            if (desc->dwFlags & DDSD_CKSRCBLT)
+                wined3d_texture_set_color_key(wined3d_texture, DDCKEY_SRCBLT,
+                        (struct wined3d_color_key *)&desc->ddckCKSrcBlt);
+
             *attach = last;
             attach = &last->complex_array[0];
         }
@@ -6070,26 +6061,6 @@ HRESULT ddraw_surface_init(struct ddraw_surface *surface, struct ddraw *ddraw, s
         surface->surface_desc.u1.lPitch = wined3d_surface_get_pitch(wined3d_surface);
     }
 
-    if (desc->dwFlags & DDSD_CKDESTOVERLAY)
-    {
-        wined3d_surface_set_color_key(wined3d_surface, DDCKEY_DESTOVERLAY,
-                (struct wined3d_color_key *)&desc->u3.ddckCKDestOverlay);
-    }
-    if (desc->dwFlags & DDSD_CKDESTBLT)
-    {
-        wined3d_surface_set_color_key(wined3d_surface, DDCKEY_DESTBLT,
-                (struct wined3d_color_key *)&desc->ddckCKDestBlt);
-    }
-    if (desc->dwFlags & DDSD_CKSRCOVERLAY)
-    {
-        wined3d_surface_set_color_key(wined3d_surface, DDCKEY_SRCOVERLAY,
-                (struct wined3d_color_key *)&desc->ddckCKSrcOverlay);
-    }
-    if (desc->dwFlags & DDSD_CKSRCBLT)
-    {
-        wined3d_surface_set_color_key(wined3d_surface, DDCKEY_SRCBLT,
-                (struct wined3d_color_key *)&desc->ddckCKSrcBlt);
-    }
     if (desc->dwFlags & DDSD_LPSURFACE)
     {
         UINT pitch = 0;
