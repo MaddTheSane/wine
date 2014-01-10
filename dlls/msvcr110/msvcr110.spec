@@ -1073,7 +1073,7 @@
 @ cdecl -arch=i386 -norelay _chkesp() msvcrt._chkesp
 @ cdecl _chmod(str long) msvcrt._chmod
 @ cdecl _chsize(long long) msvcrt._chsize
-@ stub _chsize_s
+@ cdecl _chsize_s(long int64) msvcrt._chsize_s
 @ cdecl _clearfp() msvcrt._clearfp
 @ cdecl _close(long) msvcrt._close
 @ cdecl _commit(long) msvcrt._commit
@@ -1385,17 +1385,17 @@
 @ cdecl _kbhit() msvcrt._kbhit
 @ cdecl _lfind(ptr ptr ptr long ptr) msvcrt._lfind
 @ stub _lfind_s
-@ stub -arch=i386  _libm_sse2_acos_precise
-@ stub -arch=i386  _libm_sse2_asin_precise
-@ stub -arch=i386  _libm_sse2_atan_precise
-@ stub -arch=i386  _libm_sse2_cos_precise
-@ stub -arch=i386  _libm_sse2_exp_precise
-@ stub -arch=i386  _libm_sse2_log10_precise
-@ stub -arch=i386  _libm_sse2_log_precise
-@ stub -arch=i386  _libm_sse2_pow_precise
-@ stub -arch=i386  _libm_sse2_sin_precise
+@ cdecl -arch=i386  _libm_sse2_acos_precise() msvcrt.__libm_sse2_acos
+@ cdecl -arch=i386  _libm_sse2_asin_precise() msvcrt.__libm_sse2_asin
+@ cdecl -arch=i386  _libm_sse2_atan_precise() msvcrt.__libm_sse2_atan
+@ cdecl -arch=i386  _libm_sse2_cos_precise() msvcrt.__libm_sse2_cos
+@ cdecl -arch=i386  _libm_sse2_exp_precise() msvcrt.__libm_sse2_exp
+@ cdecl -arch=i386  _libm_sse2_log10_precise() msvcrt.__libm_sse2_log10
+@ cdecl -arch=i386  _libm_sse2_log_precise() msvcrt.__libm_sse2_log
+@ cdecl -arch=i386  _libm_sse2_pow_precise() msvcrt.__libm_sse2_pow
+@ cdecl -arch=i386  _libm_sse2_sin_precise() msvcrt.__libm_sse2_sin
 @ stub -arch=i386  _libm_sse2_sqrt_precise
-@ stub -arch=i386  _libm_sse2_tan_precise
+@ cdecl -arch=i386  _libm_sse2_tan_precise() msvcrt.__libm_sse2_tan
 @ cdecl _loaddll(str) msvcrt._loaddll
 @ cdecl -arch=x86_64 _local_unwind(ptr ptr) msvcrt._local_unwind
 @ cdecl -arch=i386 _local_unwind2(ptr long) msvcrt._local_unwind2

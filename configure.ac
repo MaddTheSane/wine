@@ -1445,23 +1445,23 @@ then
 fi
 
 dnl **** Check for LittleCMS ***
-if test "x$with_lcms" != "xno"
+if test "x$with_lcms2" != "xno"
 then
     ac_save_CPPFLAGS="$CPPFLAGS"
-    WINE_PACKAGE_FLAGS(LCMS,[lcms],[-llcms])
-    AC_CHECK_HEADERS([lcms.h lcms/lcms.h])
-    if test "$ac_cv_header_lcms_h" = "yes" -o "$ac_cv_header_lcms_lcms_h" = "yes"
+    WINE_PACKAGE_FLAGS(LCMS2,[lcms2],[-llcms2])
+    AC_CHECK_HEADERS([lcms2.h])
+    if test "$ac_cv_header_lcms2_h" = "yes"
     then
-        AC_CHECK_LIB(lcms, cmsOpenProfileFromFile,
-            [AC_DEFINE(HAVE_LCMS, 1, [Define if you have the LittleCMS development environment])],[LCMS_LIBS=""])
+        AC_CHECK_LIB(lcms2, cmsOpenProfileFromFile,
+            [AC_DEFINE(HAVE_LCMS2, 1, [Define if you have the LittleCMS development environment])],[LCMS2_LIBS=""])
     else
-        LCMS_CFLAGS=""
-        LCMS_LIBS=""
+        LCMS2_CFLAGS=""
+        LCMS2_LIBS=""
     fi
     CPPFLAGS="$ac_save_CPPFLAGS"
 fi
-WINE_NOTICE_WITH(cms,[test "$ac_cv_lib_lcms_cmsOpenProfileFromFile" != "yes"],
-                 [liblcms ${notice_platform}development files not found, Color Management won't be supported.])
+WINE_NOTICE_WITH(cms,[test "$ac_cv_lib_lcms2_cmsOpenProfileFromFile" != "yes"],
+                 [liblcms2 ${notice_platform}development files not found, Color Management won't be supported.])
 
 dnl **** Check for FreeType 2 ****
 if test "x$with_freetype" != "xno"
@@ -1470,43 +1470,23 @@ then
     WINE_PACKAGE_FLAGS(FREETYPE,[freetype2],[-lfreetype],
                        [`(freetype-config --cflags || freetype2-config --cflags) 2>/dev/null`],
                        [`(freetype-config --libs || freetype2-config --libs) 2>/dev/null`])
-    WINE_CHECK_SONAME(freetype,FT_Init_FreeType,[ft_lib=yes],[ft_lib=no],[$FREETYPE_LIBS])
-    if test "$ft_lib" = "yes"
+    AC_CHECK_HEADERS([ft2build.h])
+    if test "$ac_cv_header_ft2build_h" = "yes"
     then
-	AC_CHECK_HEADERS(ft2build.h \
-                         freetype/freetype.h \
-                         freetype/ftglyph.h \
-                         freetype/fttypes.h \
-                         freetype/tttables.h \
-                         freetype/ftsnames.h \
-                         freetype/ttnameid.h \
-                         freetype/ftoutln.h \
-                         freetype/ftwinfnt.h \
-                         freetype/ftmodapi.h \
-                         freetype/ftlcdfil.h,,,
-                         [#ifdef HAVE_FT2BUILD_H
-                          # include <ft2build.h>
-                          #endif])
-	AC_PREPROC_IFELSE([AC_LANG_SOURCE([[#include <ft2build.h>
-                    #include <freetype/fttrigon.h>]])],[AC_DEFINE(HAVE_FREETYPE_FTTRIGON_H, 1,
-          [Define if you have the <freetype/fttrigon.h> header file.])
-                    wine_cv_fttrigon=yes],[wine_cv_fttrigon=no])
-        AC_CHECK_TYPES(FT_TrueTypeEngineType,,,[#include <freetype/ftmodapi.h>])
-	dnl Check that we have at least freetype/freetype.h
-	if test "$ac_cv_header_freetype_freetype_h" = "yes" -a "$wine_cv_fttrigon" = "yes"
-	then
-	    AC_DEFINE(HAVE_FREETYPE, 1, [Define if FreeType 2 is installed])
-        else
-            FREETYPE_LIBS=""
-	fi
+        WINE_CHECK_SONAME(freetype,FT_Init_FreeType,
+            [AC_DEFINE(HAVE_FREETYPE, 1, [Define if FreeType 2 is installed])
+             AC_CHECK_TYPES(FT_TrueTypeEngineType,,,[#include <ft2build.h>
+#include FT_MODULE_H])],
+            [FREETYPE_LIBS=""],[$FREETYPE_LIBS])
     else
+        FREETYPE_CFLAGS=""
         FREETYPE_LIBS=""
     fi
     CPPFLAGS="$ac_save_CPPFLAGS"
 fi
-WINE_ERROR_WITH(freetype,[test "x$ac_cv_header_freetype_freetype_h" != xyes -o "x$wine_cv_fttrigon" != xyes],
+WINE_ERROR_WITH(freetype,[test "x$ac_cv_lib_soname_freetype" = x],
                 [FreeType ${notice_platform}development files not found. Fonts will not be built.])
-test "x$ac_cv_header_freetype_freetype_h" = xyes -a "x$wine_cv_fttrigon" = xyes || enable_fonts=${enable_fonts:-no}
+test "x$ac_cv_lib_soname_freetype" = x && enable_fonts=${enable_fonts:-no}
 
 dnl **** Check for parport (currently Linux only) ****
 AC_CACHE_CHECK([for parport header/ppdev.h], ac_cv_c_ppdev,

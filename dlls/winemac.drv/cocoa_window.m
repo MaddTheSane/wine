@@ -357,6 +357,11 @@ static inline NSUInteger adjusted_modifiers_for_option_behavior(NSUInteger modif
         [[self inputContext] discardMarkedText];
     }
 
+    - (NSFocusRingType) focusRingType
+    {
+        return NSFocusRingTypeNone;
+    }
+
     /*
      * ---------- NSTextInputClient methods ----------
      */
@@ -639,6 +644,7 @@ static inline NSUInteger adjusted_modifiers_for_option_behavior(NSUInteger modif
 
         if (newStyle != currentStyle)
         {
+            NSString* title = [[[self title] copy] autorelease];
             BOOL showingButtons = (currentStyle & (NSClosableWindowMask | NSMiniaturizableWindowMask | NSResizableWindowMask)) != 0;
             BOOL shouldShowButtons = (newStyle & (NSClosableWindowMask | NSMiniaturizableWindowMask | NSResizableWindowMask)) != 0;
             if (shouldShowButtons != showingButtons && !((newStyle ^ currentStyle) & NSClosableWindowMask))
@@ -652,6 +658,9 @@ static inline NSUInteger adjusted_modifiers_for_option_behavior(NSUInteger modif
             }
             [self setStyleMask:newStyle];
             [self adjustFullScreenBehavior:[self collectionBehavior]];
+
+            if ([[self title] length] == 0 && [title length] > 0)
+                [self setTitle:title];
         }
 
         [self adjustFeaturesForState];
@@ -1621,12 +1630,9 @@ static inline NSUInteger adjusted_modifiers_for_option_behavior(NSUInteger modif
 
     - (void) windowDidEndLiveResize:(NSNotification *)notification
     {
-        macdrv_query* query = macdrv_create_query();
-        query->type = QUERY_RESIZE_END;
-        query->window = (macdrv_window)[self retain];
-
-        [self.queue query:query timeout:0.3];
-        macdrv_release_query(query);
+        macdrv_event* event = macdrv_create_event(WINDOW_RESIZE_ENDED, self);
+        [queue postEvent:event];
+        macdrv_release_event(event);
 
         self.liveResizeDisplayTimer = nil;
     }
@@ -1700,6 +1706,7 @@ static inline NSUInteger adjusted_modifiers_for_option_behavior(NSUInteger modif
         event = macdrv_create_event(WINDOW_FRAME_CHANGED, self);
         event->window_frame_changed.frame = NSRectToCGRect(frame);
         event->window_frame_changed.fullscreen = ([self styleMask] & NSFullScreenWindowMask) != 0;
+        event->window_frame_changed.in_resize = [self inLiveResize];
         [queue postEvent:event];
         macdrv_release_event(event);
 
