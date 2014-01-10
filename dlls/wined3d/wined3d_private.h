@@ -1083,7 +1083,8 @@ struct wined3d_context
     DWORD lastWasPow2Texture : 8;       /* MAX_TEXTURES, 8 */
     DWORD fixed_function_usage_map : 8; /* MAX_TEXTURES, 8 */
     DWORD lowest_disabled_stage : 4;    /* Max MAX_TEXTURES, 8 */
-    DWORD padding : 20;
+    DWORD rebind_fbo : 1;
+    DWORD padding : 19;
     DWORD shader_update_mask;
     DWORD constant_update_mask;
     DWORD                   numbered_array_mask;
@@ -1116,7 +1117,6 @@ struct wined3d_context
     struct fbo_entry        *current_fbo;
     GLuint                  fbo_read_binding;
     GLuint                  fbo_draw_binding;
-    BOOL rebind_fbo;
     struct wined3d_surface **blit_targets;
     GLenum *draw_buffers;
     DWORD draw_buffers_mask; /* Enabled draw buffers, 31 max. */
@@ -2192,7 +2192,7 @@ struct wined3d_surface
     struct wined3d_texture *container;
     struct wined3d_swapchain *swapchain;
     struct wined3d_palette *palette; /* D3D7 style palette handling */
-    DWORD draw_binding;
+    DWORD draw_binding, map_binding;
     void *user_memory;
 
     DWORD flags;
@@ -2298,12 +2298,13 @@ void flip_surface(struct wined3d_surface *front, struct wined3d_surface *back) D
 #define SFLAG_SRGBALLOCATED     0x00001000 /* A sRGB GL texture is allocated for this surface. */
 #define SFLAG_PBO               0x00002000 /* The surface has a PBO. */
 #define SFLAG_INSYSMEM          0x00004000 /* The system memory copy is current. */
-#define SFLAG_INTEXTURE         0x00008000 /* The GL texture is current. */
-#define SFLAG_INSRGBTEX         0x00010000 /* The GL sRGB texture is current. */
-#define SFLAG_INDRAWABLE        0x00020000 /* The GL drawable is current. */
-#define SFLAG_INRB_MULTISAMPLE  0x00040000 /* The multisample renderbuffer is current. */
-#define SFLAG_INRB_RESOLVED     0x00080000 /* The resolved renderbuffer is current. */
-#define SFLAG_DISCARDED         0x00100000 /* Surface was discarded, allocating new location is enough. */
+#define SFLAG_INUSERMEM         0x00008000 /* The user memory copy is current. */
+#define SFLAG_INTEXTURE         0x00010000 /* The GL texture is current. */
+#define SFLAG_INSRGBTEX         0x00020000 /* The GL sRGB texture is current. */
+#define SFLAG_INDRAWABLE        0x00040000 /* The GL drawable is current. */
+#define SFLAG_INRB_MULTISAMPLE  0x00080000 /* The multisample renderbuffer is current. */
+#define SFLAG_INRB_RESOLVED     0x00100000 /* The resolved renderbuffer is current. */
+#define SFLAG_DISCARDED         0x00200000 /* Surface was discarded, allocating new location is enough. */
 
 /* In some conditions the surface memory must not be freed:
  * SFLAG_CONVERTED: Converting the data back would take too long
@@ -2320,6 +2321,7 @@ void flip_surface(struct wined3d_surface *front, struct wined3d_surface *back) D
                              SFLAG_PIN_SYSMEM)
 
 #define SFLAG_LOCATIONS     (SFLAG_INSYSMEM         | \
+                             SFLAG_INUSERMEM        | \
                              SFLAG_INTEXTURE        | \
                              SFLAG_INSRGBTEX        | \
                              SFLAG_INDRAWABLE       | \

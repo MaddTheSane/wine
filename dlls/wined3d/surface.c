@@ -514,21 +514,30 @@ static HRESULT surface_create_dib_section(struct wined3d_surface *surface)
     return WINED3D_OK;
 }
 
-static void surface_get_memory(const struct wined3d_surface *surface, struct wined3d_bo_address *data)
+static void surface_get_memory(const struct wined3d_surface *surface, struct wined3d_bo_address *data,
+        DWORD location)
 {
-    if (surface->user_memory)
+    if (location & SFLAG_INUSERMEM)
     {
         data->addr = surface->user_memory;
         data->buffer_object = 0;
         return;
     }
-    if (surface->flags & SFLAG_PBO)
+    if (location & SFLAG_INSYSMEM)
     {
-        data->addr = NULL;
-        data->buffer_object = surface->pbo;
+        if (surface->flags & SFLAG_PBO)
+        {
+            data->addr = NULL;
+            data->buffer_object = surface->pbo;
+            return;
+        }
+        data->addr = surface->resource.allocatedMemory;
+        data->buffer_object = 0;
         return;
     }
-    data->addr = surface->resource.allocatedMemory;
+
+    ERR("Unexpected locations %s.\n", debug_surflocation(location));
+    data->addr = NULL;
     data->buffer_object = 0;
 }
 
@@ -551,7 +560,7 @@ static void surface_create_pbo(struct wined3d_surface *surface, const struct win
     struct wined3d_context *context;
     GLenum error;
     struct wined3d_bo_address data;
-    surface_get_memory(surface, &data);
+    surface_get_memory(surface, &data, SFLAG_INSYSMEM);
 
     context = context_acquire(surface->resource.device, NULL);
 
@@ -755,12 +764,12 @@ static void surface_realize_palette(struct wined3d_surface *surface)
         }
         else
         {
-            if (!(surface->flags & SFLAG_INSYSMEM))
+            if (!(surface->flags & surface->map_binding))
             {
                 TRACE("Palette changed with surface that does not have an up to date system memory copy.\n");
-                surface_load_location(surface, SFLAG_INSYSMEM);
+                surface_load_location(surface, surface->map_binding);
             }
-            surface_invalidate_location(surface, ~SFLAG_INSYSMEM);
+            surface_invalidate_location(surface, ~surface->map_binding);
         }
     }
 
@@ -797,47 +806,55 @@ static BYTE *surface_map(struct wined3d_surface *surface, const RECT *rect, DWOR
     {
         TRACE("WINED3D_MAP_DISCARD flag passed, marking SYSMEM as up to date.\n");
         surface_prepare_system_memory(surface);
-        surface_validate_location(surface, SFLAG_INSYSMEM);
+        surface_validate_location(surface, surface->map_binding);
     }
     else
     {
         if (surface->resource.usage & WINED3DUSAGE_DYNAMIC)
             WARN_(d3d_perf)("Mapping a dynamic surface without WINED3D_MAP_DISCARD.\n");
 
-        surface_load_location(surface, SFLAG_INSYSMEM);
+        surface_load_location(surface, surface->map_binding);
     }
 
     if (!(flags & (WINED3D_MAP_NO_DIRTY_UPDATE | WINED3D_MAP_READONLY)))
-        surface_invalidate_location(surface, ~SFLAG_INSYSMEM);
+        surface_invalidate_location(surface, ~surface->map_binding);
 
-    if (surface->flags & SFLAG_PBO)
+    switch (surface->map_binding)
     {
-        BYTE *ret;
-        const struct wined3d_gl_info *gl_info;
-        struct wined3d_context *context;
+        case SFLAG_INUSERMEM:
+            return surface->user_memory;
 
-        context = context_acquire(device, NULL);
-        gl_info = context->gl_info;
+        case SFLAG_INSYSMEM:
+            if (surface->flags & SFLAG_PBO)
+            {
+                BYTE *ret;
+                const struct wined3d_gl_info *gl_info;
+                struct wined3d_context *context;
 
-        GL_EXTCALL(glBindBufferARB(GL_PIXEL_UNPACK_BUFFER_ARB, surface->pbo));
-        checkGLcall("glBindBufferARB");
+                context = context_acquire(device, NULL);
+                gl_info = context->gl_info;
 
-        ret = GL_EXTCALL(glMapBufferARB(GL_PIXEL_UNPACK_BUFFER_ARB, GL_READ_WRITE_ARB));
-        checkGLcall("glMapBufferARB");
+                GL_EXTCALL(glBindBufferARB(GL_PIXEL_UNPACK_BUFFER_ARB, surface->pbo));
+                checkGLcall("glBindBufferARB");
 
-        /* Make sure the PBO isn't set anymore in order not to break non-PBO
-         * calls. */
-        GL_EXTCALL(glBindBufferARB(GL_PIXEL_UNPACK_BUFFER_ARB, 0));
-        checkGLcall("glBindBufferARB");
+                ret = GL_EXTCALL(glMapBufferARB(GL_PIXEL_UNPACK_BUFFER_ARB, GL_READ_WRITE_ARB));
+                checkGLcall("glMapBufferARB");
 
-        context_release(context);
-        return ret;
+                /* Make sure the PBO isn't set anymore in order not to break non-PBO
+                 * calls. */
+                GL_EXTCALL(glBindBufferARB(GL_PIXEL_UNPACK_BUFFER_ARB, 0));
+                checkGLcall("glBindBufferARB");
+
+                context_release(context);
+                return ret;
+            }
+
+            return surface->resource.allocatedMemory;
+
+        default:
+            ERR("Unexpected map binding %s.\n", debug_surflocation(surface->map_binding));
+            return NULL;
     }
-
-    if (surface->user_memory)
-        return surface->user_memory;
-
-    return surface->resource.allocatedMemory;
 }
 
 static void surface_unmap(struct wined3d_surface *surface)
@@ -848,21 +865,32 @@ static void surface_unmap(struct wined3d_surface *surface)
 
     memset(&surface->lockedRect, 0, sizeof(surface->lockedRect));
 
-    if (surface->flags & SFLAG_PBO)
+    switch (surface->map_binding)
     {
-        const struct wined3d_gl_info *gl_info;
-        struct wined3d_context *context;
+        case SFLAG_INUSERMEM:
+            break;
 
-        TRACE("Freeing PBO memory.\n");
+        case SFLAG_INSYSMEM:
+            if (surface->flags & SFLAG_PBO)
+            {
+                const struct wined3d_gl_info *gl_info;
+                struct wined3d_context *context;
 
-        context = context_acquire(device, NULL);
-        gl_info = context->gl_info;
+                TRACE("Freeing PBO memory.\n");
 
-        GL_EXTCALL(glBindBufferARB(GL_PIXEL_UNPACK_BUFFER_ARB, surface->pbo));
-        GL_EXTCALL(glUnmapBufferARB(GL_PIXEL_UNPACK_BUFFER_ARB));
-        GL_EXTCALL(glBindBufferARB(GL_PIXEL_UNPACK_BUFFER_ARB, 0));
-        checkGLcall("glUnmapBufferARB");
-        context_release(context);
+                context = context_acquire(device, NULL);
+                gl_info = context->gl_info;
+
+                GL_EXTCALL(glBindBufferARB(GL_PIXEL_UNPACK_BUFFER_ARB, surface->pbo));
+                GL_EXTCALL(glUnmapBufferARB(GL_PIXEL_UNPACK_BUFFER_ARB));
+                GL_EXTCALL(glBindBufferARB(GL_PIXEL_UNPACK_BUFFER_ARB, 0));
+                checkGLcall("glUnmapBufferARB");
+                context_release(context);
+            }
+            break;
+
+        default:
+            ERR("Unexpected map binding %s.\n", debug_surflocation(surface->map_binding));
     }
 
     TRACE("dirtyfied %u.\n", surface->flags & (SFLAG_INDRAWABLE | SFLAG_INTEXTURE) ? 0 : 1);
@@ -1325,9 +1353,6 @@ static BOOL surface_init_sysmem(struct wined3d_surface *surface)
         surface->resource.allocatedMemory = surface->resource.heap_memory;
     }
 
-    surface_validate_location(surface, SFLAG_INSYSMEM);
-    surface_invalidate_location(surface, ~SFLAG_INSYSMEM);
-
     return TRUE;
 }
 
@@ -1354,7 +1379,10 @@ static void surface_unload(struct wined3d_resource *resource)
          * and all flags get lost
          */
         if (!(surface->flags & SFLAG_PBO))
+        {
             surface_init_sysmem(surface);
+            surface_validate_location(surface, surface->map_binding);
+        }
         /* We also get here when the ddraw swapchain is destroyed, for example
          * for a mode switch. In this case this surface won't necessarily be
          * an implicit surface. We have to mark it lost so that the
@@ -1363,9 +1391,9 @@ static void surface_unload(struct wined3d_resource *resource)
     }
     else
     {
-        surface_load_location(surface, SFLAG_INSYSMEM);
+        surface_load_location(surface, surface->map_binding);
     }
-    surface_invalidate_location(surface, ~SFLAG_INSYSMEM);
+    surface_invalidate_location(surface, ~surface->map_binding);
     surface->flags &= ~(SFLAG_ALLOCATED | SFLAG_SRGBALLOCATED);
 
     context = context_acquire(device, NULL);
@@ -1497,10 +1525,18 @@ static BYTE *gdi_surface_map(struct wined3d_surface *surface, const RECT *rect, 
     TRACE("surface %p, rect %s, flags %#x.\n",
             surface, wine_dbgstr_rect(rect), flags);
 
-    if (surface->user_memory)
-        return surface->user_memory;
+    switch (surface->map_binding)
+    {
+        case SFLAG_INUSERMEM:
+            return surface->user_memory;
 
-    return surface->resource.allocatedMemory;
+        case SFLAG_INSYSMEM:
+            return surface->resource.allocatedMemory;
+
+        default:
+            ERR("Unexpected map binding %s.\n", debug_surflocation(surface->map_binding));
+            return NULL;
+    }
 }
 
 static void gdi_surface_unmap(struct wined3d_surface *surface)
@@ -1545,7 +1581,8 @@ void surface_set_texture_target(struct wined3d_surface *surface, GLenum target, 
 /* This call just downloads data, the caller is responsible for binding the
  * correct texture. */
 /* Context activation is done by the caller. */
-static void surface_download_data(struct wined3d_surface *surface, const struct wined3d_gl_info *gl_info)
+static void surface_download_data(struct wined3d_surface *surface, const struct wined3d_gl_info *gl_info,
+        DWORD dst_location)
 {
     const struct wined3d_format *format = surface->resource.format;
     struct wined3d_bo_address data;
@@ -1557,7 +1594,7 @@ static void surface_download_data(struct wined3d_surface *surface, const struct 
         return;
     }
 
-    surface_get_memory(surface, &data);
+    surface_get_memory(surface, &data, dst_location);
 
     if (format->flags & WINED3DFMT_FLAG_COMPRESSED)
     {
@@ -2060,7 +2097,7 @@ HRESULT surface_upload_from_surface(struct wined3d_surface *dst_surface, const P
         surface_load_location(dst_surface, SFLAG_INTEXTURE);
     wined3d_texture_bind(dst_surface->container, context, FALSE);
 
-    surface_get_memory(src_surface, &data);
+    surface_get_memory(src_surface, &data, src_surface->flags);
     src_pitch = wined3d_surface_get_pitch(src_surface);
 
     surface_upload_data(dst_surface, gl_info, src_format, src_rect, src_pitch, dst_point, FALSE, &data);
@@ -2284,8 +2321,8 @@ void surface_load(struct wined3d_surface *surface, BOOL srgb)
         /* To perform the color key conversion we need a sysmem copy of
          * the surface. Make sure we have it. */
 
-        surface_load_location(surface, SFLAG_INSYSMEM);
-        surface_invalidate_location(surface, ~SFLAG_INSYSMEM);
+        surface_load_location(surface, surface->map_binding);
+        surface_invalidate_location(surface, ~surface->map_binding);
         /* Switching color keying on / off may change the internal format. */
         if (ck_changed)
             surface_force_reload(surface);
@@ -2743,6 +2780,8 @@ HRESULT CDECL wined3d_surface_update_desc(struct wined3d_surface *surface,
         surface->flags &= ~SFLAG_NONPOW2;
 
     surface->user_memory = mem;
+    if (surface->user_memory)
+        surface->map_binding = SFLAG_INUSERMEM;
     surface->pitch = pitch;
     surface->resource.format = format;
     surface->resource.multisample_type = multisample_type;
@@ -2760,10 +2799,11 @@ HRESULT CDECL wined3d_surface_update_desc(struct wined3d_surface *surface,
             return hr;
         }
         surface->resource.allocatedMemory = surface->dib.bitmap_data;
-        surface->flags |= SFLAG_INSYSMEM;
     }
     else if (!surface_init_sysmem(surface))
         return E_OUTOFMEMORY;
+
+    surface_validate_location(surface, surface->map_binding);
 
     return WINED3D_OK;
 }
@@ -3307,7 +3347,7 @@ HRESULT CDECL wined3d_surface_releasedc(struct wined3d_surface *surface, HDC dc)
     return WINED3D_OK;
 }
 
-static void read_from_framebuffer(struct wined3d_surface *surface)
+static void read_from_framebuffer(struct wined3d_surface *surface, DWORD dst_location)
 {
     struct wined3d_device *device = surface->resource.device;
     const struct wined3d_gl_info *gl_info;
@@ -3322,7 +3362,7 @@ static void read_from_framebuffer(struct wined3d_surface *surface)
     struct wined3d_bo_address data;
     UINT pitch = wined3d_surface_get_pitch(surface);
 
-    surface_get_memory(surface, &data);
+    surface_get_memory(surface, &data, dst_location);
 
     context = context_acquire(device, surface);
     context_apply_blit_state(context, device);
@@ -4321,7 +4361,7 @@ void surface_translate_drawable_coords(const struct wined3d_surface *surface, HW
 }
 
 static void surface_blt_to_drawable(const struct wined3d_device *device,
-        enum wined3d_texture_filter_type filter, BOOL color_key,
+        enum wined3d_texture_filter_type filter, BOOL alpha_test,
         struct wined3d_surface *src_surface, const RECT *src_rect_in,
         struct wined3d_surface *dst_surface, const RECT *dst_rect_in)
 {
@@ -4348,7 +4388,7 @@ static void surface_blt_to_drawable(const struct wined3d_device *device,
 
     device->blitter->set_shader(device->blit_priv, context, src_surface);
 
-    if (color_key)
+    if (alpha_test)
     {
         gl_info->gl_ops.gl.p_glEnable(GL_ALPHA_TEST);
         checkGLcall("glEnable(GL_ALPHA_TEST)");
@@ -4372,7 +4412,7 @@ static void surface_blt_to_drawable(const struct wined3d_device *device,
 
     draw_textured_quad(src_surface, context, &src_rect, &dst_rect, filter);
 
-    if (color_key)
+    if (alpha_test)
     {
         gl_info->gl_ops.gl.p_glDisable(GL_ALPHA_TEST);
         checkGLcall("glDisable(GL_ALPHA_TEST)");
@@ -4571,7 +4611,8 @@ static HRESULT surface_blt_special(struct wined3d_surface *dst_surface, const RE
             src_surface->container->color_key_flags &= ~WINEDDSD_CKSRCBLT;
         }
 
-        surface_blt_to_drawable(device, filter, flags & (WINEDDBLT_KEYSRC | WINEDDBLT_KEYSRCOVERRIDE),
+        surface_blt_to_drawable(device, filter,
+                flags & (WINEDDBLT_KEYSRC | WINEDDBLT_KEYSRCOVERRIDE | WINEDDBLT_ALPHATEST),
                 src_surface, src_rect, dst_surface, dst_rect);
 
         /* Restore the color key parameters */
@@ -4864,7 +4905,7 @@ static DWORD resource_access_from_location(DWORD location)
 }
 
 static void surface_load_sysmem(struct wined3d_surface *surface,
-        const struct wined3d_gl_info *gl_info)
+        const struct wined3d_gl_info *gl_info, DWORD dst_location)
 {
     surface_prepare_system_memory(surface);
 
@@ -4881,7 +4922,7 @@ static void surface_load_sysmem(struct wined3d_surface *surface,
         context = context_acquire(device, NULL);
 
         wined3d_texture_bind_and_dirtify(surface->container, context, !(surface->flags & SFLAG_INTEXTURE));
-        surface_download_data(surface, gl_info);
+        surface_download_data(surface, gl_info, dst_location);
 
         context_release(context);
 
@@ -4890,7 +4931,7 @@ static void surface_load_sysmem(struct wined3d_surface *surface,
 
     if (surface->flags & SFLAG_INDRAWABLE)
     {
-        read_from_framebuffer(surface);
+        read_from_framebuffer(surface, dst_location);
         return;
     }
 
@@ -4978,20 +5019,20 @@ static HRESULT surface_load_texture(struct wined3d_surface *surface,
 
     if (srgb)
     {
-        if ((surface->flags & (SFLAG_INTEXTURE | SFLAG_INSYSMEM)) == SFLAG_INTEXTURE)
+        if ((surface->flags & (SFLAG_INTEXTURE | surface->map_binding)) == SFLAG_INTEXTURE)
         {
             /* Performance warning... */
             FIXME("Downloading RGB surface %p to reload it as sRGB.\n", surface);
-            surface_load_location(surface, SFLAG_INSYSMEM);
+            surface_load_location(surface, surface->map_binding);
         }
     }
     else
     {
-        if ((surface->flags & (SFLAG_INSRGBTEX | SFLAG_INSYSMEM)) == SFLAG_INSRGBTEX)
+        if ((surface->flags & (SFLAG_INSRGBTEX | surface->map_binding)) == SFLAG_INSRGBTEX)
         {
             /* Performance warning... */
             FIXME("Downloading sRGB surface %p to reload it as RGB.\n", surface);
-            surface_load_location(surface, SFLAG_INSYSMEM);
+            surface_load_location(surface, surface->map_binding);
         }
     }
 
@@ -5027,7 +5068,7 @@ static HRESULT surface_load_texture(struct wined3d_surface *surface,
         surface_remove_pbo(surface, gl_info);
     }
 
-    surface_get_memory(surface, &data);
+    surface_get_memory(surface, &data, surface->flags);
     if (format.convert)
     {
         /* This code is entered for texture formats which need a fixup. */
@@ -5149,8 +5190,9 @@ HRESULT surface_load_location(struct wined3d_surface *surface, DWORD location)
 
     switch (location)
     {
+        case SFLAG_INUSERMEM:
         case SFLAG_INSYSMEM:
-            surface_load_sysmem(surface, gl_info);
+            surface_load_sysmem(surface, gl_info, location);
             break;
 
         case SFLAG_INDRAWABLE:
@@ -6395,6 +6437,8 @@ static HRESULT surface_init(struct wined3d_surface *surface, struct wined3d_text
         wined3d_resource_free_sysmem(&surface->resource);
         surface->resource.allocatedMemory = surface->dib.bitmap_data;
     }
+
+    surface->map_binding = SFLAG_INSYSMEM;
 
     return hr;
 }

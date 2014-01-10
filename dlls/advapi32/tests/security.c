@@ -35,8 +35,13 @@
 
 #include "wine/test.h"
 
+#ifndef PROCESS_QUERY_LIMITED_INFORMATION
+#define PROCESS_QUERY_LIMITED_INFORMATION 0x1000
+#endif
+
 /* PROCESS_ALL_ACCESS in Vista+ PSDKs is incompatible with older Windows versions */
 #define PROCESS_ALL_ACCESS_NT4 (PROCESS_ALL_ACCESS & ~0xf000)
+#define PROCESS_ALL_ACCESS_VISTA (PROCESS_ALL_ACCESS | 0xf000)
 
 #ifndef EVENT_QUERY_STATE
 #define EVENT_QUERY_STATE 0x0001
@@ -45,6 +50,14 @@
 #ifndef SEMAPHORE_QUERY_STATE
 #define SEMAPHORE_QUERY_STATE 0x0001
 #endif
+
+#ifndef THREAD_SET_LIMITED_INFORMATION
+#define THREAD_SET_LIMITED_INFORMATION 0x0400
+#define THREAD_QUERY_LIMITED_INFORMATION 0x0800
+#endif
+
+#define THREAD_ALL_ACCESS_NT4 (STANDARD_RIGHTS_REQUIRED | SYNCHRONIZE | 0x3ff)
+#define THREAD_ALL_ACCESS_VISTA (STANDARD_RIGHTS_REQUIRED | SYNCHRONIZE | 0xffff)
 
 /* copied from Wine winternl.h - not included in the Windows SDK */
 typedef enum _OBJECT_INFORMATION_CLASS {
@@ -4529,6 +4542,7 @@ static void test_mutex_security(HANDLE token)
         int todo, generic, mapped;
     } map[] =
     {
+        { 0, 0, 0 },
         { 1, GENERIC_READ, STANDARD_RIGHTS_READ | MUTANT_QUERY_STATE },
         { 0, GENERIC_WRITE, STANDARD_RIGHTS_WRITE },
         { 0, GENERIC_EXECUTE, STANDARD_RIGHTS_EXECUTE | SYNCHRONIZE },
@@ -4562,6 +4576,13 @@ todo_wine
         ok(access == map[i].mapped, "%d: expected %#x, got %#x\n", i, map[i].mapped, access);
 
         CloseHandle(dup);
+
+        SetLastError(0xdeadbeef);
+        dup = OpenMutexA(0, FALSE, "WineTestMutex");
+todo_wine
+        ok(!dup, "OpenMutex should fail\n");
+todo_wine
+        ok(GetLastError() == ERROR_ACCESS_DENIED, "wrong error %u\n", GetLastError());
     }
 
     test_default_handle_security(token, mutex, &mapping);
@@ -4582,6 +4603,7 @@ static void test_event_security(HANDLE token)
         int todo, generic, mapped;
     } map[] =
     {
+        { 0, 0, 0 },
         { 1, GENERIC_READ, STANDARD_RIGHTS_READ | EVENT_QUERY_STATE },
         { 1, GENERIC_WRITE, STANDARD_RIGHTS_WRITE | EVENT_MODIFY_STATE },
         { 1, GENERIC_EXECUTE, STANDARD_RIGHTS_EXECUTE | SYNCHRONIZE },
@@ -4615,6 +4637,13 @@ todo_wine
         ok(access == map[i].mapped, "%d: expected %#x, got %#x\n", i, map[i].mapped, access);
 
         CloseHandle(dup);
+
+        SetLastError(0xdeadbeef);
+        dup = OpenEventA(0, FALSE, "WineTestEvent");
+todo_wine
+        ok(!dup, "OpenEvent should fail\n");
+todo_wine
+        ok(GetLastError() == ERROR_ACCESS_DENIED, "wrong error %u\n", GetLastError());
     }
 
     test_default_handle_security(token, event, &mapping);
@@ -4635,6 +4664,7 @@ static void test_semaphore_security(HANDLE token)
         int todo, generic, mapped;
     } map[] =
     {
+        { 0, 0, 0 },
         { 1, GENERIC_READ, STANDARD_RIGHTS_READ | SEMAPHORE_QUERY_STATE },
         { 0, GENERIC_WRITE, STANDARD_RIGHTS_WRITE | SEMAPHORE_MODIFY_STATE },
         { 1, GENERIC_EXECUTE, STANDARD_RIGHTS_EXECUTE | SYNCHRONIZE },
@@ -4689,6 +4719,7 @@ static void test_named_pipe_security(HANDLE token)
         int todo, generic, mapped;
     } map[] =
     {
+        { 0, 0, 0 },
         { 1, GENERIC_READ, FILE_GENERIC_READ },
         { 1, GENERIC_WRITE, FILE_GENERIC_WRITE },
         { 1, GENERIC_EXECUTE, FILE_GENERIC_EXECUTE },
@@ -4758,13 +4789,14 @@ todo_wine
 
 static void test_file_security(HANDLE token)
 {
-    DWORD ret, i, access;
+    DWORD ret, i, access, bytes;
     HANDLE file, dup;
     static const struct
     {
         int generic, mapped;
     } map[] =
     {
+        { 0, 0 },
         { GENERIC_READ, FILE_GENERIC_READ },
         { GENERIC_WRITE, FILE_GENERIC_WRITE },
         { GENERIC_EXECUTE, FILE_GENERIC_EXECUTE },
@@ -4772,10 +4804,12 @@ static void test_file_security(HANDLE token)
     };
     char temp_path[MAX_PATH];
     char file_name[MAX_PATH];
+    char buf[16];
 
     GetTempPathA(MAX_PATH, temp_path);
     GetTempFileNameA(temp_path, "tmp", 0, file_name);
 
+    /* file */
     SetLastError(0xdeadbeef);
     file = CreateFileA(file_name, GENERIC_ALL, 0, NULL, CREATE_ALWAYS, 0, NULL);
     ok(file != INVALID_HANDLE_VALUE, "CreateFile error %d\n", GetLastError());
@@ -4797,7 +4831,273 @@ static void test_file_security(HANDLE token)
     }
 
     CloseHandle(file);
+
+    SetLastError(0xdeadbeef);
+    file = CreateFileA(file_name, 0, 0, NULL, OPEN_EXISTING, 0, NULL);
+    ok(file != INVALID_HANDLE_VALUE, "CreateFile error %d\n", GetLastError());
+
+    access = get_obj_access(file);
+todo_wine
+    ok(access == (FILE_READ_ATTRIBUTES | SYNCHRONIZE), "expected FILE_READ_ATTRIBUTES | SYNCHRONIZE, got %#x\n", access);
+
+    bytes = 0xdeadbeef;
+    SetLastError(0xdeadbeef);
+    ret = ReadFile(file, buf, sizeof(buf), &bytes, NULL);
+    ok(!ret, "ReadFile should fail\n");
+    ok(GetLastError() == ERROR_ACCESS_DENIED, "expected ERROR_ACCESS_DENIED, got %d\n", GetLastError());
+    ok(bytes == 0, "expected 0, got %u\n", bytes);
+
+    CloseHandle(file);
+
+    SetLastError(0xdeadbeef);
+    file = CreateFileA(file_name, GENERIC_WRITE, 0, NULL, OPEN_EXISTING, 0, 0);
+    ok(file != INVALID_HANDLE_VALUE, "CreateFile error %d\n", GetLastError());
+
+    access = get_obj_access(file);
+todo_wine
+    ok(access == (FILE_GENERIC_WRITE | FILE_READ_ATTRIBUTES), "expected FILE_GENERIC_WRITE | FILE_READ_ATTRIBUTES, got %#x\n", access);
+
+    bytes = 0xdeadbeef;
+    SetLastError(0xdeadbeef);
+    ret = ReadFile(file, buf, sizeof(buf), &bytes, NULL);
+    ok(!ret, "ReadFile should fail\n");
+    ok(GetLastError() == ERROR_ACCESS_DENIED, "expected ERROR_ACCESS_DENIED, got %d\n", GetLastError());
+    ok(bytes == 0, "expected 0, got %u\n", bytes);
+
+    CloseHandle(file);
     DeleteFileA(file_name);
+
+    /* directory */
+    SetLastError(0xdeadbeef);
+    file = CreateFileA(temp_path, GENERIC_ALL, 0, NULL, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, 0);
+    ok(file != INVALID_HANDLE_VALUE, "CreateFile error %d\n", GetLastError());
+
+    access = get_obj_access(file);
+    ok(access == FILE_ALL_ACCESS, "expected FILE_ALL_ACCESS, got %#x\n", access);
+
+    for (i = 0; i < sizeof(map)/sizeof(map[0]); i++)
+    {
+        SetLastError( 0xdeadbeef );
+        ret = DuplicateHandle(GetCurrentProcess(), file, GetCurrentProcess(), &dup,
+                              map[i].generic, FALSE, 0);
+        ok(ret, "DuplicateHandle error %d\n", GetLastError());
+
+        access = get_obj_access(dup);
+        ok(access == map[i].mapped, "%d: expected %#x, got %#x\n", i, map[i].mapped, access);
+
+        CloseHandle(dup);
+    }
+
+    CloseHandle(file);
+
+    SetLastError(0xdeadbeef);
+    file = CreateFileA(temp_path, 0, 0, NULL, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, 0);
+    ok(file != INVALID_HANDLE_VALUE, "CreateFile error %d\n", GetLastError());
+
+    access = get_obj_access(file);
+todo_wine
+    ok(access == (FILE_READ_ATTRIBUTES | SYNCHRONIZE), "expected FILE_READ_ATTRIBUTES | SYNCHRONIZE, got %#x\n", access);
+
+    CloseHandle(file);
+
+    SetLastError(0xdeadbeef);
+    file = CreateFileA(temp_path, GENERIC_WRITE, 0, NULL, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, 0);
+    ok(file != INVALID_HANDLE_VALUE, "CreateFile error %d\n", GetLastError());
+
+    access = get_obj_access(file);
+todo_wine
+    ok(access == (FILE_GENERIC_WRITE | FILE_READ_ATTRIBUTES), "expected FILE_GENERIC_WRITE | FILE_READ_ATTRIBUTES, got %#x\n", access);
+
+    CloseHandle(file);
+}
+
+static void test_filemap_security(void)
+{
+    DWORD ret, i, access;
+    HANDLE mapping, dup;
+    static const struct
+    {
+        int generic, mapped;
+    } map[] =
+    {
+        { 0, 0 },
+        { GENERIC_READ, STANDARD_RIGHTS_READ | SECTION_QUERY | SECTION_MAP_READ },
+        { GENERIC_WRITE, STANDARD_RIGHTS_WRITE | SECTION_MAP_WRITE },
+        { GENERIC_EXECUTE, STANDARD_RIGHTS_EXECUTE | SECTION_MAP_EXECUTE },
+        { GENERIC_ALL, STANDARD_RIGHTS_REQUIRED | SECTION_ALL_ACCESS }
+    };
+
+    SetLastError(0xdeadbeef);
+    mapping = CreateFileMappingW(INVALID_HANDLE_VALUE, NULL, PAGE_EXECUTE_READWRITE, 0, 4096, NULL);
+    if (mapping)
+    {
+        access = get_obj_access(mapping);
+todo_wine
+        ok(access == (STANDARD_RIGHTS_REQUIRED | SECTION_QUERY | SECTION_MAP_READ | SECTION_MAP_WRITE | SECTION_MAP_EXECUTE),
+           "expected STANDARD_RIGHTS_REQUIRED | SECTION_QUERY | SECTION_MAP_READ | SECTION_MAP_WRITE | SECTION_MAP_EXECUTE, got %#x\n", access);
+    }
+    else /* win2k fails to create EXECUTE mapping using system page file */
+    {
+        SetLastError(0xdeadbeef);
+        mapping = CreateFileMappingW(INVALID_HANDLE_VALUE, NULL, PAGE_READWRITE, 0, 4096, NULL);
+        ok(mapping != 0, "CreateFileMapping error %d\n", GetLastError());
+
+        access = get_obj_access(mapping);
+        ok(access == (STANDARD_RIGHTS_REQUIRED | SECTION_QUERY | SECTION_MAP_READ | SECTION_MAP_WRITE),
+           "expected STANDARD_RIGHTS_REQUIRED | SECTION_QUERY | SECTION_MAP_READ | SECTION_MAP_WRITE, got %#x\n", access);
+    }
+
+    for (i = 0; i < sizeof(map)/sizeof(map[0]); i++)
+    {
+        SetLastError( 0xdeadbeef );
+        ret = DuplicateHandle(GetCurrentProcess(), mapping, GetCurrentProcess(), &dup,
+                              map[i].generic, FALSE, 0);
+        ok(ret, "DuplicateHandle error %d\n", GetLastError());
+
+        access = get_obj_access(dup);
+        ok(access == map[i].mapped, "%d: expected %#x, got %#x\n", i, map[i].mapped, access);
+
+        CloseHandle(dup);
+    }
+
+    CloseHandle(mapping);
+}
+
+static void test_thread_security(void)
+{
+    DWORD ret, i, access;
+    HANDLE thread, dup;
+    static const struct
+    {
+        int generic, mapped;
+    } map[] =
+    {
+        { 0, 0 },
+        { GENERIC_READ, STANDARD_RIGHTS_READ | THREAD_QUERY_INFORMATION | THREAD_GET_CONTEXT },
+        { GENERIC_WRITE, STANDARD_RIGHTS_WRITE | THREAD_SET_INFORMATION | THREAD_SET_CONTEXT | THREAD_TERMINATE | THREAD_SUSPEND_RESUME | 0x4 },
+        { GENERIC_EXECUTE, STANDARD_RIGHTS_EXECUTE | SYNCHRONIZE },
+        { GENERIC_ALL, THREAD_ALL_ACCESS_NT4 }
+    };
+
+    SetLastError(0xdeadbeef);
+    thread = CreateThread(NULL, 0, (void *)0xdeadbeef, NULL, CREATE_SUSPENDED, &ret);
+    ok(thread != 0, "CreateThread error %d\n", GetLastError());
+
+    access = get_obj_access(thread);
+    ok(access == THREAD_ALL_ACCESS_NT4 || access == THREAD_ALL_ACCESS_VISTA, "expected THREAD_ALL_ACCESS, got %#x\n", access);
+
+    for (i = 0; i < sizeof(map)/sizeof(map[0]); i++)
+    {
+        SetLastError( 0xdeadbeef );
+        ret = DuplicateHandle(GetCurrentProcess(), thread, GetCurrentProcess(), &dup,
+                              map[i].generic, FALSE, 0);
+        ok(ret, "DuplicateHandle error %d\n", GetLastError());
+
+        access = get_obj_access(dup);
+        switch (map[i].generic)
+        {
+        case GENERIC_READ:
+todo_wine
+            ok(access == map[i].mapped || access == (map[i].mapped | THREAD_QUERY_LIMITED_INFORMATION) /* Vista+ */,
+               "%d: expected %#x, got %#x\n", i, map[i].mapped, access);
+            break;
+        case GENERIC_WRITE:
+todo_wine
+            ok(access == map[i].mapped || access == (map[i].mapped | THREAD_SET_LIMITED_INFORMATION) /* Vista+ */,
+               "%d: expected %#x, got %#x\n", i, map[i].mapped, access);
+            break;
+        case GENERIC_EXECUTE:
+todo_wine
+            ok(access == map[i].mapped || access == (map[i].mapped | THREAD_QUERY_LIMITED_INFORMATION) /* Vista+ */,
+               "%d: expected %#x, got %#x\n", i, map[i].mapped, access);
+            break;
+        case GENERIC_ALL:
+            ok(access == map[i].mapped || access == THREAD_ALL_ACCESS_VISTA,
+               "%d: expected %#x, got %#x\n", i, map[i].mapped, access);
+            break;
+        default:
+            ok(access == map[i].mapped, "%d: expected %#x, got %#x\n", i, map[i].mapped, access);
+            break;
+        }
+
+        CloseHandle(dup);
+    }
+
+    TerminateThread(thread, 0);
+    CloseHandle(thread);
+}
+
+static void test_process_access(void)
+{
+    DWORD ret, i, access;
+    HANDLE process, dup;
+    STARTUPINFOA sti;
+    PROCESS_INFORMATION pi;
+    char cmdline[] = "winver.exe";
+    static const struct
+    {
+        int generic, mapped;
+    } map[] =
+    {
+        { 0, 0 },
+        { GENERIC_READ, STANDARD_RIGHTS_READ | PROCESS_QUERY_INFORMATION | PROCESS_VM_READ },
+        { GENERIC_WRITE, STANDARD_RIGHTS_WRITE | PROCESS_SET_QUOTA | PROCESS_SET_INFORMATION | PROCESS_SUSPEND_RESUME |
+                         PROCESS_VM_WRITE | PROCESS_DUP_HANDLE | PROCESS_CREATE_PROCESS | PROCESS_CREATE_THREAD | PROCESS_VM_OPERATION },
+        { GENERIC_EXECUTE, STANDARD_RIGHTS_EXECUTE | SYNCHRONIZE },
+        { GENERIC_ALL, PROCESS_ALL_ACCESS_NT4 }
+    };
+
+    memset(&sti, 0, sizeof(sti));
+    sti.cb = sizeof(sti);
+    SetLastError(0xdeadbeef);
+    ret = CreateProcessA(NULL, cmdline, NULL, NULL, FALSE, CREATE_SUSPENDED, NULL, NULL, &sti, &pi);
+    ok(ret, "CreateProcess() error %d\n", GetLastError());
+
+    CloseHandle(pi.hThread);
+    process = pi.hProcess;
+
+    access = get_obj_access(process);
+    ok(access == PROCESS_ALL_ACCESS_NT4 || access == PROCESS_ALL_ACCESS_VISTA, "expected PROCESS_ALL_ACCESS, got %#x\n", access);
+
+    for (i = 0; i < sizeof(map)/sizeof(map[0]); i++)
+    {
+        SetLastError( 0xdeadbeef );
+        ret = DuplicateHandle(GetCurrentProcess(), process, GetCurrentProcess(), &dup,
+                              map[i].generic, FALSE, 0);
+        ok(ret, "DuplicateHandle error %d\n", GetLastError());
+
+        access = get_obj_access(dup);
+        switch (map[i].generic)
+        {
+        case GENERIC_READ:
+todo_wine
+            ok(access == map[i].mapped || access == (map[i].mapped | PROCESS_QUERY_LIMITED_INFORMATION) /* Vista+ */,
+               "%d: expected %#x, got %#x\n", i, map[i].mapped, access);
+            break;
+        case GENERIC_WRITE:
+todo_wine
+            ok(access == map[i].mapped || access == (map[i].mapped | PROCESS_TERMINATE) /* before Vista */,
+               "%d: expected %#x, got %#x\n", i, map[i].mapped, access);
+            break;
+        case GENERIC_EXECUTE:
+todo_wine
+            ok(access == map[i].mapped || access == (map[i].mapped | PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_TERMINATE) /* Vista+ */,
+               "%d: expected %#x, got %#x\n", i, map[i].mapped, access);
+            break;
+        case GENERIC_ALL:
+            ok(access == map[i].mapped || access == PROCESS_ALL_ACCESS_VISTA,
+               "%d: expected %#x, got %#x\n", i, map[i].mapped, access);
+            break;
+        default:
+            ok(access == map[i].mapped, "%d: expected %#x, got %#x\n", i, map[i].mapped, access);
+            break;
+        }
+
+        CloseHandle(dup);
+    }
+
+    TerminateProcess(process, 0);
+    CloseHandle(process);
 }
 
 static BOOL validate_impersonation_token(HANDLE token, DWORD *token_type)
@@ -4875,6 +5175,9 @@ static void test_kernel_objects_security(void)
     test_named_pipe_security(token);
     test_semaphore_security(token);
     test_file_security(token);
+    test_filemap_security();
+    test_thread_security();
+    test_process_access();
     /* FIXME: test other kernel object types */
 
     CloseHandle(process_token);
