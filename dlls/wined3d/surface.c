@@ -85,7 +85,6 @@ static void surface_cleanup(struct wined3d_surface *surface)
         DeleteDC(surface->hDC);
         DeleteObject(surface->dib.DIBsection);
         surface->dib.bitmap_data = NULL;
-        surface->resource.allocatedMemory = NULL;
     }
 
     if (surface->overlay_dest)
@@ -488,17 +487,6 @@ static HRESULT surface_create_dib_section(struct wined3d_surface *surface)
     }
 
     TRACE("DIBSection at %p.\n", surface->dib.bitmap_data);
-    /* Copy the existing surface to the dib section. */
-    if (surface->resource.allocatedMemory)
-    {
-        memcpy(surface->dib.bitmap_data, surface->resource.allocatedMemory,
-                surface->resource.height * wined3d_surface_get_pitch(surface));
-    }
-    else if (!surface->user_memory)
-    {
-        /* This is to make maps read the GL texture although memory is allocated. */
-        surface->flags &= ~SFLAG_INSYSMEM;
-    }
     surface->dib.bitmap_size = b_info->bmiHeader.biSizeImage;
 
     HeapFree(GetProcessHeap(), 0, b_info);
@@ -523,6 +511,12 @@ static void surface_get_memory(const struct wined3d_surface *surface, struct win
         data->buffer_object = 0;
         return;
     }
+    if (location & SFLAG_INDIB)
+    {
+        data->addr = surface->dib.bitmap_data;
+        data->buffer_object = 0;
+        return;
+    }
     if (location & SFLAG_INSYSMEM)
     {
         if (surface->flags & SFLAG_PBO)
@@ -531,7 +525,7 @@ static void surface_get_memory(const struct wined3d_surface *surface, struct win
             data->buffer_object = surface->pbo;
             return;
         }
-        data->addr = surface->resource.allocatedMemory;
+        data->addr = surface->resource.heap_memory;
         data->buffer_object = 0;
         return;
     }
@@ -584,8 +578,8 @@ static void surface_create_pbo(struct wined3d_surface *surface, const struct win
     /* We don't need the system memory anymore and we can't even use it for PBOs. */
     if (!(surface->flags & SFLAG_CLIENT))
         wined3d_resource_free_sysmem(&surface->resource);
-    surface->resource.allocatedMemory = NULL;
     surface->flags |= SFLAG_PBO;
+    surface->map_binding = SFLAG_INSYSMEM;
     context_release(context);
 }
 
@@ -597,13 +591,12 @@ static void surface_prepare_system_memory(struct wined3d_surface *surface)
 
     if (!(surface->flags & SFLAG_PBO) && surface_need_pbo(surface, gl_info))
         surface_create_pbo(surface, gl_info);
-    else if (!(surface->resource.allocatedMemory || surface->flags & SFLAG_PBO))
+    else if (!(surface->resource.heap_memory || surface->flags & SFLAG_PBO))
     {
         /* Whatever surface we have, make sure that there is memory allocated
          * for the downloaded copy, or a PBO to map. */
-        if (!surface->resource.heap_memory && !wined3d_resource_allocate_sysmem(&surface->resource))
+        if (!wined3d_resource_allocate_sysmem(&surface->resource))
             ERR("Failed to allocate system memory.\n");
-        surface->resource.allocatedMemory = surface->resource.heap_memory;
 
         if (surface->flags & SFLAG_INSYSMEM)
             ERR("Surface without memory or PBO has SFLAG_INSYSMEM set.\n");
@@ -618,6 +611,10 @@ void surface_prepare_map_memory(struct wined3d_surface *surface)
             if (!surface->user_memory)
                 ERR("Map binding is set to SFLAG_INUSERMEM but surface->user_memory is NULL.\n");
             break;
+
+        case SFLAG_INDIB:
+            if (!surface->dib.bitmap_data)
+                ERR("Map binding is set to SFLAG_INDIB but surface->dib.bitmap_data is NULL.\n");
 
         case SFLAG_INSYSMEM:
             surface_prepare_system_memory(surface);
@@ -635,7 +632,6 @@ static void surface_evict_sysmem(struct wined3d_surface *surface)
         return;
 
     wined3d_resource_free_sysmem(&surface->resource);
-    surface->resource.allocatedMemory = NULL;
     surface_invalidate_location(surface, SFLAG_INSYSMEM);
 }
 
@@ -825,6 +821,9 @@ static BYTE *surface_map(struct wined3d_surface *surface, const RECT *rect, DWOR
         case SFLAG_INUSERMEM:
             return surface->user_memory;
 
+        case SFLAG_INDIB:
+            return surface->dib.bitmap_data;
+
         case SFLAG_INSYSMEM:
             if (surface->flags & SFLAG_PBO)
             {
@@ -850,7 +849,7 @@ static BYTE *surface_map(struct wined3d_surface *surface, const RECT *rect, DWOR
                 return ret;
             }
 
-            return surface->resource.allocatedMemory;
+            return surface->resource.heap_memory;
 
         default:
             ERR("Unexpected map binding %s.\n", debug_surflocation(surface->map_binding));
@@ -869,6 +868,9 @@ static void surface_unmap(struct wined3d_surface *surface)
     switch (surface->map_binding)
     {
         case SFLAG_INUSERMEM:
+            break;
+
+        case SFLAG_INDIB:
             break;
 
         case SFLAG_INSYSMEM:
@@ -1302,9 +1304,17 @@ HRESULT CDECL wined3d_surface_get_render_target_data(struct wined3d_surface *sur
 /* Context activation is done by the caller. */
 static void surface_remove_pbo(struct wined3d_surface *surface, const struct wined3d_gl_info *gl_info)
 {
+    void *dst;
+
     if (surface->flags & SFLAG_DIBSECTION)
     {
-        surface->resource.allocatedMemory = surface->dib.bitmap_data;
+        surface->map_binding = SFLAG_INDIB;
+        dst = surface->dib.bitmap_data;
+        if (surface->flags & SFLAG_INSYSMEM)
+        {
+            surface_invalidate_location(surface, SFLAG_INSYSMEM);
+            surface_validate_location(surface, SFLAG_INDIB);
+        }
     }
     else
     {
@@ -1314,13 +1324,13 @@ static void surface_remove_pbo(struct wined3d_surface *surface, const struct win
             ERR("Surface %p has heap_memory %p and flags %#x.\n",
                     surface, surface->resource.heap_memory, surface->flags);
 
-        surface->resource.allocatedMemory = surface->resource.heap_memory;
+        dst = surface->resource.heap_memory;
     }
 
     GL_EXTCALL(glBindBufferARB(GL_PIXEL_UNPACK_BUFFER_ARB, surface->pbo));
     checkGLcall("glBindBufferARB(GL_PIXEL_UNPACK_BUFFER, surface->pbo)");
     GL_EXTCALL(glGetBufferSubDataARB(GL_PIXEL_UNPACK_BUFFER_ARB, 0,
-            surface->resource.size, surface->resource.allocatedMemory));
+            surface->resource.size, dst));
     checkGLcall("glGetBufferSubDataARB");
     GL_EXTCALL(glDeleteBuffersARB(1, &surface->pbo));
     checkGLcall("glDeleteBuffersARB");
@@ -1331,27 +1341,17 @@ static void surface_remove_pbo(struct wined3d_surface *surface, const struct win
 
 static BOOL surface_init_sysmem(struct wined3d_surface *surface)
 {
-    if (surface->resource.allocatedMemory)
-    {
-        memset(surface->resource.allocatedMemory, 0, surface->resource.size);
-    }
-    else if (!surface->user_memory)
-    {
-        if (!surface->resource.heap_memory)
-        {
-            if (!wined3d_resource_allocate_sysmem(&surface->resource))
-            {
-                ERR("Failed to allocate system memory.\n");
-                return FALSE;
-            }
-        }
-        else if (!(surface->flags & SFLAG_CLIENT))
-        {
-            ERR("Surface %p has heap_memory %p and flags %#x.\n",
-                    surface, surface->resource.heap_memory, surface->flags);
-        }
+    if (surface->user_memory)
+        return TRUE;
 
-        surface->resource.allocatedMemory = surface->resource.heap_memory;
+    if (surface->resource.heap_memory)
+    {
+        memset(surface->resource.heap_memory, 0, surface->resource.size);
+    }
+    else if (!wined3d_resource_allocate_sysmem(&surface->resource))
+    {
+        ERR("Failed to allocate system memory.\n");
+        return FALSE;
     }
 
     return TRUE;
@@ -1477,11 +1477,9 @@ static HRESULT gdi_surface_private_setup(struct wined3d_surface *surface)
     /* Sysmem textures have memory already allocated - release it,
      * this avoids an unnecessary memcpy. */
     hr = surface_create_dib_section(surface);
-    if (SUCCEEDED(hr))
-    {
-        wined3d_resource_free_sysmem(&surface->resource);
-        surface->resource.allocatedMemory = surface->dib.bitmap_data;
-    }
+    if (FAILED(hr))
+        return hr;
+    surface->map_binding = SFLAG_INDIB;
 
     /* We don't mind the nonpow2 stuff in GDI. */
     surface->pow2Width = surface->resource.width;
@@ -1532,8 +1530,11 @@ static BYTE *gdi_surface_map(struct wined3d_surface *surface, const RECT *rect, 
         case SFLAG_INUSERMEM:
             return surface->user_memory;
 
+        case SFLAG_INDIB:
+            return surface->dib.bitmap_data;
+
         case SFLAG_INSYSMEM:
-            return surface->resource.allocatedMemory;
+            return surface->resource.heap_memory;
 
         default:
             ERR("Unexpected map binding %s.\n", debug_surflocation(surface->map_binding));
@@ -2155,23 +2156,19 @@ static void surface_allocate_surface(struct wined3d_surface *surface, const stru
     if (gl_info->supported[APPLE_CLIENT_STORAGE])
     {
         if (surface->flags & (SFLAG_NONPOW2 | SFLAG_DIBSECTION | SFLAG_CONVERTED)
-                || !surface->resource.allocatedMemory)
+                || !surface->resource.heap_memory)
         {
             /* In some cases we want to disable client storage.
              * SFLAG_NONPOW2 has a bigger opengl texture than the client memory, and different pitches
              * SFLAG_DIBSECTION: Dibsections may have read / write protections on the memory. Avoid issues...
              * SFLAG_CONVERTED: The conversion destination memory is freed after loading the surface
-             * allocatedMemory == NULL: Not defined in the extension. Seems to disable client storage effectively
+             * heap_memory == NULL: Not defined in the extension. Seems to disable client storage effectively
              */
             surface->flags &= ~SFLAG_CLIENT;
         }
         else
         {
             surface->flags |= SFLAG_CLIENT;
-
-            /* Point OpenGL to our allocated texture memory. Do not use
-             * resource.allocatedMemory here because it might point into a
-             * PBO. Instead use heap_memory. */
             mem = surface->resource.heap_memory;
 
             gl_info->gl_ops.gl.p_glPixelStorei(GL_UNPACK_CLIENT_STORAGE_APPLE, GL_TRUE);
@@ -2757,7 +2754,6 @@ HRESULT CDECL wined3d_surface_update_desc(struct wined3d_surface *surface,
     }
 
     surface->flags &= ~SFLAG_LOCATIONS;
-    surface->resource.allocatedMemory = NULL;
     wined3d_resource_free_sysmem(&surface->resource);
 
     surface->resource.width = width;
@@ -2801,9 +2797,8 @@ HRESULT CDECL wined3d_surface_update_desc(struct wined3d_surface *surface,
             ERR("Failed to create dib section, hr %#x.\n", hr);
             return hr;
         }
-        surface->resource.allocatedMemory = surface->dib.bitmap_data;
     }
-    else if (!surface_init_sysmem(surface))
+    if (!surface_init_sysmem(surface))
         return E_OUTOFMEMORY;
 
     surface_validate_location(surface, surface->map_binding);
@@ -3252,7 +3247,6 @@ HRESULT CDECL wined3d_surface_map(struct wined3d_surface *surface,
 
 HRESULT CDECL wined3d_surface_getdc(struct wined3d_surface *surface, HDC *dc)
 {
-    struct wined3d_map_desc map;
     HRESULT hr;
 
     TRACE("surface %p, dc %p.\n", surface, dc);
@@ -3276,26 +3270,13 @@ HRESULT CDECL wined3d_surface_getdc(struct wined3d_surface *surface, HDC *dc)
         hr = surface_create_dib_section(surface);
         if (FAILED(hr))
             return WINED3DERR_INVALIDCALL;
-
-        /* Use the DIB section from now on if we are not using a PBO or user memory. */
-        if (!(surface->flags & (SFLAG_PBO | SFLAG_PIN_SYSMEM) || surface->user_memory))
-        {
-            wined3d_resource_free_sysmem(&surface->resource);
-            surface->resource.allocatedMemory = surface->dib.bitmap_data;
-        }
+        if (!(surface->map_binding == SFLAG_INUSERMEM
+                || surface->flags & (SFLAG_PBO | SFLAG_PIN_SYSMEM)))
+            surface->map_binding = SFLAG_INDIB;
     }
 
-    /* Map the surface. */
-    hr = wined3d_surface_map(surface, &map, NULL, 0);
-    if (FAILED(hr))
-    {
-        ERR("Map failed, hr %#x.\n", hr);
-        return hr;
-    }
-    surface->getdc_map_mem = map.data;
-
-    if (surface->dib.bitmap_data != surface->getdc_map_mem)
-        memcpy(surface->dib.bitmap_data, surface->getdc_map_mem, surface->resource.size);
+    surface_load_location(surface, SFLAG_INDIB);
+    surface_invalidate_location(surface, ~SFLAG_INDIB);
 
     if (surface->resource.format->id == WINED3DFMT_P8_UINT
             || surface->resource.format->id == WINED3DFMT_P8_UINT_A8_UNORM)
@@ -3335,6 +3316,7 @@ HRESULT CDECL wined3d_surface_getdc(struct wined3d_surface *surface, HDC *dc)
     }
 
     surface->flags |= SFLAG_DCINUSE;
+    surface->resource.map_count++;
 
     *dc = surface->hDC;
     TRACE("Returning dc %p.\n", *dc);
@@ -3356,14 +3338,11 @@ HRESULT CDECL wined3d_surface_releasedc(struct wined3d_surface *surface, HDC dc)
         return WINEDDERR_NODC;
     }
 
-    if (surface->dib.bitmap_data != surface->getdc_map_mem)
-        memcpy(surface->getdc_map_mem, surface->dib.bitmap_data, surface->resource.size);
-
-    /* We locked first, so unlock now. */
-    surface->getdc_map_mem = NULL;
-    wined3d_surface_unmap(surface);
-
+    surface->resource.map_count--;
     surface->flags &= ~SFLAG_DCINUSE;
+
+    if (surface->map_binding == SFLAG_INUSERMEM)
+        surface_load_location(surface, SFLAG_INUSERMEM);
 
     return WINED3D_OK;
 }
@@ -3922,10 +3901,6 @@ void flip_surface(struct wined3d_surface *front, struct wined3d_surface *back)
         tmp = front->dib.bitmap_data;
         front->dib.bitmap_data = back->dib.bitmap_data;
         back->dib.bitmap_data = tmp;
-
-        tmp = front->resource.allocatedMemory;
-        front->resource.allocatedMemory = back->resource.allocatedMemory;
-        back->resource.allocatedMemory = tmp;
 
         tmp = front->resource.heap_memory;
         front->resource.heap_memory = back->resource.heap_memory;
@@ -4925,9 +4900,54 @@ static DWORD resource_access_from_location(DWORD location)
     }
 }
 
+static void surface_copy_simple_location(struct wined3d_surface *surface, DWORD location)
+{
+    struct wined3d_device *device = surface->resource.device;
+    struct wined3d_context *context;
+    const struct wined3d_gl_info *gl_info;
+    struct wined3d_bo_address dst, src;
+    UINT size = surface->resource.size;
+
+    surface_get_memory(surface, &dst, location);
+    surface_get_memory(surface, &src, surface->flags);
+
+    if (dst.buffer_object)
+    {
+        context = context_acquire(device, NULL);
+        gl_info = context->gl_info;
+        GL_EXTCALL(glBindBufferARB(GL_PIXEL_UNPACK_BUFFER_ARB, dst.buffer_object));
+        GL_EXTCALL(glBufferSubDataARB(GL_PIXEL_UNPACK_BUFFER_ARB, 0, size, src.addr));
+        GL_EXTCALL(glBindBufferARB(GL_PIXEL_UNPACK_BUFFER_ARB, 0));
+        checkGLcall("Upload PBO");
+        context_release(context);
+        return;
+    }
+    if (src.buffer_object)
+    {
+        context = context_acquire(device, NULL);
+        gl_info = context->gl_info;
+        GL_EXTCALL(glBindBufferARB(GL_PIXEL_PACK_BUFFER_ARB, src.buffer_object));
+        GL_EXTCALL(glGetBufferSubDataARB(GL_PIXEL_PACK_BUFFER_ARB, 0, size, dst.addr));
+        GL_EXTCALL(glBindBufferARB(GL_PIXEL_PACK_BUFFER_ARB, 0));
+        checkGLcall("Download PBO");
+        context_release(context);
+        return;
+    }
+    memcpy(dst.addr, src.addr, size);
+}
+
 static void surface_load_sysmem(struct wined3d_surface *surface,
         const struct wined3d_gl_info *gl_info, DWORD dst_location)
 {
+    static const DWORD simple_locations =
+            SFLAG_INDIB | SFLAG_INUSERMEM | SFLAG_INSYSMEM;
+
+    if (surface->flags & simple_locations)
+    {
+        surface_copy_simple_location(surface, dst_location);
+        return;
+    }
+
     if (surface->flags & (SFLAG_INRB_MULTISAMPLE | SFLAG_INRB_RESOLVED))
         surface_load_location(surface, SFLAG_INTEXTURE);
 
@@ -5212,6 +5232,7 @@ HRESULT surface_load_location(struct wined3d_surface *surface, DWORD location)
 
     switch (location)
     {
+        case SFLAG_INDIB:
         case SFLAG_INUSERMEM:
         case SFLAG_INSYSMEM:
             surface_load_sysmem(surface, gl_info, location);
@@ -6437,8 +6458,7 @@ static HRESULT surface_init(struct wined3d_surface *surface, struct wined3d_text
     if (lockable && (desc->usage & WINED3DUSAGE_RENDERTARGET))
         surface->flags |= SFLAG_DYNLOCK;
 
-    TRACE("surface %p, memory %p, size %u\n",
-            surface, surface->resource.allocatedMemory, surface->resource.size);
+    surface->map_binding = SFLAG_INSYSMEM;
 
     /* Call the private setup routine */
     hr = surface->surface_ops->surface_private_setup(surface);
@@ -6455,12 +6475,14 @@ static HRESULT surface_init(struct wined3d_surface *surface, struct wined3d_text
      * after a wined3d_surface_getdc() call. */
     if ((desc->usage & WINED3DUSAGE_OWNDC) && !surface->hDC
             && SUCCEEDED(surface_create_dib_section(surface)))
+        surface->map_binding = SFLAG_INDIB;
+
+    if (surface->map_binding == SFLAG_INDIB)
     {
         wined3d_resource_free_sysmem(&surface->resource);
-        surface->resource.allocatedMemory = surface->dib.bitmap_data;
+        surface_validate_location(surface, SFLAG_INDIB);
+        surface_invalidate_location(surface, SFLAG_INSYSMEM);
     }
-
-    surface->map_binding = SFLAG_INSYSMEM;
 
     return hr;
 }

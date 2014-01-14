@@ -2795,7 +2795,7 @@ void dump_color_fixup_desc(struct color_fixup_desc fixup)
 }
 
 const char *debug_surflocation(DWORD flag) {
-    char buf[140];
+    char buf[152];
 
     buf[0] = 0;
     if (flag & SFLAG_INSYSMEM) strcat(buf, " | SFLAG_INSYSMEM");                    /* 17 */
@@ -2805,6 +2805,7 @@ const char *debug_surflocation(DWORD flag) {
     if (flag & SFLAG_INRB_MULTISAMPLE) strcat(buf, " | SFLAG_INRB_MULTISAMPLE");    /* 25 */
     if (flag & SFLAG_INRB_RESOLVED) strcat(buf, " | SFLAG_INRB_RESOLVED");          /* 22 */
     if (flag & SFLAG_INUSERMEM) strcat(buf, " | SFLAG_INUSERMEM");                  /* 18 */
+    if (flag & SFLAG_INDIB) strcat(buf, " | SFLAG_INDIB");                          /* 14 */
     return wine_dbg_sprintf("%s", buf[0] ? buf + 3 : "0");
 }
 
@@ -3814,6 +3815,9 @@ void wined3d_ftoa(float value, char *s)
     if (copysignf(1.0f, value) < 0.0f)
         ++idx;
 
+    /* Be sure to allocate a buffer of at least 17 characters for the result
+       as sprintf may return a 3 digit exponent when using the MSVC runtime
+       instead of a 2 digit exponent. */
     sprintf(s, "%.8e", value);
     if (isfinite(value))
         s[idx] = '.';

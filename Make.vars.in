@@ -49,8 +49,6 @@ ICOTOOL         = @ICOTOOL@
 MSGFMT          = @MSGFMT@
 CROSSTARGET     = @CROSSTARGET@
 LINGUAS         = @LINGUAS@
-ALL_MO_FILES    = $(LINGUAS:%=@top_builddir@/po/%.mo)
-PORCFLAGS       = @PORCFLAGS@
 RUNTESTFLAGS    = -q -P wine
 MAKEDEP         = $(TOOLSDIR)/tools/makedep$(TOOLSEXT)
 SFNT2FNT        = $(TOOLSDIR)/tools/sfnt2fnt$(TOOLSEXT)
@@ -66,7 +64,6 @@ LDRPATH_LOCAL   = @LDRPATH_LOCAL@
 INSTALL_PROGRAM = STRIPPROG="$(STRIP)" $(top_srcdir)/tools/install-sh $(INSTALL_PROGRAM_FLAGS)
 INSTALL_SCRIPT  = $(top_srcdir)/tools/install-sh $(INSTALL_SCRIPT_FLAGS)
 INSTALL_DATA    = $(top_srcdir)/tools/install-sh -m 644 $(INSTALL_DATA_FLAGS)
-CLEAN_FILES     = *.o *.a *.so *.res *.fake *.ok *.tab.[ch] *.yy.c
 prog_manext     = 1
 api_manext      = 3w
 conf_manext     = 5

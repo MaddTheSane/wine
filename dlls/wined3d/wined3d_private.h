@@ -2217,7 +2217,6 @@ struct wined3d_surface
     /* For GetDC */
     struct wined3d_surface_dib dib;
     HDC                       hDC;
-    void                      *getdc_map_mem;
 
     struct wined3d_color_key gl_color_key;
 
@@ -2300,16 +2299,16 @@ void flip_surface(struct wined3d_surface *front, struct wined3d_surface *back) D
 #define SFLAG_PBO               0x00002000 /* The surface has a PBO. */
 #define SFLAG_INSYSMEM          0x00004000 /* The system memory copy is current. */
 #define SFLAG_INUSERMEM         0x00008000 /* The user memory copy is current. */
-#define SFLAG_INTEXTURE         0x00010000 /* The GL texture is current. */
-#define SFLAG_INSRGBTEX         0x00020000 /* The GL sRGB texture is current. */
-#define SFLAG_INDRAWABLE        0x00040000 /* The GL drawable is current. */
-#define SFLAG_INRB_MULTISAMPLE  0x00080000 /* The multisample renderbuffer is current. */
-#define SFLAG_INRB_RESOLVED     0x00100000 /* The resolved renderbuffer is current. */
-#define SFLAG_DISCARDED         0x00200000 /* Surface was discarded, allocating new location is enough. */
+#define SFLAG_INDIB             0x00010000 /* The DIB copy is current. */
+#define SFLAG_INTEXTURE         0x00020000 /* The GL texture is current. */
+#define SFLAG_INSRGBTEX         0x00040000 /* The GL sRGB texture is current. */
+#define SFLAG_INDRAWABLE        0x00080000 /* The GL drawable is current. */
+#define SFLAG_INRB_MULTISAMPLE  0x00100000 /* The multisample renderbuffer is current. */
+#define SFLAG_INRB_RESOLVED     0x00200000 /* The resolved renderbuffer is current. */
+#define SFLAG_DISCARDED         0x00400000 /* Surface was discarded, allocating new location is enough. */
 
 /* In some conditions the surface memory must not be freed:
  * SFLAG_CONVERTED: Converting the data back would take too long
- * SFLAG_DIBSECTION: The dib code manages the memory
  * SFLAG_DYNLOCK: Avoid freeing the data for performance
  * SFLAG_PBO: PBOs don't use 'normal' memory. It is either allocated by the driver or must be NULL.
  * SFLAG_CLIENT: OpenGL uses our memory as backup
@@ -2317,12 +2316,12 @@ void flip_surface(struct wined3d_surface *front, struct wined3d_surface *back) D
 #define SFLAG_DONOTFREE     (SFLAG_CONVERTED        | \
                              SFLAG_DYNLOCK          | \
                              SFLAG_CLIENT           | \
-                             SFLAG_DIBSECTION       | \
                              SFLAG_PBO              | \
                              SFLAG_PIN_SYSMEM)
 
 #define SFLAG_LOCATIONS     (SFLAG_INSYSMEM         | \
                              SFLAG_INUSERMEM        | \
+                             SFLAG_INDIB            | \
                              SFLAG_INTEXTURE        | \
                              SFLAG_INSRGBTEX        | \
                              SFLAG_INDRAWABLE       | \

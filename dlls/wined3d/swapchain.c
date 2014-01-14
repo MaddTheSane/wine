@@ -609,7 +609,7 @@ static const struct wined3d_swapchain_ops swapchain_gl_ops =
 /* Helper function that blits the front buffer contents to the target window. */
 void x11_copy_to_screen(const struct wined3d_swapchain *swapchain, const RECT *rect)
 {
-    const struct wined3d_surface *front;
+    struct wined3d_surface *front;
     POINT offset = {0, 0};
     HDC src_dc, dst_dc;
     RECT draw_rect;
@@ -622,6 +622,8 @@ void x11_copy_to_screen(const struct wined3d_swapchain *swapchain, const RECT *r
         ERR("Trying to blit a mapped surface.\n");
 
     TRACE("Copying surface %p to screen.\n", front);
+
+    surface_load_location(front, SFLAG_INDIB);
 
     src_dc = front->hDC;
     window = swapchain->win_handle;
@@ -679,10 +681,6 @@ static void swapchain_gdi_present(struct wined3d_swapchain *swapchain, const REC
         tmp = front->dib.bitmap_data;
         front->dib.bitmap_data = back->dib.bitmap_data;
         back->dib.bitmap_data = tmp;
-
-        tmp = front->resource.allocatedMemory;
-        front->resource.allocatedMemory = back->resource.allocatedMemory;
-        back->resource.allocatedMemory = tmp;
 
         if (front->resource.heap_memory)
             ERR("GDI Surface %p has heap memory allocated.\n", front);

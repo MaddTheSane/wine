@@ -35,8 +35,24 @@
 
     - (void) dealloc
     {
+        [[self view] release];
         [latentView release];
         [super dealloc];
+    }
+
+    - (void) setView:(NSView*)newView
+    {
+        NSView* oldView = [self view];
+        [super setView:newView];
+        [newView retain];
+        [oldView release];
+    }
+
+    - (void) clearDrawable
+    {
+        NSView* oldView = [self view];
+        [super clearDrawable];
+        [oldView release];
     }
 
     /* On at least some versions of Mac OS X, -[NSOpenGLContext clearDrawable] has the
@@ -90,6 +106,23 @@
         }
     }
 
+    - (void) removeFromViews:(BOOL)removeViews
+    {
+        if ([self view])
+        {
+            macdrv_remove_view_opengl_context((macdrv_view)[self view], (macdrv_opengl_context)self);
+            if (removeViews)
+                [self clearDrawableLeavingSurfaceOnScreen];
+        }
+        if ([self latentView])
+        {
+            macdrv_remove_view_opengl_context((macdrv_view)[self latentView], (macdrv_opengl_context)self);
+            if (removeViews)
+                [self setLatentView:nil];
+        }
+        needsUpdate = FALSE;
+    }
+
 @end
 
 
@@ -122,11 +155,7 @@ void macdrv_dispose_opengl_context(macdrv_opengl_context c)
     NSAutoreleasePool* pool = [[NSAutoreleasePool alloc] init];
     WineOpenGLContext *context = (WineOpenGLContext*)c;
 
-    if ([context view])
-        macdrv_remove_view_opengl_context((macdrv_view)[context view], c);
-    if ([context latentView])
-        macdrv_remove_view_opengl_context((macdrv_view)[context latentView], c);
-    [context clearDrawableLeavingSurfaceOnScreen];
+    [context removeFromViews:YES];
     [context release];
 
     [pool release];
@@ -141,15 +170,13 @@ void macdrv_make_context_current(macdrv_opengl_context c, macdrv_view v)
     WineOpenGLContext *context = (WineOpenGLContext*)c;
     NSView* view = (NSView*)v;
 
-    if (context)
+    if (context && view)
     {
-        if ([context view])
-            macdrv_remove_view_opengl_context((macdrv_view)[context view], c);
-        if ([context latentView])
-            macdrv_remove_view_opengl_context((macdrv_view)[context latentView], c);
-        context.needsUpdate = FALSE;
-        if (view)
+        if (view == [context view] || view == [context latentView])
+            macdrv_update_opengl_context(c);
+        else
         {
+            [context removeFromViews:NO];
             macdrv_add_view_opengl_context(v, c);
 
             if (context.needsUpdate)
@@ -159,21 +186,32 @@ void macdrv_make_context_current(macdrv_opengl_context c, macdrv_view v)
                 [context setLatentView:nil];
             }
             else
+            {
+                if ([context view])
+                    [context clearDrawableLeavingSurfaceOnScreen];
                 [context setLatentView:view];
-
-            [context makeCurrentContext];
-
-            if ([context view])
-                [context clearToBlackIfNeeded];
+            }
         }
-        else
-        {
-            [WineOpenGLContext clearCurrentContext];
-            [context clearDrawableLeavingSurfaceOnScreen];
-        }
+
+        [context makeCurrentContext];
+
+        if ([context view])
+            [context clearToBlackIfNeeded];
     }
     else
-        [WineOpenGLContext clearCurrentContext];
+    {
+        WineOpenGLContext* currentContext = (WineOpenGLContext*)[WineOpenGLContext currentContext];
+
+        if ([currentContext isKindOfClass:[WineOpenGLContext class]])
+        {
+            [WineOpenGLContext clearCurrentContext];
+            if (currentContext != context)
+                [currentContext removeFromViews:YES];
+        }
+
+        if (context)
+            [context removeFromViews:YES];
+    }
 
     [pool release];
 }
