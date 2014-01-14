@@ -20,7 +20,6 @@
 
 #include <stdarg.h>
 
-#include "msvcp90.h"
 #include "locale.h"
 #include "errno.h"
 #include "limits.h"
@@ -29,20 +28,22 @@
 #include "wchar.h"
 #include "wctype.h"
 #include "time.h"
-
-#include "wine/list.h"
-
 #include "windef.h"
 #include "winbase.h"
 #include "winnls.h"
+#include "msvcp90.h"
 #include "wine/unicode.h"
+#include "wine/list.h"
 #include "wine/debug.h"
+
 WINE_DEFAULT_DEBUG_CHANNEL(msvcp);
 
 char* __cdecl _Getdays(void);
 char* __cdecl _Getmonths(void);
 void* __cdecl _Gettnames(void);
 unsigned int __cdecl ___lc_codepage_func(void);
+int __cdecl ___lc_collate_cp_func(void);
+const unsigned short* __cdecl __pctype_func(void);
 const locale_facet* __thiscall locale__Getfacet(const locale*, MSVCP_size_t);
 MSVCP_size_t __cdecl _Strftime(char*, MSVCP_size_t, const char*,
         const struct tm*, struct __lc_time_data*);
@@ -589,13 +590,11 @@ ULONGLONG __cdecl _Getcoll(void)
         _Collvec collvec;
         ULONGLONG ull;
     } ret;
-    _locale_t locale = _get_current_locale();
 
     TRACE("\n");
 
-    ret.collvec.page = locale->locinfo->lc_collate_cp;
-    ret.collvec.handle = locale->locinfo->lc_handle[LC_COLLATE];
-    _free_locale(locale);
+    ret.collvec.page = ___lc_collate_cp_func();
+    ret.collvec.handle = ___lc_handle_func()[LC_COLLATE];
     return ret.ull;
 }
 
@@ -612,22 +611,17 @@ _Collvec* __thiscall _Locinfo__Getcoll(const _Locinfo *this, _Collvec *ret)
 /* _Getctype */
 _Ctypevec* __cdecl _Getctype(_Ctypevec *ret)
 {
-    _locale_t locale = _get_current_locale();
     short *table;
 
     TRACE("\n");
 
-    ret->page = locale->locinfo->lc_codepage;
-    ret->handle = locale->locinfo->lc_handle[LC_COLLATE];
+    ret->page = ___lc_codepage_func();
+    ret->handle = ___lc_handle_func()[LC_COLLATE];
     ret->delfl = TRUE;
     table = malloc(sizeof(short[256]));
-    if(!table) {
-        _free_locale(locale);
-        throw_exception(EXCEPTION_BAD_ALLOC, NULL);
-    }
-    memcpy(table, locale->locinfo->pctype, sizeof(short[256]));
+    if(!table) throw_exception(EXCEPTION_BAD_ALLOC, NULL);
+    memcpy(table, __pctype_func(), sizeof(short[256]));
     ret->table = table;
-    _free_locale(locale);
     return ret;
 }
 
@@ -642,7 +636,6 @@ _Ctypevec* __thiscall _Locinfo__Getctype(const _Locinfo *this, _Ctypevec *ret)
 /* _Getcvt */
 ULONGLONG __cdecl _Getcvt(void)
 {
-    _locale_t locale = _get_current_locale();
     union {
         _Cvtvec cvtvec;
         ULONGLONG ull;
@@ -650,9 +643,8 @@ ULONGLONG __cdecl _Getcvt(void)
 
     TRACE("\n");
 
-    ret.cvtvec.page = locale->locinfo->lc_codepage;
-    ret.cvtvec.handle = locale->locinfo->lc_handle[LC_CTYPE];
-    _free_locale(locale);
+    ret.cvtvec.page = ___lc_codepage_func();
+    ret.cvtvec.handle = ___lc_handle_func()[LC_CTYPE];
     return ret.ull;
 }
 
@@ -9713,12 +9705,6 @@ size_t __cdecl mbsrtowcs(wchar_t *dst, const char **pstr, size_t n, mbstate_t *s
     wchar_t wc;
     const char *src;
 
-    if (!pstr)
-    {
-        *_errno() = EINVAL;
-        _invalid_parameter( NULL, NULL, NULL, 0, 0 );
-        return -1;
-    }
     src = *pstr;
     if (!state) state = &local_state;
 
@@ -9757,12 +9743,6 @@ size_t __cdecl wcsrtombs(char *dst, const wchar_t **pstr, size_t n, mbstate_t *s
     char buffer[MB_LEN_MAX];
     size_t ret = 0;
 
-    if (!pstr)
-    {
-        *_errno() = EINVAL;
-        _invalid_parameter( NULL, NULL, NULL, 0, 0 );
-        return -1;
-    }
     src = *pstr;
 
     while (!dst || n > ret)

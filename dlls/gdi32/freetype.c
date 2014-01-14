@@ -6438,9 +6438,12 @@ static DWORD get_glyph_outline(GdiFont *incoming_font, UINT glyph, UINT format,
 	gm.gmCellIncY = 0;
         origin_x = left;
         origin_y = top;
+        abc->abcA = origin_x >> 6;
+        abc->abcB = metrics.width >> 6;
     } else {
         INT xc, yc;
 	FT_Vector vec;
+        FT_Pos lsb;
 
         left = right = 0;
 
@@ -6466,45 +6469,31 @@ static DWORD get_glyph_outline(GdiFont *incoming_font, UINT glyph, UINT format,
 	bottom = bottom & -64;
 	top = (top + 63) & -64;
 
-        if (tategaki)
+        if (tategaki && (font->potm || get_outline_text_metrics(font)))
         {
-            for(xc = 0; xc < 2; xc++)
-            {
-                for(yc = 0; yc < 2; yc++)
-                {
-                    if (vertical_metrics)
-                    {
-                        vec.x = metrics.vertBearingY + xc * metrics.height;
-                        vec.y = metrics.horiBearingX - yc * (metrics.vertBearingX * 2);
-                    }
-                    else
-                    {
-                        vec.x = metrics.horiBearingY - xc * metrics.height;
-                        vec.y = metrics.horiBearingX + yc * metrics.width;
-                    }
-
-                    TRACE ("Vec %ld,%ld\n", vec.x>>6, vec.y>>6);
-                    pFT_Vector_Transform(&vec, &transMat);
-                    if(xc == 0 && yc == 0) {
-                        origin_x = vec.x;
-                        origin_y = vec.y;
-                    } else {
-                        if(vec.x < origin_x) origin_x = vec.x;
-                        if(vec.y > origin_y) origin_y = vec.y;
-                    }
-                }
-            }
-            origin_x = origin_x & -64;
-            origin_y = (origin_y + 63) & -64;
+            if (vertical_metrics)
+                lsb = metrics.horiBearingY + metrics.vertBearingY;
+            else
+                lsb = metrics.vertAdvance + (font->potm->otmDescent << 6);
+            vec.x = lsb;
+            vec.y = font->potm->otmDescent << 6;
+            TRACE ("Vec %ld,%ld\n", vec.x>>6, vec.y>>6);
+            pFT_Vector_Transform(&vec, &transMat);
+            origin_x = (vec.x + left) & -64;
+            origin_y = (vec.y + top + 63) & -64;
         }
         else
         {
             origin_x = left;
             origin_y = top;
+            lsb = metrics.horiBearingX;
         }
 
 	TRACE("transformed box: (%d,%d - %d,%d)\n", left, top, right, bottom);
-	vec.x = metrics.horiAdvance;
+        if (vertical_metrics)
+            vec.x = metrics.vertAdvance;
+        else
+            vec.x = metrics.horiAdvance;
 	vec.y = 0;
 	pFT_Vector_Transform(&vec, &transMat);
 	gm.gmCellIncY = -((vec.y+63) >> 6);
@@ -6531,6 +6520,19 @@ static DWORD get_glyph_outline(GdiFont *incoming_font, UINT glyph, UINT format,
             pFT_Vector_Transform(&vec, &transMatUnrotated);
             adv = pFT_MulFix(vec.x, em_scale) * 2;
         }
+
+        vec.x = lsb;
+        vec.y = 0;
+        pFT_Vector_Transform(&vec, &transMatUnrotated);
+        abc->abcA = vec.x >> 6;
+
+        vec.x = metrics.width;
+        vec.y = 0;
+        pFT_Vector_Transform(&vec, &transMatUnrotated);
+        if (vec.x >= 0)
+            abc->abcB = vec.x >> 6;
+        else
+            abc->abcB = -vec.x >> 6;
     }
 
     width  = (right - left) >> 6;
@@ -6539,8 +6541,7 @@ static DWORD get_glyph_outline(GdiFont *incoming_font, UINT glyph, UINT format,
     gm.gmBlackBoxY = height ? height : 1;
     gm.gmptGlyphOrigin.x = origin_x >> 6;
     gm.gmptGlyphOrigin.y = origin_y >> 6;
-    abc->abcA = left >> 6;
-    abc->abcB = gm.gmBlackBoxX;
+    if (!abc->abcB) abc->abcB = 1;
     abc->abcC = adv - abc->abcA - abc->abcB;
 
     TRACE("%u,%u,%s,%d,%d\n", gm.gmBlackBoxX, gm.gmBlackBoxY,
@@ -6787,7 +6788,7 @@ static DWORD get_glyph_outline(GdiFont *incoming_font, UINT glyph, UINT format,
                 vmul = 3;
             }
 
-            x_shift = ft_face->glyph->bitmap_left - gm.gmptGlyphOrigin.x;
+            x_shift = ft_face->glyph->bitmap_left - (left >> 6);
             if ( x_shift < 0 )
             {
                 src += hmul * -x_shift;
@@ -6799,7 +6800,7 @@ static DWORD get_glyph_outline(GdiFont *incoming_font, UINT glyph, UINT format,
                 width -= x_shift;
             }
 
-            y_shift = gm.gmptGlyphOrigin.y - ft_face->glyph->bitmap_top;
+            y_shift = (top >> 6) - ft_face->glyph->bitmap_top;
             if ( y_shift < 0 )
             {
                 src += src_pitch * vmul * -y_shift;

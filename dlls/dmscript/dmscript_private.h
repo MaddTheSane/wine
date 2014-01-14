@@ -47,8 +47,6 @@
  */
 typedef struct IDirectMusicScriptImpl IDirectMusicScriptImpl;
 
-typedef struct IDirectMusicScriptTrack IDirectMusicScriptTrack;
-
 /*****************************************************************************
  * ClassFactory
  */
@@ -60,9 +58,7 @@ extern HRESULT WINAPI DMUSIC_CreateDirectMusicScriptTrack (LPCGUID lpcGUID, LPVO
  * IDirectMusicScriptImpl implementation structure
  */
 struct IDirectMusicScriptImpl {
-  /* IUnknown fields */
-  const IUnknownVtbl *UnknownVtbl;
-  const IDirectMusicScriptVtbl *ScriptVtbl;
+  IDirectMusicScript IDirectMusicScript_iface;
   const IDirectMusicObjectVtbl *ObjectVtbl;
   const IPersistStreamVtbl *PersistStreamVtbl;
   LONG           ref;
@@ -74,20 +70,6 @@ struct IDirectMusicScriptImpl {
   DMUS_IO_VERSION* pVersion;
   WCHAR* pwzLanguage;
   WCHAR* pwzSource;
-};
-
-/*****************************************************************************
- * IDirectMusicScriptTrack implementation structure
- */
-struct IDirectMusicScriptTrack {
-  /* IUnknown fields */
-  const IUnknownVtbl *UnknownVtbl;
-  const IDirectMusicTrack8Vtbl *TrackVtbl;
-  const IPersistStreamVtbl *PersistStreamVtbl;
-  LONG           ref;
-
-  /* IDirectMusicScriptTrack fields */
-  LPDMUS_OBJECTDESC pDesc;
 };
 
 /**********************************************************************
