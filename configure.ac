@@ -264,7 +264,6 @@ AC_SUBST(ARFLAGS,rc)
 AC_PROG_RANLIB
 AC_PROG_LN_S
 AC_PROG_EGREP
-AC_PROG_MKDIR_P
 AC_PATH_PROG(LDCONFIG, ldconfig, true, [/sbin /usr/sbin $PATH])
 AC_CHECK_PROGS(MSGFMT, msgfmt, false)
 WINE_PATH_PKG_CONFIG
@@ -2797,6 +2796,7 @@ WINE_CONFIG_TEST(dlls/dmloader/tests)
 WINE_CONFIG_DLL(dmscript,,[clean])
 WINE_CONFIG_TEST(dlls/dmscript/tests)
 WINE_CONFIG_DLL(dmstyle,,[clean])
+WINE_CONFIG_TEST(dlls/dmstyle/tests)
 WINE_CONFIG_DLL(dmsynth,,[clean])
 WINE_CONFIG_TEST(dlls/dmsynth/tests)
 WINE_CONFIG_DLL(dmusic,,[clean])

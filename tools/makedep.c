@@ -111,24 +111,17 @@ static const char *Separator = "### Dependencies";
 static const char *input_file_name;
 static const char *output_file_name;
 static const char *temp_file_name;
-static int parse_makefile_mode;
 static int relative_dir_mode;
 static int input_line;
 static int output_column;
 static FILE *output_file;
 
 static const char Usage[] =
-    "Usage: makedep [options] [files]\n"
+    "Usage: makedep [options] directories\n"
     "Options:\n"
-    "   -Idir      Search for include files in directory 'dir'\n"
-    "   -Cdir      Search for source files in directory 'dir'\n"
-    "   -Sdir      Set the top source directory\n"
-    "   -Tdir      Set the top object directory\n"
-    "   -Pdir      Set the parent source directory\n"
-    "   -M dirs    Parse the makefiles from the specified directories\n"
-    "   -R from to Compute the relative path between two directories\n"
-    "   -fxxx      Store output in file 'xxx' (default: Makefile)\n"
-    "   -sxxx      Use 'xxx' as separator (default: \"### Dependencies\")\n";
+    "   -R from to  Compute the relative path between two directories\n"
+    "   -fxxx       Store output in file 'xxx' (default: Makefile)\n"
+    "   -sxxx       Use 'xxx' as separator (default: \"### Dependencies\")\n";
 
 
 #ifndef __GNUC__
@@ -310,19 +303,6 @@ static void strarray_addall( struct strarray *array, struct strarray added )
     unsigned int i;
 
     for (i = 0; i < added.count; i++) strarray_add( array, added.str[i] );
-}
-
-
-/*******************************************************************
- *         strarray_insert
- */
-static void strarray_insert( struct strarray *array, unsigned int pos, const char *str )
-{
-    unsigned int i;
-
-    strarray_add( array, NULL );
-    for (i = array->count - 1; i > pos; i--) array->str[i] = array->str[i - 1];
-    array->str[pos] = str;
 }
 
 
@@ -517,20 +497,6 @@ static char *tools_path( const char *name )
     if (tools_dir) return strmake( "%s/tools/%s/%s%s", tools_dir, name, name, tools_ext );
     if (top_obj_dir) return strmake( "%s/tools/%s/%s%s", top_obj_dir, name, name, tools_ext );
     return strmake( "tools/%s/%s%s", name, name, tools_ext );
-}
-
-
-/*******************************************************************
- *         init_paths
- */
-static void init_paths(void)
-{
-    /* ignore redundant source paths */
-    if (src_dir && !strcmp( src_dir, "." )) src_dir = NULL;
-    if (top_src_dir && top_obj_dir && !strcmp( top_src_dir, top_obj_dir )) top_src_dir = NULL;
-    if (tools_dir && top_obj_dir && !strcmp( tools_dir, top_obj_dir )) tools_dir = NULL;
-
-    strarray_insert( &include_args, 0, strmake( "-I%s", top_dir_path( "include" )));
 }
 
 
@@ -1381,6 +1347,26 @@ static void add_generated_sources(void)
 
 
 /*******************************************************************
+ *         create_dir
+ */
+static void create_dir( const char *dir )
+{
+    char *p, *path;
+
+    p = path = xstrdup( dir );
+    while ((p = strchr( p, '/' )))
+    {
+        *p = 0;
+        if (mkdir( path, 0755 ) == -1 && errno != EEXIST) fatal_perror( "mkdir %s", path );
+        *p++ = '/';
+        while (*p == '/') p++;
+    }
+    if (mkdir( path, 0755 ) == -1 && errno != EEXIST) fatal_perror( "mkdir %s", path );
+    free( path );
+}
+
+
+/*******************************************************************
  *         output_include
  */
 static void output_include( struct incl_file *pFile, struct incl_file *owner )
@@ -1415,6 +1401,7 @@ static struct strarray output_sources(void)
     struct strarray c2man_files = empty_strarray;
     struct strarray implib_objs = empty_strarray;
     struct strarray includes = empty_strarray;
+    struct strarray subdirs = empty_strarray;
     struct strarray phony_targets = empty_strarray;
     struct strarray linguas = get_expanded_make_var_array( "LINGUAS" );
     struct strarray all_targets = get_expanded_make_var_array( "PROGRAMS" );
@@ -1443,7 +1430,6 @@ static struct strarray output_sources(void)
     LIST_FOR_EACH_ENTRY( source, &sources, struct incl_file, entry )
     {
         struct strarray extradefs;
-        char *subdir = NULL;
         char *obj = xstrdup( source->name );
         char *ext = get_extension( obj );
 
@@ -1452,8 +1438,9 @@ static struct strarray output_sources(void)
 
         if (src_dir && strchr( obj, '/' ))
         {
-            subdir = xstrdup( obj );
+            char *subdir = strmake( "%s/%s", base_dir, obj );
             *strrchr( subdir, '/' ) = 0;
+            strarray_add_uniq( &subdirs, subdir );
         }
 
         extradefs = get_expanded_make_var_array( strmake( "%s_EXTRADEFS", obj ));
@@ -1466,7 +1453,6 @@ static struct strarray output_sources(void)
             if (find_include_file( header ))
             {
                 output( "%s.tab.h: %s\n", obj, source->filename );
-                if (subdir) output( "\t$(MKDIR_P) -m 755 %s\n", subdir );
                 output( "\t$(BISON) -p %s_ -o %s.tab.c -d %s\n",
                         obj, obj, source->filename );
                 output( "%s.tab.c: %s %s\n", obj, source->filename, header );
@@ -1474,7 +1460,6 @@ static struct strarray output_sources(void)
             }
             else output( "%s.tab.c: %s\n", obj, source->filename );
 
-            if (subdir) output( "\t$(MKDIR_P) -m 755 %s\n", subdir );
             output( "\t$(BISON) -p %s_ -o $@ %s\n", obj, source->filename );
             free( header );
             continue;  /* no dependencies */
@@ -1482,7 +1467,6 @@ static struct strarray output_sources(void)
         else if (!strcmp( ext, "x" ))  /* template file */
         {
             output( "%s.h: %s%s %s\n", obj, tools_dir_path( "make_xftmpl" ), tools_ext, source->filename );
-            if (subdir) output( "\t$(MKDIR_P) -m 755 %s\n", subdir );
             output( "\t%s%s -H -o $@ %s\n", tools_dir_path( "make_xftmpl" ), tools_ext, source->filename );
             strarray_add( &clean_files, strmake( "%s.h", obj ));
             continue;  /* no dependencies */
@@ -1490,7 +1474,6 @@ static struct strarray output_sources(void)
         else if (!strcmp( ext, "l" ))  /* lex file */
         {
             output( "%s.yy.c: %s\n", obj, source->filename );
-            if (subdir) output( "\t$(MKDIR_P) -m 755 %s\n", subdir );
             output( "\t$(FLEX) -o$@ %s\n", source->filename );
             continue;  /* no dependencies */
         }
@@ -1498,7 +1481,6 @@ static struct strarray output_sources(void)
         {
             strarray_add( &res_files, strmake( "%s.res", obj ));
             output( "%s.res: %s %s\n", obj, tools_path( "wrc" ), source->filename );
-            if (subdir) output( "\t$(MKDIR_P) -m 755 %s\n", subdir );
             output( "\t%s -o $@ %s", tools_path( "wrc" ), source->filename );
             if (is_win16) output_filename( "-m16" );
             else output_filenames( targetflags );
@@ -1523,7 +1505,6 @@ static struct strarray output_sources(void)
         {
             strarray_add( &res_files, strmake( "%s.res", obj ));
             output( "%s.res: %s %s\n", obj, tools_path( "wmc" ), source->filename );
-            if (subdir) output( "\t$(MKDIR_P) -m 755 %s\n", subdir );
             output( "\t%s -U -O res -o $@ %s", tools_path( "wmc" ), source->filename );
             if (mo_files.count)
             {
@@ -1557,7 +1538,6 @@ static struct strarray output_sources(void)
             if (source->flags & FLAG_IDL_PROXY) strarray_add( &dlldata_files, source->name );
             output_filenames( targets );
             output( ": %s\n", tools_path( "widl" ));
-            if (subdir) output( "\t$(MKDIR_P) -m 755 %s\n", subdir );
             output( "\t%s -o $@ %s", tools_path( "widl" ), source->filename );
             output_filenames( targetflags );
             output_filenames( includes );
@@ -1593,7 +1573,6 @@ static struct strarray output_sources(void)
             }
             else strarray_add( &clean_files, xstrdup(obj) );
             output( "%s: %s\n", obj, source->filename );
-            if (subdir) output( "\t$(MKDIR_P) -m 755 %s\n", subdir );
             output( "\t$(SED_CMD) %s >$@ || ($(RM) $@ && false)\n", source->filename );
             output( "%s:", obj );
         }
@@ -1638,7 +1617,6 @@ static struct strarray output_sources(void)
             if (source->flags & FLAG_C_IMPLIB) strarray_add( &implib_objs, strmake( "%s.o", obj ));
             strarray_add( &object_files, strmake( "%s.o", obj ));
             output( "%s.o: %s\n", obj, source->filename );
-            if (subdir) output( "\t$(MKDIR_P) -m 755 %s\n", subdir );
             output( "\t$(CC) -c -o $@ %s", source->filename );
             output_filenames( includes );
             output_filenames( define_args );
@@ -1652,7 +1630,6 @@ static struct strarray output_sources(void)
             {
                 strarray_add( &crossobj_files, strmake( "%s.cross.o", obj ));
                 output( "%s.cross.o: %s\n", obj, source->filename );
-                if (subdir) output( "\t$(MKDIR_P) -m 755 %s\n", subdir );
                 output( "\t$(CROSSCC) -c -o $@ %s", source->filename );
                 output_filenames( includes );
                 output_filenames( define_args );
@@ -2008,6 +1985,8 @@ static struct strarray output_sources(void)
         output( "\n" );
     }
 
+    for (i = 0; i < subdirs.count; i++) create_dir( subdirs.str[i] );
+
     return clean_files;
 }
 
@@ -2156,6 +2135,11 @@ static void update_makefile( const char *path )
     tools_dir   = get_expanded_make_variable( "TOOLSDIR" );
     tools_ext   = get_expanded_make_variable( "TOOLSEXT" );
 
+    /* ignore redundant source paths */
+    if (src_dir && !strcmp( src_dir, "." )) src_dir = NULL;
+    if (top_src_dir && top_obj_dir && !strcmp( top_src_dir, top_obj_dir )) top_src_dir = NULL;
+    if (tools_dir && top_obj_dir && !strcmp( tools_dir, top_obj_dir )) tools_dir = NULL;
+
     appmode  = get_expanded_make_var_array( "APPMODE" );
     dllflags = get_expanded_make_var_array( "DLLFLAGS" );
     imports  = get_expanded_make_var_array( "IMPORTS" );
@@ -2168,6 +2152,7 @@ static void update_makefile( const char *path )
     include_args = empty_strarray;
     define_args = empty_strarray;
     strarray_add( &define_args, "-D__WINESRC__" );
+    strarray_add( &include_args, strmake( "-I%s", top_dir_path( "include" )));
 
     if (!tools_ext) tools_ext = "";
 
@@ -2178,8 +2163,6 @@ static void update_makefile( const char *path )
         else
             strarray_add_uniq( &define_args, value.str[i] );
     strarray_addall( &define_args, get_expanded_make_var_array( "EXTRADEFS" ));
-
-    init_paths();
 
     if (use_msvcrt)
     {
@@ -2249,26 +2232,8 @@ static int parse_option( const char *opt )
     }
     switch(opt[1])
     {
-    case 'I':
-        if (opt[2]) strarray_add_uniq( &include_args, opt );
-        break;
-    case 'C':
-        src_dir = opt + 2;
-        break;
-    case 'S':
-        top_src_dir = opt + 2;
-        break;
-    case 'T':
-        top_obj_dir = opt + 2;
-        break;
-    case 'P':
-        parent_dir = opt + 2;
-        break;
     case 'f':
         if (opt[2]) makefile_name = opt + 2;
-        break;
-    case 'M':
-        parse_makefile_mode = 1;
         break;
     case 'R':
         relative_dir_mode = 1;
@@ -2277,8 +2242,6 @@ static int parse_option( const char *opt )
         if (opt[2]) Separator = opt + 2;
         else Separator = NULL;
         break;
-    case 'x':
-        break;  /* ignored */
     default:
         fprintf( stderr, "Unknown option '%s'\n%s", opt, Usage );
         exit(1);
@@ -2293,7 +2256,6 @@ static int parse_option( const char *opt )
 int main( int argc, char *argv[] )
 {
     const char *makeflags = getenv( "MAKEFLAGS" );
-    struct incl_file *pFile;
     int i, j;
 
     if (makeflags) parse_makeflags( makeflags );
@@ -2323,6 +2285,11 @@ int main( int argc, char *argv[] )
         exit( 0 );
     }
 
+    if (argc <= 1)
+    {
+        fprintf( stderr, "%s", Usage );
+        exit( 1 );
+    }
     atexit( cleanup_files );
     signal( SIGTERM, exit_on_signal );
     signal( SIGINT, exit_on_signal );
@@ -2330,17 +2297,6 @@ int main( int argc, char *argv[] )
     signal( SIGHUP, exit_on_signal );
 #endif
 
-    if (parse_makefile_mode)
-    {
-        for (i = 1; i < argc; i++) update_makefile( argv[i] );
-        exit( 0 );
-    }
-
-    init_paths();
-    for (i = 1; i < argc; i++) add_src_file( argv[i] );
-    add_generated_sources();
-
-    LIST_FOR_EACH_ENTRY( pFile, &includes, struct incl_file, entry ) parse_file( pFile, 0 );
-    output_dependencies( makefile_name );
+    for (i = 1; i < argc; i++) update_makefile( argv[i] );
     return 0;
 }
