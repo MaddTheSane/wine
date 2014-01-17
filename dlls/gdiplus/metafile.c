@@ -64,6 +64,12 @@ typedef struct EmfPlusFillRects
     DWORD Count;
 } EmfPlusFillRects;
 
+typedef struct EmfPlusSetPageTransform
+{
+    EmfPlusRecordHeader Header;
+    REAL PageScale;
+} EmfPlusSetPageTransform;
+
 typedef struct EmfPlusRect
 {
     SHORT X;
@@ -248,6 +254,8 @@ GpStatus WINGDIPAPI GdipRecordMetafile(HDC hdc, EmfType type, GDIPCONST GpRectF 
     (*metafile)->image.picture = NULL;
     (*metafile)->image.flags   = ImageFlagsNone;
     (*metafile)->image.palette = NULL;
+    (*metafile)->image.xres = 72.0;
+    (*metafile)->image.yres = 72.0;
     (*metafile)->bounds = *frameRect;
     (*metafile)->unit = frameUnit;
     (*metafile)->metafile_type = type;
@@ -304,7 +312,11 @@ GpStatus METAFILE_GetGraphicsContext(GpMetafile* metafile, GpGraphics **result)
     stat = graphics_from_image((GpImage*)metafile, &metafile->record_graphics);
 
     if (stat == Ok)
+    {
         *result = metafile->record_graphics;
+        metafile->record_graphics->xres = 96.0;
+        metafile->record_graphics->yres = 96.0;
+    }
 
     return stat;
 }
@@ -410,6 +422,29 @@ GpStatus METAFILE_FillRectangles(GpMetafile* metafile, GpBrush* brush,
     return Ok;
 }
 
+GpStatus METAFILE_SetPageTransform(GpMetafile* metafile, GpUnit unit, REAL scale)
+{
+    if (metafile->metafile_type == MetafileTypeEmfPlusOnly || metafile->metafile_type == MetafileTypeEmfPlusDual)
+    {
+        EmfPlusSetPageTransform *record;
+        GpStatus stat;
+
+        stat = METAFILE_AllocateRecord(metafile,
+            sizeof(EmfPlusSetPageTransform),
+            (void**)&record);
+        if (stat != Ok)
+            return stat;
+
+        record->Header.Type = EmfPlusRecordTypeSetPageTransform;
+        record->Header.Flags = unit;
+        record->PageScale = scale;
+
+        METAFILE_WriteRecords(metafile);
+    }
+
+    return Ok;
+}
+
 GpStatus METAFILE_ReleaseDC(GpMetafile* metafile, HDC hdc)
 {
     if (hdc != metafile->record_dc)
@@ -493,9 +528,15 @@ static GpStatus METAFILE_PlaybackUpdateWorldTransform(GpMetafile *metafile)
 
     if (stat == Ok)
     {
-        /* FIXME: Prepend page transform. */
+        REAL scale = units_to_pixels(1.0, metafile->page_unit, 96.0);
 
-        stat = GdipMultiplyMatrix(real_transform, metafile->world_transform, MatrixOrderPrepend);
+        if (metafile->page_unit != UnitDisplay)
+            scale *= metafile->page_scale;
+
+        stat = GdipScaleMatrix(real_transform, scale, scale, MatrixOrderPrepend);
+
+        if (stat == Ok)
+            stat = GdipMultiplyMatrix(real_transform, metafile->world_transform, MatrixOrderPrepend);
 
         if (stat == Ok)
             stat = GdipSetWorldTransform(metafile->playback_graphics, real_transform);
@@ -510,6 +551,7 @@ GpStatus WINGDIPAPI GdipPlayMetafileRecord(GDIPCONST GpMetafile *metafile,
     EmfPlusRecordType recordType, UINT flags, UINT dataSize, GDIPCONST BYTE *data)
 {
     GpStatus stat;
+    GpMetafile *real_metafile = (GpMetafile*)metafile;
 
     TRACE("(%p,%x,%x,%d,%p)\n", metafile, recordType, flags, dataSize, data);
 
@@ -619,6 +661,19 @@ GpStatus WINGDIPAPI GdipPlayMetafileRecord(GDIPCONST GpMetafile *metafile,
             GdipFree(temp_rects);
 
             return stat;
+        }
+        case EmfPlusRecordTypeSetPageTransform:
+        {
+            EmfPlusSetPageTransform *record = (EmfPlusSetPageTransform*)header;
+            GpUnit unit = (GpUnit)flags;
+
+            if (dataSize + sizeof(EmfPlusRecordHeader) < sizeof(EmfPlusSetPageTransform))
+                return InvalidParameter;
+
+            real_metafile->page_unit = unit;
+            real_metafile->page_scale = record->PageScale;
+
+            return METAFILE_PlaybackUpdateWorldTransform(real_metafile);
         }
         default:
             FIXME("Not implemented for record type %x\n", recordType);
@@ -739,7 +794,7 @@ GpStatus WINGDIPAPI GdipEnumerateMetafileSrcRectDestPoints(GpGraphics *graphics,
 
         if (stat == Ok)
         {
-            real_metafile->page_unit = UnitPixel; /* FIXME: Use frame unit here? */
+            real_metafile->page_unit = UnitDisplay;
             real_metafile->page_scale = 1.0;
             stat = METAFILE_PlaybackUpdateWorldTransform(real_metafile);
         }
