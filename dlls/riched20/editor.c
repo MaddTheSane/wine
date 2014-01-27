@@ -3329,8 +3329,9 @@ LRESULT ME_HandleMessage(ME_TextEditor *editor, UINT msg, WPARAM wParam,
     SETTEXTEX *pStruct = (SETTEXTEX *)wParam;
     int from, to, len;
     ME_Style *style;
-    BOOL bRtf, bUnicode, bSelection;
+    BOOL bRtf, bUnicode, bSelection, bUTF8;
     int oldModify = editor->nModifyStep;
+    static const char utf8_bom[] = {0xef, 0xbb, 0xbf};
 
     if (!pStruct) return 0;
 
@@ -3339,6 +3340,7 @@ LRESULT ME_HandleMessage(ME_TextEditor *editor, UINT msg, WPARAM wParam,
     bRtf = (lParam && (!strncmp((char *)lParam, "{\\rtf", 5) ||
                          !strncmp((char *)lParam, "{\\urtf", 6)));
     bUnicode = !bRtf && pStruct->codepage == CP_UNICODE;
+    bUTF8 = (lParam && (!strncmp((char *)lParam, utf8_bom, 3)));
 
     TRACE("EM_SETTEXTEX - %s, flags %d, cp %d\n",
           bUnicode ? debugstr_w((LPCWSTR)lParam) : debugstr_a((LPCSTR)lParam),
@@ -3364,10 +3366,15 @@ LRESULT ME_HandleMessage(ME_TextEditor *editor, UINT msg, WPARAM wParam,
         len = lParam ? strlen((char *)lParam) : 0;
       }
     } else {
-      /* FIXME: make use of pStruct->codepage in the to unicode translation */
-      wszText = ME_ToUnicode(bUnicode, (void *)lParam, &len);
-      ME_InsertTextFromCursor(editor, 0, wszText, len, style);
-      ME_EndToUnicode(bUnicode, wszText);
+      if (bUTF8 && !bUnicode) {
+        wszText = ME_ToUnicode(CP_UTF8, (void *)(lParam+3), &len);
+        ME_InsertTextFromCursor(editor, 0, wszText, len, style);
+        ME_EndToUnicode(CP_UTF8, wszText);
+      } else {
+        wszText = ME_ToUnicode(pStruct->codepage, (void *)lParam, &len);
+        ME_InsertTextFromCursor(editor, 0, wszText, len, style);
+        ME_EndToUnicode(pStruct->codepage, wszText);
+      }
     }
 
     if (bSelection) {
@@ -3555,7 +3562,8 @@ LRESULT ME_HandleMessage(ME_TextEditor *editor, UINT msg, WPARAM wParam,
     int from, to, nStartCursor;
     ME_Style *style;
     int len = 0;
-    LPWSTR wszText = ME_ToUnicode(unicode, (void *)lParam, &len);
+    LONG codepage = unicode ? CP_UNICODE : CP_ACP;
+    LPWSTR wszText = ME_ToUnicode(codepage, (void *)lParam, &len);
     TRACE("EM_REPLACESEL - %s\n", debugstr_w(wszText));
 
     nStartCursor = ME_GetSelectionOfs(editor, &from, &to);
@@ -3570,7 +3578,7 @@ LRESULT ME_HandleMessage(ME_TextEditor *editor, UINT msg, WPARAM wParam,
      */
     if (len>0 && wszText[len-1] == '\n')
       ME_ClearTempStyle(editor);
-    ME_EndToUnicode(unicode, wszText);
+    ME_EndToUnicode(codepage, wszText);
     ME_CommitUndo(editor);
     ME_UpdateSelectionLinkAttribute(editor);
     if (!wParam)
@@ -3626,7 +3634,8 @@ LRESULT ME_HandleMessage(ME_TextEditor *editor, UINT msg, WPARAM wParam,
       else
       {
         int textLen;
-        LPWSTR wszText = ME_ToUnicode(unicode, (void *)lParam, &textLen);
+        LONG codepage = unicode ? CP_UNICODE : CP_ACP;
+        LPWSTR wszText = ME_ToUnicode(codepage, (void *)lParam, &textLen);
         TRACE("WM_SETTEXT - %s\n", debugstr_w(wszText)); /* debugstr_w() */
         if (textLen > 0)
         {
@@ -3643,7 +3652,7 @@ LRESULT ME_HandleMessage(ME_TextEditor *editor, UINT msg, WPARAM wParam,
           }
           ME_InsertTextFromCursor(editor, 0, wszText, len, editor->pBuffer->pDefaultStyle);
         }
-        ME_EndToUnicode(unicode, wszText);
+        ME_EndToUnicode(codepage, wszText);
       }
     }
     else
@@ -4035,8 +4044,8 @@ LRESULT ME_HandleMessage(ME_TextEditor *editor, UINT msg, WPARAM wParam,
     {
       WCHAR *textW;
       int len;
-
-      textW = ME_ToUnicode(unicode, text, &len);
+      LONG codepage = unicode ? CP_UNICODE : CP_ACP;
+      textW = ME_ToUnicode(codepage, text, &len);
       if (!(editor->styleFlags & ES_MULTILINE))
       {
         len = 0;
@@ -4044,7 +4053,7 @@ LRESULT ME_HandleMessage(ME_TextEditor *editor, UINT msg, WPARAM wParam,
           len++;
       }
       ME_InsertTextFromCursor(editor, 0, textW, len, editor->pBuffer->pDefaultStyle);
-      ME_EndToUnicode(unicode, textW);
+      ME_EndToUnicode(codepage, textW);
       ME_SetCursorToStart(editor, &editor->pCursors[0]);
       ME_SetCursorToStart(editor, &editor->pCursors[1]);
     }

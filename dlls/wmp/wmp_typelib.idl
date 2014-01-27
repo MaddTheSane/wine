@@ -1,5 +1,5 @@
 /*
- * Copyright 2013 Dmitry Timoshkov
+ * Copyright 2014 Jacek Caban for CodeWeavers
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -16,7 +16,6 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA
  */
 
-HRESULT TaskService_create(void **obj) DECLSPEC_HIDDEN;
-HRESULT TaskFolder_create(const WCHAR *parent, const WCHAR *path, ITaskFolder **obj, BOOL create) DECLSPEC_HIDDEN;
+#pragma makedep regtypelib
 
-const char *debugstr_variant(const VARIANT *v) DECLSPEC_HIDDEN;
+#include "wmp.idl"

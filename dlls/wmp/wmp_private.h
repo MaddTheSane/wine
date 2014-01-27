@@ -1,5 +1,5 @@
 /*
- * Copyright 2013 Dmitry Timoshkov
+ * Copyright 2014 Jacek Caban for CodeWeavers
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -16,7 +16,20 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA
  */
 
-HRESULT TaskService_create(void **obj) DECLSPEC_HIDDEN;
-HRESULT TaskFolder_create(const WCHAR *parent, const WCHAR *path, ITaskFolder **obj, BOOL create) DECLSPEC_HIDDEN;
+#define COBJMACROS
 
-const char *debugstr_variant(const VARIANT *v) DECLSPEC_HIDDEN;
+#include "windows.h"
+#include "ole2.h"
+#include "wmp.h"
+
+HRESULT WINAPI WMPFactory_CreateInstance(IClassFactory*,IUnknown*,REFIID,void**) DECLSPEC_HIDDEN;
+
+static inline void *heap_alloc(size_t len)
+{
+    return HeapAlloc(GetProcessHeap(), 0, len);
+}
+
+static inline BOOL heap_free(void *mem)
+{
+    return HeapFree(GetProcessHeap(), 0, mem);
+}

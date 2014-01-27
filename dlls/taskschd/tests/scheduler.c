@@ -169,17 +169,12 @@ todo_wine
     ok(hr == S_OK, "GetFolder error %#x\n", hr);
 
     hr = ITaskFolder_get_Name(folder, NULL);
-todo_wine
     ok(hr == E_POINTER, "expected E_POINTER, got %#x\n", hr);
 
     hr = ITaskFolder_get_Name(folder, &bstr);
-todo_wine
     ok (hr == S_OK, "get_Name error %#x\n", hr);
-if (hr == S_OK)
-{
     ok(!lstrcmpW(bstr, bslash), "expected '\\', got %s\n", wine_dbgstr_w(bstr));
     SysFreeString(bstr);
-}
 
     hr = ITaskFolder_get_Path(folder, NULL);
     ok(hr == E_POINTER, "expected E_POINTER, got %#x\n", hr);
@@ -190,7 +185,6 @@ if (hr == S_OK)
     SysFreeString(bstr);
 
     hr = ITaskFolder_CreateFolder(folder, NULL, v_null, &subfolder);
-todo_wine
     ok(hr == E_INVALIDARG, "expected E_INVALIDARG, got %#x\n", hr);
 
     /* Just in case something was left from previous runs */
@@ -203,7 +197,6 @@ todo_wine
     ok(hr == HRESULT_FROM_WIN32(ERROR_INVALID_NAME), "expected ERROR_INVALID_NAME, got %#x\n", hr);
 
     hr = ITaskService_GetFolder(service, Wine_Folder1_Folder2, &subfolder);
-todo_wine
     ok(hr == HRESULT_FROM_WIN32(ERROR_PATH_NOT_FOUND), "expected ERROR_PATH_NOT_FOUND, got %#x\n", hr);
 
     hr = ITaskFolder_CreateFolder(folder, bslash, v_null, &subfolder);
@@ -211,20 +204,14 @@ todo_wine
     ok(hr == E_INVALIDARG, "expected E_INVALIDARG, got %#x\n", hr);
 
     hr = ITaskFolder_CreateFolder(folder, Wine_Folder1_Folder2, v_null, &subfolder);
-todo_wine
     ok(hr == S_OK, "CreateFolder error %#x\n", hr);
-    if (hr != S_OK)
-    {
-        ITaskFolder_Release(folder);
-        ITaskService_Release(service);
-        return;
-    }
     ITaskFolder_Release(subfolder);
 
     hr = ITaskFolder_CreateFolder(folder, Wine, v_null, NULL);
     ok(hr == HRESULT_FROM_WIN32(ERROR_ALREADY_EXISTS), "expected ERROR_ALREADY_EXISTS, got %#x\n", hr);
 
     hr = ITaskFolder_CreateFolder(folder, Wine_Folder1_, v_null, &subfolder);
+todo_wine
     ok(hr == HRESULT_FROM_WIN32(ERROR_INVALID_NAME), "expected ERROR_INVALID_NAME, got %#x\n", hr);
 
     hr = ITaskFolder_CreateFolder(folder, Wine, v_null, &subfolder);
@@ -245,11 +232,6 @@ todo_wine
 
     hr = ITaskService_GetFolder(service, Wine_Folder1_Folder2, &subfolder);
     ok(hr == S_OK, "GetFolder error %#x\n", hr);
-    if (hr != S_OK)
-    {
-        ITaskService_Release(service);
-        return;
-    }
 
     hr = ITaskFolder_get_Name(subfolder, &bstr);
     ok (hr == S_OK, "get_Name error %#x\n", hr);
@@ -309,6 +291,7 @@ todo_wine
     SysFreeString(bstr);
 
     hr = ITaskFolder_GetFolder(subfolder, bslash, &subfolder2);
+todo_wine
     ok(hr == HRESULT_FROM_WIN32(ERROR_INVALID_NAME), "expected ERROR_INVALID_NAME, got %#x\n", hr);
 
     hr = ITaskFolder_GetFolder(subfolder, NULL, &subfolder2);

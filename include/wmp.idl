@@ -1,5 +1,5 @@
 /*
- * Copyright 2013 Dmitry Timoshkov
+ * Copyright 2014 Jacek Caban for CodeWeavers
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -16,7 +16,27 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA
  */
 
-HRESULT TaskService_create(void **obj) DECLSPEC_HIDDEN;
-HRESULT TaskFolder_create(const WCHAR *parent, const WCHAR *path, ITaskFolder **obj, BOOL create) DECLSPEC_HIDDEN;
+import "oaidl.idl";
+import "ocidl.idl";
 
-const char *debugstr_variant(const VARIANT *v) DECLSPEC_HIDDEN;
+#ifndef __WIDL__
+#define threading(model)
+#define progid(str)
+#define vi_progid(str)
+#endif
+
+[
+    helpstring("Windows Media Player"),
+    version(1.0),
+    uuid(6bf52a50-394a-11d3-b153-00c04f79Faa6)
+]
+library WMPLib {
+    [
+        helpstring("Windows Media Player"),
+        threading(apartment),
+        progid("WMPlayer.OCX"),
+        uuid(6bf52a52-394a-11d3-b153-00c04f79faa6)
+     ]
+     coclass WindowsMediaPlayer
+     {}
+}

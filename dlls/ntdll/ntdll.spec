@@ -869,6 +869,7 @@
 @ stub RtlSetUserValueHeap
 @ stdcall RtlSizeHeap(long long ptr)
 @ stdcall RtlSleepConditionVariableCS(ptr ptr ptr)
+@ stdcall RtlSleepConditionVariableSRW(ptr ptr ptr long)
 @ stub RtlSplay
 @ stub RtlStartRXact
 # @ stub RtlStatMemoryStream
@@ -891,6 +892,8 @@
 # @ stub RtlTraceDatabaseLock
 # @ stub RtlTraceDatabaseUnlock
 # @ stub RtlTraceDatabaseValidate
+@ stdcall RtlTryAcquireSRWLockExclusive(ptr)
+@ stdcall RtlTryAcquireSRWLockShared(ptr)
 @ stdcall RtlTryEnterCriticalSection(ptr)
 @ cdecl -i386 -norelay RtlUlongByteSwap() NTDLL_RtlUlongByteSwap
 @ cdecl -ret64 RtlUlonglongByteSwap(int64)

@@ -3545,7 +3545,7 @@ static ITypeLib2* ITypeLib2_Constructor_MSFT(LPVOID pLib, DWORD dwTLBLength)
     cx.length = dwTLBLength;
 
     /* read header */
-    MSFT_ReadLEDWords((void*)&tlbHeader, sizeof(tlbHeader), &cx, 0);
+    MSFT_ReadLEDWords(&tlbHeader, sizeof(tlbHeader), &cx, 0);
     TRACE_(typelib)("header:\n");
     TRACE_(typelib)("\tmagic1=0x%08x ,magic2=0x%08x\n",tlbHeader.magic1,tlbHeader.magic2 );
     if (tlbHeader.magic1 != MSFT_SIGNATURE) {
@@ -5176,26 +5176,30 @@ static HRESULT WINAPI ITypeLib2_fnFindName(
         return E_INVALIDARG;
 
     len = (lstrlenW(name) + 1)*sizeof(WCHAR);
-    for(tic = 0; tic < This->TypeInfoCount; ++tic) {
+    for(tic = 0; count < *found && tic < This->TypeInfoCount; ++tic) {
         ITypeInfoImpl *pTInfo = This->typeinfos[tic];
         TLBVarDesc *var;
         UINT fdc;
 
-        if(!TLB_str_memcmp(name, pTInfo->Name, len)) goto ITypeLib2_fnFindName_exit;
+        if(!TLB_str_memcmp(name, pTInfo->Name, len)) {
+            memid[count] = MEMBERID_NIL;
+            goto ITypeLib2_fnFindName_exit;
+        }
+
         for(fdc = 0; fdc < pTInfo->cFuncs; ++fdc) {
             TLBFuncDesc *func = &pTInfo->funcdescs[fdc];
-            int pc;
 
-            if(!TLB_str_memcmp(name, func->Name, len)) goto ITypeLib2_fnFindName_exit;
-            for(pc = 0; pc < func->funcdesc.cParams; pc++) {
-                if(!TLB_str_memcmp(name, func->pParamDesc[pc].Name, len))
-                    goto ITypeLib2_fnFindName_exit;
+            if(!TLB_str_memcmp(name, func->Name, len)) {
+                memid[count] = func->funcdesc.memid;
+                goto ITypeLib2_fnFindName_exit;
             }
         }
 
         var = TLB_get_vardesc_by_name(pTInfo->vardescs, pTInfo->cVars, name);
-        if (var)
+        if (var) {
+            memid[count] = var->vardesc.memid;
             goto ITypeLib2_fnFindName_exit;
+        }
 
         continue;
 ITypeLib2_fnFindName_exit:
@@ -5343,7 +5347,7 @@ static HRESULT TLB_copy_all_custdata(struct list *custdata_list, CUSTDATA *pCust
 
     ct = list_count(custdata_list);
 
-    pCustData->prgCustData = heap_alloc_zero(ct * sizeof(CUSTDATAITEM));
+    pCustData->prgCustData = CoTaskMemAlloc(ct * sizeof(CUSTDATAITEM));
     if(!pCustData->prgCustData)
         return E_OUTOFMEMORY;
 
@@ -9641,7 +9645,7 @@ static DWORD WMSFT_compile_typeinfo(ITypeInfoImpl *info, INT16 index, WMSFT_TLBF
     size = sizeof(MSFT_TypeInfoBase);
 
     if(data){
-        MSFT_TypeInfoBase *base = (void*)data;
+        MSFT_TypeInfoBase *base = (MSFT_TypeInfoBase*)data;
         if(info->wTypeFlags & TYPEFLAG_FDUAL)
             base->typekind = TKIND_DISPATCH;
         else
@@ -11230,8 +11234,7 @@ void WINAPI ClearCustData(CUSTDATA *lpCust)
             for (i = 0; i < lpCust->cCustData; i++)
                 VariantClear(&lpCust->prgCustData[i].varValue);
 
-            /* FIXME - Should be using a per-thread IMalloc */
-            heap_free(lpCust->prgCustData);
+            CoTaskMemFree(lpCust->prgCustData);
             lpCust->prgCustData = NULL;
         }
         lpCust->cCustData = 0;

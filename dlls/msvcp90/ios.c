@@ -5165,7 +5165,12 @@ IOSB_fmtflags __thiscall ios_base_setf_mask(ios_base *this, IOSB_fmtflags flags,
 DEFINE_THISCALL_WRAPPER(ios_base_setf, 8)
 IOSB_fmtflags __thiscall ios_base_setf(ios_base *this, IOSB_fmtflags flags)
 {
-    return ios_base_setf_mask(this, flags, ~0);
+    IOSB_fmtflags ret = this->fmtfl;
+
+    TRACE("(%p %x)\n", this, flags);
+
+    this->fmtfl |= flags & FMTFLAG_mask;
+    return ret;
 }
 
 /* ?setstate@ios_base@std@@QAEXH_N@Z */
@@ -8111,7 +8116,7 @@ DEFINE_THISCALL_WRAPPER(basic_istream_char_read, 12)
 #endif
 basic_istream_char* __thiscall basic_istream_char_read(basic_istream_char *this, char *str, streamsize count)
 {
-    return basic_istream_char__Read_s(this, str, count, count);
+    return basic_istream_char__Read_s(this, str, -1, count);
 }
 
 /* ?_Readsome_s@?$basic_istream@DU?$char_traits@D@std@@@std@@QAEHPADIH@Z */
@@ -9418,7 +9423,7 @@ DEFINE_THISCALL_WRAPPER(basic_istream_wchar_read, 12)
 #endif
 basic_istream_wchar* __thiscall basic_istream_wchar_read(basic_istream_wchar *this, wchar_t *str, streamsize count)
 {
-    return basic_istream_wchar__Read_s(this, str, count, count);
+    return basic_istream_wchar__Read_s(this, str, -1, count);
 }
 
 /* ?_Readsome_s@?$basic_istream@_WU?$char_traits@_W@std@@@std@@QAEHPA_WIH@Z */

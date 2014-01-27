@@ -1435,6 +1435,14 @@ DWORD WINAPI RtlRunOnceExecuteOnce( RTL_RUN_ONCE *once, PRTL_RUN_ONCE_INIT_FN fu
 #define srwlock_key_shared(lock)      (&lock->Ptr)
 #endif
 
+static inline void srwlock_check_invalid( unsigned int val )
+{
+    /* Throw exception if it's impossible to acquire/release this lock. */
+    if ((val & SRWLOCK_MASK_EXCLUSIVE_QUEUE) == SRWLOCK_MASK_EXCLUSIVE_QUEUE ||
+            (val & SRWLOCK_MASK_SHARED_QUEUE) == SRWLOCK_MASK_SHARED_QUEUE)
+        RtlRaiseStatus(STATUS_RESOURCE_NOT_OWNED);
+}
+
 static inline unsigned int srwlock_lock_exclusive( unsigned int *dest, int incr )
 {
     unsigned int val, tmp;
@@ -1445,6 +1453,7 @@ static inline unsigned int srwlock_lock_exclusive( unsigned int *dest, int incr 
     for (val = *dest;; val = tmp)
     {
         tmp = val + incr;
+        srwlock_check_invalid( tmp );
         if ((tmp & SRWLOCK_MASK_EXCLUSIVE_QUEUE) && !(tmp & SRWLOCK_MASK_SHARED_QUEUE))
             tmp |= SRWLOCK_MASK_IN_EXCLUSIVE;
         if ((tmp = interlocked_cmpxchg( (int *)dest, tmp, val )) == val)
@@ -1463,6 +1472,7 @@ static inline unsigned int srwlock_unlock_exclusive( unsigned int *dest, int inc
     for (val = *dest;; val = tmp)
     {
         tmp = val + incr;
+        srwlock_check_invalid( tmp );
         if (!(tmp & SRWLOCK_MASK_EXCLUSIVE_QUEUE))
             tmp &= SRWLOCK_MASK_SHARED_QUEUE;
         if ((tmp = interlocked_cmpxchg( (int *)dest, tmp, val )) == val)
@@ -1525,6 +1535,10 @@ void WINAPI RtlAcquireSRWLockExclusive( RTL_SRWLOCK *lock )
 
 /***********************************************************************
  *              RtlAcquireSRWLockShared (NTDLL.@)
+ *
+ * NOTES
+ *   Do not call this function recursively - it will only succeed when
+ *   there are no threads waiting for an exclusive lock!
  */
 void WINAPI RtlAcquireSRWLockShared( RTL_SRWLOCK *lock )
 {
@@ -1570,6 +1584,35 @@ void WINAPI RtlReleaseSRWLockShared( RTL_SRWLOCK *lock )
 {
     srwlock_leave_shared( lock, srwlock_lock_exclusive( (unsigned int *)&lock->Ptr,
                           - SRWLOCK_RES_SHARED ) - SRWLOCK_RES_SHARED );
+}
+
+/***********************************************************************
+ *              RtlTryAcquireSRWLockExclusive (NTDLL.@)
+ *
+ * NOTES
+ *  Similar to AcquireSRWLockExclusive recusive calls are not allowed
+ *  and will fail with return value FALSE.
+ */
+BOOLEAN WINAPI RtlTryAcquireSRWLockExclusive( RTL_SRWLOCK *lock )
+{
+    return interlocked_cmpxchg( (int *)&lock->Ptr, SRWLOCK_MASK_IN_EXCLUSIVE |
+                                SRWLOCK_RES_EXCLUSIVE, 0 ) == 0;
+}
+
+/***********************************************************************
+ *              RtlTryAcquireSRWLockShared (NTDLL.@)
+ */
+BOOLEAN WINAPI RtlTryAcquireSRWLockShared( RTL_SRWLOCK *lock )
+{
+    unsigned int val, tmp;
+    for (val = *(unsigned int *)&lock->Ptr;; val = tmp)
+    {
+        if (val & SRWLOCK_MASK_EXCLUSIVE_QUEUE)
+            return FALSE;
+        if ((tmp = interlocked_cmpxchg( (int *)&lock->Ptr, val + SRWLOCK_RES_SHARED, val )) == val)
+            break;
+    }
+    return TRUE;
 }
 
 /***********************************************************************
@@ -1651,5 +1694,49 @@ NTSTATUS WINAPI RtlSleepConditionVariableCS( RTL_CONDITION_VARIABLE *variable, R
     }
 
     RtlEnterCriticalSection( crit );
+    return status;
+}
+
+/***********************************************************************
+ *           RtlSleepConditionVariableSRW   (NTDLL.@)
+ *
+ * Atomically releases the SRWLock and suspends the thread,
+ * waiting for a Wake(All)ConditionVariable event. Afterwards it enters
+ * the SRWLock again with the same access rights and returns.
+ *
+ * PARAMS
+ *  variable  [I/O] condition variable
+ *  lock      [I/O] SRWLock to leave temporarily
+ *  timeout   [I]   timeout
+ *  flags     [I]   type of the current lock (exclusive / shared)
+ *
+ * RETURNS
+ *  see NtWaitForKeyedEvent for all possible return values.
+ *
+ * NOTES
+ *  the behaviour is undefined if the thread doesn't own the lock.
+ */
+NTSTATUS WINAPI RtlSleepConditionVariableSRW( RTL_CONDITION_VARIABLE *variable, RTL_SRWLOCK *lock,
+                                              const LARGE_INTEGER *timeout, ULONG flags )
+{
+    NTSTATUS status;
+    interlocked_xchg_add( (int *)&variable->Ptr, 1 );
+
+    if (flags & RTL_CONDITION_VARIABLE_LOCKMODE_SHARED)
+        RtlReleaseSRWLockShared( lock );
+    else
+        RtlReleaseSRWLockExclusive( lock );
+
+    status = NtWaitForKeyedEvent( keyed_event, &variable->Ptr, FALSE, timeout );
+    if (status != STATUS_SUCCESS)
+    {
+        if (!interlocked_dec_if_nonzero( (int *)&variable->Ptr ))
+            status = NtWaitForKeyedEvent( keyed_event, &variable->Ptr, FALSE, NULL );
+    }
+
+    if (flags & RTL_CONDITION_VARIABLE_LOCKMODE_SHARED)
+        RtlAcquireSRWLockShared( lock );
+    else
+        RtlAcquireSRWLockExclusive( lock );
     return status;
 }

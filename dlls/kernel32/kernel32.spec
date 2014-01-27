@@ -1196,6 +1196,7 @@
 @ stdcall SizeofResource(long long)
 @ stdcall Sleep(long)
 @ stdcall SleepConditionVariableCS(ptr ptr long)
+@ stdcall SleepConditionVariableSRW(ptr ptr long long)
 @ stdcall SleepEx(long long)
 @ stdcall SuspendThread(long)
 @ stdcall SwitchToFiber(ptr)
@@ -1219,6 +1220,8 @@
 @ stdcall TransactNamedPipe(long ptr long ptr long ptr ptr)
 @ stdcall TransmitCommChar(long long)
 @ stub TrimVirtualBuffer
+@ stdcall TryAcquireSRWLockExclusive(ptr) ntdll.RtlTryAcquireSRWLockExclusive
+@ stdcall TryAcquireSRWLockShared(ptr) ntdll.RtlTryAcquireSRWLockShared
 @ stdcall TryEnterCriticalSection(ptr) ntdll.RtlTryEnterCriticalSection
 @ stdcall TzSpecificLocalTimeToSystemTime(ptr ptr ptr)
 @ stdcall -i386 -private UTRegister(long str str str ptr ptr ptr) krnl386.exe16.UTRegister
