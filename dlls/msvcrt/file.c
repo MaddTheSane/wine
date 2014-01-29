@@ -860,7 +860,7 @@ static int msvcrt_flush_all_buffers(int mask)
   MSVCRT_FILE *file;
 
   LOCK_FILES();
-  for (i = 3; i < MSVCRT_stream_idx; i++) {
+  for (i = 0; i < MSVCRT_stream_idx; i++) {
     file = msvcrt_get_file(i);
 
     if (file->_flag)
@@ -1066,14 +1066,8 @@ void msvcrt_free_io(void)
     unsigned int i;
     int j;
 
+    MSVCRT__flushall();
     MSVCRT__fcloseall();
-    /* The Win32 _fcloseall() function explicitly doesn't close stdin,
-     * stdout, and stderr (unlike GNU), so we need to fclose() them here
-     * or they won't get flushed.
-     */
-    MSVCRT_fclose(&MSVCRT__iob[0]);
-    MSVCRT_fclose(&MSVCRT__iob[1]);
-    MSVCRT_fclose(&MSVCRT__iob[2]);
 
     for(i=0; i<sizeof(MSVCRT___pioinfo)/sizeof(MSVCRT___pioinfo[0]); i++)
         MSVCRT_free(MSVCRT___pioinfo[i]);
@@ -3279,6 +3273,11 @@ int CDECL MSVCRT__filbuf(MSVCRT_FILE* file)
 {
     unsigned char c;
     MSVCRT__lock_file(file);
+
+    if(file->_flag & MSVCRT__IOSTRG) {
+        MSVCRT__unlock_file(file);
+        return MSVCRT_EOF;
+    }
 
     /* Allocate buffer if needed */
     if(file->_bufsiz == 0 && !(file->_flag & MSVCRT__IONBF))

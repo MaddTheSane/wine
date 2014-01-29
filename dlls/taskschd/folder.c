@@ -60,8 +60,8 @@ static ULONG WINAPI TaskFolder_Release(ITaskFolder *iface)
     if (!ref)
     {
         TRACE("destroying %p\n", iface);
-        HeapFree(GetProcessHeap(), 0, folder->path);
-        HeapFree(GetProcessHeap(), 0, folder);
+        heap_free(folder->path);
+        heap_free(folder);
     }
 
     return ref;
@@ -232,8 +232,14 @@ static HRESULT WINAPI TaskFolder_GetFolder(ITaskFolder *iface, BSTR path, ITaskF
 
 static HRESULT WINAPI TaskFolder_GetFolders(ITaskFolder *iface, LONG flags, ITaskFolderCollection **folders)
 {
-    FIXME("%p,%x,%p: stub\n", iface, flags, folders);
-    return E_NOTIMPL;
+    TaskFolder *folder = impl_from_ITaskFolder(iface);
+
+    TRACE("%p,%x,%p: stub\n", iface, flags, folders);
+
+    if (flags)
+        FIXME("unsupported flags %x\n", flags);
+
+    return TaskFolderCollection_create(folder->path, folders);
 }
 
 static inline BOOL is_variant_null(const VARIANT *var)
@@ -269,6 +275,8 @@ static HRESULT WINAPI TaskFolder_DeleteFolder(ITaskFolder *iface, BSTR name, LON
     TaskFolder *folder = impl_from_ITaskFolder(iface);
 
     TRACE("%p,%s,%x\n", iface, debugstr_w(name), flags);
+
+    if (!name || !*name) return E_ACCESSDENIED;
 
     if (flags)
         FIXME("unsupported flags %x\n", flags);
@@ -366,7 +374,7 @@ HRESULT TaskFolder_create(const WCHAR *parent, const WCHAR *path, ITaskFolder **
     if (parent) len += strlenW(parent);
 
     /* +1 if parent is not '\' terminated */
-    folder_path = HeapAlloc(GetProcessHeap(), 0, (len + 2) * sizeof(WCHAR));
+    folder_path = heap_alloc((len + 2) * sizeof(WCHAR));
     if (!folder_path) return E_OUTOFMEMORY;
 
     folder_path[0] = 0;
@@ -391,16 +399,16 @@ HRESULT TaskFolder_create(const WCHAR *parent, const WCHAR *path, ITaskFolder **
     hr = create ? reg_create_folder(folder_path, &hfolder) : reg_open_folder(folder_path, &hfolder);
     if (hr)
     {
-        HeapFree(GetProcessHeap(), 0, folder_path);
+        heap_free(folder_path);
         return hr;
     }
 
     reg_close_folder(hfolder);
 
-    folder = HeapAlloc(GetProcessHeap(), 0, sizeof(*folder));
+    folder = heap_alloc(sizeof(*folder));
     if (!folder)
     {
-        HeapFree(GetProcessHeap(), 0, folder_path);
+        heap_free(folder_path);
         return E_OUTOFMEMORY;
     }
 
