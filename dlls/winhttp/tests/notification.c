@@ -107,7 +107,7 @@ static void CALLBACK check_notification( HINTERNET handle, DWORD_PTR context, DW
             todo_wine ok(function_ok, "%u: expected function %u got %u\n", info->line, info->test[i].function, info->function);
         }
     }
-    if (status_ok) info->index++;
+    if (status_ok && function_ok) info->index++;
     if (proxy_active())
     {
         while (info->test[info->index].skipped_for_proxy)
@@ -377,8 +377,8 @@ static const struct notification async_test[] =
 {
     { winhttp_connect,          WINHTTP_CALLBACK_STATUS_HANDLE_CREATED },
     { winhttp_open_request,     WINHTTP_CALLBACK_STATUS_HANDLE_CREATED },
-    { winhttp_send_request,     WINHTTP_CALLBACK_STATUS_RESOLVING_NAME },
-    { winhttp_send_request,     WINHTTP_CALLBACK_STATUS_NAME_RESOLVED },
+    { winhttp_send_request,     WINHTTP_CALLBACK_STATUS_RESOLVING_NAME, FALSE, TRUE },
+    { winhttp_send_request,     WINHTTP_CALLBACK_STATUS_NAME_RESOLVED, FALSE, TRUE },
     { winhttp_send_request,     WINHTTP_CALLBACK_STATUS_CONNECTING_TO_SERVER },
     { winhttp_send_request,     WINHTTP_CALLBACK_STATUS_CONNECTED_TO_SERVER },
     { winhttp_send_request,     WINHTTP_CALLBACK_STATUS_SENDING_REQUEST },
