@@ -52,9 +52,8 @@ typedef struct IDirectMusicBandTrack IDirectMusicBandTrack;
 /*****************************************************************************
  * ClassFactory
  */
-extern HRESULT WINAPI DMUSIC_CreateDirectMusicBandImpl (LPCGUID lpcGUID, LPVOID* ppobj, LPUNKNOWN pUnkOuter) DECLSPEC_HIDDEN;
-
-extern HRESULT WINAPI DMUSIC_CreateDirectMusicBandTrack (LPCGUID lpcGUID, LPVOID* ppobj, LPUNKNOWN pUnkOuter) DECLSPEC_HIDDEN;
+extern HRESULT WINAPI create_dmband(REFIID riid, void **ret_iface) DECLSPEC_HIDDEN;
+extern HRESULT WINAPI create_dmbandtrack(REFIID riid, void **ret_iface) DECLSPEC_HIDDEN;
 
 
 /*****************************************************************************
@@ -79,7 +78,7 @@ typedef struct _DMUS_PRIVATE_INSTRUMENT {
 typedef struct _DMUS_PRIVATE_BAND {
 	struct list entry; /* for listing elements */
 	DMUS_PRIVATE_BAND_ITEM_HEADER BandHeader;
-	IDirectMusicBandImpl* pBand;
+	IDirectMusicBand *band;
 } DMUS_PRIVATE_BAND, *LPDMUS_PRIVATE_BAND;
 
 
@@ -87,9 +86,7 @@ typedef struct _DMUS_PRIVATE_BAND {
  * IDirectMusicBandImpl implementation structure
  */
 struct IDirectMusicBandImpl {
-  /* IUnknown fields */
-  const IUnknownVtbl *UnknownVtbl;
-  const IDirectMusicBandVtbl *BandVtbl;
+  IDirectMusicBand IDirectMusicBand_iface;
   const IDirectMusicObjectVtbl *ObjectVtbl;
   const IPersistStreamVtbl *PersistStreamVtbl;
   LONG           ref;

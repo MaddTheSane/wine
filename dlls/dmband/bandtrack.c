@@ -317,7 +317,7 @@ static HRESULT IDirectMusicBandTrack_IPersistStream_LoadBand (LPPERSISTSTREAM if
       return  E_OUTOFMEMORY;
     }
     pNewBand->BandHeader = *pHeader;
-    pNewBand->pBand = (IDirectMusicBandImpl*)((char*)(*ppBand) - offsetof(IDirectMusicBandImpl,BandVtbl));
+    pNewBand->band = *ppBand;
     IDirectMusicBand_AddRef(*ppBand);
     list_add_tail (&This->Bands, &pNewBand->entry);
   }
@@ -606,7 +606,8 @@ static const IPersistStreamVtbl DirectMusicBandTrack_PerststStream_Vtbl = {
 };
 
 /* for ClassFactory */
-HRESULT WINAPI DMUSIC_CreateDirectMusicBandTrack (LPCGUID lpcGUID, LPVOID *ppobj, LPUNKNOWN pUnkOuter) {
+HRESULT WINAPI create_dmbandtrack(REFIID lpcGUID, void **ppobj)
+{
   IDirectMusicBandTrack* track;
 	
   track = HeapAlloc (GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(IDirectMusicBandTrack));

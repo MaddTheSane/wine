@@ -368,12 +368,9 @@ AC_CHECK_LIB(i386,i386_set_ldt)
 dnl Check for -lossaudio for NetBSD
 AC_CHECK_LIB(ossaudio,_oss_ioctl)
 
-AC_SUBST(XLIB,"")
 AC_SUBST(OPENGL_LIBS,"")
 
 dnl **** Check for header files ****
-
-test "x$with_fontconfig" != "xno" || ac_cv_header_fontconfig_fontconfig_h=no
 
 AC_SYS_LARGEFILE()
 
@@ -407,7 +404,6 @@ AC_CHECK_HEADERS(\
 	elf.h \
 	float.h \
 	fnmatch.h \
-	fontconfig/fontconfig.h \
 	getopt.h \
 	gettext-po.h \
 	grp.h \
@@ -715,7 +711,7 @@ case $host_os in
     case $host_os in
         mingw32*)
           crtlibs="-lmsvcrt"
-          AC_SUBST(SOCKETLIBS,"-L\$(top_builddir)/dlls/ws2_32 -lws2_32") ;;
+          AC_SUBST(SOCKET_LIBS,"-L\$(top_builddir)/dlls/ws2_32 -lws2_32") ;;
     esac
 
     libwine_targets="libwine.dll libwine.a"
@@ -748,12 +744,12 @@ uninstall::
     LDRPATH_INSTALL="-Wl,-rpath,@loader_path/\`\$(MAKEDEP) -R \$(bindir) \$(libdir)\`"
     LDRPATH_LOCAL="-Wl,-rpath,@loader_path/\$(top_builddir)/libs/wine"
     dnl declare needed frameworks
-    AC_SUBST(COREFOUNDATIONLIB,"-framework CoreFoundation")
-    AC_SUBST(IOKITLIB,"-framework IOKit -framework CoreFoundation")
-    AC_SUBST(FORCEFEEDBACKLIB,"-framework ForceFeedback -framework CoreFoundation")
-    AC_SUBST(APPLICATIONSERVICESLIB,"-framework ApplicationServices")
-    AC_SUBST(CORESERVICESLIB,"-framework CoreServices")
-    AC_SUBST(APPKITLIB,"-framework AppKit")
+    AC_SUBST(COREFOUNDATION_LIBS,"-framework CoreFoundation")
+    AC_SUBST(IOKIT_LIBS,"-framework IOKit -framework CoreFoundation")
+    AC_SUBST(FORCEFEEDBACK_LIBS,"-framework ForceFeedback -framework CoreFoundation")
+    AC_SUBST(APPLICATIONSERVICES_LIBS,"-framework ApplicationServices")
+    AC_SUBST(CORESERVICES_LIBS,"-framework CoreServices")
+    AC_SUBST(APPKIT_LIBS,"-framework AppKit")
     LDEXECFLAGS="-image_base 0x7bf00000 -Wl,-segaddr,WINE_DOS,0x00001000,-segaddr,WINE_SHAREDHEAP,0x7f000000,-sectcreate,__TEXT,__info_plist,wine_info.plist"
     case $host_os in
       darwin11*) LDEXECFLAGS="-Wl,-macosx_version_min,10.6 $LDEXECFLAGS" ;;
@@ -761,14 +757,14 @@ uninstall::
     if test "$ac_cv_header_DiskArbitration_DiskArbitration_h" = "yes"
     then
         dnl DiskArbitration API is not public on Darwin < 8.0, use it only if header found
-        AC_SUBST(DISKARBITRATIONLIB,"-framework DiskArbitration -framework CoreFoundation")
+        AC_SUBST(DISKARBITRATION_LIBS,"-framework DiskArbitration -framework CoreFoundation")
     fi
     if test "$ac_cv_header_Security_Security_h" = "yes"
     then
-        AC_SUBST(SECURITYLIB,"-framework Security -framework CoreFoundation")
+        AC_SUBST(SECURITY_LIBS,"-framework Security -framework CoreFoundation")
         dnl Check for the SSLCopyPeerCertificates function
         ac_save_LIBS="$LIBS"
-        LIBS="$LIBS $SECURITYLIB"
+        LIBS="$LIBS $SECURITY_LIBS"
         AC_CHECK_FUNCS(SSLCopyPeerCertificates)
         LIBS="$ac_save_LIBS"
         with_gnutls=${with_gnutls:-no}
@@ -777,52 +773,52 @@ uninstall::
     then
         if test "$ac_cv_header_AudioUnit_AudioComponent_h" = "yes"
         then
-            AC_SUBST(COREAUDIO,"-framework CoreFoundation -framework CoreAudio -framework AudioUnit -framework AudioToolbox -framework CoreMIDI")
+            AC_SUBST(COREAUDIO_LIBS,"-framework CoreFoundation -framework CoreAudio -framework AudioUnit -framework AudioToolbox -framework CoreMIDI")
         else
             dnl CoreServices needed by AudioUnit
-            AC_SUBST(COREAUDIO,"-framework CoreAudio -framework AudioUnit -framework CoreServices -framework AudioToolbox -framework CoreMIDI")
+            AC_SUBST(COREAUDIO_LIBS,"-framework CoreAudio -framework AudioUnit -framework CoreServices -framework AudioToolbox -framework CoreMIDI")
         fi
         dnl Check for the AUGraphAddNode function
         ac_save_LIBS="$LIBS"
-        LIBS="$LIBS $COREAUDIO"
+        LIBS="$LIBS $COREAUDIO_LIBS"
         AC_CHECK_FUNCS(AUGraphAddNode)
         LIBS="$ac_save_LIBS"
     fi
     if test "$ac_cv_header_OpenAL_al_h" = "yes"
     then
-        AC_SUBST(FRAMEWORK_OPENAL,"-framework OpenAL")
+        AC_SUBST(OPENAL_LIBS,"-framework OpenAL")
         AC_DEFINE_UNQUOTED(HAVE_OPENAL,1,[Define to 1 if OpenAL is available])
         ac_cv_lib_openal=yes
     fi
     if test "$ac_cv_header_OpenCL_opencl_h" = "yes"
     then
-        AC_SUBST(LIBOPENCL,"-framework OpenCL")
+        AC_SUBST(OPENCL_LIBS,"-framework OpenCL")
         ac_cv_lib_OpenCL_clGetPlatformInfo=yes
     fi
     if test "$ac_cv_header_IOKit_hid_IOHIDLib_h" = "yes"
     then
         ac_save_LIBS="$LIBS"
-        LIBS="$LIBS $IOKITLIB"
+        LIBS="$LIBS $IOKIT_LIBS"
         AC_CHECK_FUNCS(IOHIDManagerCreate)
         LIBS="$ac_save_LIBS"
     fi
     if test "$ac_cv_header_QuickTime_ImageCompression_h" = "yes"
     then
-        AC_SUBST(QUICKTIMELIB,"-framework QuickTime -framework ApplicationServices -framework CoreVideo")
+        AC_SUBST(QUICKTIME_LIBS,"-framework QuickTime -framework ApplicationServices -framework CoreVideo")
         enable_wineqtdecoder=${enable_wineqtdecoder:-yes}
     else
         WINE_NOTICE([QuickTime ${notice_platform}development files not found, video decoding won't be supported.])
     fi
     if test "$ac_cv_header_Carbon_Carbon_h" = "yes"
     then
-        AC_SUBST(CARBONLIB,"-framework Carbon")
+        AC_SUBST(CARBON_LIBS,"-framework Carbon")
     fi
 
     dnl Enable Mac driver on Mac OS X 10.6 or later
     if test "$ac_cv_header_ApplicationServices_ApplicationServices_h" = "yes"
     then
         ac_save_LIBS="$LIBS"
-        LIBS="$LIBS $APPLICATIONSERVICESLIB"
+        LIBS="$LIBS $APPLICATIONSERVICES_LIBS"
         AC_CHECK_FUNC(CGDisplayModeGetWidth,enable_winemac_drv=${enable_winemac_drv:-yes})
         LIBS="$ac_save_LIBS"
     fi
@@ -1059,9 +1055,9 @@ dnl **** Check for pthread ****
 
 if test "$ac_cv_header_pthread_h" = "yes"
 then
-    AC_CHECK_FUNC(pthread_create,,[AC_CHECK_LIB(pthread,pthread_create,[AC_SUBST(LIBPTHREAD,"-lpthread")])])
+    AC_CHECK_FUNC(pthread_create,,[AC_CHECK_LIB(pthread,pthread_create,[AC_SUBST(PTHREAD_LIBS,"-lpthread")])])
 fi
-WINE_ERROR_WITH(pthread,[test "x$ac_cv_func_pthread_create" != xyes -a "x$LIBPTHREAD" = x],
+WINE_ERROR_WITH(pthread,[test "x$ac_cv_func_pthread_create" != xyes -a "x$PTHREAD_LIBS" = x],
 [pthread ${notice_platform}development files not found.
 Wine cannot support threads without libpthread.])
 
@@ -1071,12 +1067,12 @@ AC_PATH_XTRA
 
 if test "$have_x" = "yes"
 then
-    XLIB="-lX11"
     ac_save_CPPFLAGS="$CPPFLAGS"
     CPPFLAGS="$CPPFLAGS $X_CFLAGS"
 
     WINE_CHECK_SONAME(X11,XCreateWindow,,,[$X_LIBS $X_EXTRA_LIBS])
-    WINE_CHECK_SONAME(Xext,XextCreateExtension,[XLIB="-lXext $XLIB"],,[$X_LIBS -lX11 $X_EXTRA_LIBS])
+    WINE_CHECK_SONAME(Xext,XextCreateExtension,[X_LIBS="$X_LIBS -lXext"],,[$X_LIBS -lX11 $X_EXTRA_LIBS])
+    X_LIBS="$X_LIBS -lX11"
 
     dnl *** All of the following tests require X11/Xlib.h
     AC_CHECK_HEADERS([X11/Xlib.h \
@@ -1104,14 +1100,13 @@ then
         if test "$ac_cv_header_X11_XKBlib_h" = "yes"
         then
               AC_CHECK_LIB(X11, XkbQueryExtension,
-              AC_DEFINE(HAVE_XKB, 1, [Define if you have the XKB extension]),,
-              $X_LIBS $XLIB $X_EXTRA_LIBS)
+              AC_DEFINE(HAVE_XKB, 1, [Define if you have the XKB extension]),,[$X_LIBS $X_EXTRA_LIBS])
         fi
 
         dnl *** Check for X cursor
         if test "$ac_cv_header_X11_Xcursor_Xcursor_h" = "yes"
         then
-            WINE_CHECK_SONAME(Xcursor,XcursorImageLoadCursor,,,[$X_LIBS $XLIB $X_EXTRA_LIBS])
+            WINE_CHECK_SONAME(Xcursor,XcursorImageLoadCursor,,,[$X_LIBS $X_EXTRA_LIBS])
         fi
         WINE_NOTICE_WITH(xcursor,[test "x$ac_cv_lib_soname_Xcursor" = "x"],
                          [libxcursor ${notice_platform}development files not found, the Xcursor extension won't be supported.])
@@ -1119,7 +1114,7 @@ then
         dnl *** Check for X input extension
         if test "$ac_cv_header_X11_extensions_XInput_h" = "yes"
         then
-            WINE_CHECK_SONAME(Xi,XOpenDevice,,,[$X_LIBS $XLIB $X_EXTRA_LIBS])
+            WINE_CHECK_SONAME(Xi,XOpenDevice,,,[$X_LIBS $X_EXTRA_LIBS])
         fi
         WINE_NOTICE_WITH(xinput,[test "x$ac_cv_lib_soname_Xi" = "x"],
                          [libxi ${notice_platform}development files not found, the Xinput extension won't be supported.])
@@ -1135,8 +1130,7 @@ then
         if test "$ac_cv_header_X11_extensions_XShm_h" = "yes"
         then
               AC_CHECK_LIB(Xext, XShmQueryExtension,
-              AC_DEFINE(HAVE_LIBXXSHM, 1, [Define if you have the X Shm extension]),,
-              $X_LIBS $XLIB $X_EXTRA_LIBS)
+              AC_DEFINE(HAVE_LIBXXSHM, 1, [Define if you have the X Shm extension]),,[$X_LIBS $X_EXTRA_LIBS])
         fi
         WINE_NOTICE_WITH(xshm,[test "$ac_cv_lib_Xext_XShmQueryExtension" != "yes"],
                          [XShm ${notice_platform}development files not found, X Shared Memory won't be supported.])
@@ -1145,8 +1139,7 @@ then
         if test "$ac_cv_header_X11_extensions_shape_h" = "yes"
         then
               AC_CHECK_LIB(Xext,XShapeQueryExtension,
-	      AC_DEFINE(HAVE_LIBXSHAPE, 1, [Define if you have the X Shape extension]),,
-	      $X_LIBS $XLIB $X_EXTRA_LIBS)
+	      AC_DEFINE(HAVE_LIBXSHAPE, 1, [Define if you have the X Shape extension]),,[$X_LIBS $X_EXTRA_LIBS])
         fi
         WINE_NOTICE_WITH(xshape,[test "$ac_cv_lib_Xext_XShapeQueryExtension" != "yes"],
                          [XShape ${notice_platform}development files not found, XShape won't be supported.])
@@ -1154,7 +1147,7 @@ then
         dnl *** Check for XFree86 VMODE extension
         if test "$ac_cv_header_X11_extensions_xf86vmode_h" = "yes" -o "$ac_cv_header_X11_extensions_xf86vmproto_h" = "yes"
         then
-            WINE_CHECK_SONAME(Xxf86vm,XF86VidModeQueryExtension,,,[$X_LIBS $XLIB $X_EXTRA_LIBS])
+            WINE_CHECK_SONAME(Xxf86vm,XF86VidModeQueryExtension,,,[$X_LIBS $X_EXTRA_LIBS])
         fi
         WINE_NOTICE_WITH(xxf86vm,[test "x$ac_cv_lib_soname_Xxf86vm" = "x"],
                          [libXxf86vm ${notice_platform}development files not found, XFree86 Vidmode won't be supported.])
@@ -1165,11 +1158,10 @@ then
             WINE_CHECK_SONAME(Xrender,XRenderQueryExtension,
               [AC_CHECK_LIB(Xrender,XRenderSetPictureTransform,
                 [AC_DEFINE(HAVE_XRENDERSETPICTURETRANSFORM, 1,
-                 [Define if Xrender has the XRenderSetPictureTransform function])],,[$X_LIBS $XLIB $X_EXTRA_LIBS])
+                 [Define if Xrender has the XRenderSetPictureTransform function])],,[$X_LIBS $X_EXTRA_LIBS])
                AC_CHECK_LIB(Xrender,XRenderCreateLinearGradient,
                 [AC_DEFINE(HAVE_XRENDERCREATELINEARGRADIENT, 1,
-                 [Define if Xrender has the XRenderCreateLinearGradient function])],,[$X_LIBS $XLIB $X_EXTRA_LIBS])],,
-              [$X_LIBS $XLIB $X_EXTRA_LIBS])
+                 [Define if Xrender has the XRenderCreateLinearGradient function])],,[$X_LIBS $X_EXTRA_LIBS])],,[$X_LIBS $X_EXTRA_LIBS])
 
         fi
         WINE_WARNING_WITH(xrender,[test "x$ac_cv_lib_soname_Xrender" = "x"],
@@ -1184,8 +1176,7 @@ then
                     [AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[#include <X11/Xlib.h>
 #include <X11/extensions/Xrandr.h>]], [[static typeof(XRRGetScreenResources) *f; if (f) return 0;]])],
                       [AC_DEFINE(HAVE_XRRGETSCREENRESOURCES, 1,
-                        [Define if Xrandr has the XRRGetScreenResources function])])],,
-                    [$X_LIBS $XLIB $X_EXTRA_LIBS])])
+                        [Define if Xrandr has the XRRGetScreenResources function])])],,[$X_LIBS $X_EXTRA_LIBS])])
         fi
         WINE_NOTICE_WITH(xrandr,[test "x$ac_cv_lib_soname_Xrandr" = "x"],
                          [libxrandr ${notice_platform}development files not found, XRandr won't be supported.])
@@ -1195,7 +1186,7 @@ then
         then
                 AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[#include <X11/Xlib.h>
 #include <X11/extensions/Xinerama.h>]], [[static typeof(XineramaQueryScreens) * func; if (func) return 0;]])],
-                  [WINE_CHECK_SONAME(Xinerama,XineramaQueryScreens,,,[$X_LIBS $XLIB $X_EXTRA_LIBS])])
+                  [WINE_CHECK_SONAME(Xinerama,XineramaQueryScreens,,,[$X_LIBS $X_EXTRA_LIBS])])
         fi
         WINE_NOTICE_WITH(xinerama,[test "x$ac_cv_lib_soname_Xinerama" = "x"],
                          [libxinerama ${notice_platform}development files not found, multi-monitor setups won't be supported.])
@@ -1203,7 +1194,7 @@ then
         dnl *** Check for X Composite extension
         if test "$ac_cv_header_X11_extensions_Xcomposite_h" = "yes"
         then
-            WINE_CHECK_SONAME(Xcomposite,XCompositeRedirectWindow,,,[$X_LIBS $XLIB $X_EXTRA_LIBS])
+            WINE_CHECK_SONAME(Xcomposite,XCompositeRedirectWindow,,,[$X_LIBS $X_EXTRA_LIBS])
         fi
         WINE_NOTICE_WITH(xcomposite,[test "x$ac_cv_lib_soname_Xcomposite" = "x"],
                          [libxcomposite ${notice_platform}development files not found, Xcomposite won't be supported.])
@@ -1231,18 +1222,18 @@ This probably prevents linking to OpenGL. Try deleting the file and restarting c
                             else
                                 opengl_msg="No OpenGL library found on this system."
                             fi],
-			    $X_LIBS $XLIB -lm $X_EXTRA_LIBS -dylib_file /System/Library/Frameworks/OpenGL.framework/Versions/A/Libraries/libGL.dylib:/System/Library/Frameworks/OpenGL.framework/Versions/A/Libraries/libGL.dylib)],
-		     $X_LIBS $XLIB -lm $X_EXTRA_LIBS)
+			    $X_LIBS -lm $X_EXTRA_LIBS -dylib_file /System/Library/Frameworks/OpenGL.framework/Versions/A/Libraries/libGL.dylib:/System/Library/Frameworks/OpenGL.framework/Versions/A/Libraries/libGL.dylib)],
+		     $X_LIBS -lm $X_EXTRA_LIBS)
         if test "x$with_glu" != "xno"
         then
-            AC_CHECK_LIB(GLU,gluLookAt,[:],,[$OPENGL_LIBS $X_LIBS $XLIB -lm $X_EXTRA_LIBS])
+            AC_CHECK_LIB(GLU,gluLookAt,[:],,[$OPENGL_LIBS $X_LIBS -lm $X_EXTRA_LIBS])
             WINE_NOTICE_WITH(glu,[test "x$ac_cv_lib_GLU_gluLookAt" != xyes],
                              [libGLU ${notice_platform}development files not found, GLU won't be supported.])
         fi
 
         if test "x$with_osmesa" != "xno"
         then
-            WINE_CHECK_SONAME(OSMesa,glAccum,,,[$X_LIBS $XLIB -lm $X_EXTRA_LIBS])
+            WINE_CHECK_SONAME(OSMesa,glAccum,,,[$X_LIBS -lm $X_EXTRA_LIBS])
             WINE_NOTICE_WITH(osmesa,[test "x$ac_cv_lib_soname_OSMesa" = "x"],
                              [libOSMesa ${notice_platform}development files not found (or too old), OpenGL rendering in bitmaps won't be supported.])
         fi
@@ -1252,12 +1243,11 @@ OpenGL and Direct3D won't be supported.])
 
     CPPFLAGS="$ac_save_CPPFLAGS"
 else
-    XLIB=""
     X_CFLAGS=""
     X_LIBS=""
     enable_winex11_drv=${enable_winex11_drv:-no}
 fi
-WINE_ERROR_WITH(x,[test "x$XLIB" = "x"],[X ${notice_platform}development files not found. Wine will be built
+WINE_ERROR_WITH(x,[test "x$X_LIBS" = "x"],[X ${notice_platform}development files not found. Wine will be built
 without X support, which probably isn't what you want. You will need
 to install ${notice_platform}development packages of Xlib/Xfree86 at the very least.])
 
@@ -1266,7 +1256,7 @@ test "x$ac_cv_lib_GLU_gluLookAt" != xyes && enable_glu32=${enable_glu32:-no}
 dnl **** Check for OpenCL ****
 if test "$ac_cv_header_CL_cl_h" = "yes"
 then
-    AC_CHECK_LIB(OpenCL,clGetPlatformInfo,[AC_SUBST(LIBOPENCL,["-lOpenCL"])])
+    AC_CHECK_LIB(OpenCL,clGetPlatformInfo,[AC_SUBST(OPENCL_LIBS,["-lOpenCL"])])
 fi
 WINE_NOTICE_WITH(opencl,[test "x$ac_cv_lib_OpenCL_clGetPlatformInfo" != xyes],
                  [OpenCL ${notice_platform}development files not found, OpenCL won't be supported.])
@@ -1359,16 +1349,16 @@ WINE_NOTICE_WITH(gnutls,[test "x$ac_cv_lib_soname_gnutls" = "x"],
                  [libgnutls ${notice_platform}development files not found, no schannel support.])
 
 dnl **** Check which curses lib to use ***
-CURSESLIBS=""
+CURSES_LIBS=""
 if test "$ac_cv_header_ncurses_h" = "yes"
 then
-    WINE_CHECK_SONAME(ncurses,waddch,[CURSESLIBS="-lncurses"])
+    WINE_CHECK_SONAME(ncurses,waddch,[CURSES_LIBS="-lncurses"])
 elif test "$ac_cv_header_curses_h" = "yes"
 then
-    WINE_CHECK_SONAME(curses,waddch,[CURSESLIBS="-lcurses"])
+    WINE_CHECK_SONAME(curses,waddch,[CURSES_LIBS="-lcurses"])
 fi
 ac_save_LIBS="$LIBS"
-LIBS="$LIBS $CURSESLIBS"
+LIBS="$LIBS $CURSES_LIBS"
 AC_CHECK_FUNCS(mousemask)
 LIBS="$ac_save_LIBS"
 WINE_NOTICE_WITH(curses,[test "x$ac_cv_lib_soname_curses$ac_cv_lib_soname_ncurses" = "x"],
@@ -1432,8 +1422,8 @@ then
 #endif
 #include <resolv.h>]],[[res_query("foo",ns_c_in,0,0,0);]])],
         [AC_DEFINE(HAVE_RESOLV, 1, [Define if you have the resolver library and header])
-         AC_SUBST(RESOLVLIBS,"$lib")])
-      if test "${RESOLVLIBS+set}" = set; then
+         AC_SUBST(RESOLV_LIBS,"$lib")])
+      if test "${RESOLV_LIBS+set}" = set; then
         break
       fi
     done
@@ -1499,15 +1489,15 @@ WINE_CHECK_LIB_FUNCS(\
         pthread_getthreadid_np \
         pthread_get_stackaddr_np \
         pthread_get_stacksize_np,
-        [$LIBPTHREAD])
+        [$PTHREAD_LIBS])
 
 dnl **** Check for zlib ****
 if test "$ac_cv_header_zlib_h" = "yes"
 then
     AC_CHECK_LIB(z,inflate,[AC_DEFINE(HAVE_ZLIB,1,[Define to 1 if you have the `z' library (-lz).])
-                            AC_SUBST(ZLIB,"-lz")])
+                            AC_SUBST(Z_LIBS,"-lz")])
 fi
-WINE_NOTICE_WITH(zlib,[test "x$ZLIB" = "x"],[libz ${notice_platform}development files not found, data compression won't be supported.])
+WINE_NOTICE_WITH(zlib,[test "x$Z_LIBS" = "x"],[libz ${notice_platform}development files not found, data compression won't be supported.])
 
 dnl **** Check for gettextpo ****
 if test "x$enable_tools" != xno
@@ -1516,9 +1506,9 @@ then
     then
         AC_CHECK_LIB(gettextpo,po_message_msgctxt,
                      [AC_DEFINE(HAVE_LIBGETTEXTPO,1,[Define to 1 if you have the `gettextpo' library (-lgettextpo).])
-                      AC_SUBST(LIBGETTEXTPO,"-lgettextpo")])
+                      AC_SUBST(GETTEXTPO_LIBS,"-lgettextpo")])
     fi
-    test "x$with_gettextpo" != xyes || WINE_NOTICE_WITH(gettextpo,[test "x$LIBGETTEXTPO" = "x"],
+    test "x$with_gettextpo" != xyes || WINE_NOTICE_WITH(gettextpo,[test "x$GETTEXTPO_LIBS" = "x"],
           [GetText ${notice_platform}development files not found (or too old), po files can't be rebuilt.])
 fi
 
@@ -1551,7 +1541,7 @@ WINE_NOTICE_WITH(gstreamer,[test "x$ac_cv_lib_gstapp_0_10_gst_app_buffer_new" !=
 test "x$ac_cv_lib_gstapp_0_10_gst_app_buffer_new" = xyes || enable_winegstreamer=${enable_winegstreamer:-no}
 
 dnl **** Check for ALSA 1.x ****
-AC_SUBST(ALSALIBS,"")
+AC_SUBST(ALSA_LIBS,"")
 if test "$ac_cv_header_sys_asoundlib_h" = "yes" -o "$ac_cv_header_alsa_asoundlib_h" = "yes"
 then
     AC_CHECK_LIB(asound,snd_pcm_hw_params_get_access_mask,
@@ -1560,7 +1550,7 @@ then
 #elif defined(HAVE_SYS_ASOUNDLIB_H)
 #include <sys/asoundlib.h>
 #endif]], [[snd_pcm_hw_params_get_access_mask(NULL, NULL)]])],
-                        [ALSALIBS="-lasound"])])
+                        [ALSA_LIBS="-lasound"])])
 fi
 
 dnl **** Check for OSSv4 ****
@@ -1575,7 +1565,7 @@ then
     CPPFLAGS="$CPPFLAGS $ac_oss_incl"
     AC_CHECK_HEADER([sys/soundcard.h],
         [AC_CHECK_MEMBERS([oss_sysinfo.numaudioengines],
-                          [AC_SUBST(OSS4INCL,"$ac_oss_incl")],,
+                          [AC_SUBST(OSS4_CFLAGS,"$ac_oss_incl")],,
                           [#include <sys/soundcard.h>])])
     CPPFLAGS="$ac_save_CPPFLAGS"
     if test "x$ac_cv_member_oss_sysinfo_numaudioengines" != xyes
@@ -1599,7 +1589,7 @@ WINE_NOTICE_WITH(capi,[test "x$ac_cv_lib_soname_capi20" = "x"],
                  [libcapi20 ${notice_platform}development files not found, ISDN won't be supported.])
 
 dnl **** Check for cups ****
-AC_SUBST(CUPSINCL,"")
+AC_SUBST(CUPS_CFLAGS,"")
 if test "x$with_cups" != "xno"
 then
     ac_save_CPPFLAGS="$CPPFLAGS"
@@ -1608,7 +1598,7 @@ then
     CPPFLAGS="$CPPFLAGS $ac_cups_cflags"
     AC_CHECK_HEADERS(cups/cups.h,
             [WINE_CHECK_SONAME(cups,cupsGetDefault,
-                       [CUPSINCL="$ac_cups_cflags"],,
+                       [CUPS_CFLAGS="$ac_cups_cflags"],,
                        [$ac_cups_libs])])
     CPPFLAGS="$ac_save_CPPFLAGS"
 fi
@@ -1616,22 +1606,16 @@ WINE_NOTICE_WITH(cups,[test "x$ac_cv_lib_soname_cups" = "x"],
                  [libcups ${notice_platform}development files not found, CUPS won't be supported.])
 
 dnl **** Check for fontconfig ****
-if test "$ac_cv_header_fontconfig_fontconfig_h" = "yes"
+if test "x$with_fontconfig" != "xno"
 then
-    WINE_CHECK_SONAME(fontconfig,FcInit)
-elif test -n "$X_CFLAGS" -a "x$with_fontconfig" != "xno"
-then
-    dnl fontconfig is in the X directory on Mac OS X
-    ac_save_CPPFLAGS="$CPPFLAGS"
-    CPPFLAGS="$CPPFLAGS $X_CFLAGS"
-    $as_unset ac_cv_header_fontconfig_fontconfig_h
-    AC_CHECK_HEADERS([fontconfig/fontconfig.h])
-    CPPFLAGS="$ac_save_CPPFLAGS"
-    if test "$ac_cv_header_fontconfig_fontconfig_h" = "yes"
-    then
-        AC_SUBST(FONTCONFIGINCL,"$X_CFLAGS")
-        WINE_CHECK_SONAME(fontconfig,FcInit,,,[$X_LIBS])
-    fi
+    WINE_PACKAGE_FLAGS(FONTCONFIG,[fontconfig],,[$X_CFLAGS],[$X_LIBS],
+        [AC_CHECK_HEADERS([fontconfig/fontconfig.h])
+        if test "$ac_cv_header_fontconfig_fontconfig_h" = "yes"
+        then
+            WINE_CHECK_SONAME(fontconfig,FcInit,,[FONTCONFIG_CFLAGS=""],[$FONTCONFIG_LIBS])
+        else
+            FONTCONFIG_CFLAGS=""
+        fi])
 fi
 WINE_NOTICE_WITH(fontconfig,[test "x$ac_cv_lib_soname_fontconfig" = "x"],
                  [fontconfig ${notice_platform}development files not found, fontconfig won't be supported.])
@@ -1710,7 +1694,7 @@ test "x$ac_cv_lib_mpg123_mpg123_feed" = xyes -o "x$ac_cv_header_AudioToolbox_Aud
 dnl **** Check for OpenAL 1.1 ****
 if test "$ac_cv_header_AL_al_h" = "yes"
 then
-    WINE_CHECK_SONAME(openal,alGetSource3i,[AC_SUBST(LIBOPENAL,"-lopenal")
+    WINE_CHECK_SONAME(openal,alGetSource3i,[AC_SUBST(OPENAL_LIBS,"-lopenal")
                       ac_cv_lib_openal=yes
                       AC_DEFINE_UNQUOTED(HAVE_OPENAL,1,[Define to 1 if OpenAL is available])],,)
 fi
@@ -1723,7 +1707,7 @@ if test "$ac_cv_header_kstat_h" = "yes"
 then
     AC_CHECK_LIB(kstat,kstat_open,
                  [AC_DEFINE(HAVE_LIBKSTAT, 1, [Define to 1 if you have the `kstat' library (-lkstat).])
-                  AC_SUBST(LIBKSTAT,"-lkstat")])
+                  AC_SUBST(KSTAT_LIBS,"-lkstat")])
 fi
 
 dnl **** Check for libprocstat ****
@@ -1731,7 +1715,7 @@ if test "$ac_cv_header_libprocstat_h" = "yes"
 then
     AC_CHECK_LIB(procstat,procstat_open_sysctl,
                  [AC_DEFINE(HAVE_LIBPROCSTAT, 1, [Define to 1 if you have the `procstat' library (-lprocstat).])
-                  AC_SUBST(LIBPROCSTAT,"-lprocstat")])
+                  AC_SUBST(PROCSTAT_LIBS,"-lprocstat")])
 fi
 
 dnl **** Check for libodbc ****
@@ -1744,13 +1728,13 @@ then
 fi
 
 dnl **** Disable unsupported winmm drivers ****
-test -n "$ALSALIBS" || enable_winealsa_drv=${enable_winealsa_drv:-no}
-test -n "$COREAUDIO" || enable_winecoreaudio_drv=${enable_winecoreaudio_drv:-no}
+test -n "$ALSA_LIBS" || enable_winealsa_drv=${enable_winealsa_drv:-no}
+test -n "$COREAUDIO_LIBS" || enable_winecoreaudio_drv=${enable_winecoreaudio_drv:-no}
 test "x$ac_cv_member_oss_sysinfo_numaudioengines" = xyes || enable_wineoss_drv=${enable_wineoss_drv:-no}
 test "$ac_cv_header_linux_joystick_h" = "yes" || enable_winejoystick_drv=${enable_winejoystick_drv:-no}
 
 dnl **** Check for any sound system ****
-if test "x$ALSALIBS$COREAUDIO" = "x" -a \
+if test "x$ALSA_LIBS$COREAUDIO_LIBS" = "x" -a \
         "x$ac_cv_member_oss_sysinfo_numaudioengines" != xyes -a \
         "x$with_alsa$with_coreaudio$with_oss" != xnonono
 then
@@ -2095,14 +2079,14 @@ CFLAGS="$ac_save_CFLAGS"
 dnl Check for -ldl
 if test "$ac_cv_func_dlopen" = no
 then
-    AC_CHECK_LIB(dl,dlopen,[AC_DEFINE(HAVE_DLOPEN,1) AC_SUBST(LIBDL,"-ldl")])
+    AC_CHECK_LIB(dl,dlopen,[AC_DEFINE(HAVE_DLOPEN,1) AC_SUBST(DL_LIBS,"-ldl")])
 fi
-WINE_CHECK_LIB_FUNCS(dladdr,[$LIBDL])
+WINE_CHECK_LIB_FUNCS(dladdr,[$DL_LIBS])
 
 dnl Check for -lpoll for Mac OS X/Darwin
 if test "$ac_cv_func_poll" = no
 then
-    AC_CHECK_LIB(poll,poll,[AC_DEFINE(HAVE_POLL,1) AC_SUBST(LIBPOLL,"-lpoll")])
+    AC_CHECK_LIB(poll,poll,[AC_DEFINE(HAVE_POLL,1) AC_SUBST(POLL_LIBS,"-lpoll")])
 fi
 
 dnl Check for -lnsl for Solaris
@@ -2134,20 +2118,20 @@ dnl Check for clock_gettime which may be in -lrt
 ac_save_LIBS=$LIBS
 AC_SEARCH_LIBS(clock_gettime, rt,
                [AC_DEFINE(HAVE_CLOCK_GETTIME, 1, [Define to 1 if you have the `clock_gettime' function.])
-                test "$ac_res" = "none required" || AC_SUBST(LIBRT,"$ac_res")])
+                test "$ac_res" = "none required" || AC_SUBST(RT_LIBS,"$ac_res")])
 LIBS=$ac_save_LIBS
 
 dnl **** Check for OpenLDAP ***
-AC_SUBST(LDAPLIBS,"")
+AC_SUBST(LDAP_LIBS,"")
 if test "$ac_cv_header_ldap_h" = "yes" -a "$ac_cv_header_lber_h" = "yes"
 then
     AC_CHECK_TYPE(LDAPSortKey,
         [AC_CHECK_LIB(ldap_r, ldap_initialize,
             [AC_CHECK_LIB(lber, ber_init,
                 [AC_DEFINE(HAVE_LDAP, 1, [Define if you have the OpenLDAP development environment])
-                 LDAPLIBS="-lldap_r -llber"],,
-                 [$LIBPTHREAD])],,
-                 [$LIBPTHREAD])],,
+                 LDAP_LIBS="-lldap_r -llber"],,
+                 [$PTHREAD_LIBS])],,
+                 [$PTHREAD_LIBS])],,
         [#include <ldap.h>])
     WINE_CHECK_LIB_FUNCS(\
 	ldap_count_references \
@@ -2158,9 +2142,9 @@ then
 	ldap_parse_sortresponse_control \
 	ldap_parse_vlv_control \
 	ldap_parse_vlvresponse_control,
-        [$LDAPLIBS $LIBPTHREAD])
+        [$LDAP_LIBS $PTHREAD_LIBS])
 fi
-WINE_NOTICE_WITH(ldap,[test "x$LDAPLIBS" = "x"],
+WINE_NOTICE_WITH(ldap,[test "x$LDAP_LIBS" = "x"],
                  [libldap (OpenLDAP) ${notice_platform}development files not found, LDAP won't be supported.])
 
 AC_CACHE_CHECK([whether mkdir takes only one argument],
@@ -2592,6 +2576,10 @@ AH_BOTTOM([#endif /* WINE_CROSSTEST */
 
 AC_CONFIG_COMMANDS([include/stamp-h], [echo timestamp > include/stamp-h])
 AS_ECHO_N("creating Makefile rules...") >&AS_MESSAGE_FD
+
+AC_SUBST([ALL_VARS_RULES],
+"m4_set_foreach([_AC_SUBST_VARS],[var],[m4_if(m4_bregexp(m4_defn([var]),[\(_CFLAGS\|_LIBS\)$]),-1,,[var = $var
+])])")
 
 dnl Main makefile
 
@@ -3228,6 +3216,7 @@ WINE_CONFIG_DLL(wmi)
 WINE_CONFIG_DLL(wmiutils,,[clean])
 WINE_CONFIG_TEST(dlls/wmiutils/tests)
 WINE_CONFIG_DLL(wmp,,[clean])
+WINE_CONFIG_TEST(dlls/wmp/tests)
 WINE_CONFIG_DLL(wmvcore)
 WINE_CONFIG_DLL(wnaspi32,,[implib])
 WINE_CONFIG_DLL(wow32,enable_win16,[implib])
