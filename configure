@@ -851,8 +851,14 @@ enable_actxprxy
 enable_advapi32
 enable_advpack
 enable_amstream
+enable_api_ms_win_core_com_l1_1_0
+enable_api_ms_win_core_console_l1_1_0
 enable_api_ms_win_core_debug_l1_1_1
 enable_api_ms_win_core_errorhandling_l1_1_1
+enable_api_ms_win_core_file_l1_2_0
+enable_api_ms_win_core_handle_l1_1_0
+enable_api_ms_win_core_heap_l1_2_0
+enable_api_ms_win_core_heap_obsolete_l1_1_0
 enable_api_ms_win_core_interlocked_l1_2_0
 enable_api_ms_win_core_localregistry_l1_1_0
 enable_api_ms_win_core_processthreads_l1_1_0
@@ -873,6 +879,7 @@ enable_api_ms_win_downlevel_shlwapi_l1_1_0
 enable_api_ms_win_downlevel_shlwapi_l2_1_0
 enable_api_ms_win_downlevel_user32_l1_1_0
 enable_api_ms_win_downlevel_version_l1_1_0
+enable_api_ms_win_ntuser_dc_access_l1_1_0
 enable_api_ms_win_security_base_l1_1_0
 enable_apphelp
 enable_appwiz_cpl
@@ -995,6 +1002,7 @@ enable_dwrite
 enable_dxdiagn
 enable_dxgi
 enable_explorerframe
+enable_ext_ms_win_gdi_devcaps_l1_1_0
 enable_faultrep
 enable_fltlib
 enable_fusion
@@ -16577,8 +16585,14 @@ wine_fn_config_dll advpack enable_advpack implib
 wine_fn_config_test dlls/advpack/tests advpack_test
 wine_fn_config_dll amstream enable_amstream clean
 wine_fn_config_test dlls/amstream/tests amstream_test
+wine_fn_config_dll api-ms-win-core-com-l1-1-0 enable_api_ms_win_core_com_l1_1_0
+wine_fn_config_dll api-ms-win-core-console-l1-1-0 enable_api_ms_win_core_console_l1_1_0
 wine_fn_config_dll api-ms-win-core-debug-l1-1-1 enable_api_ms_win_core_debug_l1_1_1
 wine_fn_config_dll api-ms-win-core-errorhandling-l1-1-1 enable_api_ms_win_core_errorhandling_l1_1_1
+wine_fn_config_dll api-ms-win-core-file-l1-2-0 enable_api_ms_win_core_file_l1_2_0
+wine_fn_config_dll api-ms-win-core-handle-l1-1-0 enable_api_ms_win_core_handle_l1_1_0
+wine_fn_config_dll api-ms-win-core-heap-l1-2-0 enable_api_ms_win_core_heap_l1_2_0
+wine_fn_config_dll api-ms-win-core-heap-obsolete-l1-1-0 enable_api_ms_win_core_heap_obsolete_l1_1_0
 wine_fn_config_dll api-ms-win-core-interlocked-l1-2-0 enable_api_ms_win_core_interlocked_l1_2_0
 wine_fn_config_dll api-ms-win-core-localregistry-l1-1-0 enable_api_ms_win_core_localregistry_l1_1_0
 wine_fn_config_dll api-ms-win-core-processthreads-l1-1-0 enable_api_ms_win_core_processthreads_l1_1_0
@@ -16599,6 +16613,7 @@ wine_fn_config_dll api-ms-win-downlevel-shlwapi-l1-1-0 enable_api_ms_win_downlev
 wine_fn_config_dll api-ms-win-downlevel-shlwapi-l2-1-0 enable_api_ms_win_downlevel_shlwapi_l2_1_0
 wine_fn_config_dll api-ms-win-downlevel-user32-l1-1-0 enable_api_ms_win_downlevel_user32_l1_1_0
 wine_fn_config_dll api-ms-win-downlevel-version-l1-1-0 enable_api_ms_win_downlevel_version_l1_1_0
+wine_fn_config_dll api-ms-win-ntuser-dc-access-l1-1-0 enable_api_ms_win_ntuser_dc_access_l1_1_0
 wine_fn_config_dll api-ms-win-security-base-l1-1-0 enable_api_ms_win_security_base_l1_1_0
 wine_fn_config_dll apphelp enable_apphelp
 wine_fn_config_test dlls/apphelp/tests apphelp_test
@@ -16778,6 +16793,7 @@ wine_fn_config_test dlls/dxgi/tests dxgi_test
 wine_fn_config_lib dxguid
 wine_fn_config_dll explorerframe enable_explorerframe clean
 wine_fn_config_test dlls/explorerframe/tests explorerframe_test
+wine_fn_config_dll ext-ms-win-gdi-devcaps-l1-1-0 enable_ext_ms_win_gdi_devcaps_l1_1_0
 wine_fn_config_dll faultrep enable_faultrep implib
 wine_fn_config_test dlls/faultrep/tests faultrep_test
 wine_fn_config_dll fltlib enable_fltlib

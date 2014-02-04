@@ -144,10 +144,16 @@ my @dll_groups =
   "api-ms-win-core-sysinfo-l1-2-0",
   "api-ms-win-core-util-l1-1-0",
   "api-ms-win-core-synch-l1-2-0",
+  "api-ms-win-core-console-l1-1-0",
+  "api-ms-win-core-file-l1-2-0",
+  "api-ms-win-core-handle-l1-1-0",
+  "api-ms-win-core-heap-l1-2-0",
+  "api-ms-win-core-heap-obsolete-l1-1-0",
  ],
  [
   "ole32",
   "api-ms-win-downlevel-ole32-l1-1-0",
+  "api-ms-win-core-com-l1-1-0",
  ],
  [
   "shell32",
@@ -161,6 +167,7 @@ my @dll_groups =
  [
   "user32",
   "api-ms-win-downlevel-user32-l1-1-0",
+  "api-ms-win-ntuser-dc-access-l1-1-0",
  ],
  [
   "version",
@@ -170,6 +177,10 @@ my @dll_groups =
   "msvcrt",
   "ntdll",
   "ntoskrnl.exe"
+ ],
+ [
+  "gdi32",
+  "ext-ms-win-gdi-devcaps-l1-1-0",
  ],
 );
 
