@@ -46,7 +46,7 @@ typedef struct _PE_Impl {
     LONG refCount;
     ULONG numPins;
     ULONG index;
-    IPin *pins[0];
+    IPin *pins[1];
 } PE_Impl;
 
 
@@ -173,20 +173,24 @@ static const IEnumPinsVtbl IEnumPins_VTable =
 
 static IEnumPins *pinsenum_create(IBaseFilter *filter, IPin **pins, ULONG pinCount)
 {
-    ULONG len = sizeof(PE_Impl) + (pinCount * sizeof(IPin *));
-    PE_Impl *obj = CoTaskMemAlloc(len);
-    if (obj) {
-        ULONG i;
-        ZeroMemory(obj, len);
-        obj->pe.lpVtbl = &IEnumPins_VTable;
-        obj->refCount = 1;
-        obj->filter = filter;
-        obj->numPins = pinCount;
-        obj->index = 0;
-        for (i=0; i<pinCount; i++)
-            obj->pins[i] = pins[i];
-        IBaseFilter_AddRef(filter);
-    }
+    PE_Impl *obj;
+    ULONG len = offsetof(PE_Impl, pins[pinCount]);
+    ULONG i;
+
+    obj = CoTaskMemAlloc(len);
+    if (!obj)
+        return NULL;
+
+    ZeroMemory(obj, len);
+    obj->pe.lpVtbl = &IEnumPins_VTable;
+    obj->refCount = 1;
+    obj->filter = filter;
+    obj->numPins = pinCount;
+    obj->index = 0;
+    for (i = 0; i < pinCount; i++)
+        obj->pins[i] = pins[i];
+    IBaseFilter_AddRef(filter);
+
     return &obj->pe;
 }
 
