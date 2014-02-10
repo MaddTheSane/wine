@@ -21,66 +21,41 @@
 #include "d3d10.h"
 #include "wine/test.h"
 
-HRESULT WINAPI DXGID3D10CreateDevice(HMODULE d3d10core, IDXGIFactory *factory,
-        IDXGIAdapter *adapter, UINT flags, void *unknown0, void **device);
-
-static IDXGIDevice *create_device(HMODULE d3d10core)
+static IDXGIDevice *create_device(void)
 {
-    IDXGIDevice *dxgi_device = NULL;
-    IDXGIFactory *factory = NULL;
-    IDXGIAdapter *adapter = NULL;
-    IUnknown *device = NULL;
+    IDXGIDevice *dxgi_device;
+    ID3D10Device *device;
     HRESULT hr;
 
-    hr = CreateDXGIFactory(&IID_IDXGIFactory, (void *)&factory);
-    if (FAILED(hr)) goto cleanup;
+    if (SUCCEEDED(D3D10CreateDevice(NULL, D3D10_DRIVER_TYPE_HARDWARE, NULL, 0, D3D10_SDK_VERSION, &device)))
+        goto success;
+    if (SUCCEEDED(D3D10CreateDevice(NULL, D3D10_DRIVER_TYPE_WARP, NULL, 0, D3D10_SDK_VERSION, &device)))
+        goto success;
+    if (SUCCEEDED(D3D10CreateDevice(NULL, D3D10_DRIVER_TYPE_REFERENCE, NULL, 0, D3D10_SDK_VERSION, &device)))
+        goto success;
 
-    hr = IDXGIFactory_EnumAdapters(factory, 0, &adapter);
-    if (SUCCEEDED(hr))
-    {
-        hr = DXGID3D10CreateDevice(d3d10core, factory, adapter, 0, NULL, (void **)&device);
-    }
+    return NULL;
 
-    if (FAILED(hr))
-    {
-        HMODULE d3d10ref;
-
-        trace("Failed to create a HW device, trying REF\n");
-        if (adapter) IDXGIAdapter_Release(adapter);
-        adapter = NULL;
-
-        d3d10ref = LoadLibraryA("d3d10ref.dll");
-        if (!d3d10ref)
-        {
-            trace("d3d10ref.dll not available, unable to create a REF device\n");
-            goto cleanup;
-        }
-
-        hr = IDXGIFactory_CreateSoftwareAdapter(factory, d3d10ref, &adapter);
-        FreeLibrary(d3d10ref);
-        ok(SUCCEEDED(hr), "CreateSoftwareAdapter failed, hr %#x\n", hr);
-        if (FAILED(hr)) goto cleanup;
-
-        hr = DXGID3D10CreateDevice(d3d10core, factory, adapter, 0, NULL, (void **)&device);
-        ok(SUCCEEDED(hr), "Failed to create a REF device, hr %#x\n", hr);
-        if (FAILED(hr)) goto cleanup;
-    }
-
-    hr = IUnknown_QueryInterface(device, &IID_IDXGIDevice, (void **)&dxgi_device);
+success:
+    hr = ID3D10Device_QueryInterface(device, &IID_IDXGIDevice, (void **)&dxgi_device);
     ok(SUCCEEDED(hr), "Created device does not implement IDXGIDevice\n");
-    IUnknown_Release(device);
-
-cleanup:
-    if (adapter) IDXGIAdapter_Release(adapter);
-    if (factory) IDXGIFactory_Release(factory);
+    ID3D10Device_Release(device);
 
     return dxgi_device;
 }
 
-static void test_device_interfaces(IDXGIDevice *device)
+static void test_device_interfaces(void)
 {
+    IDXGIDevice *device;
+    ULONG refcount;
     IUnknown *obj;
     HRESULT hr;
+
+    if (!(device = create_device()))
+    {
+        skip("Failed to create device, skipping tests.\n");
+        return;
+    }
 
     if (SUCCEEDED(hr = IDXGIDevice_QueryInterface(device, &IID_IUnknown, (void **)&obj)))
         IUnknown_Release(obj);
@@ -97,15 +72,26 @@ static void test_device_interfaces(IDXGIDevice *device)
     if (SUCCEEDED(hr = IDXGIDevice_QueryInterface(device, &IID_ID3D10Device, (void **)&obj)))
         IUnknown_Release(obj);
     ok(SUCCEEDED(hr), "IDXGIDevice does not implement ID3D10Device\n");
+
+    refcount = IDXGIDevice_Release(device);
+    ok(!refcount, "Device has %u references left.\n", refcount);
 }
 
-static void test_adapter_desc(IDXGIDevice *device)
+static void test_adapter_desc(void)
 {
     DXGI_ADAPTER_DESC1 desc1;
     IDXGIAdapter1 *adapter1;
     DXGI_ADAPTER_DESC desc;
     IDXGIAdapter *adapter;
+    IDXGIDevice *device;
+    ULONG refcount;
     HRESULT hr;
+
+    if (!(device = create_device()))
+    {
+        skip("Failed to create device, skipping tests.\n");
+        return;
+    }
 
     hr = IDXGIDevice_GetAdapter(device, &adapter);
     ok(SUCCEEDED(hr), "GetAdapter failed, hr %#x.\n", hr);
@@ -156,14 +142,24 @@ static void test_adapter_desc(IDXGIDevice *device)
 
 done:
     IDXGIAdapter_Release(adapter);
+    refcount = IDXGIDevice_Release(device);
+    ok(!refcount, "Device has %u references left.\n", refcount);
 }
 
-static void test_create_surface(IDXGIDevice *device)
+static void test_create_surface(void)
 {
     ID3D10Texture2D *texture;
     IDXGISurface *surface;
     DXGI_SURFACE_DESC desc;
+    IDXGIDevice *device;
+    ULONG refcount;
     HRESULT hr;
+
+    if (!(device = create_device()))
+    {
+        skip("Failed to create device, skipping tests.\n");
+        return;
+    }
 
     desc.Width = 512;
     desc.Height = 512;
@@ -179,17 +175,27 @@ static void test_create_surface(IDXGIDevice *device)
     if (SUCCEEDED(hr)) ID3D10Texture2D_Release(texture);
 
     IDXGISurface_Release(surface);
+    refcount = IDXGIDevice_Release(device);
+    ok(!refcount, "Device has %u references left.\n", refcount);
 }
 
-static void test_parents(IDXGIDevice *device)
+static void test_parents(void)
 {
     DXGI_SURFACE_DESC surface_desc;
     IDXGISurface *surface;
     IDXGIFactory *factory;
     IDXGIAdapter *adapter;
+    IDXGIDevice *device;
     IDXGIOutput *output;
     IUnknown *parent;
+    ULONG refcount;
     HRESULT hr;
+
+    if (!(device = create_device()))
+    {
+        skip("Failed to create device, skipping tests.\n");
+        return;
+    }
 
     surface_desc.Width = 512;
     surface_desc.Height = 512;
@@ -239,15 +245,25 @@ static void test_parents(IDXGIDevice *device)
     IUnknown_Release(parent);
 
     IDXGIAdapter_Release(adapter);
+    refcount = IDXGIDevice_Release(device);
+    ok(!refcount, "Device has %u references left.\n", refcount);
 }
 
-static void test_output(IDXGIDevice *device)
+static void test_output(void)
 {
     IDXGIAdapter *adapter;
+    IDXGIDevice *device;
     HRESULT hr;
     IDXGIOutput *output;
+    ULONG refcount;
     UINT mode_count, mode_count_comp, i;
     DXGI_MODE_DESC *modes;
+
+    if (!(device = create_device()))
+    {
+        skip("Failed to create device, skipping tests.\n");
+        return;
+    }
 
     hr = IDXGIDevice_GetAdapter(device, &adapter);
     ok(SUCCEEDED(hr), "GetAdapter failed, hr %#x.\n", hr);
@@ -255,44 +271,58 @@ static void test_output(IDXGIDevice *device)
     hr = IDXGIAdapter_EnumOutputs(adapter, 0, &output);
     if (hr == DXGI_ERROR_NOT_FOUND)
     {
-        skip("Adapter has not outputs, skipping output tests.\n");
+        skip("Adapter doesn't have any outputs, skipping tests.\n");
         IDXGIAdapter_Release(adapter);
+        IDXGIDevice_Release(device);
         return;
     }
-
     ok(SUCCEEDED(hr), "EnumOutputs failed, hr %#x.\n", hr);
 
-    IDXGIOutput_GetDisplayModeList(output, DXGI_FORMAT_R8G8B8A8_UNORM, 0, NULL, NULL);
-    ok(SUCCEEDED(hr), "Failed to list modes, hr %#x.\n", hr);
+    hr = IDXGIOutput_GetDisplayModeList(output, DXGI_FORMAT_R8G8B8A8_UNORM, 0, NULL, NULL);
+    ok(hr == DXGI_ERROR_INVALID_CALL, "Got unexpected hr %#x.\n", hr);
 
-    IDXGIOutput_GetDisplayModeList(output, DXGI_FORMAT_R8G8B8A8_UNORM, 0, &mode_count, NULL);
-    ok(SUCCEEDED(hr), "Failed to list modes, hr %#x.\n", hr);
+    hr = IDXGIOutput_GetDisplayModeList(output, DXGI_FORMAT_R8G8B8A8_UNORM, 0, &mode_count, NULL);
+    ok(SUCCEEDED(hr)
+            || broken(hr == DXGI_ERROR_NOT_CURRENTLY_AVAILABLE), /* Remote Desktop Services / Win 7 testbot */
+            "Failed to list modes, hr %#x.\n", hr);
+    if (hr == DXGI_ERROR_NOT_CURRENTLY_AVAILABLE)
+    {
+        skip("GetDisplayModeList() not supported, skipping tests.\n");
+        IDXGIOutput_Release(output);
+        IDXGIAdapter_Release(adapter);
+        IDXGIDevice_Release(device);
+        return;
+    }
     mode_count_comp = mode_count;
 
-    IDXGIOutput_GetDisplayModeList(output, 0, 0, &mode_count, NULL);
+    hr = IDXGIOutput_GetDisplayModeList(output, 0, 0, &mode_count, NULL);
     ok(SUCCEEDED(hr), "Failed to list modes, hr %#x.\n", hr);
-    ok(!mode_count, "Expected 0 got %d\n", mode_count);
+    ok(!mode_count, "Got unexpected mode_count %u.\n", mode_count);
 
-    IDXGIOutput_GetDisplayModeList(output, DXGI_FORMAT_R8G8B8A8_UNORM, DXGI_ENUM_MODES_SCALING, &mode_count, NULL);
+    hr = IDXGIOutput_GetDisplayModeList(output, DXGI_FORMAT_R8G8B8A8_UNORM,
+            DXGI_ENUM_MODES_SCALING, &mode_count, NULL);
     ok(SUCCEEDED(hr), "Failed to list modes, hr %#x.\n", hr);
-    ok(mode_count >= mode_count_comp, "Flag implies trying to enumerate more modes\n");
+    ok(mode_count >= mode_count_comp, "Got unexpected mode_count %u, expected >= %u.\n", mode_count, mode_count_comp);
     mode_count_comp = mode_count;
 
-    modes = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(DXGI_MODE_DESC) * mode_count+10);
+    modes = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(*modes) * (mode_count + 10));
 
-    IDXGIOutput_GetDisplayModeList(output, DXGI_FORMAT_R8G8B8A8_UNORM, DXGI_ENUM_MODES_SCALING, NULL, modes);
-    ok(SUCCEEDED(hr), "Failed to list modes, hr %#x.\n", hr);
-    ok(!modes[0].Height, "No output was expected\n");
+    hr = IDXGIOutput_GetDisplayModeList(output, DXGI_FORMAT_R8G8B8A8_UNORM,
+            DXGI_ENUM_MODES_SCALING, NULL, modes);
+    ok(hr == DXGI_ERROR_INVALID_CALL, "Got unexpected hr %#x.\n", hr);
+    ok(!modes[0].Height, "No output was expected.\n");
 
     mode_count = 0;
-    IDXGIOutput_GetDisplayModeList(output, DXGI_FORMAT_R8G8B8A8_UNORM, DXGI_ENUM_MODES_SCALING, &mode_count, modes);
-    ok(SUCCEEDED(hr), "Failed to list modes, hr %#x.\n", hr);
-    ok(!modes[0].Height, "No output was expected\n");
+    hr = IDXGIOutput_GetDisplayModeList(output, DXGI_FORMAT_R8G8B8A8_UNORM,
+            DXGI_ENUM_MODES_SCALING, &mode_count, modes);
+    ok(hr == DXGI_ERROR_MORE_DATA, "Got unexpected hr %#x.\n", hr);
+    ok(!modes[0].Height, "No output was expected.\n");
 
     mode_count = mode_count_comp;
-    IDXGIOutput_GetDisplayModeList(output, DXGI_FORMAT_R8G8B8A8_UNORM, DXGI_ENUM_MODES_SCALING, &mode_count, modes);
+    hr = IDXGIOutput_GetDisplayModeList(output, DXGI_FORMAT_R8G8B8A8_UNORM,
+            DXGI_ENUM_MODES_SCALING, &mode_count, modes);
     ok(SUCCEEDED(hr), "Failed to list modes, hr %#x.\n", hr);
-    ok(mode_count == mode_count_comp, "Expected %d, got %d\n", mode_count_comp, mode_count);
+    ok(mode_count == mode_count_comp, "Got unexpected mode_count %u, expected %u.\n", mode_count, mode_count_comp);
 
     for (i = 0; i < mode_count; i++)
     {
@@ -300,25 +330,30 @@ static void test_output(IDXGIDevice *device)
     }
 
     mode_count += 5;
-    IDXGIOutput_GetDisplayModeList(output, DXGI_FORMAT_R8G8B8A8_UNORM, DXGI_ENUM_MODES_SCALING, &mode_count, modes);
+    hr = IDXGIOutput_GetDisplayModeList(output, DXGI_FORMAT_R8G8B8A8_UNORM,
+            DXGI_ENUM_MODES_SCALING, &mode_count, modes);
     ok(SUCCEEDED(hr), "Failed to list modes, hr %#x.\n", hr);
-    ok(mode_count == mode_count_comp, "Expected %d, got %d\n", mode_count_comp, mode_count);
+    ok(mode_count == mode_count_comp, "Got unexpected mode_count %u, expected %u.\n", mode_count, mode_count_comp);
 
     if (mode_count_comp)
     {
         mode_count = mode_count_comp - 1;
-        IDXGIOutput_GetDisplayModeList(output, DXGI_FORMAT_R8G8B8A8_UNORM, DXGI_ENUM_MODES_SCALING, &mode_count, modes);
-        ok(SUCCEEDED(hr), "Failed to list modes, hr %#x.\n", hr);
-        ok(mode_count == mode_count_comp -1, "Expected %d, got %d\n", mode_count_comp, mode_count);
+        hr = IDXGIOutput_GetDisplayModeList(output, DXGI_FORMAT_R8G8B8A8_UNORM,
+                DXGI_ENUM_MODES_SCALING, &mode_count, modes);
+        ok(hr == DXGI_ERROR_MORE_DATA, "Got unexpected hr %#x.\n", hr);
+        ok(mode_count == mode_count_comp - 1, "Got unexpected mode_count %u, expected %u.\n",
+                mode_count, mode_count_comp - 1);
     }
     else
     {
-        skip("Not enough modes for test, skipping\n");
+        skip("Not enough modes for test, skipping.\n");
     }
 
     HeapFree(GetProcessHeap(), 0, modes);
     IDXGIOutput_Release(output);
     IDXGIAdapter_Release(adapter);
+    refcount = IDXGIDevice_Release(device);
+    ok(!refcount, "Device has %u references left.\n", refcount);
 }
 
 struct refresh_rates
@@ -329,11 +364,13 @@ struct refresh_rates
     BOOL denominator_should_pass;
 };
 
-static void test_createswapchain(IDXGIDevice *device)
+static void test_createswapchain(void)
 {
     IUnknown *obj;
     IDXGIAdapter *adapter;
     IDXGIFactory *factory;
+    IDXGIDevice *device;
+    ULONG refcount;
     IDXGISwapChain *swapchain;
     DXGI_SWAP_CHAIN_DESC creation_desc, result_desc;
     HRESULT hr;
@@ -349,6 +386,11 @@ static void test_createswapchain(IDXGIDevice *device)
         { 0,  0,  TRUE, FALSE},
     };
 
+    if (!(device = create_device()))
+    {
+        skip("Failed to create device, skipping tests.\n");
+        return;
+    }
 
     wc.lpfnWndProc = DefWindowProcA;
     wc.lpszClassName = "dxgi_test_wc";
@@ -453,36 +495,16 @@ static void test_createswapchain(IDXGIDevice *device)
     IDXGIFactory_Release(factory);
     IDXGIAdapter_Release(adapter);
     IUnknown_Release(obj);
+    refcount = IDXGIDevice_Release(device);
+    ok(!refcount, "Device has %u references left.\n", refcount);
 }
 
 START_TEST(device)
 {
-    HMODULE d3d10core = LoadLibraryA("d3d10core.dll");
-    IDXGIDevice *device;
-    ULONG refcount;
-
-    if (!d3d10core)
-    {
-        win_skip("d3d10core.dll not available, skipping tests\n");
-        return;
-    }
-
-    device = create_device(d3d10core);
-    if (!device)
-    {
-        skip("Failed to create device, skipping tests\n");
-        FreeLibrary(d3d10core);
-        return;
-    }
-
-    test_adapter_desc(device);
-    test_device_interfaces(device);
-    test_create_surface(device);
-    test_parents(device);
-    test_output(device);
-    test_createswapchain(device);
-
-    refcount = IDXGIDevice_Release(device);
-    ok(!refcount, "Device has %u references left\n", refcount);
-    FreeLibrary(d3d10core);
+    test_adapter_desc();
+    test_device_interfaces();
+    test_create_surface();
+    test_parents();
+    test_output();
+    test_createswapchain();
 }
