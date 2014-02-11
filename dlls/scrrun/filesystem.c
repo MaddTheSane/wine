@@ -540,10 +540,9 @@ static HRESULT WINAPI foldercoll_enumvariant_Next(IEnumVARIANT *iface, ULONG cel
             V_VT(&var[count]) = VT_DISPATCH;
             V_DISPATCH(&var[count]) = (IDispatch*)folder;
             count++;
+
+            if (count >= celt) break;
         }
-
-        if (count >= celt) break;
-
     } while (FindNextFileW(handle, &data));
 
     if (fetched)
@@ -645,6 +644,7 @@ static ULONG WINAPI filecoll_enumvariant_Release(IEnumVARIANT *iface)
     if (!ref)
     {
         IFileCollection_Release(&This->data.u.filecoll.coll->IFileCollection_iface);
+        FindClose(This->data.u.filecoll.find);
         heap_free(This);
     }
 

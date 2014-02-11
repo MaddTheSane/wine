@@ -1,5 +1,5 @@
 /*
- * Copyright 2014 Jacek Caban for CodeWeavers
+ * Copyright 2014 Jacek Caban
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -16,37 +16,9 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA
  */
 
-import "oaidl.idl";
-import "ocidl.idl";
+#include <windef.h>
 
-#ifndef __WIDL__
-#define threading(model)
-#define progid(str)
-#define vi_progid(str)
-#endif
+LANGUAGE LANG_NEUTRAL, SUBLANG_NEUTRAL
 
-[
-    helpstring("Windows Media Player"),
-    version(1.0),
-    uuid(6bf52a50-394a-11d3-b153-00c04f79Faa6)
-]
-library WMPLib {
-    importlib("stdole2.tlb");
-
-    [
-        hidden,
-        uuid(6bf52a51-394a-11d3-b153-00c04f79faa6)
-    ]
-    interface _WMPOCXEvents : IDispatch
-    {}
-
-    [
-        helpstring("Windows Media Player"),
-        threading(apartment),
-        progid("WMPlayer.OCX.7"),
-        vi_progid("WMPlayer.OCX"),
-        uuid(6bf52a52-394a-11d3-b153-00c04f79faa6)
-     ]
-     coclass WindowsMediaPlayer
-     {}
-}
+/* @makedep: wmp.rgs */
+2 WINE_REGISTRY wmp.rgs

@@ -1,5 +1,5 @@
 /*
- * Copyright 2014 Jacek Caban for CodeWeavers
+ * Copyright 2014 Henri Verbeet for CodeWeavers
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -16,37 +16,11 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA
  */
 
-import "oaidl.idl";
-import "ocidl.idl";
+#define WINE_FILEDESCRIPTION_STR "Wine Direct3D"
+#define WINE_FILENAME_STR "d3d10_1.dll"
+#define WINE_FILEVERSION 6,2,9200,16492
+#define WINE_FILEVERSION_STR "6.2.9200.16492"
+#define WINE_PRODUCTVERSION 6,2,9200,16492
+#define WINE_PRODUCTVERSION_STR "6.2.9200.16492"
 
-#ifndef __WIDL__
-#define threading(model)
-#define progid(str)
-#define vi_progid(str)
-#endif
-
-[
-    helpstring("Windows Media Player"),
-    version(1.0),
-    uuid(6bf52a50-394a-11d3-b153-00c04f79Faa6)
-]
-library WMPLib {
-    importlib("stdole2.tlb");
-
-    [
-        hidden,
-        uuid(6bf52a51-394a-11d3-b153-00c04f79faa6)
-    ]
-    interface _WMPOCXEvents : IDispatch
-    {}
-
-    [
-        helpstring("Windows Media Player"),
-        threading(apartment),
-        progid("WMPlayer.OCX.7"),
-        vi_progid("WMPlayer.OCX"),
-        uuid(6bf52a52-394a-11d3-b153-00c04f79faa6)
-     ]
-     coclass WindowsMediaPlayer
-     {}
-}
+#include "wine/wine_common_ver.rc"

@@ -18,8 +18,10 @@
 
 #define COBJMACROS
 #include "initguid.h"
-#include "d3d10.h"
+#include "d3d11.h"
 #include "wine/test.h"
+
+static HRESULT (WINAPI *pCreateDXGIFactory1)(REFIID iid, void **factory);
 
 static IDXGIDevice *create_device(void)
 {
@@ -47,8 +49,8 @@ success:
 static void test_device_interfaces(void)
 {
     IDXGIDevice *device;
+    IUnknown *iface;
     ULONG refcount;
-    IUnknown *obj;
     HRESULT hr;
 
     if (!(device = create_device()))
@@ -57,21 +59,31 @@ static void test_device_interfaces(void)
         return;
     }
 
-    if (SUCCEEDED(hr = IDXGIDevice_QueryInterface(device, &IID_IUnknown, (void **)&obj)))
-        IUnknown_Release(obj);
-    ok(SUCCEEDED(hr), "IDXGIDevice does not implement IUnknown\n");
+    hr = IDXGIDevice_QueryInterface(device, &IID_IUnknown, (void **)&iface);
+    ok(SUCCEEDED(hr), "Failed to query IUnknown interface, hr %#x.\n", hr);
+    IUnknown_Release(iface);
 
-    if (SUCCEEDED(hr = IDXGIDevice_QueryInterface(device, &IID_IDXGIObject, (void **)&obj)))
-        IUnknown_Release(obj);
-    ok(SUCCEEDED(hr), "IDXGIDevice does not implement IDXGIObject\n");
+    hr = IDXGIDevice_QueryInterface(device, &IID_IDXGIObject, (void **)&iface);
+    ok(SUCCEEDED(hr), "Failed to query IDXGIObject interface, hr %#x.\n", hr);
+    IUnknown_Release(iface);
 
-    if (SUCCEEDED(hr = IDXGIDevice_QueryInterface(device, &IID_IDXGIDevice, (void **)&obj)))
-        IUnknown_Release(obj);
-    ok(SUCCEEDED(hr), "IDXGIDevice does not implement IDXGIDevice\n");
+    hr = IDXGIDevice_QueryInterface(device, &IID_IDXGIDevice, (void **)&iface);
+    ok(SUCCEEDED(hr), "Failed to query IDXGIDevice interface, hr %#x.\n", hr);
+    IUnknown_Release(iface);
 
-    if (SUCCEEDED(hr = IDXGIDevice_QueryInterface(device, &IID_ID3D10Device, (void **)&obj)))
-        IUnknown_Release(obj);
-    ok(SUCCEEDED(hr), "IDXGIDevice does not implement ID3D10Device\n");
+    hr = IDXGIDevice_QueryInterface(device, &IID_ID3D10Device, (void **)&iface);
+    ok(SUCCEEDED(hr), "Failed to query ID3D10Device interface, hr %#x.\n", hr);
+    IUnknown_Release(iface);
+
+    if (SUCCEEDED(hr = IDXGIDevice_QueryInterface(device, &IID_ID3D10Device1, (void **)&iface)))
+        IUnknown_Release(iface);
+    ok(SUCCEEDED(hr) || broken(hr == E_NOINTERFACE) /* Not available on all Windows versions. */,
+            "Failed to query ID3D10Device1 interface, hr %#x.\n", hr);
+
+    if (SUCCEEDED(hr = IDXGIDevice_QueryInterface(device, &IID_ID3D11Device, (void **)&iface)))
+        IUnknown_Release(iface);
+    todo_wine ok(SUCCEEDED(hr) || broken(hr == E_NOINTERFACE) /* Not available on all Windows versions. */,
+            "Failed to query ID3D11Device interface, hr %#x.\n", hr);
 
     refcount = IDXGIDevice_Release(device);
     ok(!refcount, "Device has %u references left.\n", refcount);
@@ -499,12 +511,78 @@ static void test_createswapchain(void)
     ok(!refcount, "Device has %u references left.\n", refcount);
 }
 
+static void test_create_factory(void)
+{
+    IDXGIFactory1 *factory;
+    IUnknown *iface;
+    HRESULT hr;
+
+    iface = (void *)0xdeadbeef;
+    hr = CreateDXGIFactory(&IID_IDXGIDevice, (void **)&iface);
+    ok(hr == E_NOINTERFACE, "Got unexpected hr %#x.\n", hr);
+    ok(!iface, "Got unexpected iface %p.\n", iface);
+
+    hr = CreateDXGIFactory(&IID_IUnknown, (void **)&iface);
+    ok(SUCCEEDED(hr), "Failed to create factory with IID_IUnknown, hr %#x.\n", hr);
+    IUnknown_Release(iface);
+
+    hr = CreateDXGIFactory(&IID_IDXGIObject, (void **)&iface);
+    ok(SUCCEEDED(hr), "Failed to create factory with IID_IDXGIObject, hr %#x.\n", hr);
+    IUnknown_Release(iface);
+
+    factory = (void *)0xdeadbeef;
+    hr = CreateDXGIFactory(&IID_IDXGIFactory, (void **)&iface);
+    ok(SUCCEEDED(hr), "Failed to create factory with IID_IDXGIFactory, hr %#x.\n", hr);
+    hr = IUnknown_QueryInterface(iface, &IID_IDXGIFactory1, (void **)&factory);
+    ok(hr == E_NOINTERFACE, "Got unexpected hr %#x.\n", hr);
+    ok(!factory, "Got unexpected factory %p.\n", factory);
+    IUnknown_Release(iface);
+
+    iface = (void *)0xdeadbeef;
+    hr = CreateDXGIFactory(&IID_IDXGIFactory1, (void **)&iface);
+    ok(hr == E_NOINTERFACE, "Got unexpected hr %#x.\n", hr);
+    ok(!iface, "Got unexpected iface %p.\n", iface);
+
+    if (!pCreateDXGIFactory1)
+    {
+        win_skip("CreateDXGIFactory1 not available, skipping tests.\n");
+        return;
+    }
+
+    iface = (void *)0xdeadbeef;
+    hr = pCreateDXGIFactory1(&IID_IDXGIDevice, (void **)&iface);
+    ok(hr == E_NOINTERFACE, "Got unexpected hr %#x.\n", hr);
+    ok(!iface, "Got unexpected iface %p.\n", iface);
+
+    hr = pCreateDXGIFactory1(&IID_IUnknown, (void **)&iface);
+    ok(SUCCEEDED(hr), "Failed to create factory with IID_IUnknown, hr %#x.\n", hr);
+    IUnknown_Release(iface);
+
+    hr = pCreateDXGIFactory1(&IID_IDXGIObject, (void **)&iface);
+    ok(SUCCEEDED(hr), "Failed to create factory with IID_IDXGIObject, hr %#x.\n", hr);
+    IUnknown_Release(iface);
+
+    hr = pCreateDXGIFactory1(&IID_IDXGIFactory, (void **)&iface);
+    ok(SUCCEEDED(hr), "Failed to create factory with IID_IDXGIFactory, hr %#x.\n", hr);
+    hr = IUnknown_QueryInterface(iface, &IID_IDXGIFactory1, (void **)&factory);
+    ok(SUCCEEDED(hr), "Failed to query IDXGIFactory1 interface, hr %#x.\n", hr);
+    IDXGIFactory1_Release(factory);
+    IUnknown_Release(iface);
+
+    hr = pCreateDXGIFactory1(&IID_IDXGIFactory1, (void **)&iface);
+    ok(SUCCEEDED(hr), "Failed to create factory with IID_IDXGIFactory1, hr %#x.\n", hr);
+    IUnknown_Release(iface);
+}
+
 START_TEST(device)
 {
+    pCreateDXGIFactory1 = (void *)GetProcAddress(GetModuleHandleA("dxgi.dll"), "CreateDXGIFactory1");
+
     test_adapter_desc();
     test_device_interfaces();
     test_create_surface();
     test_parents();
     test_output();
     test_createswapchain();
+    test_create_factory();
 }
