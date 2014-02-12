@@ -79,20 +79,18 @@ Fixed_IEnumPins_Release(IEnumPins *iface)
 }
 
 /* IUnknown */
-static HRESULT WINAPI
-Fixed_IEnumPins_QueryInterface(IEnumPins *iface, REFIID riid, void **ppvObject)
+static HRESULT WINAPI Fixed_IEnumPins_QueryInterface(IEnumPins *iface, REFIID riid,
+        void **ret_iface)
 {
-    PE_Impl *This = (PE_Impl *)iface;
-    TRACE("(%p)->(%s %p)\n", This, debugstr_guid(riid), ppvObject);
+    TRACE("(%p)->(%s %p)\n", iface, debugstr_guid(riid), ret_iface);
 
-    if (IsEqualIID(riid, &IID_IUnknown) ||
-        IsEqualIID(riid, &IID_IEnumPins)) {
-	Fixed_IEnumPins_AddRef(iface);
-        *ppvObject = This->pins;
+    if (IsEqualIID(riid, &IID_IUnknown) || IsEqualIID(riid, &IID_IEnumPins)) {
+        IEnumPins_AddRef(iface);
+        *ret_iface = iface;
         return S_OK;
     }
-    *ppvObject = NULL;
-    WARN("(%p, %s,%p): not found\n", This, debugstr_guid(riid), ppvObject);
+    *ret_iface = NULL;
+    WARN("(%p, %s, %p): not found\n", iface, debugstr_guid(riid), ret_iface);
     return E_NOINTERFACE;
 }
 
@@ -372,10 +370,8 @@ typedef struct _SG_Impl {
     IUnknown IUnknown_inner;
     IBaseFilter IBaseFilter_iface;
     ISampleGrabber ISampleGrabber_iface;
-    IMemInputPin IMemInputPin_iface;
     /* IMediaSeeking and IMediaPosition are implemented by ISeekingPassThru */
     IUnknown* seekthru_unk;
-    /* TODO: IQualityControl */
     IUnknown *outer_unk;
     LONG ref;
     CRITICAL_SECTION critSect;
@@ -384,6 +380,7 @@ typedef struct _SG_Impl {
     AM_MEDIA_TYPE mtype;
     SG_Pin pin_in;
     SG_Pin pin_out;
+    IMemInputPin IMemInputPin_iface;
     IMemAllocator *allocator;
     IReferenceClock *refClock;
     IMemInputPin *memOutput;
@@ -460,14 +457,10 @@ static HRESULT WINAPI SampleGrabber_QueryInterface(IUnknown *iface, REFIID riid,
         *ppv = &This->IBaseFilter_iface;
     else if (IsEqualIID(riid, &IID_ISampleGrabber))
         *ppv = &This->ISampleGrabber_iface;
-    else if (IsEqualIID(riid, &IID_IMemInputPin))
-        *ppv = &This->IMemInputPin_iface;
     else if (IsEqualIID(riid, &IID_IMediaPosition))
         return IUnknown_QueryInterface(This->seekthru_unk, riid, ppv);
     else if (IsEqualIID(riid, &IID_IMediaSeeking))
         return IUnknown_QueryInterface(This->seekthru_unk, riid, ppv);
-    else if (IsEqualIID(riid, &IID_IQualityControl))
-        FIXME("IQualityControl not implemented\n");
     else
         WARN("(%p, %s,%p): not found\n", This, debugstr_guid(riid), ppv);
 

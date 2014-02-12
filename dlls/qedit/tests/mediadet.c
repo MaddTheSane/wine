@@ -27,6 +27,7 @@
 #include "uuids.h"
 #include "wine/test.h"
 #include "qedit.h"
+#include "control.h"
 #include "rc.h"
 
 /* Outer IUnknown for COM aggregation tests */
@@ -358,6 +359,10 @@ static void test_samplegrabber(void)
 {
     struct unk_impl unk_obj = {{&unk_vtbl}, 19, NULL};
     ISampleGrabber *sg;
+    IBaseFilter *bf;
+    IMediaFilter *mf;
+    IPersist *persist;
+    IUnknown *unk;
     ULONG refcount;
     HRESULT hr;
 
@@ -374,8 +379,89 @@ static void test_samplegrabber(void)
     ok(refcount == unk_obj.ref, "SampleGrabber just pretends to support COM aggregation\n");
     refcount = ISampleGrabber_Release(sg);
     ok(refcount == 19, "Refcount should be back at 19 but is %u\n", refcount);
-
     IUnknown_Release(unk_obj.inner_unk);
+
+    /* Invalid RIID */
+    hr = CoCreateInstance(&CLSID_SampleGrabber, NULL, CLSCTX_INPROC_SERVER, &IID_IClassFactory,
+            (void**)&sg);
+    ok(hr == E_NOINTERFACE, "SampleGrabber create failed: %08x, expected E_NOINTERFACE\n", hr);
+
+    /* Same refcount for all SampleGrabber interfaces */
+    hr = CoCreateInstance(&CLSID_SampleGrabber, NULL, CLSCTX_INPROC_SERVER, &IID_ISampleGrabber,
+            (void**)&sg);
+    ok(hr == S_OK, "SampleGrabber create failed: %08x, expected S_OK\n", hr);
+    refcount = ISampleGrabber_AddRef(sg);
+    ok(refcount == 2, "refcount == %u, expected 2\n", refcount);
+
+    hr = ISampleGrabber_QueryInterface(sg, &IID_IBaseFilter, (void**)&bf);
+    ok(hr == S_OK, "QueryInterface for IID_IBaseFilter failed: %08x\n", hr);
+    refcount = IBaseFilter_AddRef(bf);
+    ok(refcount == 4, "refcount == %u, expected 4\n", refcount);
+    refcount = IBaseFilter_Release(bf);
+
+    hr = ISampleGrabber_QueryInterface(sg, &IID_IMediaFilter, (void**)&mf);
+    ok(hr == S_OK, "QueryInterface for IID_IMediaFilter failed: %08x\n", hr);
+    refcount = IMediaFilter_AddRef(mf);
+    ok(refcount == 5, "refcount == %u, expected 5\n", refcount);
+    refcount = IMediaFilter_Release(mf);
+
+    hr = ISampleGrabber_QueryInterface(sg, &IID_IPersist, (void**)&persist);
+    ok(hr == S_OK, "QueryInterface for IID_IPersist failed: %08x\n", hr);
+    refcount = IPersist_AddRef(persist);
+    ok(refcount == 6, "refcount == %u, expected 6\n", refcount);
+    refcount = IPersist_Release(persist);
+
+    hr = ISampleGrabber_QueryInterface(sg, &IID_IUnknown, (void**)&unk);
+    ok(hr == S_OK, "QueryInterface for IID_IUnknown failed: %08x\n", hr);
+    refcount = IUnknown_AddRef(unk);
+    ok(refcount == 7, "refcount == %u, expected 7\n", refcount);
+    refcount = IUnknown_Release(unk);
+
+    /* Interfaces that native does not support */
+    hr = ISampleGrabber_QueryInterface(sg, &IID_IMediaPosition, (void**)&unk);
+    todo_wine ok(hr == E_NOINTERFACE, "QueryInterface for IID_IMediaPosition failed: %08x\n", hr);
+    hr = ISampleGrabber_QueryInterface(sg, &IID_IMediaSeeking, (void**)&unk);
+    todo_wine ok(hr == E_NOINTERFACE, "QueryInterface for IID_IMediaSeeking failed: %08x\n", hr);
+    hr = ISampleGrabber_QueryInterface(sg, &IID_IMemInputPin, (void**)&unk);
+    ok(hr == E_NOINTERFACE, "QueryInterface for IID_IMemInputPin failed: %08x\n", hr);
+    hr = ISampleGrabber_QueryInterface(sg, &IID_IQualityControl, (void**)&unk);
+    ok(hr == E_NOINTERFACE, "QueryInterface for IID_IQualityControl failed: %08x\n", hr);
+    hr = ISampleGrabber_QueryInterface(sg, &IID_ISeekingPassThru, (void**)&unk);
+    ok(hr == E_NOINTERFACE, "QueryInterface for IID_ISeekingPassThru failed: %08x\n", hr);
+
+    while (ISampleGrabber_Release(sg));
+}
+
+static void test_COM_sg_enumpins(void)
+{
+    IBaseFilter *bf;
+    IEnumPins *pins, *pins2;
+    IUnknown *unk;
+    ULONG refcount;
+    HRESULT hr;
+
+    hr = CoCreateInstance(&CLSID_SampleGrabber, NULL, CLSCTX_INPROC_SERVER, &IID_IBaseFilter,
+            (void**)&bf);
+    ok(hr == S_OK, "SampleGrabber create failed: %08x, expected S_OK\n", hr);
+    hr = IBaseFilter_EnumPins(bf, &pins);
+    ok(hr == S_OK, "EnumPins create failed: %08x, expected S_OK\n", hr);
+
+    /* Same refcount for all EnumPins interfaces */
+    refcount = IEnumPins_AddRef(pins);
+    ok(refcount == 2, "refcount == %u, expected 2\n", refcount);
+    hr = IEnumPins_QueryInterface(pins, &IID_IEnumPins, (void**)&pins2);
+    ok(hr == S_OK, "QueryInterface for IID_IEnumPins failed: %08x\n", hr);
+    ok(pins == pins2, "QueryInterface for self failed (%p != %p)\n", pins, pins2);
+    IEnumPins_Release(pins2);
+
+    hr = IEnumPins_QueryInterface(pins, &IID_IUnknown, (void**)&unk);
+    ok(hr == S_OK, "QueryInterface for IID_IUnknown failed: %08x\n", hr);
+    refcount = IUnknown_AddRef(unk);
+    ok(refcount == 4, "refcount == %u, expected 4\n", refcount);
+    refcount = IUnknown_Release(unk);
+
+    while (IEnumPins_Release(pins));
+    IBaseFilter_Release(bf);
 }
 
 START_TEST(mediadet)
@@ -389,5 +475,6 @@ START_TEST(mediadet)
     CoInitialize(NULL);
     test_mediadet();
     test_samplegrabber();
+    test_COM_sg_enumpins();
     CoUninitialize();
 }
