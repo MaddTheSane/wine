@@ -81,6 +81,7 @@ struct d3d10_texture2d
     IUnknown *dxgi_surface;
     struct wined3d_texture *wined3d_texture;
     D3D10_TEXTURE2D_DESC desc;
+    ID3D10Device1 *device;
 };
 
 HRESULT d3d10_texture2d_init(struct d3d10_texture2d *texture, struct d3d10_device *device,
@@ -94,6 +95,7 @@ struct d3d10_texture3d
 
     struct wined3d_texture *wined3d_texture;
     D3D10_TEXTURE3D_DESC desc;
+    ID3D10Device1 *device;
 };
 
 HRESULT d3d10_texture3d_init(struct d3d10_texture3d *texture, struct d3d10_device *device,
@@ -106,6 +108,7 @@ struct d3d10_buffer
     LONG refcount;
 
     struct wined3d_buffer *wined3d_buffer;
+    ID3D10Device1 *device;
 };
 
 HRESULT d3d10_buffer_init(struct d3d10_buffer *buffer, struct d3d10_device *device,
@@ -120,9 +123,10 @@ struct d3d10_depthstencil_view
 
     D3D10_DEPTH_STENCIL_VIEW_DESC desc;
     ID3D10Resource *resource;
+    ID3D10Device1 *device;
 };
 
-HRESULT d3d10_depthstencil_view_init(struct d3d10_depthstencil_view *view,
+HRESULT d3d10_depthstencil_view_init(struct d3d10_depthstencil_view *view, struct d3d10_device *device,
         ID3D10Resource *resource, const D3D10_DEPTH_STENCIL_VIEW_DESC *desc) DECLSPEC_HIDDEN;
 
 /* ID3D10RenderTargetView */
@@ -134,9 +138,10 @@ struct d3d10_rendertarget_view
     struct wined3d_rendertarget_view *wined3d_view;
     D3D10_RENDER_TARGET_VIEW_DESC desc;
     ID3D10Resource *resource;
+    ID3D10Device1 *device;
 };
 
-HRESULT d3d10_rendertarget_view_init(struct d3d10_rendertarget_view *view,
+HRESULT d3d10_rendertarget_view_init(struct d3d10_rendertarget_view *view, struct d3d10_device *device,
         ID3D10Resource *resource, const D3D10_RENDER_TARGET_VIEW_DESC *desc) DECLSPEC_HIDDEN;
 struct d3d10_rendertarget_view *unsafe_impl_from_ID3D10RenderTargetView(ID3D10RenderTargetView *iface) DECLSPEC_HIDDEN;
 
@@ -148,9 +153,10 @@ struct d3d10_shader_resource_view
 
     D3D10_SHADER_RESOURCE_VIEW_DESC desc;
     ID3D10Resource *resource;
+    ID3D10Device1 *device;
 };
 
-HRESULT d3d10_shader_resource_view_init(struct d3d10_shader_resource_view *view,
+HRESULT d3d10_shader_resource_view_init(struct d3d10_shader_resource_view *view, struct d3d10_device *device,
         ID3D10Resource *resource, const D3D10_SHADER_RESOURCE_VIEW_DESC *desc) DECLSPEC_HIDDEN;
 
 /* ID3D10InputLayout */
@@ -175,6 +181,7 @@ struct d3d10_vertex_shader
 
     struct wined3d_shader *wined3d_shader;
     struct wined3d_shader_signature output_signature;
+    ID3D10Device1 *device;
 };
 
 HRESULT d3d10_vertex_shader_init(struct d3d10_vertex_shader *shader, struct d3d10_device *device,
@@ -203,6 +210,7 @@ struct d3d10_pixel_shader
 
     struct wined3d_shader *wined3d_shader;
     struct wined3d_shader_signature output_signature;
+    ID3D10Device1 *device;
 };
 
 HRESULT d3d10_pixel_shader_init(struct d3d10_pixel_shader *shader, struct d3d10_device *device,
