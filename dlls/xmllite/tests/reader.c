@@ -644,11 +644,21 @@ if (0)
 
 static void test_read_xmldeclaration(void)
 {
+    static const struct
+    {
+        WCHAR name[12];
+        WCHAR val[12];
+    } name_val[] =
+    {
+        { {'v','e','r','s','i','o','n',0}, {'1','.','0',0} },
+        { {'e','n','c','o','d','i','n','g',0}, {'U','T','F','-','8',0} },
+        { {'s','t','a','n','d','a','l','o','n','e',0}, {'y','e','s',0} }
+    };
     IXmlReader *reader;
     IStream *stream;
     HRESULT hr;
     XmlNodeType type;
-    UINT count = 0;
+    UINT count = 0, len, i;
     const WCHAR *val;
 
     hr = pCreateXmlReader(&IID_IXmlReader, (LPVOID*)&reader, NULL);
@@ -730,6 +740,24 @@ static void test_read_xmldeclaration(void)
     ok(hr == S_OK, "got %08x\n", hr);
     ok(count == 3, "Expected 3, got %d\n", count);
 
+    for (i = 0; i < count; i++)
+    {
+        len = 0;
+        hr = IXmlReader_GetLocalName(reader, &val, &len);
+        ok(hr == S_OK, "got %08x\n", hr);
+        ok(len == lstrlenW(name_val[i].name), "expected %u, got %u\n", lstrlenW(name_val[i].name), len);
+        ok(!lstrcmpW(name_val[i].name, val), "expected %s, got %s\n", wine_dbgstr_w(name_val[i].name), wine_dbgstr_w(val));
+
+        len = 0;
+        hr = IXmlReader_GetValue(reader, &val, &len);
+        ok(hr == S_OK, "got %08x\n", hr);
+        ok(len == lstrlenW(name_val[i].val), "expected %u, got %u\n", lstrlenW(name_val[i].val), len);
+        ok(!lstrcmpW(name_val[i].val, val), "expected %s, got %s\n", wine_dbgstr_w(name_val[i].val), wine_dbgstr_w(val));
+
+        hr = IXmlReader_MoveToNextAttribute(reader);
+        ok(hr == (i < count - 1) ? S_OK : S_FALSE, "got %08x\n", hr);
+    }
+
     hr = IXmlReader_GetDepth(reader, &count);
     ok(hr == S_OK, "Expected S_OK, got %08x\n", hr);
     ok(count == 1, "Expected 1, got %d\n", count);
@@ -760,16 +788,13 @@ todo_wine {
 
     type = -1;
     hr = IXmlReader_Read(reader, &type);
-todo_wine
     ok(hr == S_OK, "expected S_OK, got %08x\n", hr);
-todo_wine
     ok(type == XmlNodeType_XmlDeclaration, "expected XmlDeclaration, got %s\n", type_to_str(type));
     ok_pos(reader, 1, 3, 1, 21, TRUE);
     test_read_state(reader, XmlReadState_Interactive, -1, TRUE);
 
     hr = IXmlReader_GetValue(reader, &val, NULL);
     ok(hr == S_OK, "expected S_OK, got %08x\n", hr);
-todo_wine
     ok(*val == 0, "got %s\n", wine_dbgstr_w(val));
 
     /* check attributes */
