@@ -705,57 +705,6 @@ static NTSTATUS create_module_activation_context( LDR_MODULE *module )
 }
 
 
-/****************************************************************
- *       fixup_imports
- *
- * Fixup all imports of a given module.
- * The loader_section must be locked while calling this function.
- */
-static NTSTATUS fixup_imports( WINE_MODREF *wm, LPCWSTR load_path )
-{
-    int i, nb_imports;
-    const IMAGE_IMPORT_DESCRIPTOR *imports;
-    WINE_MODREF *prev;
-    DWORD size;
-    NTSTATUS status;
-    ULONG_PTR cookie;
-
-    if (!(wm->ldr.Flags & LDR_DONT_RESOLVE_REFS)) return STATUS_SUCCESS;  /* already done */
-    wm->ldr.Flags &= ~LDR_DONT_RESOLVE_REFS;
-
-    if (!(imports = RtlImageDirectoryEntryToData( wm->ldr.BaseAddress, TRUE,
-                                                  IMAGE_DIRECTORY_ENTRY_IMPORT, &size )))
-        return STATUS_SUCCESS;
-
-    nb_imports = 0;
-    while (imports[nb_imports].Name && imports[nb_imports].FirstThunk) nb_imports++;
-
-    if (!nb_imports) return STATUS_SUCCESS;  /* no imports */
-
-    if (!create_module_activation_context( &wm->ldr ))
-        RtlActivateActivationContext( 0, wm->ldr.ActivationContext, &cookie );
-
-    /* Allocate module dependency list */
-    wm->nDeps = nb_imports;
-    wm->deps  = RtlAllocateHeap( GetProcessHeap(), 0, nb_imports*sizeof(WINE_MODREF *) );
-
-    /* load the imported modules. They are automatically
-     * added to the modref list of the process.
-     */
-    prev = current_modref;
-    current_modref = wm;
-    status = STATUS_SUCCESS;
-    for (i = 0; i < nb_imports; i++)
-    {
-        if (!(wm->deps[i] = import_dll( wm->ldr.BaseAddress, &imports[i], load_path )))
-            status = STATUS_DLL_NOT_FOUND;
-    }
-    current_modref = prev;
-    if (wm->ldr.ActivationContext) RtlDeactivateActivationContext( 0, cookie );
-    return status;
-}
-
-
 /*************************************************************************
  *		is_dll_native_subsystem
  *
@@ -885,6 +834,59 @@ static void free_tls_slot( LDR_MODULE *mod )
 }
 
 
+/****************************************************************
+ *       fixup_imports
+ *
+ * Fixup all imports of a given module.
+ * The loader_section must be locked while calling this function.
+ */
+static NTSTATUS fixup_imports( WINE_MODREF *wm, LPCWSTR load_path )
+{
+    int i, nb_imports;
+    const IMAGE_IMPORT_DESCRIPTOR *imports;
+    WINE_MODREF *prev;
+    DWORD size;
+    NTSTATUS status;
+    ULONG_PTR cookie;
+
+    if (!(wm->ldr.Flags & LDR_DONT_RESOLVE_REFS)) return STATUS_SUCCESS;  /* already done */
+    wm->ldr.Flags &= ~LDR_DONT_RESOLVE_REFS;
+
+    wm->ldr.TlsIndex = alloc_tls_slot( &wm->ldr );
+
+    if (!(imports = RtlImageDirectoryEntryToData( wm->ldr.BaseAddress, TRUE,
+                                                  IMAGE_DIRECTORY_ENTRY_IMPORT, &size )))
+        return STATUS_SUCCESS;
+
+    nb_imports = 0;
+    while (imports[nb_imports].Name && imports[nb_imports].FirstThunk) nb_imports++;
+
+    if (!nb_imports) return STATUS_SUCCESS;  /* no imports */
+
+    if (!create_module_activation_context( &wm->ldr ))
+        RtlActivateActivationContext( 0, wm->ldr.ActivationContext, &cookie );
+
+    /* Allocate module dependency list */
+    wm->nDeps = nb_imports;
+    wm->deps  = RtlAllocateHeap( GetProcessHeap(), 0, nb_imports*sizeof(WINE_MODREF *) );
+
+    /* load the imported modules. They are automatically
+     * added to the modref list of the process.
+     */
+    prev = current_modref;
+    current_modref = wm;
+    status = STATUS_SUCCESS;
+    for (i = 0; i < nb_imports; i++)
+    {
+        if (!(wm->deps[i] = import_dll( wm->ldr.BaseAddress, &imports[i], load_path )))
+            status = STATUS_DLL_NOT_FOUND;
+    }
+    current_modref = prev;
+    if (wm->ldr.ActivationContext) RtlDeactivateActivationContext( 0, cookie );
+    return status;
+}
+
+
 /*************************************************************************
  *		alloc_module
  *
@@ -907,6 +909,7 @@ static WINE_MODREF *alloc_module( HMODULE hModule, LPCWSTR filename )
     wm->ldr.EntryPoint    = NULL;
     wm->ldr.SizeOfImage   = nt->OptionalHeader.SizeOfImage;
     wm->ldr.Flags         = LDR_DONT_RESOLVE_REFS;
+    wm->ldr.TlsIndex      = -1;
     wm->ldr.LoadCount     = 1;
     wm->ldr.SectionHandle = NULL;
     wm->ldr.CheckSum      = 0;
@@ -943,8 +946,6 @@ static WINE_MODREF *alloc_module( HMODULE hModule, LPCWSTR filename )
     /* wait until init is called for inserting into this list */
     wm->ldr.InInitializationOrderModuleList.Flink = NULL;
     wm->ldr.InInitializationOrderModuleList.Blink = NULL;
-
-    wm->ldr.TlsIndex = alloc_tls_slot( &wm->ldr );
 
     if (!(nt->OptionalHeader.DllCharacteristics & IMAGE_DLLCHARACTERISTICS_NX_COMPAT))
     {
@@ -1509,12 +1510,8 @@ static void load_builtin_callback( void *module, const char *filename )
     }
     wm->ldr.Flags |= LDR_WINE_INTERNAL;
 
-    if (!(nt->FileHeader.Characteristics & IMAGE_FILE_DLL) &&
-        !NtCurrentTeb()->Peb->ImageBaseAddress)  /* if we already have an executable, ignore this one */
-    {
-        NtCurrentTeb()->Peb->ImageBaseAddress = module;
-    }
-    else
+    if ((nt->FileHeader.Characteristics & IMAGE_FILE_DLL) ||
+        nt->OptionalHeader.Subsystem == IMAGE_SUBSYSTEM_NATIVE)
     {
         /* fixup imports */
 
@@ -1591,7 +1588,11 @@ static NTSTATUS load_native_dll( LPCWSTR load_path, LPCWSTR name, HANDLE file,
 
     /* fixup imports */
 
-    if (!(flags & DONT_RESOLVE_DLL_REFERENCES))
+    nt = RtlImageNtHeader( module );
+
+    if (!(flags & DONT_RESOLVE_DLL_REFERENCES) &&
+        ((nt->FileHeader.Characteristics & IMAGE_FILE_DLL) ||
+         nt->OptionalHeader.Subsystem == IMAGE_SUBSYSTEM_NATIVE))
     {
         if ((status = fixup_imports( wm, load_path )) != STATUS_SUCCESS)
         {
@@ -1611,8 +1612,6 @@ static NTSTATUS load_native_dll( LPCWSTR load_path, LPCWSTR name, HANDLE file,
     }
 
     /* send DLL load event */
-
-    nt = RtlImageNtHeader( module );
 
     SERVER_START_REQ( load_dll )
     {
@@ -2017,8 +2016,6 @@ static NTSTATUS load_dll( LPCWSTR load_path, LPCWSTR libname, DWORD flags, WINE_
     if (*pwm)  /* found already loaded module */
     {
         if ((*pwm)->ldr.LoadCount != -1) (*pwm)->ldr.LoadCount++;
-
-        if (!(flags & DONT_RESOLVE_DLL_REFERENCES)) fixup_imports( *pwm, load_path );
 
         TRACE("Found %s for %s at %p, count=%d\n",
               debugstr_w((*pwm)->ldr.FullDllName.Buffer), debugstr_w(libname),

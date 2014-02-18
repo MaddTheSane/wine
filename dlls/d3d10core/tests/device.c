@@ -605,9 +605,9 @@ float4 main(const float4 color : COLOR) : SV_TARGET
 static void test_create_sampler_state(void)
 {
     ID3D10SamplerState *sampler_state1, *sampler_state2;
+    ULONG refcount, expected_refcount;
     D3D10_SAMPLER_DESC sampler_desc;
-    ID3D10Device *device;
-    ULONG refcount;
+    ID3D10Device *device, *tmp;
     HRESULT hr;
 
     if (!(device = create_device()))
@@ -633,11 +633,21 @@ static void test_create_sampler_state(void)
     sampler_desc.MinLOD = 0.0f;
     sampler_desc.MaxLOD = 16.0f;
 
+    expected_refcount = get_refcount((IUnknown *)device) + 1;
     hr = ID3D10Device_CreateSamplerState(device, &sampler_desc, &sampler_state1);
     ok(SUCCEEDED(hr), "Failed to create sampler state, hr %#x.\n", hr);
     hr = ID3D10Device_CreateSamplerState(device, &sampler_desc, &sampler_state2);
     ok(SUCCEEDED(hr), "Failed to create sampler state, hr %#x.\n", hr);
     ok(sampler_state1 == sampler_state2, "Got different sampler state objects.\n");
+    refcount = get_refcount((IUnknown *)device);
+    ok(refcount >= expected_refcount, "Got unexpected refcount %u, expected >= %u.\n", refcount, expected_refcount);
+    tmp = NULL;
+    expected_refcount = refcount + 1;
+    ID3D10SamplerState_GetDevice(sampler_state1, &tmp);
+    ok(tmp == device, "Got unexpected device %p, expected %p.\n", tmp, device);
+    refcount = get_refcount((IUnknown *)device);
+    ok(refcount == expected_refcount, "Got unexpected refcount %u, expected %u.\n", refcount, expected_refcount);
+    ID3D10Device_Release(tmp);
 
     refcount = ID3D10SamplerState_Release(sampler_state2);
     ok(refcount == 1, "Got unexpected refcount %u.\n", refcount);
@@ -651,9 +661,9 @@ static void test_create_sampler_state(void)
 static void test_create_blend_state(void)
 {
     ID3D10BlendState *blend_state1, *blend_state2;
+    ULONG refcount, expected_refcount;
     D3D10_BLEND_DESC blend_desc;
-    ID3D10Device *device;
-    ULONG refcount;
+    ID3D10Device *device, *tmp;
     HRESULT hr;
 
     if (!(device = create_device()))
@@ -689,11 +699,21 @@ static void test_create_blend_state(void)
     blend_desc.RenderTargetWriteMask[6] = D3D10_COLOR_WRITE_ENABLE_ALL;
     blend_desc.RenderTargetWriteMask[7] = D3D10_COLOR_WRITE_ENABLE_ALL;
 
+    expected_refcount = get_refcount((IUnknown *)device) + 1;
     hr = ID3D10Device_CreateBlendState(device, &blend_desc, &blend_state1);
     ok(SUCCEEDED(hr), "Failed to create blend state, hr %#x.\n", hr);
     hr = ID3D10Device_CreateBlendState(device, &blend_desc, &blend_state2);
     ok(SUCCEEDED(hr), "Failed to create blend state, hr %#x.\n", hr);
     ok(blend_state1 == blend_state2, "Got different blend state objects.\n");
+    refcount = get_refcount((IUnknown *)device);
+    ok(refcount >= expected_refcount, "Got unexpected refcount %u, expected >= %u.\n", refcount, expected_refcount);
+    tmp = NULL;
+    expected_refcount = refcount + 1;
+    ID3D10BlendState_GetDevice(blend_state1, &tmp);
+    ok(tmp == device, "Got unexpected device %p, expected %p.\n", tmp, device);
+    refcount = get_refcount((IUnknown *)device);
+    ok(refcount == expected_refcount, "Got unexpected refcount %u, expected %u.\n", refcount, expected_refcount);
+    ID3D10Device_Release(tmp);
 
     refcount = ID3D10BlendState_Release(blend_state2);
     ok(refcount == 1, "Got unexpected refcount %u.\n", refcount);
@@ -707,9 +727,9 @@ static void test_create_blend_state(void)
 static void test_create_depthstencil_state(void)
 {
     ID3D10DepthStencilState *ds_state1, *ds_state2;
+    ULONG refcount, expected_refcount;
     D3D10_DEPTH_STENCIL_DESC ds_desc;
-    ID3D10Device *device;
-    ULONG refcount;
+    ID3D10Device *device, *tmp;
     HRESULT hr;
 
     if (!(device = create_device()))
@@ -736,11 +756,21 @@ static void test_create_depthstencil_state(void)
     ds_desc.BackFace.StencilPassOp = D3D10_STENCIL_OP_KEEP;
     ds_desc.BackFace.StencilFunc = D3D10_COMPARISON_ALWAYS;
 
+    expected_refcount = get_refcount((IUnknown *)device) + 1;
     hr = ID3D10Device_CreateDepthStencilState(device, &ds_desc, &ds_state1);
     ok(SUCCEEDED(hr), "Failed to create depthstencil state, hr %#x.\n", hr);
     hr = ID3D10Device_CreateDepthStencilState(device, &ds_desc, &ds_state2);
     ok(SUCCEEDED(hr), "Failed to create depthstencil state, hr %#x.\n", hr);
     ok(ds_state1 == ds_state2, "Got different depthstencil state objects.\n");
+    refcount = get_refcount((IUnknown *)device);
+    ok(refcount >= expected_refcount, "Got unexpected refcount %u, expected >= %u.\n", refcount, expected_refcount);
+    tmp = NULL;
+    expected_refcount = refcount + 1;
+    ID3D10DepthStencilState_GetDevice(ds_state1, &tmp);
+    ok(tmp == device, "Got unexpected device %p, expected %p.\n", tmp, device);
+    refcount = get_refcount((IUnknown *)device);
+    ok(refcount == expected_refcount, "Got unexpected refcount %u, expected %u.\n", refcount, expected_refcount);
+    ID3D10Device_Release(tmp);
 
     refcount = ID3D10DepthStencilState_Release(ds_state2);
     ok(refcount == 1, "Got unexpected refcount %u.\n", refcount);
@@ -754,9 +784,9 @@ static void test_create_depthstencil_state(void)
 static void test_create_rasterizer_state(void)
 {
     ID3D10RasterizerState *rast_state1, *rast_state2;
+    ULONG refcount, expected_refcount;
     D3D10_RASTERIZER_DESC rast_desc;
-    ID3D10Device *device;
-    ULONG refcount;
+    ID3D10Device *device, *tmp;
     HRESULT hr;
 
     if (!(device = create_device()))
@@ -779,11 +809,21 @@ static void test_create_rasterizer_state(void)
     rast_desc.MultisampleEnable = FALSE;
     rast_desc.AntialiasedLineEnable = FALSE;
 
+    expected_refcount = get_refcount((IUnknown *)device) + 1;
     hr = ID3D10Device_CreateRasterizerState(device, &rast_desc, &rast_state1);
     ok(SUCCEEDED(hr), "Failed to create rasterizer state, hr %#x.\n", hr);
     hr = ID3D10Device_CreateRasterizerState(device, &rast_desc, &rast_state2);
     ok(SUCCEEDED(hr), "Failed to create rasterizer state, hr %#x.\n", hr);
     ok(rast_state1 == rast_state2, "Got different rasterizer state objects.\n");
+    refcount = get_refcount((IUnknown *)device);
+    ok(refcount >= expected_refcount, "Got unexpected refcount %u, expected >= %u.\n", refcount, expected_refcount);
+    tmp = NULL;
+    expected_refcount = refcount + 1;
+    ID3D10RasterizerState_GetDevice(rast_state1, &tmp);
+    ok(tmp == device, "Got unexpected device %p, expected %p.\n", tmp, device);
+    refcount = get_refcount((IUnknown *)device);
+    ok(refcount == expected_refcount, "Got unexpected refcount %u, expected %u.\n", refcount, expected_refcount);
+    ID3D10Device_Release(tmp);
 
     refcount = ID3D10RasterizerState_Release(rast_state2);
     ok(refcount == 1, "Got unexpected refcount %u.\n", refcount);
@@ -796,10 +836,10 @@ static void test_create_rasterizer_state(void)
 
 static void test_create_predicate(void)
 {
+    ULONG refcount, expected_refcount;
     D3D10_QUERY_DESC query_desc;
     ID3D10Predicate *predicate;
-    ID3D10Device *device;
-    ULONG refcount;
+    ID3D10Device *device, *tmp;
     HRESULT hr;
 
     if (!(device = create_device()))
@@ -817,8 +857,18 @@ static void test_create_predicate(void)
     ok(hr == E_INVALIDARG, "Got unexpected hr %#x.\n", hr);
 
     query_desc.Query = D3D10_QUERY_OCCLUSION_PREDICATE;
+    expected_refcount = get_refcount((IUnknown *)device) + 1;
     hr = ID3D10Device_CreatePredicate(device, &query_desc, &predicate);
     ok(SUCCEEDED(hr), "Failed to create predicate, hr %#x.\n", hr);
+    refcount = get_refcount((IUnknown *)device);
+    ok(refcount >= expected_refcount, "Got unexpected refcount %u, expected >= %u.\n", refcount, expected_refcount);
+    tmp = NULL;
+    expected_refcount = refcount + 1;
+    ID3D10Predicate_GetDevice(predicate, &tmp);
+    ok(tmp == device, "Got unexpected device %p, expected %p.\n", tmp, device);
+    refcount = get_refcount((IUnknown *)device);
+    ok(refcount == expected_refcount, "Got unexpected refcount %u, expected %u.\n", refcount, expected_refcount);
+    ID3D10Device_Release(tmp);
     ID3D10Predicate_Release(predicate);
 
     query_desc.Query = D3D10_QUERY_SO_OVERFLOW_PREDICATE;

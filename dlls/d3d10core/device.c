@@ -101,11 +101,6 @@ static ULONG STDMETHODCALLTYPE d3d10_device_inner_Release(IUnknown *iface)
 
 /* IUnknown methods */
 
-static inline struct d3d10_device *impl_from_ID3D10Device(ID3D10Device1 *iface)
-{
-    return CONTAINING_RECORD(iface, struct d3d10_device, ID3D10Device1_iface);
-}
-
 static HRESULT STDMETHODCALLTYPE d3d10_device_QueryInterface(ID3D10Device1 *iface, REFIID riid,
         void **ppv)
 {
@@ -1532,16 +1527,16 @@ static HRESULT STDMETHODCALLTYPE d3d10_device_CreateSamplerState(ID3D10Device1 *
 static HRESULT STDMETHODCALLTYPE d3d10_device_CreateQuery(ID3D10Device1 *iface,
         const D3D10_QUERY_DESC *desc, ID3D10Query **query)
 {
+    struct d3d10_device *device = impl_from_ID3D10Device(iface);
     struct d3d10_query *object;
     HRESULT hr;
 
     TRACE("iface %p, desc %p, query %p.\n", iface, desc, query);
 
-    object = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(*object));
-    if (!object)
+    if (!(object = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(*object))))
         return E_OUTOFMEMORY;
 
-    if (FAILED(hr = d3d10_query_init(object, FALSE)))
+    if (FAILED(hr = d3d10_query_init(object, device, FALSE)))
     {
         WARN("Failed to initialize query, hr %#x.\n", hr);
         HeapFree(GetProcessHeap(), 0, object);
@@ -1557,6 +1552,7 @@ static HRESULT STDMETHODCALLTYPE d3d10_device_CreateQuery(ID3D10Device1 *iface,
 static HRESULT STDMETHODCALLTYPE d3d10_device_CreatePredicate(ID3D10Device1 *iface,
         const D3D10_QUERY_DESC *desc, ID3D10Predicate **predicate)
 {
+    struct d3d10_device *device = impl_from_ID3D10Device(iface);
     struct d3d10_query *object;
     HRESULT hr;
 
@@ -1574,7 +1570,7 @@ static HRESULT STDMETHODCALLTYPE d3d10_device_CreatePredicate(ID3D10Device1 *ifa
     if (!(object = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(*object))))
         return E_OUTOFMEMORY;
 
-    if (FAILED(hr = d3d10_query_init(object, TRUE)))
+    if (FAILED(hr = d3d10_query_init(object, device, TRUE)))
     {
         WARN("Failed to initialize predicate, hr %#x.\n", hr);
         HeapFree(GetProcessHeap(), 0, object);

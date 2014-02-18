@@ -6768,21 +6768,72 @@ const struct fragment_pipeline arbfp_fragment_pipeline = {
     arbfp_fragmentstate_template,
 };
 
-struct arbfp_blit_priv {
-    GLenum yuy2_rect_shader, yuy2_2d_shader;
-    GLenum uyvy_rect_shader, uyvy_2d_shader;
-    GLenum yv12_rect_shader, yv12_2d_shader;
-    GLenum p8_rect_shader, p8_2d_shader;
+struct arbfp_blit_type
+{
+    enum complex_fixup fixup;
+    GLenum textype;
+};
+
+struct arbfp_blit_desc
+{
+    GLenum shader;
+    struct arbfp_blit_type type;
+    struct wine_rb_entry entry;
+};
+
+struct arbfp_blit_priv
+{
+    struct wine_rb_tree shaders;
     GLuint palette_texture;
+};
+
+static int arbfp_blit_type_compare(const void *key, const struct wine_rb_entry *entry)
+{
+    const struct arbfp_blit_type *ka = key;
+    const struct arbfp_blit_type *kb = &WINE_RB_ENTRY_VALUE(entry, const struct arbfp_blit_desc, entry)->type;
+
+    if (ka->fixup != kb->fixup)
+        return ka->fixup < kb->fixup ? -1 : 1;
+    if (ka->textype != kb->textype)
+        return ka->textype < kb->textype ? -1 : 1;
+    return 0;
+}
+
+/* Context activation is done by the caller. */
+static void arbfp_free_blit_shader(struct wine_rb_entry *entry, void *context)
+{
+    const struct wined3d_gl_info *gl_info = context;
+    struct arbfp_blit_desc *entry_arb = WINE_RB_ENTRY_VALUE(entry, struct arbfp_blit_desc, entry);
+
+    GL_EXTCALL(glDeleteProgramsARB(1, &entry_arb->shader));
+    checkGLcall("glDeleteProgramsARB(1, &entry_arb->shader)");
+    HeapFree(GetProcessHeap(), 0, entry_arb);
+}
+
+const struct wine_rb_functions wined3d_arbfp_blit_rb_functions =
+{
+    wined3d_rb_alloc,
+    wined3d_rb_realloc,
+    wined3d_rb_free,
+    arbfp_blit_type_compare,
 };
 
 static HRESULT arbfp_blit_alloc(struct wined3d_device *device)
 {
-    device->blit_priv = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(struct arbfp_blit_priv));
-    if(!device->blit_priv) {
-        ERR("Out of memory\n");
+    struct arbfp_blit_priv *priv;
+
+    if (!(priv = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(*priv))))
+        return E_OUTOFMEMORY;
+
+    if (wine_rb_init(&priv->shaders, &wined3d_arbfp_blit_rb_functions) == -1)
+    {
+        ERR("Failed to initialize rbtree.\n");
+        HeapFree(GetProcessHeap(), 0, priv);
         return E_OUTOFMEMORY;
     }
+
+    device->blit_priv = priv;
+
     return WINED3D_OK;
 }
 
@@ -6792,15 +6843,8 @@ static void arbfp_blit_free(struct wined3d_device *device)
     const struct wined3d_gl_info *gl_info = &device->adapter->gl_info;
     struct arbfp_blit_priv *priv = device->blit_priv;
 
-    GL_EXTCALL(glDeleteProgramsARB(1, &priv->yuy2_rect_shader));
-    GL_EXTCALL(glDeleteProgramsARB(1, &priv->yuy2_2d_shader));
-    GL_EXTCALL(glDeleteProgramsARB(1, &priv->uyvy_rect_shader));
-    GL_EXTCALL(glDeleteProgramsARB(1, &priv->uyvy_2d_shader));
-    GL_EXTCALL(glDeleteProgramsARB(1, &priv->yv12_rect_shader));
-    GL_EXTCALL(glDeleteProgramsARB(1, &priv->yv12_2d_shader));
-    GL_EXTCALL(glDeleteProgramsARB(1, &priv->p8_rect_shader));
-    GL_EXTCALL(glDeleteProgramsARB(1, &priv->p8_2d_shader));
-    checkGLcall("Delete yuv and p8 programs");
+    wine_rb_destroy(&priv->shaders, arbfp_free_blit_shader, &device->adapter->gl_info);
+    checkGLcall("Delete blit programs");
 
     if (priv->palette_texture)
         gl_info->gl_ops.gl.p_glDeleteTextures(1, &priv->palette_texture);
@@ -7046,6 +7090,154 @@ static BOOL gen_yv12_read(struct wined3d_shader_buffer *buffer, GLenum textype, 
     return TRUE;
 }
 
+static BOOL gen_nv12_read(struct wined3d_shader_buffer *buffer, GLenum textype,
+        char *luminance)
+{
+    const char *tex;
+    static const float nv12_coef[]
+            = {2.0f / 3.0f, 1.0f / 3.0f, 1.0f, 1.0f};
+
+    switch (textype)
+    {
+        case GL_TEXTURE_2D:
+            tex = "2D";
+            break;
+        case GL_TEXTURE_RECTANGLE_ARB:
+            tex = "RECT";
+            break;
+        default:
+            FIXME("Implement nv12 correction for non-2d, non-rect textures\n");
+            return FALSE;
+    }
+
+    /* NV12 surfaces contain a WxH sized luminance plane, followed by a (W/2)x(H/2)
+     * sized plane where each component is an UV pair. So the effective
+     * bitdepth is 12 bits per pixel If the whole texture is interpreted as luminance
+     * data it looks approximately like this:
+     *
+     *        +----------------------------------+----
+     *        |                                  |
+     *        |                                  |
+     *        |                                  |
+     *        |                                  |
+     *        |                                  |   2
+     *        |            LUMINANCE             |   -
+     *        |                                  |   3
+     *        |                                  |
+     *        |                                  |
+     *        |                                  |
+     *        |                                  |
+     *        +----------------------------------+----
+     *        |UVUVUVUVUVUVUVUVUVUVUVUVUVUVUVUVUV|
+     *        |UVUVUVUVUVUVUVUVUVUVUVUVUVUVUVUVUV|
+     *        |                                  |   1
+     *        |                                  |   -
+     *        |                                  |   3
+     *        |                                  |
+     *        |                                  |
+     *        +----------------------------------+----
+     *
+     * When reading from rectangle textures, keep in mind that the input y coordinates
+     * go from 0 to d3d_height, whereas the opengl texture height is 1.5 * d3d_height. */
+
+    shader_addline(buffer, "PARAM nv12_coef = ");
+    shader_arb_append_imm_vec4(buffer, nv12_coef);
+    shader_addline(buffer, ";\n");
+
+    shader_addline(buffer, "MOV texcrd, fragment.texcoord[0];\n");
+    /* We only have half the number of chroma pixels. */
+    shader_addline(buffer, "MUL texcrd.x, texcrd.x, coef.y;\n");
+
+    if (textype == GL_TEXTURE_2D)
+    {
+        shader_addline(buffer, "RCP chroma.w, size.x;\n");
+        shader_addline(buffer, "RCP chroma.z, size.y;\n");
+
+        shader_addline(buffer, "MAD texcrd.y, texcrd.y, nv12_coef.y, nv12_coef.x;\n");
+
+        /* We must not allow filtering horizontally, this would mix U and V.
+         * Vertical filtering is ok. However, bear in mind that the pixel center is at
+         * 0.5, so add 0.5. */
+
+        /* Convert to non-normalized coordinates so we can find the
+         * individual pixel. */
+        shader_addline(buffer, "MUL texcrd.x, texcrd.x, size.x;\n");
+        shader_addline(buffer, "FLR texcrd.x, texcrd.x;\n");
+        /* Multiply by 2 since chroma components are stored in UV pixel pairs,
+         * add 0.5 to hit the center of the pixel. */
+        shader_addline(buffer, "MAD texcrd.x, texcrd.x, coef.z, coef.y;\n");
+
+        /* Convert back to normalized coordinates. */
+        shader_addline(buffer, "MUL texcrd.x, texcrd.x, chroma.w;\n");
+
+        /* Clamp, keep the half pixel origin in mind. */
+        shader_addline(buffer, "MAD temp.y, coef.y, chroma.z, nv12_coef.x;\n");
+        shader_addline(buffer, "MAX texcrd.y, temp.y, texcrd.y;\n");
+        shader_addline(buffer, "MAD temp.y, -coef.y, chroma.z, nv12_coef.z;\n");
+        shader_addline(buffer, "MIN texcrd.y, temp.y, texcrd.y;\n");
+    }
+    else
+    {
+        /* Read from [size - size+size/2] */
+        shader_addline(buffer, "MAD texcrd.y, texcrd.y, coef.y, size.y;\n");
+
+        shader_addline(buffer, "FLR texcrd.x, texcrd.x;\n");
+        /* Multiply by 2 since chroma components are stored in UV pixel pairs,
+         * add 0.5 to hit the center of the pixel. */
+        shader_addline(buffer, "MAD texcrd.x, texcrd.x, coef.z, coef.y;\n");
+
+        /* Clamp */
+        shader_addline(buffer, "MAD temp.y, size.y, coef.y, size.y;\n");
+        shader_addline(buffer, "ADD temp.y, temp.y, -coef.y;\n");
+        shader_addline(buffer, "MIN texcrd.y, temp.y, texcrd.y;\n");
+        shader_addline(buffer, "ADD temp.y, size.y, coef.y;\n");
+        shader_addline(buffer, "MAX texcrd.y, temp.y, texcrd.y;\n");
+    }
+    /* Read the texture, put the result into the output register. */
+    shader_addline(buffer, "TEX temp, texcrd, texture[0], %s;\n", tex);
+    shader_addline(buffer, "MOV chroma.y, temp.w;\n");
+
+    if (textype == GL_TEXTURE_2D)
+    {
+        /* Add 1/size.x */
+        shader_addline(buffer, "ADD texcrd.x, texcrd.x, chroma.w;\n");
+    }
+    else
+    {
+        /* Add 1 */
+        shader_addline(buffer, "ADD texcrd.x, texcrd.x, coef.x;\n");
+    }
+    shader_addline(buffer, "TEX temp, texcrd, texture[0], %s;\n", tex);
+    shader_addline(buffer, "MOV chroma.x, temp.w;\n");
+
+    /* Sample the luminance value. It is in the top 2/3rd of the texture, so scale the y coordinate.
+     * Clamp the y coordinate to prevent the chroma values from bleeding into the sampled luminance
+     * values due to filtering. */
+    shader_addline(buffer, "MOV texcrd, fragment.texcoord[0];\n");
+    if (textype == GL_TEXTURE_2D)
+    {
+        /* Multiply the y coordinate by 2/3 and clamp it */
+        shader_addline(buffer, "MUL texcrd.y, texcrd.y, nv12_coef.x;\n");
+        shader_addline(buffer, "MAD temp.y, -coef.y, chroma.w, nv12_coef.x;\n");
+        shader_addline(buffer, "MIN texcrd.y, temp.y, texcrd.y;\n");
+        shader_addline(buffer, "TEX luminance, texcrd, texture[0], %s;\n", tex);
+    }
+    else
+    {
+        /* Reading from texture_rectangles is pretty straightforward, just use the unmodified
+         * texture coordinate. It is still a good idea to clamp it though, since the opengl texture
+         * is bigger
+         */
+        shader_addline(buffer, "ADD temp.x, size.y, -coef.y;\n");
+        shader_addline(buffer, "MIN texcrd.y, texcrd.y, size.x;\n");
+        shader_addline(buffer, "TEX luminance, texcrd, texture[0], %s;\n", tex);
+    }
+    *luminance = 'a';
+
+    return TRUE;
+}
+
+/* Context activation is done by the caller. */
 static GLuint gen_p8_shader(struct arbfp_blit_priv *priv,
         const struct wined3d_gl_info *gl_info, GLenum textype)
 {
@@ -7098,11 +7290,6 @@ static GLuint gen_p8_shader(struct arbfp_blit_priv *priv,
               debugstr_a((const char *)gl_info->gl_ops.gl.p_glGetString(GL_PROGRAM_ERROR_STRING_ARB)));
         shader_arb_dump_program_source(buffer.buffer);
     }
-
-    if (textype == GL_TEXTURE_RECTANGLE_ARB)
-        priv->p8_rect_shader = shader;
-    else
-        priv->p8_2d_shader = shader;
 
     shader_buffer_free(&buffer);
 
@@ -7230,6 +7417,14 @@ static GLuint gen_yuv_shader(struct arbfp_blit_priv *priv, const struct wined3d_
             }
             break;
 
+        case COMPLEX_FIXUP_NV12:
+            if (!gen_nv12_read(&buffer, textype, &luminance_component))
+            {
+                shader_buffer_free(&buffer);
+                return 0;
+            }
+            break;
+
         default:
             FIXME("Unsupported YUV fixup %#x\n", yuv_fixup);
             shader_buffer_free(&buffer);
@@ -7270,26 +7465,6 @@ static GLuint gen_yuv_shader(struct arbfp_blit_priv *priv, const struct wined3d_
 
     shader_buffer_free(&buffer);
 
-    switch (yuv_fixup)
-    {
-        case COMPLEX_FIXUP_YUY2:
-            if (textype == GL_TEXTURE_RECTANGLE_ARB) priv->yuy2_rect_shader = shader;
-            else priv->yuy2_2d_shader = shader;
-            break;
-
-        case COMPLEX_FIXUP_UYVY:
-            if (textype == GL_TEXTURE_RECTANGLE_ARB) priv->uyvy_rect_shader = shader;
-            else priv->uyvy_2d_shader = shader;
-            break;
-
-        case COMPLEX_FIXUP_YV12:
-            if (textype == GL_TEXTURE_RECTANGLE_ARB) priv->yv12_rect_shader = shader;
-            else priv->yv12_2d_shader = shader;
-            break;
-        default:
-            ERR("Unsupported complex fixup: %d\n", yuv_fixup);
-    }
-
     return shader;
 }
 
@@ -7302,6 +7477,9 @@ static HRESULT arbfp_blit_set(void *blit_priv, struct wined3d_context *context, 
     enum complex_fixup fixup;
     const struct wined3d_gl_info *gl_info = context->gl_info;
     GLenum textype = surface->container->target;
+    struct wine_rb_entry *entry;
+    struct arbfp_blit_type type;
+    struct arbfp_blit_desc *desc;
 
     if (surface->flags & SFLAG_CONVERTED)
     {
@@ -7322,35 +7500,57 @@ static HRESULT arbfp_blit_set(void *blit_priv, struct wined3d_context *context, 
 
     fixup = get_complex_fixup(surface->resource.format->color_fixup);
 
-    switch(fixup)
+    type.fixup = fixup;
+    type.textype = textype;
+    entry = wine_rb_get(&priv->shaders, &type);
+    if (entry)
     {
-        case COMPLEX_FIXUP_YUY2:
-            shader = textype == GL_TEXTURE_RECTANGLE_ARB ? priv->yuy2_rect_shader : priv->yuy2_2d_shader;
-            break;
+        desc = WINE_RB_ENTRY_VALUE(entry, struct arbfp_blit_desc, entry);
+        shader = desc->shader;
+    }
+    else
+    {
+        switch (fixup)
+        {
+            case COMPLEX_FIXUP_P8:
+                shader = gen_p8_shader(priv, gl_info, textype);
+                break;
 
-        case COMPLEX_FIXUP_UYVY:
-            shader = textype == GL_TEXTURE_RECTANGLE_ARB ? priv->uyvy_rect_shader : priv->uyvy_2d_shader;
-            break;
+            default:
+                shader = gen_yuv_shader(priv, gl_info, fixup, textype);
+                break;
+        }
 
-        case COMPLEX_FIXUP_YV12:
-            shader = textype == GL_TEXTURE_RECTANGLE_ARB ? priv->yv12_rect_shader : priv->yv12_2d_shader;
-            break;
-
-        case COMPLEX_FIXUP_P8:
-            shader = textype == GL_TEXTURE_RECTANGLE_ARB ? priv->p8_rect_shader : priv->p8_2d_shader;
-            if (!shader) shader = gen_p8_shader(priv, gl_info, textype);
-
-            upload_palette(surface, context);
-            break;
-
-        default:
+        if (!shader)
+        {
             FIXME("Unsupported complex fixup %#x, not setting a shader\n", fixup);
             gl_info->gl_ops.gl.p_glEnable(textype);
             checkGLcall("glEnable(textype)");
             return E_NOTIMPL;
+        }
+
+        desc = HeapAlloc(GetProcessHeap(), 0, sizeof(*desc));
+        if (!desc)
+            goto err_out;
+
+        desc->type.textype = textype;
+        desc->type.fixup = fixup;
+        desc->shader = shader;
+        if (wine_rb_put(&priv->shaders, &desc->type, &desc->entry) == -1)
+        {
+err_out:
+            ERR("Out of memory\n");
+            GL_EXTCALL(glDeleteProgramsARB(1, &shader));
+            checkGLcall("GL_EXTCALL(glDeleteProgramsARB(1, &shader))");
+            GL_EXTCALL(glBindProgramARB(GL_FRAGMENT_PROGRAM_ARB, 0));
+            checkGLcall("glBindProgramARB(GL_FRAGMENT_PROGRAM_ARB, 0)");
+            HeapFree(GetProcessHeap(), 0, desc);
+            return E_OUTOFMEMORY;
+        }
     }
 
-    if (!shader) shader = gen_yuv_shader(priv, gl_info, fixup, textype);
+    if (fixup == COMPLEX_FIXUP_P8)
+        upload_palette(surface, context);
 
     gl_info->gl_ops.gl.p_glEnable(GL_FRAGMENT_PROGRAM_ARB);
     checkGLcall("glEnable(GL_FRAGMENT_PROGRAM_ARB)");
@@ -7430,6 +7630,7 @@ static BOOL arbfp_blit_supported(const struct wined3d_gl_info *gl_info, enum win
         case COMPLEX_FIXUP_YUY2:
         case COMPLEX_FIXUP_UYVY:
         case COMPLEX_FIXUP_YV12:
+        case COMPLEX_FIXUP_NV12:
         case COMPLEX_FIXUP_P8:
             TRACE("[OK]\n");
             return TRUE;
