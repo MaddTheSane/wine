@@ -22,13 +22,20 @@
 #include "wine/unicode.h"
 
 HRESULT TaskService_create(void **obj) DECLSPEC_HIDDEN;
+HRESULT TaskDefinition_create(ITaskDefinition **obj) DECLSPEC_HIDDEN;
 HRESULT TaskFolder_create(const WCHAR *parent, const WCHAR *path, ITaskFolder **obj, BOOL create) DECLSPEC_HIDDEN;
 HRESULT TaskFolderCollection_create(const WCHAR *path, ITaskFolderCollection **obj) DECLSPEC_HIDDEN;
-HRESULT RegisteredTask_create(const WCHAR *path, const WCHAR *name, const WCHAR *xml, TASK_LOGON_TYPE logon,
+HRESULT RegisteredTask_create(const WCHAR *path, const WCHAR *name, ITaskDefinition *definition, TASK_LOGON_TYPE logon,
                               IRegisteredTask **obj, BOOL create) DECLSPEC_HIDDEN;
 HRESULT RegisteredTaskCollection_create(const WCHAR *path, IRegisteredTaskCollection **obj) DECLSPEC_HIDDEN;
 
 const char *debugstr_variant(const VARIANT *v) DECLSPEC_HIDDEN;
+
+static void *heap_alloc_zero(SIZE_T size) __WINE_ALLOC_SIZE(1);
+static inline void *heap_alloc_zero(SIZE_T size)
+{
+    return HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, size);
+}
 
 static void *heap_alloc(SIZE_T size) __WINE_ALLOC_SIZE(1);
 static inline void *heap_alloc(SIZE_T size)

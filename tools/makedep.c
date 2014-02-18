@@ -41,7 +41,7 @@ struct incl_file
     char              *name;
     char              *filename;
     char              *sourcename;    /* source file name for generated headers */
-    char              *args;          /* custom arguments for makefile rule */
+    void              *args;          /* custom arguments for makefile rule */
     struct incl_file  *included_by;   /* file that included this one */
     int                included_line; /* line where this file was included */
     unsigned int       flags;         /* flags (see below) */
@@ -64,6 +64,7 @@ struct incl_file
 #define FLAG_IDL_HEADER     0x008000  /* generates a header (.h) file */
 #define FLAG_RC_PO          0x010000  /* rc file contains translations */
 #define FLAG_C_IMPLIB       0x020000 /* file is part of an import library */
+#define FLAG_SFD_FONTS      0x040000 /* sfd file generated bitmap fonts */
 
 static const struct
 {
@@ -114,6 +115,7 @@ static const char *Separator = "### Dependencies";
 static const char *input_file_name;
 static const char *output_file_name;
 static const char *temp_file_name;
+static int use_msvcrt;
 static int relative_dir_mode;
 static int input_line;
 static int output_column;
@@ -672,18 +674,10 @@ static FILE *open_src_file( struct incl_file *pFile )
 {
     FILE *file;
 
-    /* first try name as is */
-    if ((file = open_file( pFile->name )))
-    {
-        pFile->filename = xstrdup( pFile->name );
-        return file;
-    }
-    /* now try in source dir */
-    if (src_dir)
-    {
-        pFile->filename = src_dir_path( pFile->name );
-        file = open_file( pFile->filename );
-    }
+    /* try in source dir */
+    pFile->filename = src_dir_path( pFile->name );
+    file = open_file( pFile->filename );
+
     /* now try parent dir */
     if (!file && parent_dir)
     {
@@ -789,6 +783,18 @@ static FILE *open_include_file( struct incl_file *pFile )
             return file;
         }
         free( filename );
+    }
+
+    /* check in global includes source dir */
+
+    filename = top_dir_path( strmake( "include/%s", pFile->name ));
+    if ((file = open_file( filename ))) goto found;
+
+    /* check in global msvcrt includes */
+    if (use_msvcrt)
+    {
+        filename = top_dir_path( strmake( "include/msvcrt/%s", pFile->name ));
+        if ((file = open_file( filename ))) goto found;
     }
 
     /* now search in include paths */
@@ -898,12 +904,15 @@ static void parse_pragma_directive( struct incl_file *source, char *str )
         {
             if (!strcmp( flag, "font" ))
             {
-                struct incl_file *file;
-                char *obj = strtok( NULL, " \t" );
-                if (!strendswith( obj, ".fon" )) return;
-                file = add_generated_source( obj, NULL );
-                file->sourcename = replace_extension( source->name, ".sfd", ".ttf" );
-                file->args = xstrdup( strtok( NULL, "" ));
+                struct strarray *array = source->args;
+
+                if (!array)
+                {
+                    source->args = array = xmalloc( sizeof(*array) );
+                    *array = empty_strarray;
+                    source->flags |= FLAG_SFD_FONTS;
+                }
+                strarray_add( array, xstrdup( strtok( NULL, "" )));
                 return;
             }
         }
@@ -1445,7 +1454,8 @@ static void output_include( struct incl_file *pFile, struct incl_file *owner )
 static struct strarray output_sources(void)
 {
     struct incl_file *source;
-    int i, is_win16 = 0;
+    unsigned int i;
+    int is_win16 = 0;
     const char *dllext = ".so";
     struct strarray object_files = empty_strarray;
     struct strarray crossobj_files = empty_strarray;
@@ -1482,7 +1492,9 @@ static struct strarray output_sources(void)
     strarray_add( &includes, "-I." );
     if (src_dir) strarray_add( &includes, strmake( "-I%s", src_dir ));
     if (parent_dir) strarray_add( &includes, strmake( "-I%s", src_dir_path( parent_dir )));
-    if (top_src_dir && top_obj_dir) strarray_add( &includes, strmake( "-I%s/include", top_obj_dir ));
+    if (top_obj_dir) strarray_add( &includes, strmake( "-I%s/include", top_obj_dir ));
+    if (top_src_dir) strarray_add( &includes, strmake( "-I%s/include", top_src_dir ));
+    if (use_msvcrt) strarray_add( &includes, strmake( "-I%s", top_dir_path( "include/msvcrt" )));
     strarray_addall( &includes, include_args );
 
     LIST_FOR_EACH_ENTRY( source, &sources, struct incl_file, entry )
@@ -1580,7 +1592,6 @@ static struct strarray output_sources(void)
         else if (!strcmp( ext, "idl" ))  /* IDL file */
         {
             struct strarray targets = empty_strarray;
-            unsigned int i;
             char *dest;
 
             if (!source->flags || find_include_file( strmake( "%s.h", obj )))
@@ -1651,22 +1662,27 @@ static struct strarray output_sources(void)
                 output( "uninstall::\n" );
                 output( "\t$(RM) $(DESTDIR)$(fontdir)/%s.ttf\n", obj );
             }
-            continue;  /* no dependencies */
-        }
-        else if (!strcmp( ext, "fon" ))  /* bitmap font file */
-        {
-            strarray_add( &all_targets, source->name );
-            output( "%s.fon: %s %s\n", obj, tools_path( "sfnt2fon" ),
-                    src_dir_path( source->sourcename ));
-            output( "\t%s -o $@ %s %s\n", tools_path( "sfnt2fon" ),
-                    src_dir_path( source->sourcename ), source->args );
-            output( "install install-lib:: %s\n", source->name );
-            output( "\t$(INSTALL_DATA) %s $(DESTDIR)$(fontdir)/%s\n", source->name, source->name );
-            output( "uninstall::\n" );
-            output( "\t$(RM) $(DESTDIR)$(fontdir)/%s\n", source->name );
-            strarray_add_uniq( &phony_targets, "install" );
-            strarray_add_uniq( &phony_targets, "install-lib" );
-            strarray_add_uniq( &phony_targets, "uninstall" );
+            if (source->flags & FLAG_SFD_FONTS)
+            {
+                struct strarray *array = source->args;
+
+                for (i = 0; i < array->count; i++)
+                {
+                    char *font = strtok( xstrdup(array->str[i]), " \t" );
+                    char *args = strtok( NULL, "" );
+
+                    strarray_add( &all_targets, font );
+                    output( "%s: %s %s\n", font, tools_path( "sfnt2fon" ), ttf_file );
+                    output( "\t%s -o $@ %s %s\n", tools_path( "sfnt2fon" ), ttf_file, args );
+                    output( "install install-lib:: %s\n", font );
+                    output( "\t$(INSTALL_DATA) %s $(DESTDIR)$(fontdir)/%s\n", font, font );
+                    output( "uninstall::\n" );
+                    output( "\t$(RM) $(DESTDIR)$(fontdir)/%s\n", font );
+                    strarray_add_uniq( &phony_targets, "install" );
+                    strarray_add_uniq( &phony_targets, "install-lib" );
+                    strarray_add_uniq( &phony_targets, "uninstall" );
+                }
+            }
             continue;  /* no dependencies */
         }
         else if (!strcmp( ext, "svg" ))  /* svg file */
@@ -2274,7 +2290,6 @@ static void update_makefile( const char *path )
     };
     const char **var;
     unsigned int i;
-    int use_msvcrt = 0;
     struct strarray value;
     struct incl_file *file;
 
@@ -2300,6 +2315,7 @@ static void update_makefile( const char *path )
     dllflags = get_expanded_make_var_array( "DLLFLAGS" );
     imports  = get_expanded_make_var_array( "IMPORTS" );
 
+    use_msvcrt = 0;
     for (i = 0; i < appmode.count && !use_msvcrt; i++)
         use_msvcrt = !strcmp( appmode.str[i], "-mno-cygwin" );
     for (i = 0; i < imports.count && !use_msvcrt; i++)
@@ -2308,7 +2324,6 @@ static void update_makefile( const char *path )
     include_args = empty_strarray;
     define_args = empty_strarray;
     strarray_add( &define_args, "-D__WINESRC__" );
-    strarray_add( &include_args, strmake( "-I%s", top_dir_path( "include" )));
 
     if (!tools_ext) tools_ext = "";
 
@@ -2320,11 +2335,7 @@ static void update_makefile( const char *path )
             strarray_add_uniq( &define_args, value.str[i] );
     strarray_addall( &define_args, get_expanded_make_var_array( "EXTRADEFS" ));
 
-    if (use_msvcrt)
-    {
-        strarray_add( &dllflags, get_expanded_make_variable( "MSVCRTFLAGS" ));
-        strarray_add( &include_args, strmake( "-I%s", top_dir_path( "include/msvcrt" )));
-    }
+    if (use_msvcrt) strarray_add( &dllflags, get_expanded_make_variable( "MSVCRTFLAGS" ));
 
     list_init( &sources );
     list_init( &includes );
