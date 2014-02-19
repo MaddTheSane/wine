@@ -2945,6 +2945,27 @@ else
     ReleaseDC(0, hdc);
 }
 
+static INT CALLBACK enum_multi_charset_font_proc(const LOGFONTA *lf, const TEXTMETRICA *tm, DWORD type, LPARAM lParam)
+{
+    const NEWTEXTMETRICEXA *ntm = (const NEWTEXTMETRICEXA *)tm;
+    LOGFONTA *target = (LOGFONTA *)lParam;
+    const DWORD valid_bits = 0x003f01ff;
+    CHARSETINFO csi;
+    DWORD fs;
+
+    if (type != TRUETYPE_FONTTYPE) return TRUE;
+
+    if (TranslateCharsetInfo(ULongToPtr(target->lfCharSet), &csi, TCI_SRCCHARSET)) {
+        fs = ntm->ntmFontSig.fsCsb[0] & valid_bits;
+        if ((fs & csi.fs.fsCsb[0]) && (fs & ~csi.fs.fsCsb[0])) {
+            *target = *lf;
+            return FALSE;
+        }
+    }
+
+    return TRUE;
+}
+
 static INT CALLBACK enum_font_data_proc(const LOGFONTA *lf, const TEXTMETRICA *ntm, DWORD type, LPARAM lParam)
 {
     struct enum_font_data *efd = (struct enum_font_data *)lParam;
@@ -2976,33 +2997,44 @@ static INT CALLBACK enum_fullname_data_proc(const LOGFONTA *lf, const TEXTMETRIC
 static void test_EnumFontFamiliesEx_default_charset(void)
 {
     struct enum_font_data efd;
-    LOGFONTA gui_font, enum_font;
+    LOGFONTA target, enum_font;
     DWORD ret;
     HDC hdc;
+    CHARSETINFO csi;
 
-    ret = GetObjectA(GetStockObject(DEFAULT_GUI_FONT), sizeof(gui_font), &gui_font);
-    ok(ret, "GetObject failed.\n");
-    if (!ret)
+    ret = GetACP();
+    if (!TranslateCharsetInfo(ULongToPtr(ret), &csi, TCI_SRCCODEPAGE)) {
+        skip("TranslateCharsetInfo failed for code page %d.\n", ret);
         return;
-
-    efd.total = 0;
+    }
 
     hdc = GetDC(0);
     memset(&enum_font, 0, sizeof(enum_font));
-    strcpy(enum_font.lfFaceName, gui_font.lfFaceName);
+    enum_font.lfCharSet = csi.ciCharset;
+    target.lfFaceName[0] = '\0';
+    target.lfCharSet = csi.ciCharset;
+    EnumFontFamiliesExA(hdc, &enum_font, enum_multi_charset_font_proc, (LPARAM)&target, 0);
+    if (target.lfFaceName[0] == '\0') {
+        skip("suitable font isn't found for charset %d.\n", enum_font.lfCharSet);
+        return;
+    }
+
+    efd.total = 0;
+    memset(&enum_font, 0, sizeof(enum_font));
+    strcpy(enum_font.lfFaceName, target.lfFaceName);
     enum_font.lfCharSet = DEFAULT_CHARSET;
     EnumFontFamiliesExA(hdc, &enum_font, enum_font_data_proc, (LPARAM)&efd, 0);
     ReleaseDC(0, hdc);
 
-    if (efd.total == 0) {
-        skip("'%s' is not found or not a TrueType font.\n", gui_font.lfFaceName);
+    trace("'%s' has %d charsets.\n", target.lfFaceName, efd.total);
+    if (efd.total < 2) {
+        ok(0, "EnumFontFamilies is broken. Expected >= 2, got %d.\n", efd.total);
         return;
     }
-    trace("'%s' has %d charsets.\n", gui_font.lfFaceName, efd.total);
 
-    ok(efd.lf[0].lfCharSet == gui_font.lfCharSet || broken(system_lang_id == LANG_ARABIC),
+    ok(efd.lf[0].lfCharSet == target.lfCharSet,
        "(%s) got charset %d expected %d\n",
-       efd.lf[0].lfFaceName, efd.lf[0].lfCharSet, gui_font.lfCharSet);
+       efd.lf[0].lfFaceName, efd.lf[0].lfCharSet, target.lfCharSet);
 
     return;
 }
@@ -5271,26 +5303,32 @@ static void check_vertical_metrics(const char *face)
     otm.otmSize = sizeof(otm);
     ret = GetOutlineTextMetricsA(hdc, sizeof(otm), &otm);
     ok(ret != 0, "GetOutlineTextMetricsA failed\n");
-    ret = GetGlyphIndicesW(hdc, (LPCWSTR)&code, 1, &idx, 0);
-    ok(ret != 0, "GetGlyphIndicesW failed\n");
 
     if (GetFontData(hdc, MS_MAKE_TAG('v','h','e','a'), sizeof(SHORT) * 17,
                     &numOfLongVerMetrics, sizeof(numOfLongVerMetrics)) != GDI_ERROR) {
         int offset;
         SHORT topSideBearing;
-        numOfLongVerMetrics = GET_BE_WORD(numOfLongVerMetrics);
-        if (numOfLongVerMetrics > idx)
-            offset = idx * 2 + 1;
-        else
-            offset = numOfLongVerMetrics * 2 + (idx - numOfLongVerMetrics);
-        ret = GetFontData(hdc, MS_MAKE_TAG('v','m','t','x'), offset * sizeof(SHORT),
-                          &topSideBearing, sizeof(SHORT));
-        ok(ret != GDI_ERROR, "GetFontData(vmtx) failed\n");
-        topSideBearing = GET_BE_WORD(topSideBearing);
-        ok(match_off_by_1(vgm.gmptGlyphOrigin.x,
-                          MulDiv(topSideBearing, height, otm.otmEMSquare), FALSE),
-           "expected %d, got %d\n",
-           MulDiv(topSideBearing, height, otm.otmEMSquare), vgm.gmptGlyphOrigin.x);
+
+        if (!pGetGlyphIndicesW) {
+            win_skip("GetGlyphIndices is not available on this platform\n");
+        }
+        else {
+            ret = pGetGlyphIndicesW(hdc, (LPCWSTR)&code, 1, &idx, 0);
+            ok(ret != 0, "GetGlyphIndicesW failed\n");
+            numOfLongVerMetrics = GET_BE_WORD(numOfLongVerMetrics);
+            if (numOfLongVerMetrics > idx)
+                offset = idx * 2 + 1;
+            else
+                offset = numOfLongVerMetrics * 2 + (idx - numOfLongVerMetrics);
+            ret = GetFontData(hdc, MS_MAKE_TAG('v','m','t','x'), offset * sizeof(SHORT),
+                              &topSideBearing, sizeof(SHORT));
+            ok(ret != GDI_ERROR, "GetFontData(vmtx) failed\n");
+            topSideBearing = GET_BE_WORD(topSideBearing);
+            ok(match_off_by_1(vgm.gmptGlyphOrigin.x,
+                              MulDiv(topSideBearing, height, otm.otmEMSquare), FALSE),
+               "expected %d, got %d\n",
+               MulDiv(topSideBearing, height, otm.otmEMSquare), vgm.gmptGlyphOrigin.x);
+        }
     }
     else
     {
@@ -5299,7 +5337,8 @@ static void check_vertical_metrics(const char *face)
            vgm.gmptGlyphOrigin.x, rgm.gmptGlyphOrigin.x, vgm.gmCellIncX, otm.otmDescent);
     }
 
-    ok(vgm.gmptGlyphOrigin.y == abc.abcA + abc.abcB + otm.otmDescent,
+    ok(vgm.gmptGlyphOrigin.y == abc.abcA + abc.abcB + otm.otmDescent ||
+       broken(vgm.gmptGlyphOrigin.y == abc.abcA + abc.abcB - otm.otmTextMetrics.tmDescent) /* win2k */,
        "got %d, expected abcA(%d) + abcB(%u) + descent(%d)\n",
        (INT)vgm.gmptGlyphOrigin.y, abc.abcA, abc.abcB, otm.otmDescent);
 
@@ -5846,6 +5885,11 @@ static void test_bitmap_font_glyph_index(void)
     CHARSETINFO ci;
     BYTE chr = '\xA9';
 
+    if (!pGetGlyphIndicesW || !pGetGlyphIndicesA) {
+        win_skip("GetGlyphIndices is unavailable\n");
+        return;
+    }
+
     hdc = CreateCompatibleDC(0);
     ok(hdc != NULL, "CreateCompatibleDC failed\n");
 
@@ -5890,7 +5934,7 @@ static void test_bitmap_font_glyph_index(void)
             {
                 int len = lstrlenW(text);
                 LPWORD indices = HeapAlloc(GetProcessHeap(), 0, len * sizeof(WORD));
-                ret = GetGlyphIndicesW(hdc, text, len, indices, 0);
+                ret = pGetGlyphIndicesW(hdc, text, len, indices, 0);
                 ok(ret, "GetGlyphIndices failed\n");
                 ok(memcmp(indices, text, sizeof(WORD) * len) == 0,
                    "Glyph indices and text are different for %s:%d\n", lf.lfFaceName, tm.tmCharSet);
@@ -5926,7 +5970,7 @@ static void test_bitmap_font_glyph_index(void)
                 ret = ExtTextOutA(hdc, 100, 0, 0, NULL, (LPCSTR)&chr, 1, NULL);
                 break;
             case 1:
-                ret = GetGlyphIndicesA(hdc, (LPCSTR)&chr, 1, &code, 0);
+                ret = pGetGlyphIndicesA(hdc, (LPCSTR)&chr, 1, &code, 0);
                 ok(ret, "GetGlyphIndices failed\n");
                 ok(code == chr, "expected %02x, got %02x (%s:%d)\n", chr, code, lf.lfFaceName, tm.tmCharSet);
                 ret = ExtTextOutA(hdc, 100, 0, ETO_GLYPH_INDEX, NULL, (LPCSTR)&code, 1, NULL);

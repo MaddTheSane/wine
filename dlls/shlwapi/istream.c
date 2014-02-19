@@ -73,8 +73,8 @@ static HRESULT WINAPI IStream_fnQueryInterface(IStream *iface, REFIID riid, LPVO
   if(IsEqualIID(riid, &IID_IUnknown) ||
      IsEqualIID(riid, &IID_IStream))
   {
-    *ppvObj = This;
     IStream_AddRef(iface);
+    *ppvObj = iface;
     return S_OK;
   }
   return E_NOINTERFACE;
@@ -294,16 +294,14 @@ static HRESULT WINAPI IStream_fnLockUnlockRegion(IStream *iface, ULARGE_INTEGER 
 static HRESULT WINAPI IStream_fnStat(IStream *iface, STATSTG* lpStat,
                                      DWORD grfStatFlag)
 {
-  ISHFileStream *This = impl_from_IStream(iface);
-  BY_HANDLE_FILE_INFORMATION fi;
-  HRESULT hRet = S_OK;
+    ISHFileStream *This = impl_from_IStream(iface);
+    BY_HANDLE_FILE_INFORMATION fi;
 
-  TRACE("(%p,%p,%d)\n", This, lpStat, grfStatFlag);
+    TRACE("(%p,%p,%d)\n", This, lpStat, grfStatFlag);
 
-  if (!grfStatFlag)
-    hRet = STG_E_INVALIDPOINTER;
-  else
-  {
+    if (!grfStatFlag)
+        return STG_E_INVALIDPOINTER;
+
     memset(&fi, 0, sizeof(fi));
     GetFileInformationByHandle(This->hFile, &fi);
 
@@ -322,8 +320,8 @@ static HRESULT WINAPI IStream_fnStat(IStream *iface, STATSTG* lpStat,
     memcpy(&lpStat->clsid, &IID_IStream, sizeof(CLSID));
     lpStat->grfStateBits = This->grfStateBits;
     lpStat->reserved = 0;
-  }
-  return hRet;
+
+    return S_OK;
 }
 
 /*************************************************************************
@@ -364,22 +362,21 @@ static const IStreamVtbl SHLWAPI_fsVTable =
  */
 static IStream *IStream_Create(LPCWSTR lpszPath, HANDLE hFile, DWORD dwMode)
 {
- ISHFileStream* fileStream;
+    ISHFileStream *fileStream;
 
- fileStream = HeapAlloc(GetProcessHeap(), 0, sizeof(ISHFileStream));
+    fileStream = HeapAlloc(GetProcessHeap(), 0, sizeof(ISHFileStream));
+    if (!fileStream) return NULL;
 
- if (fileStream)
- {
-   fileStream->IStream_iface.lpVtbl = &SHLWAPI_fsVTable;
-   fileStream->ref = 1;
-   fileStream->hFile = hFile;
-   fileStream->dwMode = dwMode;
-   fileStream->lpszPath = StrDupW(lpszPath);
-   fileStream->type = 0; /* FIXME */
-   fileStream->grfStateBits = 0; /* FIXME */
- }
- TRACE ("Returning %p\n", fileStream);
- return &fileStream->IStream_iface;
+    fileStream->IStream_iface.lpVtbl = &SHLWAPI_fsVTable;
+    fileStream->ref = 1;
+    fileStream->hFile = hFile;
+    fileStream->dwMode = dwMode;
+    fileStream->lpszPath = StrDupW(lpszPath);
+    fileStream->type = 0; /* FIXME */
+    fileStream->grfStateBits = 0; /* FIXME */
+
+    TRACE ("Returning %p\n", fileStream);
+    return &fileStream->IStream_iface;
 }
 
 /*************************************************************************
