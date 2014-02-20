@@ -37,6 +37,7 @@ typedef struct
     IRegisteredTask IRegisteredTask_iface;
     LONG ref;
     WCHAR *path;
+    ITaskDefinition *taskdef;
 } RegisteredTask;
 
 static inline RegisteredTask *impl_from_IRegisteredTask(IRegisteredTask *iface)
@@ -58,6 +59,7 @@ static ULONG WINAPI regtask_Release(IRegisteredTask *iface)
     if (!ref)
     {
         TRACE("destroying %p\n", iface);
+        ITaskDefinition_Release(regtask->taskdef);
         heap_free(regtask->path);
         heap_free(regtask);
     }
@@ -187,14 +189,27 @@ static HRESULT WINAPI regtask_get_NextRunTime(IRegisteredTask *iface, DATE *date
 
 static HRESULT WINAPI regtask_get_Definition(IRegisteredTask *iface, ITaskDefinition **task)
 {
-    FIXME("%p,%p: stub\n", iface, task);
-    return E_NOTIMPL;
+    RegisteredTask *regtask = impl_from_IRegisteredTask(iface);
+
+    TRACE("%p,%p\n", iface, task);
+
+    if (!task) return E_POINTER;
+
+    ITaskDefinition_AddRef(regtask->taskdef);
+    *task = regtask->taskdef;
+
+    return S_OK;
 }
 
 static HRESULT WINAPI regtask_get_Xml(IRegisteredTask *iface, BSTR *xml)
 {
-    FIXME("%p,%p: stub\n", iface, xml);
-    return E_NOTIMPL;
+    RegisteredTask *regtask = impl_from_IRegisteredTask(iface);
+
+    TRACE("%p,%p\n", iface, xml);
+
+    if (!xml) return E_POINTER;
+
+    return ITaskDefinition_get_XmlText(regtask->taskdef, xml);
 }
 
 static HRESULT WINAPI regtask_GetSecurityDescriptor(IRegisteredTask *iface, LONG info, BSTR *sddl)
@@ -262,6 +277,8 @@ HRESULT RegisteredTask_create(const WCHAR *path, const WCHAR *name, ITaskDefinit
     regtask->IRegisteredTask_iface.lpVtbl = &RegisteredTask_vtbl;
     regtask->path = heap_strdupW(path);
     regtask->ref = 1;
+    ITaskDefinition_AddRef(definition);
+    regtask->taskdef = definition;
     *obj = &regtask->IRegisteredTask_iface;
 
     TRACE("created %p\n", *obj);
