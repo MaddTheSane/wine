@@ -1553,8 +1553,8 @@ static HRESULT read_variantbool_value(IXmlReader *reader, VARIANT_BOOL *vbool)
         *vbool = VARIANT_FALSE;
     else
     {
-        FIXME("unexpected bool value %s\n", debugstr_w(value));
-        return E_FAIL;
+        WARN("unexpected bool value %s\n", debugstr_w(value));
+        return SCHED_E_INVALIDVALUE;
     }
 
     return S_OK;
@@ -1826,62 +1826,62 @@ static HRESULT read_settings(IXmlReader *reader, ITaskSettings *taskset)
             else if (!lstrcmpW(name, DisallowStartIfOnBatteries))
             {
                 hr = read_variantbool_value(reader, &bool_val);
-                if (hr == S_OK)
-                    ITaskSettings_put_DisallowStartIfOnBatteries(taskset, bool_val);
+                if (hr != S_OK) return hr;
+                ITaskSettings_put_DisallowStartIfOnBatteries(taskset, bool_val);
             }
             else if (!lstrcmpW(name, AllowStartOnDemand))
             {
                 hr = read_variantbool_value(reader, &bool_val);
-                if (hr == S_OK)
-                    ITaskSettings_put_AllowDemandStart(taskset, bool_val);
+                if (hr != S_OK) return hr;
+                ITaskSettings_put_AllowDemandStart(taskset, bool_val);
             }
             else if (!lstrcmpW(name, StopIfGoingOnBatteries))
             {
                 hr = read_variantbool_value(reader, &bool_val);
-                if (hr == S_OK)
-                    ITaskSettings_put_StopIfGoingOnBatteries(taskset, bool_val);
+                if (hr != S_OK) return hr;
+                ITaskSettings_put_StopIfGoingOnBatteries(taskset, bool_val);
             }
             else if (!lstrcmpW(name, AllowHardTerminate))
             {
                 hr = read_variantbool_value(reader, &bool_val);
-                if (hr == S_OK)
-                    ITaskSettings_put_AllowHardTerminate(taskset, bool_val);
+                if (hr != S_OK) return hr;
+                ITaskSettings_put_AllowHardTerminate(taskset, bool_val);
             }
             else if (!lstrcmpW(name, StartWhenAvailable))
             {
                 hr = read_variantbool_value(reader, &bool_val);
-                if (hr == S_OK)
-                    ITaskSettings_put_StartWhenAvailable(taskset, bool_val);
+                if (hr != S_OK) return hr;
+                ITaskSettings_put_StartWhenAvailable(taskset, bool_val);
             }
             else if (!lstrcmpW(name, RunOnlyIfNetworkAvailable))
             {
                 hr = read_variantbool_value(reader, &bool_val);
-                if (hr == S_OK)
-                    ITaskSettings_put_RunOnlyIfNetworkAvailable(taskset, bool_val);
+                if (hr != S_OK) return hr;
+                ITaskSettings_put_RunOnlyIfNetworkAvailable(taskset, bool_val);
             }
             else if (!lstrcmpW(name, Enabled))
             {
                 hr = read_variantbool_value(reader, &bool_val);
-                if (hr == S_OK)
-                    ITaskSettings_put_Enabled(taskset, bool_val);
+                if (hr != S_OK) return hr;
+                ITaskSettings_put_Enabled(taskset, bool_val);
             }
             else if (!lstrcmpW(name, Hidden))
             {
                 hr = read_variantbool_value(reader, &bool_val);
-                if (hr == S_OK)
-                    ITaskSettings_put_Hidden(taskset, bool_val);
+                if (hr != S_OK) return hr;
+                ITaskSettings_put_Hidden(taskset, bool_val);
             }
             else if (!lstrcmpW(name, RunOnlyIfIdle))
             {
                 hr = read_variantbool_value(reader, &bool_val);
-                if (hr == S_OK)
-                    ITaskSettings_put_RunOnlyIfIdle(taskset, bool_val);
+                if (hr != S_OK) return hr;
+                ITaskSettings_put_RunOnlyIfIdle(taskset, bool_val);
             }
             else if (!lstrcmpW(name, WakeToRun))
             {
                 hr = read_variantbool_value(reader, &bool_val);
-                if (hr == S_OK)
-                    ITaskSettings_put_WakeToRun(taskset, bool_val);
+                if (hr != S_OK) return hr;
+                ITaskSettings_put_WakeToRun(taskset, bool_val);
             }
             else if (!lstrcmpW(name, ExecutionTimeLimit))
             {
@@ -1916,7 +1916,7 @@ static HRESULT read_settings(IXmlReader *reader, ITaskSettings *taskset)
     }
 
     WARN("Settings was not terminated\n");
-    return E_FAIL;
+    return SCHED_E_MALFORMEDXML;
 }
 
 static HRESULT read_registration_info(IXmlReader *reader, IRegistrationInfo *info)
@@ -1981,7 +1981,7 @@ static HRESULT read_registration_info(IXmlReader *reader, IRegistrationInfo *inf
     }
 
     WARN("RegistrationInfo was not terminated\n");
-    return E_FAIL;
+    return SCHED_E_MALFORMEDXML;
 }
 
 static HRESULT read_task_attributes(IXmlReader *reader, ITaskDefinition *taskdef)
@@ -1990,6 +1990,7 @@ static HRESULT read_task_attributes(IXmlReader *reader, ITaskDefinition *taskdef
     ITaskSettings *taskset;
     const WCHAR *name;
     const WCHAR *value;
+    BOOL xmlns_ok = FALSE;
 
     TRACE("\n");
 
@@ -2028,7 +2029,11 @@ static HRESULT read_task_attributes(IXmlReader *reader, ITaskDefinition *taskdef
         else if (!lstrcmpW(name, xmlns))
         {
             if (lstrcmpW(value, task_ns))
+            {
                 FIXME("unknown namespace %s\n", debugstr_w(value));
+                break;
+            }
+            xmlns_ok = TRUE;
         }
         else
             FIXME("unhandled Task attribute %s\n", debugstr_w(name));
@@ -2037,7 +2042,7 @@ static HRESULT read_task_attributes(IXmlReader *reader, ITaskDefinition *taskdef
     }
 
     ITaskSettings_Release(taskset);
-    return S_OK;
+    return xmlns_ok ? S_OK : SCHED_E_NAMESPACE;
 }
 
 static HRESULT read_task(IXmlReader *reader, ITaskDefinition *taskdef)
@@ -2114,7 +2119,7 @@ static HRESULT read_task(IXmlReader *reader, ITaskDefinition *taskdef)
     }
 
     WARN("Task was not terminated\n");
-    return E_FAIL;
+    return SCHED_E_MALFORMEDXML;
 }
 
 static HRESULT read_xml(IXmlReader *reader, ITaskDefinition *taskdef)
@@ -2160,7 +2165,7 @@ static HRESULT read_xml(IXmlReader *reader, ITaskDefinition *taskdef)
     }
 
     WARN("Task definition was not found\n");
-    return E_FAIL;
+    return SCHED_E_MALFORMEDXML;
 }
 
 static HRESULT WINAPI TaskDefinition_put_XmlText(ITaskDefinition *iface, BSTR xml)
@@ -2172,6 +2177,8 @@ static HRESULT WINAPI TaskDefinition_put_XmlText(ITaskDefinition *iface, BSTR xm
     void *buf;
 
     TRACE("%p,%s\n", iface, debugstr_w(xml));
+
+    if (!xml) return E_INVALIDARG;
 
     hmem = GlobalAlloc(0, lstrlenW(xml) * sizeof(WCHAR));
     if (!hmem) return E_OUTOFMEMORY;

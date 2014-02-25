@@ -92,12 +92,12 @@ library Scripting
 
     typedef enum DriveTypeConst
     {
-        UnknownType = 0,
-        Removable = 1,
-        Fixed = 2,
-        Remote = 3,
-        CDRom = 4,
-        RamDisk = 5
+        UnknownType,
+        Removable,
+        Fixed,
+        Remote,
+        CDRom,
+        RamDisk
     } DriveTypeConst;
 
     typedef enum StandardStreamTypes
@@ -287,8 +287,8 @@ library Scripting
         HRESULT Path([out, retval] BSTR* pbstrPath);
 
         [id(0x00002710), propget]
-        HRESULT DriveLetter([out, retval] BSTR* pbstrLetter)
-;
+        HRESULT DriveLetter([out, retval] BSTR* pbstrLetter);
+
         [id(0x00002711), propget]
         HRESULT ShareName([out, retval] BSTR* pbstrShareName);
 
