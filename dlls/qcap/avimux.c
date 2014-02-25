@@ -42,7 +42,6 @@ typedef struct {
 typedef struct {
     BaseInputPin pin;
     IAMStreamControl IAMStreamControl_iface;
-    IMemInputPin IMemInputPin_iface;
     IPropertyBag IPropertyBag_iface;
     IQualityControl IQualityControl_iface;
 } AviMuxIn;
@@ -55,6 +54,7 @@ typedef struct {
     IPersistMediaPropertyBag IPersistMediaPropertyBag_iface;
     ISpecifyPropertyPages ISpecifyPropertyPages_iface;
 
+    InterleavingMode mode;
     AviMuxOut *out;
     int input_pin_no;
     AviMuxIn *in[MAX_PIN_NO-1];
@@ -332,8 +332,28 @@ static HRESULT WINAPI ConfigInterleaving_put_Mode(
         IConfigInterleaving *iface, InterleavingMode mode)
 {
     AviMux *This = impl_from_IConfigInterleaving(iface);
-    FIXME("(%p)->(%d)\n", This, mode);
-    return E_NOTIMPL;
+    HRESULT hr = S_OK;
+
+    TRACE("(%p)->(%d)\n", This, mode);
+
+    if(mode>INTERLEAVE_NONE_BUFFERED)
+        return E_INVALIDARG;
+
+    if(This->mode != mode) {
+        int i;
+
+        for(i=0; i<This->input_pin_no; i++) {
+            if(!This->in[i]->pin.pin.pConnectedTo)
+                continue;
+
+           hr = IFilterGraph_Reconnect(This->filter.filterInfo.pGraph, &This->in[i]->pin.pin.IPin_iface);
+           if(FAILED(hr))
+               return hr;
+        }
+    }
+
+    This->mode = mode;
+    return S_OK;
 }
 
 static HRESULT WINAPI ConfigInterleaving_get_Mode(
@@ -1062,7 +1082,7 @@ static HRESULT WINAPI AviMuxIn_QueryInterface(IPin *iface, REFIID riid, void **p
     else if(IsEqualIID(riid, &IID_IAMStreamControl))
         *ppv = &avimuxin->IAMStreamControl_iface;
     else if(IsEqualIID(riid, &IID_IMemInputPin))
-        *ppv = &avimuxin->IMemInputPin_iface;
+        *ppv = &avimuxin->pin.IMemInputPin_iface;
     else if(IsEqualIID(riid, &IID_IPropertyBag))
         *ppv = &avimuxin->IPropertyBag_iface;
     else if(IsEqualIID(riid, &IID_IQualityControl))
@@ -1317,7 +1337,8 @@ static const IAMStreamControlVtbl AviMuxIn_AMStreamControlVtbl = {
 
 static inline AviMuxIn* AviMuxIn_from_IMemInputPin(IMemInputPin *iface)
 {
-    return CONTAINING_RECORD(iface, AviMuxIn, IMemInputPin_iface);
+    BaseInputPin *bip = CONTAINING_RECORD(iface, BaseInputPin, IMemInputPin_iface);
+    return CONTAINING_RECORD(bip, AviMuxIn, pin);
 }
 
 static HRESULT WINAPI AviMuxIn_MemInputPin_QueryInterface(
@@ -1346,8 +1367,15 @@ static HRESULT WINAPI AviMuxIn_MemInputPin_GetAllocator(
 {
     AviMuxIn *avimuxin = AviMuxIn_from_IMemInputPin(iface);
     AviMux *This = impl_from_in_IPin(&avimuxin->pin.pin.IPin_iface);
-    FIXME("(%p:%s)->(%p)\n", This, debugstr_w(avimuxin->pin.pin.pinInfo.achName), ppAllocator);
-    return E_NOTIMPL;
+
+    TRACE("(%p:%s)->(%p)\n", This, debugstr_w(avimuxin->pin.pin.pinInfo.achName), ppAllocator);
+
+    if(!ppAllocator)
+        return E_POINTER;
+
+    IMemAllocator_AddRef(avimuxin->pin.pAllocator);
+    *ppAllocator = avimuxin->pin.pAllocator;
+    return S_OK;
 }
 
 static HRESULT WINAPI AviMuxIn_MemInputPin_NotifyAllocator(
@@ -1355,9 +1383,23 @@ static HRESULT WINAPI AviMuxIn_MemInputPin_NotifyAllocator(
 {
     AviMuxIn *avimuxin = AviMuxIn_from_IMemInputPin(iface);
     AviMux *This = impl_from_in_IPin(&avimuxin->pin.pin.IPin_iface);
-    FIXME("(%p:%s)->(%p %x)\n", This, debugstr_w(avimuxin->pin.pin.pinInfo.achName),
+    ALLOCATOR_PROPERTIES props;
+    HRESULT hr;
+
+    TRACE("(%p:%s)->(%p %x)\n", This, debugstr_w(avimuxin->pin.pin.pinInfo.achName),
             pAllocator, bReadOnly);
-    return E_NOTIMPL;
+
+    if(!pAllocator)
+        return E_POINTER;
+
+    memset(&props, 0, sizeof(props));
+    hr = IMemAllocator_GetProperties(pAllocator, &props);
+    if(FAILED(hr))
+        return hr;
+
+    props.cbAlign = 1;
+    props.cbPrefix = 8;
+    return IMemAllocator_SetProperties(avimuxin->pin.pAllocator, &props, &props);
 }
 
 static HRESULT WINAPI AviMuxIn_MemInputPin_GetAllocatorRequirements(
@@ -1365,8 +1407,15 @@ static HRESULT WINAPI AviMuxIn_MemInputPin_GetAllocatorRequirements(
 {
     AviMuxIn *avimuxin = AviMuxIn_from_IMemInputPin(iface);
     AviMux *This = impl_from_in_IPin(&avimuxin->pin.pin.IPin_iface);
-    FIXME("(%p:%s)->(%p)\n", This, debugstr_w(avimuxin->pin.pin.pinInfo.achName), pProps);
-    return E_NOTIMPL;
+
+    TRACE("(%p:%s)->(%p)\n", This, debugstr_w(avimuxin->pin.pin.pinInfo.achName), pProps);
+
+    if(!pProps)
+        return E_POINTER;
+
+    pProps->cbAlign = 1;
+    pProps->cbPrefix = 8;
+    return S_OK;
 }
 
 static HRESULT WINAPI AviMuxIn_MemInputPin_Receive(
@@ -1392,8 +1441,15 @@ static HRESULT WINAPI AviMuxIn_MemInputPin_ReceiveCanBlock(IMemInputPin *iface)
 {
     AviMuxIn *avimuxin = AviMuxIn_from_IMemInputPin(iface);
     AviMux *This = impl_from_in_IPin(&avimuxin->pin.pin.IPin_iface);
-    FIXME("(%p:%s)\n", This, debugstr_w(avimuxin->pin.pin.pinInfo.achName));
-    return E_NOTIMPL;
+    HRESULT hr;
+
+    TRACE("(%p:%s)\n", This, debugstr_w(avimuxin->pin.pin.pinInfo.achName));
+
+    if(!This->out->pin.pMemInputPin)
+        return S_FALSE;
+
+    hr = IMemInputPin_ReceiveCanBlock(This->out->pin.pMemInputPin);
+    return hr != S_FALSE ? S_OK : S_FALSE;
 }
 
 static const IMemInputPinVtbl AviMuxIn_MemInputPinVtbl = {
@@ -1533,10 +1589,17 @@ static HRESULT create_input_pin(AviMux *avimux)
             &AviMuxIn_BaseInputFuncTable, &avimux->filter.csFilter, NULL, (IPin**)&avimux->in[avimux->input_pin_no]);
     if(FAILED(hr))
         return hr;
+    avimux->in[avimux->input_pin_no]->pin.IMemInputPin_iface.lpVtbl = &AviMuxIn_MemInputPinVtbl;
     avimux->in[avimux->input_pin_no]->IAMStreamControl_iface.lpVtbl = &AviMuxIn_AMStreamControlVtbl;
-    avimux->in[avimux->input_pin_no]->IMemInputPin_iface.lpVtbl = &AviMuxIn_MemInputPinVtbl;
     avimux->in[avimux->input_pin_no]->IPropertyBag_iface.lpVtbl = &AviMuxIn_PropertyBagVtbl;
     avimux->in[avimux->input_pin_no]->IQualityControl_iface.lpVtbl = &AviMuxIn_QualityControlVtbl;
+
+    hr = CoCreateInstance(&CLSID_MemoryAllocator, NULL, CLSCTX_INPROC_SERVER,
+            &IID_IMemAllocator, (void**)&avimux->in[avimux->input_pin_no]->pin.pAllocator);
+    if(FAILED(hr)) {
+        BaseInputPinImpl_Release(&avimux->in[avimux->input_pin_no]->pin.pin.IPin_iface);
+        return hr;
+    }
 
     avimux->input_pin_no++;
     return S_OK;

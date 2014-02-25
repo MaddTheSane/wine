@@ -1232,6 +1232,10 @@ static void test_AviMux(void)
     IBaseFilter *avimux;
     IEnumPins *ep;
     IEnumMediaTypes *emt;
+    IMemInputPin *memin;
+    ALLOCATOR_PROPERTIES props;
+    IMemAllocator *memalloc;
+    IConfigInterleaving *ci;
     HRESULT hr;
 
     init_test_filter(&source_filter, PINDIR_OUTPUT, SOURCE_FILTER);
@@ -1335,6 +1339,46 @@ static void test_AviMux(void)
     CHECK_CALLED(GetAllocatorRequirements);
     CHECK_CALLED(NotifyAllocator);
     CHECK_CALLED(Reconnect);
+
+    hr = IPin_QueryInterface(avimux_in, &IID_IMemInputPin, (void**)&memin);
+    ok(hr == S_OK, "QueryInterface returned %x\n", hr);
+
+    props.cBuffers = 0xdeadbee1;
+    props.cbBuffer = 0xdeadbee2;
+    props.cbAlign = 0xdeadbee3;
+    props.cbPrefix = 0xdeadbee4;
+    hr = IMemInputPin_GetAllocatorRequirements(memin, &props);
+    ok(hr == S_OK, "GetAllocatorRequirments returned %x\n", hr);
+    ok(props.cBuffers == 0xdeadbee1, "cBuffers = %d\n", props.cBuffers);
+    ok(props.cbBuffer == 0xdeadbee2, "cbBuffer = %d\n", props.cbBuffer);
+    ok(props.cbAlign == 1, "cbAlign = %d\n", props.cbAlign);
+    ok(props.cbPrefix == 8, "cbPrefix = %d\n", props.cbPrefix);
+
+    hr = IMemInputPin_GetAllocator(memin, &memalloc);
+    ok(hr == S_OK, "GetAllocator returned %x\n", hr);
+
+    props.cBuffers = 0xdeadbee1;
+    props.cbBuffer = 0xdeadbee2;
+    props.cbAlign = 0xdeadbee3;
+    props.cbPrefix = 0xdeadbee4;
+    hr = IMemAllocator_GetProperties(memalloc, &props);
+    ok(hr == S_OK, "GetProperties returned %x\n", hr);
+    ok(props.cBuffers == 0, "cBuffers = %d\n", props.cBuffers);
+    ok(props.cbBuffer == 0, "cbBuffer = %d\n", props.cbBuffer);
+    ok(props.cbAlign == 0, "cbAlign = %d\n", props.cbAlign);
+    ok(props.cbPrefix == 0, "cbPrefix = %d\n", props.cbPrefix);
+    IMemAllocator_Release(memalloc);
+    IMemInputPin_Release(memin);
+
+    hr = IBaseFilter_QueryInterface(avimux, &IID_IConfigInterleaving, (void**)&ci);
+    ok(hr == S_OK, "QueryInterface(IID_IConfigInterleaving) returned %x\n", hr);
+    hr = IConfigInterleaving_put_Mode(ci, 5);
+    ok(hr == E_INVALIDARG, "put_Mode returned %x\n", hr);
+    SET_EXPECT(Reconnect);
+    hr = IConfigInterleaving_put_Mode(ci, INTERLEAVE_FULL);
+    ok(hr == S_OK, "put_Mode returned %x\n", hr);
+    CHECK_CALLED(Reconnect);
+    IConfigInterleaving_Release(ci);
 
     hr = IPin_Disconnect(avimux_out);
     ok(hr == S_OK, "Disconnect returned %x\n", hr);
