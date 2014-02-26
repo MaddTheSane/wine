@@ -1028,6 +1028,7 @@ enable_explorerframe
 enable_ext_ms_win_gdi_devcaps_l1_1_0
 enable_faultrep
 enable_fltlib
+enable_fntcache
 enable_fusion
 enable_fwpuclnt
 enable_gameux
@@ -1356,6 +1357,7 @@ enable_termsv
 enable_uninstaller
 enable_unlodctr
 enable_view
+enable_wevtutil
 enable_wineboot
 enable_winebrowser
 enable_winecfg
@@ -16849,6 +16851,7 @@ wine_fn_config_dll ext-ms-win-gdi-devcaps-l1-1-0 enable_ext_ms_win_gdi_devcaps_l
 wine_fn_config_dll faultrep enable_faultrep implib
 wine_fn_config_test dlls/faultrep/tests faultrep_test
 wine_fn_config_dll fltlib enable_fltlib
+wine_fn_config_dll fntcache enable_fntcache
 wine_fn_config_dll fusion enable_fusion
 wine_fn_config_test dlls/fusion/tests fusion_test
 wine_fn_config_dll fwpuclnt enable_fwpuclnt
@@ -17253,6 +17256,7 @@ wine_fn_config_dll wsnmp32 enable_wsnmp32 implib
 wine_fn_config_test dlls/wsnmp32/tests wsnmp32_test
 wine_fn_config_dll wsock32 enable_wsock32 implib
 wine_fn_config_dll wtsapi32 enable_wtsapi32 implib
+wine_fn_config_test dlls/wtsapi32/tests wtsapi32_test
 wine_fn_config_dll wuapi enable_wuapi clean
 wine_fn_config_dll wuaueng enable_wuaueng
 wine_fn_config_dll xapofx1_1 enable_xapofx1_1
@@ -17336,6 +17340,7 @@ wine_fn_config_program termsv enable_termsv install
 wine_fn_config_program uninstaller enable_uninstaller install,po
 wine_fn_config_program unlodctr enable_unlodctr install
 wine_fn_config_program view enable_view install,po
+wine_fn_config_program wevtutil enable_wevtutil install
 wine_fn_config_program wineboot enable_wineboot install,installbin,manpage,po
 wine_fn_config_program winebrowser enable_winebrowser install
 wine_fn_config_program winecfg enable_winecfg install,installbin,manpage,po

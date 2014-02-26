@@ -192,8 +192,12 @@ static ULONG WINAPI AviMux_Release(IBaseFilter *iface)
 
         BaseOutputPinImpl_Release(&This->out->pin.pin.IPin_iface);
 
-        for(i=0; i<This->input_pin_no; i++)
+        for(i=0; i<This->input_pin_no; i++) {
+            IPin_Disconnect(&This->in[i]->pin.pin.IPin_iface);
+            IMemAllocator_Release(This->in[i]->samples_allocator);
+            This->in[i]->samples_allocator = NULL;
             BaseInputPinImpl_Release(&This->in[i]->pin.pin.IPin_iface);
+        }
 
         HeapFree(GetProcessHeap(), 0, This->idx1);
         HeapFree(GetProcessHeap(), 0, This);
@@ -444,8 +448,143 @@ static HRESULT queue_sample(AviMux *avimux, AviMuxIn *avimuxin, IMediaSample *sa
 static HRESULT WINAPI AviMux_Stop(IBaseFilter *iface)
 {
     AviMux *This = impl_from_IBaseFilter(iface);
-    FIXME("(%p)\n", This);
-    return E_NOTIMPL;
+    HRESULT hr;
+    int i;
+
+    TRACE("(%p)\n", This);
+
+    if(This->filter.state == State_Stopped)
+        return S_OK;
+
+    if(This->out->stream) {
+        AVIEXTHEADER dmlh;
+        RIFFCHUNK rc;
+        RIFFLIST rl;
+        int idx1_off, empty_stream;
+
+        empty_stream = This->out->cur_stream;
+        for(i=empty_stream+1; ; i++) {
+            if(i >= This->input_pin_no-1)
+                i = 0;
+            if(i == empty_stream)
+                break;
+
+            This->out->cur_stream = i;
+            hr = flush_queue(This, This->in[This->out->cur_stream], TRUE);
+            if(FAILED(hr))
+                return hr;
+        }
+
+        idx1_off = This->out->size;
+        rc.fcc = ckidAVIOLDINDEX;
+        rc.cb = This->idx1_entries * sizeof(*This->idx1);
+        hr = out_write(This, &rc, sizeof(rc));
+        if(FAILED(hr))
+            return hr;
+        hr = out_write(This, This->idx1, This->idx1_entries * sizeof(*This->idx1));
+        if(FAILED(hr))
+            return hr;
+        /* native writes 8 '\0' characters after the end of RIFF data */
+        i = 0;
+        hr = out_write(This, &i, sizeof(i));
+        if(FAILED(hr))
+            return hr;
+        hr = out_write(This, &i, sizeof(i));
+        if(FAILED(hr))
+            return hr;
+
+        for(i=0; i<This->input_pin_no; i++) {
+            if(!This->in[i]->pin.pin.pConnectedTo)
+                continue;
+
+            hr = out_seek(This, This->in[i]->ix_off);
+            if(FAILED(hr))
+                return hr;
+
+            This->in[i]->indx->aIndex[This->in[i]->indx->nEntriesInUse].qwOffset = This->in[i]->ix_off;
+            This->in[i]->indx->aIndex[This->in[i]->indx->nEntriesInUse].dwSize = sizeof(This->in[i]->ix_data);
+            This->in[i]->indx->aIndex[This->in[i]->indx->nEntriesInUse].dwDuration = This->in[i]->strh.dwLength;
+            if(This->in[i]->indx->nEntriesInUse) {
+                This->in[i]->indx->aIndex[This->in[i]->indx->nEntriesInUse].dwDuration -=
+                    This->in[i]->indx->aIndex[This->in[i]->indx->nEntriesInUse-1].dwDuration;
+            }
+            This->in[i]->indx->nEntriesInUse++;
+            hr = out_write(This, This->in[i]->ix, sizeof(This->in[i]->ix_data));
+            if(FAILED(hr))
+                return hr;
+        }
+
+        hr = out_seek(This, 0);
+        if(FAILED(hr))
+            return hr;
+
+        rl.fcc = FCC('R','I','F','F');
+        rl.cb = This->out->size-sizeof(RIFFCHUNK)-2*sizeof(int);
+        rl.fccListType = FCC('A','V','I',' ');
+        hr = out_write(This, &rl, sizeof(rl));
+        if(FAILED(hr))
+            return hr;
+
+        rl.fcc = FCC('L','I','S','T');
+        rl.cb = This->out->movi_off - sizeof(RIFFLIST) - sizeof(RIFFCHUNK);
+        rl.fccListType = FCC('h','d','r','l');
+        hr = out_write(This, &rl, sizeof(rl));
+        if(FAILED(hr))
+            return hr;
+
+        /* FIXME: set This->avih.dwMaxBytesPerSec value */
+        This->avih.dwTotalFrames = (This->stop-This->start) / 10 / This->avih.dwMicroSecPerFrame;
+        hr = out_write(This, &This->avih, sizeof(This->avih));
+        if(FAILED(hr))
+            return hr;
+
+        for(i=0; i<This->input_pin_no; i++) {
+            if(!This->in[i]->pin.pin.pConnectedTo)
+                continue;
+
+            rl.cb = sizeof(FOURCC) + sizeof(AVISTREAMHEADER) + sizeof(RIFFCHUNK) +
+                This->in[i]->strf->cb + sizeof(This->in[i]->indx_data);
+            rl.fccListType = ckidSTREAMLIST;
+            hr = out_write(This, &rl, sizeof(rl));
+            if(FAILED(hr))
+                return hr;
+
+            hr = out_write(This, &This->in[i]->strh, sizeof(AVISTREAMHEADER));
+            if(FAILED(hr))
+                return hr;
+
+            hr = out_write(This, This->in[i]->strf, sizeof(RIFFCHUNK) + This->in[i]->strf->cb);
+            if(FAILED(hr))
+                return hr;
+
+            hr = out_write(This, This->in[i]->indx, sizeof(This->in[i]->indx_data));
+            if(FAILED(hr))
+                return hr;
+        }
+
+        rl.cb = sizeof(dmlh) + sizeof(FOURCC);
+        rl.fccListType = ckidODML;
+        hr = out_write(This, &rl, sizeof(rl));
+        if(FAILED(hr))
+            return hr;
+
+        memset(&dmlh, 0, sizeof(dmlh));
+        dmlh.fcc = ckidAVIEXTHEADER;
+        dmlh.cb = sizeof(dmlh) - sizeof(RIFFCHUNK);
+        dmlh.dwGrandFrames = This->in[0]->strh.dwLength;
+        hr = out_write(This, &dmlh, sizeof(dmlh));
+
+        rl.cb = idx1_off - This->out->movi_off - sizeof(RIFFCHUNK);
+        rl.fccListType = FCC('m','o','v','i');
+        out_write(This, &rl, sizeof(rl));
+        out_flush(This);
+
+        IStream_Release(This->out->stream);
+        This->out->stream = NULL;
+    }
+
+    This->filter.state = State_Stopped;
+    return S_OK;
 }
 
 static HRESULT WINAPI AviMux_Pause(IBaseFilter *iface)
@@ -1674,9 +1813,9 @@ static HRESULT WINAPI AviMuxIn_ReceiveConnection(IPin *iface,
         }
 
         size = pmt->cbFormat - FIELD_OFFSET(VIDEOINFOHEADER, bmiHeader);
-        avimuxin->strf = CoTaskMemAlloc(sizeof(RIFFCHUNK) + ALIGN(FIELD_OFFSET(BITMAPINFO, bmiColors[iPALETTE_COLORS])));
+        avimuxin->strf = CoTaskMemAlloc(sizeof(RIFFCHUNK) + ALIGN(FIELD_OFFSET(BITMAPINFO, bmiColors[vih->bmiHeader.biClrUsed])));
         avimuxin->strf->fcc = ckidSTREAMFORMAT;
-        avimuxin->strf->cb = FIELD_OFFSET(BITMAPINFO, bmiColors[iPALETTE_COLORS]);
+        avimuxin->strf->cb = FIELD_OFFSET(BITMAPINFO, bmiColors[vih->bmiHeader.biClrUsed]);
         if(size > avimuxin->strf->cb)
             size = avimuxin->strf->cb;
         memcpy(avimuxin->strf->data, &vih->bmiHeader, size);
@@ -2195,6 +2334,7 @@ static HRESULT create_input_pin(AviMux *avimux)
         return hr;
     }
 
+    avimux->in[avimux->input_pin_no]->stream_time = 0;
     memset(&avimux->in[avimux->input_pin_no]->strh, 0, sizeof(avimux->in[avimux->input_pin_no]->strh));
     avimux->in[avimux->input_pin_no]->strf = NULL;
     memset(&avimux->in[avimux->input_pin_no]->indx_data, 0, sizeof(avimux->in[avimux->input_pin_no]->indx_data));
@@ -2247,6 +2387,8 @@ IUnknown* WINAPI QCAP_createAVIMux(IUnknown *pUnkOuter, HRESULT *phr)
         return NULL;
     }
     avimux->out->IQualityControl_iface.lpVtbl = &AviMuxOut_QualityControlVtbl;
+    avimux->out->cur_stream = 0;
+    avimux->out->cur_time = 0;
     avimux->out->stream = NULL;
 
     hr = create_input_pin(avimux);
