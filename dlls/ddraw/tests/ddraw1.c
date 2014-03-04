@@ -96,6 +96,13 @@ static void destroy_window_thread(struct create_window_thread_param *p)
     CloseHandle(p->thread);
 }
 
+static HRESULT set_display_mode(IDirectDraw *ddraw, DWORD width, DWORD height)
+{
+    if (SUCCEEDED(IDirectDraw_SetDisplayMode(ddraw, width, height, 32)))
+        return DD_OK;
+    return IDirectDraw_SetDisplayMode(ddraw, width, height, 24);
+}
+
 static D3DCOLOR get_surface_color(IDirectDrawSurface *surface, UINT x, UINT y)
 {
     RECT rect = {x, y, x + 1, y + 1};
@@ -231,11 +238,11 @@ static IDirectDraw *create_ddraw(void)
 
 static IDirect3DDevice *create_device(IDirectDraw *ddraw, HWND window, DWORD coop_level)
 {
+    static const DWORD z_depths[] = {32, 24, 16};
     IDirectDrawSurface *surface, *ds;
     IDirect3DDevice *device = NULL;
     DDSURFACEDESC surface_desc;
-    DWORD z_depth = 0;
-    IDirect3D *d3d;
+    unsigned int i;
     HRESULT hr;
 
     hr = IDirectDraw_SetCooperativeLevel(ddraw, window, coop_level);
@@ -264,51 +271,34 @@ static IDirect3DDevice *create_device(IDirectDraw *ddraw, HWND window, DWORD coo
         IDirectDrawClipper_Release(clipper);
     }
 
-    hr = IDirectDraw_QueryInterface(ddraw, &IID_IDirect3D, (void **)&d3d);
-    if (FAILED(hr))
+    /* We used to use EnumDevices() for this, but it seems
+     * D3DDEVICEDESC.dwDeviceZBufferBitDepth only has a very casual
+     * relationship with reality. */
+    for (i = 0; i < sizeof(z_depths) / sizeof(*z_depths); ++i)
     {
-        IDirectDrawSurface_Release(surface);
-        return NULL;
+        memset(&surface_desc, 0, sizeof(surface_desc));
+        surface_desc.dwSize = sizeof(surface_desc);
+        surface_desc.dwFlags = DDSD_CAPS | DDSD_ZBUFFERBITDEPTH | DDSD_WIDTH | DDSD_HEIGHT;
+        surface_desc.ddsCaps.dwCaps = DDSCAPS_ZBUFFER;
+        U2(surface_desc).dwZBufferBitDepth = z_depths[i];
+        surface_desc.dwWidth = 640;
+        surface_desc.dwHeight = 480;
+        if (FAILED(hr = IDirectDraw_CreateSurface(ddraw, &surface_desc, &ds, NULL)))
+            continue;
+
+        hr = IDirectDrawSurface_AddAttachedSurface(surface, ds);
+        ok(SUCCEEDED(hr), "Failed to attach depth buffer, hr %#x.\n", hr);
+        IDirectDrawSurface_Release(ds);
+        if (FAILED(hr))
+            continue;
+
+        if (SUCCEEDED(hr = IDirectDrawSurface_QueryInterface(surface, &IID_IDirect3DHALDevice, (void **)&device)))
+            break;
+
+        IDirectDrawSurface_DeleteAttachedSurface(surface, 0, ds);
     }
 
-    hr = IDirect3D_EnumDevices(d3d, enum_z_fmt, &z_depth);
-    ok(SUCCEEDED(hr), "Failed to enumerate z-formats, hr %#x.\n", hr);
-    IDirect3D_Release(d3d);
-    if (FAILED(hr) || !z_depth)
-    {
-        IDirectDrawSurface_Release(surface);
-        return NULL;
-    }
-
-    memset(&surface_desc, 0, sizeof(surface_desc));
-    surface_desc.dwSize = sizeof(surface_desc);
-    surface_desc.dwFlags = DDSD_CAPS | DDSD_ZBUFFERBITDEPTH | DDSD_WIDTH | DDSD_HEIGHT;
-    surface_desc.ddsCaps.dwCaps = DDSCAPS_ZBUFFER;
-    U2(surface_desc).dwZBufferBitDepth = z_depth;
-    surface_desc.dwWidth = 640;
-    surface_desc.dwHeight = 480;
-    hr = IDirectDraw_CreateSurface(ddraw, &surface_desc, &ds, NULL);
-    ok(SUCCEEDED(hr), "Failed to create depth buffer, hr %#x.\n", hr);
-    if (FAILED(hr))
-    {
-        IDirectDrawSurface_Release(surface);
-        return NULL;
-    }
-
-    hr = IDirectDrawSurface_AddAttachedSurface(surface, ds);
-    ok(SUCCEEDED(hr), "Failed to attach depth buffer, hr %#x.\n", hr);
-    IDirectDrawSurface_Release(ds);
-    if (FAILED(hr))
-    {
-        IDirectDrawSurface_Release(surface);
-        return NULL;
-    }
-
-    hr = IDirectDrawSurface_QueryInterface(surface, &IID_IDirect3DHALDevice, (void **)&device);
     IDirectDrawSurface_Release(surface);
-    if (FAILED(hr))
-        return NULL;
-
     return device;
 }
 
@@ -2190,8 +2180,8 @@ static void test_coop_level_mode_set(void)
     screen_size.cx = 0;
     screen_size.cy = 0;
 
-    hr = IDirectDraw_SetDisplayMode(ddraw, 640, 480, 32);
-    ok(SUCCEEDED(hr), "SetDisplayMode failed, hr %#x.\n", hr);
+    hr = set_display_mode(ddraw, 640, 480);
+    ok(SUCCEEDED(hr), "Failed to set display mode, hr %#x.\n", hr);
 
     ok(!*expect_messages, "Expected message %#x, but didn't receive it.\n", *expect_messages);
     expect_messages = NULL;
@@ -2315,7 +2305,7 @@ static void test_coop_level_mode_set(void)
     screen_size.cx = 0;
     screen_size.cy = 0;
 
-    hr = IDirectDraw_SetDisplayMode(ddraw, 640, 480, 32);
+    hr = set_display_mode(ddraw, 640, 480);
     if (hr == DDERR_NOEXCLUSIVEMODE /* NT4 testbot */)
     {
         win_skip("Broken SetDisplayMode(), skipping remaining tests.\n");
@@ -2323,7 +2313,7 @@ static void test_coop_level_mode_set(void)
         IDirectDraw_Release(ddraw);
         goto done;
     }
-    ok(SUCCEEDED(hr), "SetDisplayMode failed, hr %#x.\n", hr);
+    ok(SUCCEEDED(hr), "Failed to set display mode, hr %#x.\n", hr);
 
     ok(!*expect_messages, "Expected message %#x, but didn't receive it.\n", *expect_messages);
     expect_messages = NULL;
@@ -2446,8 +2436,8 @@ static void test_coop_level_mode_set(void)
     screen_size.cx = 0;
     screen_size.cy = 0;
 
-    hr = IDirectDraw_SetDisplayMode(ddraw, 640, 480, 32);
-    ok(SUCCEEDED(hr), "SetDisplayMode failed, hr %#x.\n", hr);
+    hr = set_display_mode(ddraw, 640, 480);
+    ok(SUCCEEDED(hr), "Failed to set display mode, hr %#x.\n", hr);
 
     ok(!*expect_messages, "Expected message %#x, but didn't receive it.\n", *expect_messages);
     expect_messages = NULL;
@@ -2532,8 +2522,8 @@ static void test_coop_level_mode_set(void)
     /* Unlike ddraw2-7, changing from EXCLUSIVE to NORMAL does not restore the resolution */
     hr = IDirectDraw_SetCooperativeLevel(ddraw, window, DDSCL_EXCLUSIVE | DDSCL_FULLSCREEN);
     ok(SUCCEEDED(hr), "SetCooperativeLevel failed, hr %#x.\n", hr);
-    hr = IDirectDraw_SetDisplayMode(ddraw, 640, 480, 32);
-    ok(SUCCEEDED(hr), "SetDisplayMode failed, hr %#x.\n", hr);
+    hr = set_display_mode(ddraw, 640, 480);
+    ok(SUCCEEDED(hr), "Failed to set display mode, hr %#x.\n", hr);
 
     hr = IDirectDraw_SetCooperativeLevel(ddraw, window, DDSCL_NORMAL);
     ok(SUCCEEDED(hr), "SetCooperativeLevel failed, hr %#x.\n", hr);
@@ -2591,7 +2581,7 @@ static void test_coop_level_mode_set_multi(void)
 
     /* With just a single ddraw object, the display mode is restored on
      * release. */
-    hr = IDirectDraw_SetDisplayMode(ddraw1, 800, 600, 32);
+    hr = set_display_mode(ddraw1, 800, 600);
     if (hr == DDERR_NOEXCLUSIVEMODE /* NT4 testbot */)
     {
         win_skip("Broken SetDisplayMode(), skipping test.\n");
@@ -2599,7 +2589,7 @@ static void test_coop_level_mode_set_multi(void)
         DestroyWindow(window);
         return;
     }
-    ok(SUCCEEDED(hr), "SetDisplayMode failed, hr %#x.\n", hr);
+    ok(SUCCEEDED(hr), "Failed to set display mode, hr %#x.\n", hr);
     w = GetSystemMetrics(SM_CXSCREEN);
     ok(w == 800, "Got unexpected screen width %u.\n", w);
     h = GetSystemMetrics(SM_CYSCREEN);
@@ -2615,16 +2605,16 @@ static void test_coop_level_mode_set_multi(void)
     /* When there are multiple ddraw objects, the display mode is restored to
      * the initial mode, before the first SetDisplayMode() call. */
     ddraw1 = create_ddraw();
-    hr = IDirectDraw_SetDisplayMode(ddraw1, 800, 600, 32);
-    ok(SUCCEEDED(hr), "SetDisplayMode failed, hr %#x.\n", hr);
+    hr = set_display_mode(ddraw1, 800, 600);
+    ok(SUCCEEDED(hr), "Failed to set display mode, hr %#x.\n", hr);
     w = GetSystemMetrics(SM_CXSCREEN);
     ok(w == 800, "Got unexpected screen width %u.\n", w);
     h = GetSystemMetrics(SM_CYSCREEN);
     ok(h == 600, "Got unexpected screen height %u.\n", h);
 
     ddraw2 = create_ddraw();
-    hr = IDirectDraw_SetDisplayMode(ddraw2, 640, 480, 32);
-    ok(SUCCEEDED(hr), "SetDisplayMode failed, hr %#x.\n", hr);
+    hr = set_display_mode(ddraw2, 640, 480);
+    ok(SUCCEEDED(hr), "Failed to set display mode, hr %#x.\n", hr);
     w = GetSystemMetrics(SM_CXSCREEN);
     ok(w == 640, "Got unexpected screen width %u.\n", w);
     h = GetSystemMetrics(SM_CYSCREEN);
@@ -2646,16 +2636,16 @@ static void test_coop_level_mode_set_multi(void)
 
     /* Regardless of release ordering. */
     ddraw1 = create_ddraw();
-    hr = IDirectDraw_SetDisplayMode(ddraw1, 800, 600, 32);
-    ok(SUCCEEDED(hr), "SetDisplayMode failed, hr %#x.\n", hr);
+    hr = set_display_mode(ddraw1, 800, 600);
+    ok(SUCCEEDED(hr), "Failed to set display mode, hr %#x.\n", hr);
     w = GetSystemMetrics(SM_CXSCREEN);
     ok(w == 800, "Got unexpected screen width %u.\n", w);
     h = GetSystemMetrics(SM_CYSCREEN);
     ok(h == 600, "Got unexpected screen height %u.\n", h);
 
     ddraw2 = create_ddraw();
-    hr = IDirectDraw_SetDisplayMode(ddraw2, 640, 480, 32);
-    ok(SUCCEEDED(hr), "SetDisplayMode failed, hr %#x.\n", hr);
+    hr = set_display_mode(ddraw2, 640, 480);
+    ok(SUCCEEDED(hr), "Failed to set display mode, hr %#x.\n", hr);
     w = GetSystemMetrics(SM_CXSCREEN);
     ok(w == 640, "Got unexpected screen width %u.\n", w);
     h = GetSystemMetrics(SM_CYSCREEN);
@@ -2678,8 +2668,8 @@ static void test_coop_level_mode_set_multi(void)
     /* But only for ddraw objects that called SetDisplayMode(). */
     ddraw1 = create_ddraw();
     ddraw2 = create_ddraw();
-    hr = IDirectDraw_SetDisplayMode(ddraw2, 640, 480, 32);
-    ok(SUCCEEDED(hr), "SetDisplayMode failed, hr %#x.\n", hr);
+    hr = set_display_mode(ddraw2, 640, 480);
+    ok(SUCCEEDED(hr), "Failed to set display mode, hr %#x.\n", hr);
     w = GetSystemMetrics(SM_CXSCREEN);
     ok(w == 640, "Got unexpected screen width %u.\n", w);
     h = GetSystemMetrics(SM_CYSCREEN);
@@ -2702,16 +2692,16 @@ static void test_coop_level_mode_set_multi(void)
     /* If there's a ddraw object that's currently in exclusive mode, it blocks
      * restoring the display mode. */
     ddraw1 = create_ddraw();
-    hr = IDirectDraw_SetDisplayMode(ddraw1, 800, 600, 32);
-    ok(SUCCEEDED(hr), "SetDisplayMode failed, hr %#x.\n", hr);
+    hr = set_display_mode(ddraw1, 800, 600);
+    ok(SUCCEEDED(hr), "Failed to set display mode, hr %#x.\n", hr);
     w = GetSystemMetrics(SM_CXSCREEN);
     ok(w == 800, "Got unexpected screen width %u.\n", w);
     h = GetSystemMetrics(SM_CYSCREEN);
     ok(h == 600, "Got unexpected screen height %u.\n", h);
 
     ddraw2 = create_ddraw();
-    hr = IDirectDraw_SetDisplayMode(ddraw2, 640, 480, 32);
-    ok(SUCCEEDED(hr), "SetDisplayMode failed, hr %#x.\n", hr);
+    hr = set_display_mode(ddraw2, 640, 480);
+    ok(SUCCEEDED(hr), "Failed to set display mode, hr %#x.\n", hr);
     w = GetSystemMetrics(SM_CXSCREEN);
     ok(w == 640, "Got unexpected screen width %u.\n", w);
     h = GetSystemMetrics(SM_CYSCREEN);
@@ -2736,8 +2726,8 @@ static void test_coop_level_mode_set_multi(void)
 
     /* Exclusive mode blocks mode setting on other ddraw objects in general. */
     ddraw1 = create_ddraw();
-    hr = IDirectDraw_SetDisplayMode(ddraw1, 800, 600, 32);
-    ok(SUCCEEDED(hr), "SetDisplayMode failed, hr %#x.\n", hr);
+    hr = set_display_mode(ddraw1, 800, 600);
+    ok(SUCCEEDED(hr), "Failed to set display mode, hr %#x.\n", hr);
     w = GetSystemMetrics(SM_CXSCREEN);
     ok(w == 800, "Got unexpected screen width %u.\n", w);
     h = GetSystemMetrics(SM_CYSCREEN);
@@ -2747,7 +2737,7 @@ static void test_coop_level_mode_set_multi(void)
     ok(SUCCEEDED(hr), "SetCooperativeLevel failed, hr %#x.\n", hr);
 
     ddraw2 = create_ddraw();
-    hr = IDirectDraw_SetDisplayMode(ddraw2, 640, 480, 32);
+    hr = set_display_mode(ddraw2, 640, 480);
     ok(hr == DDERR_NOEXCLUSIVEMODE, "Got unexpected hr %#x.\n", hr);
 
     ref = IDirectDraw_Release(ddraw1);
@@ -3849,7 +3839,7 @@ static void test_flip(void)
     window = CreateWindowA("static", "ddraw_test", WS_OVERLAPPEDWINDOW,
             0, 0, 640, 480, 0, 0, 0, 0);
 
-    hr = IDirectDraw_SetDisplayMode(ddraw, 640, 480, 32);
+    hr = set_display_mode(ddraw, 640, 480);
     ok(SUCCEEDED(hr), "Failed to set display mode, hr %#x.\n", hr);
     hr = IDirectDraw_SetCooperativeLevel(ddraw, window, DDSCL_EXCLUSIVE | DDSCL_FULLSCREEN);
     ok(SUCCEEDED(hr), "Failed to set cooperative level, hr %#x.\n", hr);

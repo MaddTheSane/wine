@@ -181,6 +181,8 @@ static const WCHAR prop_manufacturerW[] =
     {'M','a','n','u','f','a','c','t','u','r','e','r',0};
 static const WCHAR prop_maxclockspeedW[] =
     {'M','a','x','C','l','o','c','k','S','p','e','e','d',0};
+static const WCHAR prop_mediatypeW[] =
+    {'M','e','d','i','a','T','y','p','e',0};
 static const WCHAR prop_memberW[] =
     {'M','e','m','b','e','r',0};
 static const WCHAR prop_methodW[] =
@@ -315,6 +317,7 @@ static const struct column col_diskdrive[] =
     { prop_deviceidW,     CIM_STRING|COL_FLAG_KEY },
     { prop_indexW,        CIM_UINT32, VT_I4 },
     { prop_manufacturerW, CIM_STRING },
+    { prop_mediatypeW,    CIM_STRING },
     { prop_modelW,        CIM_STRING },
     { prop_serialnumberW, CIM_STRING }
 };
@@ -392,7 +395,8 @@ static const struct column col_param[] =
 };
 static const struct column col_physicalmedia[] =
 {
-    { prop_serialnumberW,       CIM_STRING }
+    { prop_serialnumberW,       CIM_STRING },
+    { prop_tagW,                CIM_STRING }
 };
 static const struct column col_process[] =
 {
@@ -507,10 +511,12 @@ static const WCHAR compsys_modelW[] =
     {'W','i','n','e',0};
 static const WCHAR diskdrive_deviceidW[] =
     {'\\','\\','\\','\\','.','\\','\\','P','H','Y','S','I','C','A','L','D','R','I','V','E','0',0};
-static const WCHAR diskdrive_modelW[] =
-    {'W','i','n','e',' ','D','i','s','k',' ','D','r','i','v','e',0};
 static const WCHAR diskdrive_manufacturerW[] =
     {'(','S','t','a','n','d','a','r','d',' ','d','i','s','k',' ','d','r','i','v','e','s',')',0};
+static const WCHAR diskdrive_mediatypeW[] =
+    {'F','i','x','e','d',' ','h','a','r','d',' ','d','i','s','k',0};
+static const WCHAR diskdrive_modelW[] =
+    {'W','i','n','e',' ','D','i','s','k',' ','D','r','i','v','e',0};
 static const WCHAR diskdrive_serialW[] =
     {'W','I','N','E','H','D','I','S','K',0};
 static const WCHAR networkadapter_pnpdeviceidW[]=
@@ -533,6 +539,8 @@ static const WCHAR os_nameW[] =
      '\\','P','a','r','t','i','t','i','o','n','1',0};
 static const WCHAR os_versionW[] =
     {'5','.','1','.','2','6','0','0',0};
+static const WCHAR physicalmedia_tagW[] =
+    {'\\','\\','.','\\','P','H','Y','S','I','C','A','L','D','R','I','V','E','0',0};
 static const WCHAR sounddevice_productnameW[] =
     {'W','i','n','e',' ','A','u','d','i','o',' ','D','e','v','i','c','e',0};
 static const WCHAR videocontroller_dactypeW[] =
@@ -593,6 +601,7 @@ struct record_diskdrive
     const WCHAR *device_id;
     UINT32       index;
     const WCHAR *manufacturer;
+    const WCHAR *mediatype;
     const WCHAR *name;
     const WCHAR *serialnumber;
 };
@@ -671,6 +680,7 @@ struct record_param
 struct record_physicalmedia
 {
     const WCHAR *serialnumber;
+    const WCHAR *tag;
 };
 struct record_process
 {
@@ -762,7 +772,8 @@ static const struct record_bios data_bios[] =
 };
 static const struct record_diskdrive data_diskdrive[] =
 {
-    { diskdrive_deviceidW, 0, diskdrive_manufacturerW, diskdrive_modelW, diskdrive_serialW }
+    { diskdrive_deviceidW, 0, diskdrive_manufacturerW, diskdrive_mediatypeW, diskdrive_modelW,
+      diskdrive_serialW }
 };
 static const struct record_param data_param[] =
 {
@@ -794,7 +805,7 @@ static const struct record_param data_param[] =
 
 static const struct record_physicalmedia data_physicalmedia[] =
 {
-    { diskdrive_serialW }
+    { diskdrive_serialW, physicalmedia_tagW }
 };
 static const struct record_qualifier data_qualifier[] =
 {
