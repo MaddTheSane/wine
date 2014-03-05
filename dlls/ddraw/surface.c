@@ -5531,11 +5531,6 @@ HRESULT ddraw_surface_create(struct ddraw *ddraw, const DDSURFACEDESC2 *surface_
     /* Ensure DDSD_CAPS is always set. */
     desc->dwFlags |= DDSD_CAPS;
 
-    /* If the surface is of the 'ALLOCONLOAD' type, ignore the LPSURFACE
-     * field. Frank Herbert's Dune specifies a NULL pointer for lpSurface. */
-    if ((desc->ddsCaps.dwCaps & DDSCAPS_ALLOCONLOAD) || !desc->lpSurface)
-        desc->dwFlags &= ~DDSD_LPSURFACE;
-
     if (desc->ddsCaps.dwCaps & DDSCAPS_PRIMARYSURFACE)
     {
         DWORD flippable = desc->ddsCaps.dwCaps & (DDSCAPS_FLIP | DDSCAPS_COMPLEX);
@@ -5813,6 +5808,27 @@ HRESULT ddraw_surface_create(struct ddraw *ddraw, const DDSURFACEDESC2 *surface_
         }
     }
 
+    /* If the surface is of the 'ALLOCONLOAD' type, ignore the LPSURFACE
+     * field. Frank Herbert's Dune specifies a NULL pointer for lpSurface. */
+    if ((desc->ddsCaps.dwCaps & DDSCAPS_ALLOCONLOAD) || !desc->lpSurface)
+        desc->dwFlags &= ~DDSD_LPSURFACE;
+    if (desc->dwFlags & DDSD_LPSURFACE)
+    {
+        if (wined3d_desc.pool != WINED3D_POOL_SYSTEM_MEM)
+        {
+            WARN("User memory surfaces should be in the system memory pool.\n");
+            HeapFree(GetProcessHeap(), 0, texture);
+            return DDERR_INVALIDCAPS;
+        }
+
+        if (!(desc->dwFlags & DDSD_PITCH))
+        {
+            WARN("User memory surfaces should explicitly specify the pitch.\n");
+            HeapFree(GetProcessHeap(), 0, texture);
+            return DDERR_INVALIDPARAMS;
+        }
+    }
+
     if (desc->ddsCaps.dwCaps & (DDSCAPS_OVERLAY))
         wined3d_desc.usage |= WINED3DUSAGE_OVERLAY;
 
@@ -6043,25 +6059,23 @@ HRESULT ddraw_surface_init(struct ddraw_surface *surface, struct ddraw *ddraw, s
         else
             surface->surface_desc.u1.dwLinearSize = max(4, desc->dwWidth) * max(4, desc->dwHeight);
     }
-    else
+    else if (!(desc->dwFlags & DDSD_LPSURFACE))
     {
-        surface->surface_desc.dwFlags |= DDSD_PITCH;
-        surface->surface_desc.u1.lPitch = wined3d_surface_get_pitch(wined3d_surface);
+        desc->dwFlags |= DDSD_PITCH;
+        desc->u1.lPitch = wined3d_surface_get_pitch(wined3d_surface);
     }
 
     if (desc->dwFlags & DDSD_LPSURFACE)
     {
-        UINT pitch = 0;
-
-        if (desc->dwFlags & DDSD_PITCH)
+        if (desc->u1.lPitch < wined3d_surface_get_pitch(wined3d_surface) || desc->u1.lPitch & 3)
         {
-            pitch = desc->u1.lPitch;
-            surface->surface_desc.u1.lPitch = pitch;
+            WARN("Invalid pitch %u specified.\n", desc->u1.lPitch);
+            return DDERR_INVALIDPARAMS;
         }
 
         if (FAILED(hr = wined3d_surface_update_desc(wined3d_surface, wined3d_desc.width,
                 wined3d_desc.height, wined3d_desc.format, WINED3D_MULTISAMPLE_NONE, 0,
-                desc->lpSurface, pitch)))
+                desc->lpSurface, desc->u1.lPitch)))
         {
             ERR("Failed to set surface memory, hr %#x.\n", hr);
             return hr;
