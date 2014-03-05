@@ -140,22 +140,28 @@ static D3DCOLOR get_surface_color(IDirectDrawSurface *surface, UINT x, UINT y)
     return color;
 }
 
-static HRESULT CALLBACK enum_z_fmt(GUID *guid, char *description, char *name,
-        D3DDEVICEDESC *hal_desc, D3DDEVICEDESC *hel_desc, void *ctx)
+static DWORD get_device_z_depth(IDirect3DDevice2 *device)
 {
-    DWORD *z_depth = ctx;
+    DDSCAPS caps = {DDSCAPS_ZBUFFER};
+    IDirectDrawSurface *ds, *rt;
+    DDSURFACEDESC desc;
+    HRESULT hr;
 
-    if (!IsEqualGUID(&IID_IDirect3DHALDevice, guid))
-        return D3DENUMRET_OK;
+    if (FAILED(IDirect3DDevice2_GetRenderTarget(device, &rt)))
+        return 0;
 
-    if (hal_desc->dwDeviceZBufferBitDepth & DDBD_32)
-        *z_depth = 32;
-    else if (hal_desc->dwDeviceZBufferBitDepth & DDBD_24)
-        *z_depth = 24;
-    else if (hal_desc->dwDeviceZBufferBitDepth & DDBD_16)
-        *z_depth = 16;
+    hr = IDirectDrawSurface_GetAttachedSurface(rt, &caps, &ds);
+    IDirectDrawSurface_Release(rt);
+    if (FAILED(hr))
+        return 0;
 
-    return DDENUMRET_OK;
+    desc.dwSize = sizeof(desc);
+    hr = IDirectDrawSurface_GetSurfaceDesc(ds, &desc);
+    IDirectDrawSurface_Release(ds);
+    if (FAILED(hr))
+        return 0;
+
+    return U2(desc).dwZBufferBitDepth;
 }
 
 static IDirectDraw2 *create_ddraw(void)
@@ -780,8 +786,17 @@ static void test_surface_interface_mismatch(void)
         goto cleanup;
     }
 
-    hr = IDirectDraw2_SetCooperativeLevel(ddraw, window, DDSCL_NORMAL);
-    ok(SUCCEEDED(hr), "Failed to set cooperative level, hr %#x.\n", hr);
+    if (!(device = create_device(ddraw, window, DDSCL_NORMAL)))
+    {
+        skip("Failed to create a 3D device, skipping test.\n");
+        IDirectDraw2_Release(ddraw);
+        DestroyWindow(window);
+        return;
+    }
+    z_depth = get_device_z_depth(device);
+    ok(!!z_depth, "Failed to get device z depth.\n");
+    IDirect3DDevice2_Release(device);
+    device = NULL;
 
     memset(&surface_desc, 0, sizeof(surface_desc));
     surface_desc.dwSize = sizeof(surface_desc);
@@ -803,13 +818,6 @@ static void test_surface_interface_mismatch(void)
     if (FAILED(hr = IDirectDraw2_QueryInterface(ddraw, &IID_IDirect3D2, (void **)&d3d)))
     {
         skip("D3D interface is not available, skipping test.\n");
-        goto cleanup;
-    }
-
-    hr = IDirect3D2_EnumDevices(d3d, enum_z_fmt, &z_depth);
-    if (FAILED(hr) || !z_depth)
-    {
-        skip("No depth buffer formats available, skipping test.\n");
         goto cleanup;
     }
 
@@ -3776,6 +3784,7 @@ static void test_rt_caps(void)
 {
     PALETTEENTRY palette_entries[256];
     IDirectDrawPalette *palette;
+    IDirect3DDevice2 *device;
     IDirectDraw2 *ddraw;
     DWORD z_depth = 0;
     IDirect3D2 *d3d;
@@ -3992,20 +4001,20 @@ static void test_rt_caps(void)
 
     window = CreateWindowA("static", "ddraw_test", WS_OVERLAPPEDWINDOW,
             0, 0, 640, 480, 0, 0, 0, 0);
-    hr = IDirectDraw2_SetCooperativeLevel(ddraw, window, DDSCL_NORMAL);
-    ok(SUCCEEDED(hr), "Failed to set cooperative level, hr %#x.\n", hr);
+    if (!(device = create_device(ddraw, window, DDSCL_NORMAL)))
+    {
+        skip("Failed to create a 3D device, skipping test.\n");
+        IDirectDraw2_Release(ddraw);
+        DestroyWindow(window);
+        return;
+    }
+    z_depth = get_device_z_depth(device);
+    ok(!!z_depth, "Failed to get device z depth.\n");
+    IDirect3DDevice2_Release(device);
 
     if (FAILED(hr = IDirectDraw2_QueryInterface(ddraw, &IID_IDirect3D2, (void **)&d3d)))
     {
         skip("D3D interface is not available, skipping test.\n");
-        goto done;
-    }
-
-    hr = IDirect3D2_EnumDevices(d3d, enum_z_fmt, &z_depth);
-    if (FAILED(hr) || !z_depth)
-    {
-        skip("No depth buffer formats available, skipping test.\n");
-        IDirect3D2_Release(d3d);
         goto done;
     }
 
@@ -4297,8 +4306,8 @@ static void test_primary_caps(void)
 static void test_surface_lock(void)
 {
     IDirectDraw2 *ddraw;
-    IDirect3D2 *d3d = NULL;
     IDirectDrawSurface *surface;
+    IDirect3DDevice2 *device;
     HRESULT hr;
     HWND window;
     unsigned int i;
@@ -4350,21 +4359,16 @@ static void test_surface_lock(void)
 
     window = CreateWindowA("static", "ddraw_test", WS_OVERLAPPEDWINDOW,
             0, 0, 640, 480, 0, 0, 0, 0);
-    hr = IDirectDraw2_SetCooperativeLevel(ddraw, window, DDSCL_NORMAL);
-    ok(SUCCEEDED(hr), "Failed to set cooperative level, hr %#x.\n", hr);
-
-    if (FAILED(hr = IDirectDraw2_QueryInterface(ddraw, &IID_IDirect3D2, (void **)&d3d)))
+    if (!(device = create_device(ddraw, window, DDSCL_NORMAL)))
     {
-        skip("D3D interface is not available, skipping test.\n");
-        goto done;
+        skip("Failed to create a 3D device, skipping test.\n");
+        IDirectDraw2_Release(ddraw);
+        DestroyWindow(window);
+        return;
     }
-
-    hr = IDirect3D2_EnumDevices(d3d, enum_z_fmt, &z_depth);
-    if (FAILED(hr) || !z_depth)
-    {
-        skip("No depth buffer formats available, skipping test.\n");
-        goto done;
-    }
+    z_depth = get_device_z_depth(device);
+    ok(!!z_depth, "Failed to get device z depth.\n");
+    IDirect3DDevice2_Release(device);
 
     for (i = 0; i < sizeof(tests) / sizeof(*tests); i++)
     {
@@ -4400,9 +4404,6 @@ static void test_surface_lock(void)
         IDirectDrawSurface_Release(surface);
     }
 
-done:
-    if (d3d)
-        IDirect3D2_Release(d3d);
     refcount = IDirectDraw2_Release(ddraw);
     ok(refcount == 0, "The ddraw object was not properly freed, refcount %u.\n", refcount);
     DestroyWindow(window);
@@ -5657,6 +5658,104 @@ cleanup:
     if (window2) DestroyWindow(window2);
 }
 
+static void test_create_surface_pitch(void)
+{
+    IDirectDrawSurface *surface;
+    DDSURFACEDESC surface_desc;
+    IDirectDraw2 *ddraw;
+    unsigned int i;
+    ULONG refcount;
+    HWND window;
+    HRESULT hr;
+    void *mem;
+
+    static const struct
+    {
+        DWORD placement;
+        DWORD flags_in;
+        DWORD pitch_in;
+        HRESULT hr;
+        DWORD flags_out;
+        DWORD pitch_out;
+    }
+    test_data[] =
+    {
+        {DDSCAPS_VIDEOMEMORY,   0,                              0,      DD_OK,
+                                DDSD_PITCH,                     0x100},
+        {DDSCAPS_VIDEOMEMORY,   DDSD_PITCH,                     0x104,  DD_OK,
+                                DDSD_PITCH,                     0x100},
+        {DDSCAPS_VIDEOMEMORY,   DDSD_PITCH,                     0x0fc,  DD_OK,
+                                DDSD_PITCH,                     0x100},
+        {DDSCAPS_VIDEOMEMORY,   DDSD_LPSURFACE | DDSD_PITCH,    0x100,  DDERR_INVALIDCAPS,
+                                0,                              0    },
+        {DDSCAPS_SYSTEMMEMORY,  0,                              0,      DD_OK,
+                                DDSD_PITCH,                     0x100},
+        {DDSCAPS_SYSTEMMEMORY,  DDSD_PITCH,                     0x104,  DD_OK,
+                                DDSD_PITCH,                     0x100},
+        {DDSCAPS_SYSTEMMEMORY,  DDSD_PITCH,                     0x0fc,  DD_OK,
+                                DDSD_PITCH,                     0x100},
+        {DDSCAPS_SYSTEMMEMORY,  DDSD_LPSURFACE,                 0,      DDERR_INVALIDPARAMS,
+                                0,                              0    },
+        {DDSCAPS_SYSTEMMEMORY,  DDSD_LPSURFACE | DDSD_PITCH,    0x100,  DDERR_INVALIDPARAMS,
+                                0,                              0    },
+    };
+    DWORD flags_mask = DDSD_PITCH | DDSD_LPSURFACE;
+
+    if (!(ddraw = create_ddraw()))
+    {
+        skip("Failed to create a ddraw object, skipping test.\n");
+        return;
+    }
+
+    window = CreateWindowA("static", "ddraw_test", WS_OVERLAPPEDWINDOW,
+            0, 0, 640, 480, 0, 0, 0, 0);
+    hr = IDirectDraw_SetCooperativeLevel(ddraw, window, DDSCL_NORMAL);
+    ok(SUCCEEDED(hr), "Failed to set cooperative level, hr %#x.\n", hr);
+
+    mem = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, ((64 * 4) + 4) * 64);
+
+    for (i = 0; i < sizeof(test_data) / sizeof(*test_data); ++i)
+    {
+        memset(&surface_desc, 0, sizeof(surface_desc));
+        surface_desc.dwSize = sizeof(surface_desc);
+        surface_desc.dwFlags = DDSD_CAPS | DDSD_WIDTH | DDSD_HEIGHT | DDSD_PIXELFORMAT | test_data[i].flags_in;
+        surface_desc.ddsCaps.dwCaps = DDSCAPS_OFFSCREENPLAIN | test_data[i].placement;
+        surface_desc.dwWidth = 64;
+        surface_desc.dwHeight = 64;
+        U1(surface_desc).lPitch = test_data[i].pitch_in;
+        surface_desc.lpSurface = mem;
+        surface_desc.ddpfPixelFormat.dwSize = sizeof(surface_desc.ddpfPixelFormat);
+        surface_desc.ddpfPixelFormat.dwFlags = DDPF_RGB;
+        U1(surface_desc.ddpfPixelFormat).dwRGBBitCount = 32;
+        U2(surface_desc.ddpfPixelFormat).dwRBitMask = 0x00ff0000;
+        U3(surface_desc.ddpfPixelFormat).dwGBitMask = 0x0000ff00;
+        U4(surface_desc.ddpfPixelFormat).dwBBitMask = 0x000000ff;
+        hr = IDirectDraw2_CreateSurface(ddraw, &surface_desc, &surface, NULL);
+        ok(hr == test_data[i].hr || (test_data[i].placement == DDSCAPS_VIDEOMEMORY && hr == DDERR_NODIRECTDRAWHW),
+                "Test %u: Got unexpected hr %#x, expected %#x.\n", i, hr, test_data[i].hr);
+        if (FAILED(hr))
+            continue;
+
+        memset(&surface_desc, 0, sizeof(surface_desc));
+        surface_desc.dwSize = sizeof(surface_desc);
+        hr = IDirectDrawSurface_GetSurfaceDesc(surface, &surface_desc);
+        ok(SUCCEEDED(hr), "Test %u: Failed to get surface desc, hr %#x.\n", i, hr);
+        ok((surface_desc.dwFlags & flags_mask) == test_data[i].flags_out,
+                "Test %u: Got unexpected flags %#x, expected %#x.\n",
+                i, surface_desc.dwFlags & flags_mask, test_data[i].flags_out);
+        ok(U1(surface_desc).lPitch == test_data[i].pitch_out,
+                "Test %u: Got unexpected pitch %u, expected %u.\n",
+                i, U1(surface_desc).lPitch, test_data[i].pitch_out);
+
+        IDirectDrawSurface_Release(surface);
+    }
+
+    HeapFree(GetProcessHeap(), 0, mem);
+    refcount = IDirectDraw2_Release(ddraw);
+    ok(!refcount, "Got unexpected refcount %u.\n", refcount);
+    DestroyWindow(window);
+}
+
 START_TEST(ddraw2)
 {
     test_coop_level_create_device_window();
@@ -5697,4 +5796,5 @@ START_TEST(ddraw2)
     test_primary_palette();
     test_surface_attachment();
     test_pixel_format();
+    test_create_surface_pitch();
 }

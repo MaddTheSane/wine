@@ -5821,6 +5821,13 @@ HRESULT ddraw_surface_create(struct ddraw *ddraw, const DDSURFACEDESC2 *surface_
             return DDERR_INVALIDCAPS;
         }
 
+        if (version < 4)
+        {
+            WARN("User memory surfaces not supported before version 4.\n");
+            HeapFree(GetProcessHeap(), 0, texture);
+            return DDERR_INVALIDPARAMS;
+        }
+
         if (!(desc->dwFlags & DDSD_PITCH))
         {
             WARN("User memory surfaces should explicitly specify the pitch.\n");
@@ -6080,6 +6087,8 @@ HRESULT ddraw_surface_init(struct ddraw_surface *surface, struct ddraw *ddraw, s
             ERR("Failed to set surface memory, hr %#x.\n", hr);
             return hr;
         }
+
+        desc->dwFlags &= ~DDSD_LPSURFACE;
     }
 
     wined3d_surface_incref(wined3d_surface);

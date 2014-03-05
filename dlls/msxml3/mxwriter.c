@@ -140,9 +140,13 @@ typedef struct
     ISAXContentHandler ISAXContentHandler_iface;
     ISAXLexicalHandler ISAXLexicalHandler_iface;
     ISAXDeclHandler    ISAXDeclHandler_iface;
+    ISAXDTDHandler     ISAXDTDHandler_iface;
+    ISAXErrorHandler   ISAXErrorHandler_iface;
     IVBSAXDeclHandler  IVBSAXDeclHandler_iface;
     IVBSAXLexicalHandler IVBSAXLexicalHandler_iface;
     IVBSAXContentHandler IVBSAXContentHandler_iface;
+    IVBSAXDTDHandler     IVBSAXDTDHandler_iface;
+    IVBSAXErrorHandler   IVBSAXErrorHandler_iface;
 
     LONG ref;
     MSXML_VERSION class_version;
@@ -655,6 +659,26 @@ static inline mxwriter *impl_from_IVBSAXDeclHandler(IVBSAXDeclHandler *iface)
     return CONTAINING_RECORD(iface, mxwriter, IVBSAXDeclHandler_iface);
 }
 
+static inline mxwriter *impl_from_ISAXDTDHandler(ISAXDTDHandler *iface)
+{
+    return CONTAINING_RECORD(iface, mxwriter, ISAXDTDHandler_iface);
+}
+
+static inline mxwriter *impl_from_IVBSAXDTDHandler(IVBSAXDTDHandler *iface)
+{
+    return CONTAINING_RECORD(iface, mxwriter, IVBSAXDTDHandler_iface);
+}
+
+static inline mxwriter *impl_from_ISAXErrorHandler(ISAXErrorHandler *iface)
+{
+    return CONTAINING_RECORD(iface, mxwriter, ISAXErrorHandler_iface);
+}
+
+static inline mxwriter *impl_from_IVBSAXErrorHandler(IVBSAXErrorHandler *iface)
+{
+    return CONTAINING_RECORD(iface, mxwriter, IVBSAXErrorHandler_iface);
+}
+
 static HRESULT WINAPI mxwriter_QueryInterface(IMXWriter *iface, REFIID riid, void **obj)
 {
     mxwriter *This = impl_from_IMXWriter( iface );
@@ -681,6 +705,14 @@ static HRESULT WINAPI mxwriter_QueryInterface(IMXWriter *iface, REFIID riid, voi
     {
         *obj = &This->ISAXDeclHandler_iface;
     }
+    else if ( IsEqualGUID( riid, &IID_ISAXDTDHandler ) )
+    {
+        *obj = &This->ISAXDTDHandler_iface;
+    }
+    else if ( IsEqualGUID( riid, &IID_ISAXErrorHandler ) )
+    {
+        *obj = &This->ISAXErrorHandler_iface;
+    }
     else if ( IsEqualGUID( riid, &IID_IVBSAXDeclHandler ) )
     {
         *obj = &This->IVBSAXDeclHandler_iface;
@@ -692,6 +724,14 @@ static HRESULT WINAPI mxwriter_QueryInterface(IMXWriter *iface, REFIID riid, voi
     else if ( IsEqualGUID( riid, &IID_IVBSAXContentHandler ) )
     {
         *obj = &This->IVBSAXContentHandler_iface;
+    }
+    else if ( IsEqualGUID( riid, &IID_IVBSAXDTDHandler ) )
+    {
+        *obj = &This->IVBSAXDTDHandler_iface;
+    }
+    else if ( IsEqualGUID( riid, &IID_IVBSAXErrorHandler ) )
+    {
+        *obj = &This->IVBSAXErrorHandler_iface;
     }
     else if (dispex_query_interface(&This->dispex, riid, obj))
     {
@@ -1115,8 +1155,8 @@ static HRESULT WINAPI SAXContentHandler_startPrefixMapping(
     int nuri)
 {
     mxwriter *This = impl_from_ISAXContentHandler( iface );
-    FIXME("(%p)->(%s %s)\n", This, debugstr_wn(prefix, nprefix), debugstr_wn(uri, nuri));
-    return E_NOTIMPL;
+    TRACE("(%p)->(%s %s)\n", This, debugstr_wn(prefix, nprefix), debugstr_wn(uri, nuri));
+    return S_OK;
 }
 
 static HRESULT WINAPI SAXContentHandler_endPrefixMapping(
@@ -1125,8 +1165,8 @@ static HRESULT WINAPI SAXContentHandler_endPrefixMapping(
     int nprefix)
 {
     mxwriter *This = impl_from_ISAXContentHandler( iface );
-    FIXME("(%p)->(%s)\n", This, debugstr_wn(prefix, nprefix));
-    return E_NOTIMPL;
+    TRACE("(%p)->(%s)\n", This, debugstr_wn(prefix, nprefix));
+    return S_OK;
 }
 
 static HRESULT WINAPI SAXContentHandler_startElement(
@@ -1967,8 +2007,8 @@ static HRESULT WINAPI VBSAXContentHandler_Invoke(IVBSAXContentHandler *iface, DI
 static HRESULT WINAPI VBSAXContentHandler_putref_documentLocator(IVBSAXContentHandler *iface, IVBSAXLocator *locator)
 {
     mxwriter *This = impl_from_IVBSAXContentHandler( iface );
-    FIXME("(%p)->(%p): stub\n", This, locator);
-    return E_NOTIMPL;
+    TRACE("(%p)->(%p)\n", This, locator);
+    return S_OK;
 }
 
 static HRESULT WINAPI VBSAXContentHandler_startDocument(IVBSAXContentHandler *iface)
@@ -2093,6 +2133,278 @@ static const IVBSAXContentHandlerVtbl VBSAXContentHandlerVtbl = {
     VBSAXContentHandler_skippedEntity
 };
 
+static HRESULT WINAPI SAXDTDHandler_QueryInterface(ISAXDTDHandler *iface, REFIID riid, void **obj)
+{
+    mxwriter *This = impl_from_ISAXDTDHandler( iface );
+    return IMXWriter_QueryInterface(&This->IMXWriter_iface, riid, obj);
+}
+
+static ULONG WINAPI SAXDTDHandler_AddRef(ISAXDTDHandler *iface)
+{
+    mxwriter *This = impl_from_ISAXDTDHandler( iface );
+    return IMXWriter_AddRef(&This->IMXWriter_iface);
+}
+
+static ULONG WINAPI SAXDTDHandler_Release(ISAXDTDHandler *iface)
+{
+    mxwriter *This = impl_from_ISAXDTDHandler( iface );
+    return IMXWriter_Release(&This->IMXWriter_iface);
+}
+
+static HRESULT WINAPI SAXDTDHandler_notationDecl(ISAXDTDHandler *iface,
+    const WCHAR *name, INT nname,
+    const WCHAR *publicid, INT npublicid,
+    const WCHAR *systemid, INT nsystemid)
+{
+    mxwriter *This = impl_from_ISAXDTDHandler( iface );
+    FIXME("(%p)->(%s:%d, %s:%d, %s:%d): stub\n", This, debugstr_wn(name, nname), nname,
+        debugstr_wn(publicid, npublicid), npublicid, debugstr_wn(systemid, nsystemid), nsystemid);
+    return E_NOTIMPL;
+}
+
+static HRESULT WINAPI SAXDTDHandler_unparsedEntityDecl(ISAXDTDHandler *iface,
+    const WCHAR *name, INT nname,
+    const WCHAR *publicid, INT npublicid,
+    const WCHAR *systemid, INT nsystemid,
+    const WCHAR *notation, INT nnotation)
+{
+    mxwriter *This = impl_from_ISAXDTDHandler( iface );
+    FIXME("(%p)->(%s:%d, %s:%d, %s:%d, %s:%d): stub\n", This, debugstr_wn(name, nname), nname,
+        debugstr_wn(publicid, npublicid), npublicid, debugstr_wn(systemid, nsystemid), nsystemid,
+        debugstr_wn(notation, nnotation), nnotation);
+    return E_NOTIMPL;
+}
+
+static const ISAXDTDHandlerVtbl SAXDTDHandlerVtbl = {
+    SAXDTDHandler_QueryInterface,
+    SAXDTDHandler_AddRef,
+    SAXDTDHandler_Release,
+    SAXDTDHandler_notationDecl,
+    SAXDTDHandler_unparsedEntityDecl
+};
+
+/*** IVBSAXDTDHandler ***/
+static HRESULT WINAPI VBSAXDTDHandler_QueryInterface(IVBSAXDTDHandler *iface, REFIID riid, void **obj)
+{
+    mxwriter *This = impl_from_IVBSAXDTDHandler( iface );
+    return IMXWriter_QueryInterface(&This->IMXWriter_iface, riid, obj);
+}
+
+static ULONG WINAPI VBSAXDTDHandler_AddRef(IVBSAXDTDHandler *iface)
+{
+    mxwriter *This = impl_from_IVBSAXDTDHandler( iface );
+    return IMXWriter_AddRef(&This->IMXWriter_iface);
+}
+
+static ULONG WINAPI VBSAXDTDHandler_Release(IVBSAXDTDHandler *iface)
+{
+    mxwriter *This = impl_from_IVBSAXDTDHandler( iface );
+    return IMXWriter_Release(&This->IMXWriter_iface);
+}
+
+static HRESULT WINAPI VBSAXDTDHandler_GetTypeInfoCount(IVBSAXDTDHandler *iface, UINT* pctinfo)
+{
+    mxwriter *This = impl_from_IVBSAXDTDHandler( iface );
+    return IMXWriter_GetTypeInfoCount(&This->IMXWriter_iface, pctinfo);
+}
+
+static HRESULT WINAPI VBSAXDTDHandler_GetTypeInfo(IVBSAXDTDHandler *iface, UINT iTInfo, LCID lcid, ITypeInfo** ppTInfo)
+{
+    mxwriter *This = impl_from_IVBSAXDTDHandler( iface );
+    return IMXWriter_GetTypeInfo(&This->IMXWriter_iface, iTInfo, lcid, ppTInfo);
+}
+
+static HRESULT WINAPI VBSAXDTDHandler_GetIDsOfNames(IVBSAXDTDHandler *iface, REFIID riid, LPOLESTR* rgszNames,
+    UINT cNames, LCID lcid, DISPID* rgDispId )
+{
+    mxwriter *This = impl_from_IVBSAXDTDHandler( iface );
+    return IMXWriter_GetIDsOfNames(&This->IMXWriter_iface, riid, rgszNames, cNames, lcid, rgDispId);
+}
+
+static HRESULT WINAPI VBSAXDTDHandler_Invoke(IVBSAXDTDHandler *iface, DISPID dispIdMember, REFIID riid, LCID lcid,
+    WORD wFlags, DISPPARAMS* pDispParams, VARIANT* pVarResult, EXCEPINFO* pExcepInfo, UINT* puArgErr )
+{
+    mxwriter *This = impl_from_IVBSAXDTDHandler( iface );
+    return IMXWriter_Invoke(&This->IMXWriter_iface, dispIdMember, riid, lcid, wFlags, pDispParams, pVarResult,
+        pExcepInfo, puArgErr);
+}
+
+static HRESULT WINAPI VBSAXDTDHandler_notationDecl(IVBSAXDTDHandler *iface, BSTR *name, BSTR *publicId, BSTR *systemId)
+{
+    mxwriter *This = impl_from_IVBSAXDTDHandler( iface );
+
+    TRACE("(%p)->(%p %p %p)\n", This, name, publicId, systemId);
+
+    if (!name || !publicId || !systemId)
+        return E_POINTER;
+
+    return ISAXDTDHandler_notationDecl(&This->ISAXDTDHandler_iface, *name, -1, *publicId, -1, *systemId, -1);
+}
+
+static HRESULT WINAPI VBSAXDTDHandler_unparsedEntityDecl(IVBSAXDTDHandler *iface, BSTR *name, BSTR *publicId,
+    BSTR *systemId, BSTR *notation)
+{
+    mxwriter *This = impl_from_IVBSAXDTDHandler( iface );
+
+    TRACE("(%p)->(%p %p %p %p)\n", This, name, publicId, systemId, notation);
+
+    if (!name || !publicId || !systemId || !notation)
+        return E_POINTER;
+
+    return ISAXDTDHandler_unparsedEntityDecl(&This->ISAXDTDHandler_iface, *name, -1, *publicId, -1,
+        *systemId, -1, *notation, -1);
+}
+
+static const IVBSAXDTDHandlerVtbl VBSAXDTDHandlerVtbl = {
+    VBSAXDTDHandler_QueryInterface,
+    VBSAXDTDHandler_AddRef,
+    VBSAXDTDHandler_Release,
+    VBSAXDTDHandler_GetTypeInfoCount,
+    VBSAXDTDHandler_GetTypeInfo,
+    VBSAXDTDHandler_GetIDsOfNames,
+    VBSAXDTDHandler_Invoke,
+    VBSAXDTDHandler_notationDecl,
+    VBSAXDTDHandler_unparsedEntityDecl
+};
+
+/* ISAXErrorHandler */
+static HRESULT WINAPI SAXErrorHandler_QueryInterface(ISAXErrorHandler *iface, REFIID riid, void **obj)
+{
+    mxwriter *This = impl_from_ISAXErrorHandler( iface );
+    return IMXWriter_QueryInterface(&This->IMXWriter_iface, riid, obj);
+}
+
+static ULONG WINAPI SAXErrorHandler_AddRef(ISAXErrorHandler *iface)
+{
+    mxwriter *This = impl_from_ISAXErrorHandler( iface );
+    return IMXWriter_AddRef(&This->IMXWriter_iface);
+}
+
+static ULONG WINAPI SAXErrorHandler_Release(ISAXErrorHandler *iface)
+{
+    mxwriter *This = impl_from_ISAXErrorHandler( iface );
+    return IMXWriter_Release(&This->IMXWriter_iface);
+}
+
+static HRESULT WINAPI SAXErrorHandler_error(ISAXErrorHandler *iface,
+    ISAXLocator *locator, const WCHAR *message, HRESULT hr)
+{
+    mxwriter *This = impl_from_ISAXErrorHandler( iface );
+
+    FIXME("(%p)->(%p %s 0x%08x)\n", This, locator, debugstr_w(message), hr);
+
+    return E_NOTIMPL;
+}
+
+static HRESULT WINAPI SAXErrorHandler_fatalError(ISAXErrorHandler *iface,
+    ISAXLocator *locator, const WCHAR *message, HRESULT hr)
+{
+    mxwriter *This = impl_from_ISAXErrorHandler( iface );
+
+    FIXME("(%p)->(%p %s 0x%08x)\n", This, locator, debugstr_w(message), hr);
+
+    return E_NOTIMPL;
+}
+
+static HRESULT WINAPI SAXErrorHandler_ignorableWarning(ISAXErrorHandler *iface,
+    ISAXLocator *locator, const WCHAR *message, HRESULT hr)
+{
+    mxwriter *This = impl_from_ISAXErrorHandler( iface );
+
+    FIXME("(%p)->(%p %s 0x%08x)\n", This, locator, debugstr_w(message), hr);
+
+    return E_NOTIMPL;
+}
+
+static const ISAXErrorHandlerVtbl SAXErrorHandlerVtbl = {
+    SAXErrorHandler_QueryInterface,
+    SAXErrorHandler_AddRef,
+    SAXErrorHandler_Release,
+    SAXErrorHandler_error,
+    SAXErrorHandler_fatalError,
+    SAXErrorHandler_ignorableWarning
+};
+
+/*** IVBSAXErrorHandler ***/
+static HRESULT WINAPI VBSAXErrorHandler_QueryInterface(IVBSAXErrorHandler *iface, REFIID riid, void **obj)
+{
+    mxwriter *This = impl_from_IVBSAXErrorHandler( iface );
+    return IMXWriter_QueryInterface(&This->IMXWriter_iface, riid, obj);
+}
+
+static ULONG WINAPI VBSAXErrorHandler_AddRef(IVBSAXErrorHandler *iface)
+{
+    mxwriter *This = impl_from_IVBSAXErrorHandler( iface );
+    return IMXWriter_AddRef(&This->IMXWriter_iface);
+}
+
+static ULONG WINAPI VBSAXErrorHandler_Release(IVBSAXErrorHandler *iface)
+{
+    mxwriter *This = impl_from_IVBSAXErrorHandler( iface );
+    return IMXWriter_Release(&This->IMXWriter_iface);
+}
+
+static HRESULT WINAPI VBSAXErrorHandler_GetTypeInfoCount(IVBSAXErrorHandler *iface, UINT* pctinfo)
+{
+    mxwriter *This = impl_from_IVBSAXErrorHandler( iface );
+    return IMXWriter_GetTypeInfoCount(&This->IMXWriter_iface, pctinfo);
+}
+
+static HRESULT WINAPI VBSAXErrorHandler_GetTypeInfo(IVBSAXErrorHandler *iface, UINT iTInfo, LCID lcid, ITypeInfo** ppTInfo)
+{
+    mxwriter *This = impl_from_IVBSAXErrorHandler( iface );
+    return IMXWriter_GetTypeInfo(&This->IMXWriter_iface, iTInfo, lcid, ppTInfo);
+}
+
+static HRESULT WINAPI VBSAXErrorHandler_GetIDsOfNames(IVBSAXErrorHandler *iface, REFIID riid, LPOLESTR* rgszNames,
+    UINT cNames, LCID lcid, DISPID* rgDispId )
+{
+    mxwriter *This = impl_from_IVBSAXErrorHandler( iface );
+    return IMXWriter_GetIDsOfNames(&This->IMXWriter_iface, riid, rgszNames, cNames, lcid, rgDispId);
+}
+
+static HRESULT WINAPI VBSAXErrorHandler_Invoke(IVBSAXErrorHandler *iface, DISPID dispIdMember, REFIID riid, LCID lcid,
+    WORD wFlags, DISPPARAMS* pDispParams, VARIANT* pVarResult, EXCEPINFO* pExcepInfo, UINT* puArgErr )
+{
+    mxwriter *This = impl_from_IVBSAXErrorHandler( iface );
+    return IMXWriter_Invoke(&This->IMXWriter_iface, dispIdMember, riid, lcid, wFlags, pDispParams, pVarResult,
+        pExcepInfo, puArgErr);
+}
+
+static HRESULT WINAPI VBSAXErrorHandler_error(IVBSAXErrorHandler *iface, IVBSAXLocator *locator, BSTR *message, LONG code)
+{
+    mxwriter *This = impl_from_IVBSAXErrorHandler( iface );
+    FIXME("(%p)->(%p %p %x): stub\n", This, locator, message, code);
+    return E_NOTIMPL;
+}
+
+static HRESULT WINAPI VBSAXErrorHandler_fatalError(IVBSAXErrorHandler *iface, IVBSAXLocator *locator, BSTR *message, LONG code)
+{
+    mxwriter *This = impl_from_IVBSAXErrorHandler( iface );
+    FIXME("(%p)->(%p %p %x): stub\n", This, locator, message, code);
+    return E_NOTIMPL;
+}
+
+static HRESULT WINAPI VBSAXErrorHandler_ignorableWarning(IVBSAXErrorHandler *iface, IVBSAXLocator *locator, BSTR *message, LONG code)
+{
+    mxwriter *This = impl_from_IVBSAXErrorHandler( iface );
+    FIXME("(%p)->(%p %p %x): stub\n", This, locator, message, code);
+    return E_NOTIMPL;
+}
+
+static const IVBSAXErrorHandlerVtbl VBSAXErrorHandlerVtbl = {
+    VBSAXErrorHandler_QueryInterface,
+    VBSAXErrorHandler_AddRef,
+    VBSAXErrorHandler_Release,
+    VBSAXErrorHandler_GetTypeInfoCount,
+    VBSAXErrorHandler_GetTypeInfo,
+    VBSAXErrorHandler_GetIDsOfNames,
+    VBSAXErrorHandler_Invoke,
+    VBSAXErrorHandler_error,
+    VBSAXErrorHandler_fatalError,
+    VBSAXErrorHandler_ignorableWarning
+};
+
 static const tid_t mxwriter_iface_tids[] = {
     IMXWriter_tid,
     0
@@ -2121,9 +2433,13 @@ HRESULT MXWriter_create(MSXML_VERSION version, void **ppObj)
     This->ISAXContentHandler_iface.lpVtbl = &SAXContentHandlerVtbl;
     This->ISAXLexicalHandler_iface.lpVtbl = &SAXLexicalHandlerVtbl;
     This->ISAXDeclHandler_iface.lpVtbl = &SAXDeclHandlerVtbl;
+    This->ISAXDTDHandler_iface.lpVtbl = &SAXDTDHandlerVtbl;
+    This->ISAXErrorHandler_iface.lpVtbl = &SAXErrorHandlerVtbl;
     This->IVBSAXDeclHandler_iface.lpVtbl = &VBSAXDeclHandlerVtbl;
     This->IVBSAXLexicalHandler_iface.lpVtbl = &VBSAXLexicalHandlerVtbl;
     This->IVBSAXContentHandler_iface.lpVtbl = &VBSAXContentHandlerVtbl;
+    This->IVBSAXDTDHandler_iface.lpVtbl = &VBSAXDTDHandlerVtbl;
+    This->IVBSAXErrorHandler_iface.lpVtbl = &VBSAXErrorHandlerVtbl;
     This->ref = 1;
     This->class_version = version;
 
@@ -2839,25 +3155,61 @@ static HRESULT WINAPI VBSAXAttributes_get_length(IVBSAXAttributes* iface, int *l
 static HRESULT WINAPI VBSAXAttributes_getURI(IVBSAXAttributes* iface, int index, BSTR *uri)
 {
     mxattributes *This = impl_from_IVBSAXAttributes( iface );
+    const WCHAR *uriW;
+    HRESULT hr;
     int len;
 
-    return ISAXAttributes_getURI(&This->ISAXAttributes_iface, index, (const WCHAR**)uri, &len);
+    TRACE("(%p)->(%d %p)\n", This, index, uri);
+
+    if (!uri)
+        return E_POINTER;
+
+    *uri = NULL;
+    hr = ISAXAttributes_getURI(&This->ISAXAttributes_iface, index, &uriW, &len);
+    if (FAILED(hr))
+        return hr;
+
+    return return_bstrn(uriW, len, uri);
 }
 
 static HRESULT WINAPI VBSAXAttributes_getLocalName(IVBSAXAttributes* iface, int index, BSTR *name)
 {
     mxattributes *This = impl_from_IVBSAXAttributes( iface );
+    const WCHAR *nameW;
+    HRESULT hr;
     int len;
 
-    return ISAXAttributes_getLocalName(&This->ISAXAttributes_iface, index, (const WCHAR**)name, &len);
+    TRACE("(%p)->(%d %p)\n", This, index, name);
+
+    if (!name)
+        return E_POINTER;
+
+    *name = NULL;
+    hr = ISAXAttributes_getLocalName(&This->ISAXAttributes_iface, index, &nameW, &len);
+    if (FAILED(hr))
+        return hr;
+
+    return return_bstrn(nameW, len, name);
 }
 
 static HRESULT WINAPI VBSAXAttributes_getQName(IVBSAXAttributes* iface, int index, BSTR *qname)
 {
     mxattributes *This = impl_from_IVBSAXAttributes( iface );
+    const WCHAR *qnameW;
+    HRESULT hr;
     int len;
 
-    return ISAXAttributes_getQName(&This->ISAXAttributes_iface, index, (const WCHAR**)qname, &len);
+    TRACE("(%p)->(%d %p)\n", This, index, qname);
+
+    if (!qname)
+        return E_POINTER;
+
+    *qname = NULL;
+    hr = ISAXAttributes_getQName(&This->ISAXAttributes_iface, index, &qnameW, &len);
+    if (FAILED(hr))
+        return hr;
+
+    return return_bstrn(qnameW, len, qname);
 }
 
 static HRESULT WINAPI VBSAXAttributes_getIndexFromName(IVBSAXAttributes* iface, BSTR uri, BSTR name, int *index)
@@ -2874,58 +3226,130 @@ static HRESULT WINAPI VBSAXAttributes_getIndexFromQName(IVBSAXAttributes* iface,
             SysStringLen(qname), index);
 }
 
-static HRESULT WINAPI VBSAXAttributes_getType(IVBSAXAttributes* iface, int index,BSTR *type)
+static HRESULT WINAPI VBSAXAttributes_getType(IVBSAXAttributes* iface, int index, BSTR *type)
 {
     mxattributes *This = impl_from_IVBSAXAttributes( iface );
+    const WCHAR *typeW;
+    HRESULT hr;
     int len;
 
-    return ISAXAttributes_getType(&This->ISAXAttributes_iface, index, (const WCHAR**)type, &len);
+    TRACE("(%p)->(%d %p)\n", This, index, type);
+
+    if (!type)
+        return E_POINTER;
+
+    *type = NULL;
+    hr = ISAXAttributes_getType(&This->ISAXAttributes_iface, index, &typeW, &len);
+    if (FAILED(hr))
+        return hr;
+
+    return return_bstrn(typeW, len, type);
 }
 
 static HRESULT WINAPI VBSAXAttributes_getTypeFromName(IVBSAXAttributes* iface, BSTR uri,
     BSTR name, BSTR *type)
 {
     mxattributes *This = impl_from_IVBSAXAttributes( iface );
+    const WCHAR *typeW;
+    HRESULT hr;
     int len;
 
-    return ISAXAttributes_getTypeFromName(&This->ISAXAttributes_iface, uri, SysStringLen(uri),
-            name, SysStringLen(name), (const WCHAR**)type, &len);
+    TRACE("(%p)->(%s %s %p)\n", This, debugstr_w(uri), debugstr_w(name), type);
+
+    if (!type)
+        return E_POINTER;
+
+    *type = NULL;
+    hr = ISAXAttributes_getTypeFromName(&This->ISAXAttributes_iface, uri, SysStringLen(uri),
+            name, SysStringLen(name), &typeW, &len);
+    if (FAILED(hr))
+        return hr;
+
+    return return_bstrn(typeW, len, type);
 }
 
 static HRESULT WINAPI VBSAXAttributes_getTypeFromQName(IVBSAXAttributes* iface, BSTR qname, BSTR *type)
 {
     mxattributes *This = impl_from_IVBSAXAttributes( iface );
+    const WCHAR *typeW;
+    HRESULT hr;
     int len;
 
-    return ISAXAttributes_getTypeFromQName(&This->ISAXAttributes_iface, qname, SysStringLen(qname),
-            (const WCHAR**)type, &len);
+    TRACE("(%p)->(%s %p)\n", This, debugstr_w(qname), type);
+
+    if (!type)
+        return E_POINTER;
+
+    *type = NULL;
+    hr = ISAXAttributes_getTypeFromQName(&This->ISAXAttributes_iface, qname, SysStringLen(qname),
+            &typeW, &len);
+    if (FAILED(hr))
+        return hr;
+
+    return return_bstrn(typeW, len, type);
 }
 
 static HRESULT WINAPI VBSAXAttributes_getValue(IVBSAXAttributes* iface, int index, BSTR *value)
 {
     mxattributes *This = impl_from_IVBSAXAttributes( iface );
+    const WCHAR *valueW;
+    HRESULT hr;
     int len;
 
-    return ISAXAttributes_getValue(&This->ISAXAttributes_iface, index, (const WCHAR**)value, &len);
+    TRACE("(%p)->(%d %p)\n", This, index, value);
+
+    if (!value)
+        return E_POINTER;
+
+    *value = NULL;
+    hr = ISAXAttributes_getValue(&This->ISAXAttributes_iface, index, &valueW, &len);
+    if (FAILED(hr))
+        return hr;
+
+    return return_bstrn(valueW, len, value);
 }
 
 static HRESULT WINAPI VBSAXAttributes_getValueFromName(IVBSAXAttributes* iface, BSTR uri, BSTR name,
     BSTR *value)
 {
     mxattributes *This = impl_from_IVBSAXAttributes( iface );
+    const WCHAR *valueW;
+    HRESULT hr;
     int len;
 
-    return ISAXAttributes_getValueFromName(&This->ISAXAttributes_iface, uri, SysStringLen(uri),
-            name, SysStringLen(name), (const WCHAR**)value, &len);
+    TRACE("(%p)->(%s %s %p)\n", This, debugstr_w(uri), debugstr_w(name), value);
+
+    if (!value)
+        return E_POINTER;
+
+    *value = NULL;
+    hr = ISAXAttributes_getValueFromName(&This->ISAXAttributes_iface, uri, SysStringLen(uri),
+            name, SysStringLen(name), &valueW, &len);
+    if (FAILED(hr))
+        return hr;
+
+    return return_bstrn(valueW, len, value);
 }
 
 static HRESULT WINAPI VBSAXAttributes_getValueFromQName(IVBSAXAttributes* iface, BSTR qname, BSTR *value)
 {
     mxattributes *This = impl_from_IVBSAXAttributes( iface );
+    const WCHAR *valueW;
+    HRESULT hr;
     int len;
 
-    return ISAXAttributes_getValueFromQName(&This->ISAXAttributes_iface, qname, SysStringLen(qname),
-        (const WCHAR**)value, &len);
+    TRACE("(%p)->(%s %p)\n", This, debugstr_w(qname), value);
+
+    if (!value)
+        return E_POINTER;
+
+    *value = NULL;
+    hr = ISAXAttributes_getValueFromQName(&This->ISAXAttributes_iface, qname, SysStringLen(qname),
+        &valueW, &len);
+    if (FAILED(hr))
+        return hr;
+
+    return return_bstrn(valueW, len, value);
 }
 
 static const struct IVBSAXAttributesVtbl VBSAXAttributesVtbl =
