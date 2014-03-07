@@ -182,153 +182,113 @@ static void check_mipmap_levels(IDirect3DDevice9 *device, UINT width, UINT heigh
 
 static void test_mipmap_levels(void)
 {
+    IDirect3DDevice9 *device;
+    IDirect3D9 *d3d;
+    ULONG refcount;
+    HWND window;
 
-    HRESULT               hr;
-    HWND                  hwnd = NULL;
-
-    IDirect3D9            *pD3d = NULL;
-    IDirect3DDevice9      *pDevice = NULL;
-    D3DPRESENT_PARAMETERS d3dpp;
-    D3DDISPLAYMODE        d3ddm;
-
-    pD3d = Direct3DCreate9(D3D_SDK_VERSION);
-    ok(pD3d != NULL, "Failed to create IDirect3D9 object\n");
-    hwnd = CreateWindowA("d3d9_test_wc", "d3d9_test", WS_OVERLAPPEDWINDOW,
-            100, 100, 160, 160, NULL, NULL, NULL, NULL);
-    ok(hwnd != NULL, "Failed to create window\n");
-    if (!pD3d || !hwnd) goto cleanup;
-
-    IDirect3D9_GetAdapterDisplayMode( pD3d, D3DADAPTER_DEFAULT, &d3ddm );
-    ZeroMemory( &d3dpp, sizeof(d3dpp) );
-    d3dpp.Windowed         = TRUE;
-    d3dpp.SwapEffect       = D3DSWAPEFFECT_DISCARD;
-    d3dpp.BackBufferFormat = d3ddm.Format;
-
-    hr = IDirect3D9_CreateDevice( pD3d, D3DADAPTER_DEFAULT, D3DDEVTYPE_NULLREF, hwnd,
-                                  D3DCREATE_SOFTWARE_VERTEXPROCESSING, &d3dpp, &pDevice );
-    ok(SUCCEEDED(hr) || hr == D3DERR_NOTAVAILABLE || broken(hr == D3DERR_INVALIDCALL), "Failed to create IDirect3D9Device (%08x)\n", hr);
-    if (FAILED(hr)) {
-        skip("failed to create a d3d device\n");
+    window = CreateWindowA("d3d9_test_wc", "d3d9_test", WS_OVERLAPPEDWINDOW,
+            0, 0, 640, 480, NULL, NULL, NULL, NULL);
+    ok(!!window, "Failed to create a window.\n");
+    d3d = Direct3DCreate9(D3D_SDK_VERSION);
+    ok(!!d3d, "Failed to create a D3D object.\n");
+    if (!(device = create_device(d3d, window, window, TRUE)))
+    {
+        skip("Failed to create a 3D device, skipping test.\n");
         goto cleanup;
     }
 
-    check_mipmap_levels(pDevice, 32, 32, 6);
-    check_mipmap_levels(pDevice, 256, 1, 9);
-    check_mipmap_levels(pDevice, 1, 256, 9);
-    check_mipmap_levels(pDevice, 1, 1, 1);
+    check_mipmap_levels(device, 32, 32, 6);
+    check_mipmap_levels(device, 256, 1, 9);
+    check_mipmap_levels(device, 1, 256, 9);
+    check_mipmap_levels(device, 1, 1, 1);
 
+    refcount = IDirect3DDevice9_Release(device);
+    ok(!refcount, "Device has %u references left.\n", refcount);
 cleanup:
-    if (pDevice)
-    {
-        UINT refcount = IDirect3DDevice9_Release( pDevice );
-        ok(!refcount, "Device has %u references left.\n", refcount);
-    }
-    if (pD3d) IDirect3D9_Release( pD3d );
-    DestroyWindow( hwnd );
+    IDirect3D9_Release(d3d);
+    DestroyWindow(window);
 }
 
 static void test_checkdevicemultisampletype(void)
 {
+    IDirect3DDevice9 *device;
+    DWORD quality_levels;
+    IDirect3D9 *d3d;
+    ULONG refcount;
+    HWND window;
+    HRESULT hr;
 
-    HRESULT               hr;
-    HWND                  hwnd = NULL;
-
-    IDirect3D9            *pD3d = NULL;
-    IDirect3DDevice9      *pDevice = NULL;
-    D3DPRESENT_PARAMETERS d3dpp;
-    D3DDISPLAYMODE        d3ddm;
-    DWORD                 qualityLevels;
-
-    pD3d = Direct3DCreate9(D3D_SDK_VERSION);
-    ok(pD3d != NULL, "Failed to create IDirect3D9 object\n");
-    hwnd = CreateWindowA("d3d9_test_wc", "d3d9_test", WS_OVERLAPPEDWINDOW,
-            100, 100, 160, 160, NULL, NULL, NULL, NULL);
-    ok(hwnd != NULL, "Failed to create window\n");
-    if (!pD3d || !hwnd) goto cleanup;
-
-    IDirect3D9_GetAdapterDisplayMode( pD3d, D3DADAPTER_DEFAULT, &d3ddm );
-    ZeroMemory( &d3dpp, sizeof(d3dpp) );
-    d3dpp.Windowed         = TRUE;
-    d3dpp.SwapEffect       = D3DSWAPEFFECT_DISCARD;
-    d3dpp.BackBufferFormat = d3ddm.Format;
-
-    hr = IDirect3D9_CreateDevice( pD3d, D3DADAPTER_DEFAULT, D3DDEVTYPE_NULLREF, hwnd,
-                                  D3DCREATE_SOFTWARE_VERTEXPROCESSING, &d3dpp, &pDevice );
-    ok(SUCCEEDED(hr) || hr == D3DERR_NOTAVAILABLE || broken(hr == D3DERR_INVALIDCALL), "Failed to create IDirect3D9Device (%08x)\n", hr);
-    if (FAILED(hr)) {
-        skip("failed to create a d3d device\n");
+    window = CreateWindowA("d3d9_test_wc", "d3d9_test", WS_OVERLAPPEDWINDOW,
+            0, 0, 640, 480, NULL, NULL, NULL, NULL);
+    ok(!!window, "Failed to create a window.\n");
+    d3d = Direct3DCreate9(D3D_SDK_VERSION);
+    ok(!!d3d, "Failed to create a D3D object.\n");
+    if (!(device = create_device(d3d, window, window, TRUE)))
+    {
+        skip("Failed to create a 3D device, skipping test.\n");
         goto cleanup;
     }
 
-    qualityLevels = 0;
-
-    hr = IDirect3D9_CheckDeviceMultiSampleType(pD3d, D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL, D3DFMT_X8R8G8B8, TRUE,
-    D3DMULTISAMPLE_NONE, &qualityLevels);
+    quality_levels = 0;
+    hr = IDirect3D9_CheckDeviceMultiSampleType(d3d, D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL,
+            D3DFMT_X8R8G8B8, TRUE, D3DMULTISAMPLE_NONE, &quality_levels);
     ok(SUCCEEDED(hr) || hr == D3DERR_NOTAVAILABLE, "CheckDeviceMultiSampleType failed with (%08x)\n", hr);
-    if(hr == D3DERR_NOTAVAILABLE)
+    if (hr == D3DERR_NOTAVAILABLE)
     {
         skip("IDirect3D9_CheckDeviceMultiSampleType not available\n");
         goto cleanup;
     }
-    ok(qualityLevels == 1,"qualitylevel is not 1 but %d\n",qualityLevels);
+    ok(quality_levels == 1, "Got unexpected quality_levels %u.\n", quality_levels);
 
-    hr = IDirect3D9_CheckDeviceMultiSampleType(pD3d, D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL, D3DFMT_X8R8G8B8, FALSE,
-    D3DMULTISAMPLE_NONE, &qualityLevels);
+    hr = IDirect3D9_CheckDeviceMultiSampleType(d3d, D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL,
+            D3DFMT_X8R8G8B8, FALSE, D3DMULTISAMPLE_NONE, &quality_levels);
     ok(SUCCEEDED(hr), "CheckDeviceMultiSampleType failed with (%08x)\n", hr);
-    ok(qualityLevels == 1,"qualitylevel is not 1 but %d\n",qualityLevels);
+    ok(quality_levels == 1, "Got unexpected quality_levels %u.\n", quality_levels);
 
 cleanup:
-    if (pDevice)
+    if (device)
     {
-        UINT refcount = IDirect3DDevice9_Release( pDevice );
+        refcount = IDirect3DDevice9_Release(device);
         ok(!refcount, "Device has %u references left.\n", refcount);
     }
-    if (pD3d) IDirect3D9_Release( pD3d );
-    DestroyWindow( hwnd );
+    IDirect3D9_Release(d3d);
+    DestroyWindow(window);
 }
 
 static void test_swapchain(void)
 {
-    HRESULT                      hr;
-    HWND                         hwnd               = NULL;
-    IDirect3D9                  *pD3d               = NULL;
-    IDirect3DDevice9            *pDevice            = NULL;
-    IDirect3DSwapChain9         *swapchain0         = NULL;
-    IDirect3DSwapChain9         *swapchain1         = NULL;
-    IDirect3DSwapChain9         *swapchain2         = NULL;
-    IDirect3DSwapChain9         *swapchain3         = NULL;
-    IDirect3DSwapChain9         *swapchainX         = NULL;
-    IDirect3DSurface9           *backbuffer         = NULL;
-    D3DPRESENT_PARAMETERS        d3dpp;
-    D3DDISPLAYMODE               d3ddm;
+    IDirect3DSwapChain9 *swapchain0;
+    IDirect3DSwapChain9 *swapchain1;
+    IDirect3DSwapChain9 *swapchain2;
+    IDirect3DSwapChain9 *swapchain3;
+    IDirect3DSwapChain9 *swapchainX;
+    IDirect3DSurface9 *backbuffer;
+    D3DPRESENT_PARAMETERS d3dpp;
+    IDirect3DDevice9 *device;
+    IDirect3D9 *d3d;
+    ULONG refcount;
+    HWND window;
+    HRESULT hr;
 
-    pD3d = Direct3DCreate9(D3D_SDK_VERSION);
-    ok(pD3d != NULL, "Failed to create IDirect3D9 object\n");
-    hwnd = CreateWindowA("d3d9_test_wc", "d3d9_test", WS_OVERLAPPEDWINDOW,
-            100, 100, 160, 160, NULL, NULL, NULL, NULL);
-    ok(hwnd != NULL, "Failed to create window\n");
-    if (!pD3d || !hwnd) goto cleanup;
-
-    IDirect3D9_GetAdapterDisplayMode( pD3d, D3DADAPTER_DEFAULT, &d3ddm );
-    ZeroMemory( &d3dpp, sizeof(d3dpp) );
-    d3dpp.Windowed         = TRUE;
-    d3dpp.SwapEffect       = D3DSWAPEFFECT_DISCARD;
-    d3dpp.BackBufferFormat = d3ddm.Format;
-    d3dpp.BackBufferCount  = 0;
-
-    hr = IDirect3D9_CreateDevice( pD3d, D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL, hwnd,
-                                  D3DCREATE_SOFTWARE_VERTEXPROCESSING, &d3dpp, &pDevice );
-    ok(hr == S_OK || hr == D3DERR_NOTAVAILABLE || broken(hr == D3DERR_INVALIDCALL),
-       "Failed to create IDirect3D9Device (%08x)\n", hr);
-    if (FAILED(hr)) goto cleanup;
-
-    /* Check if the back buffer count was modified */
-    ok(d3dpp.BackBufferCount == 1, "The back buffer count in the presentparams struct is %d\n", d3dpp.BackBufferCount);
+    window = CreateWindowA("d3d9_test_wc", "d3d9_test", WS_OVERLAPPEDWINDOW,
+            0, 0, 640, 480, NULL, NULL, NULL, NULL);
+    ok(!!window, "Failed to create a window.\n");
+    d3d = Direct3DCreate9(D3D_SDK_VERSION);
+    ok(!!d3d, "Failed to create a D3D object.\n");
+    if (!(device = create_device(d3d, window, window, TRUE)))
+    {
+        skip("Failed to create a 3D device, skipping test.\n");
+        goto cleanup;
+    }
 
     /* Get the implicit swapchain */
-    hr = IDirect3DDevice9_GetSwapChain(pDevice, 0, &swapchain0);
+    hr = IDirect3DDevice9_GetSwapChain(device, 0, &swapchain0);
     ok(SUCCEEDED(hr), "Failed to get the implicit swapchain (%08x)\n", hr);
-    if(swapchain0) IDirect3DSwapChain9_Release(swapchain0);
+    /* Check if the back buffer count was modified */
+    hr = IDirect3DSwapChain9_GetPresentParameters(swapchain0, &d3dpp);
+    ok(d3dpp.BackBufferCount == 1, "Got unexpected back buffer count %u.\n", d3dpp.BackBufferCount);
+    IDirect3DSwapChain9_Release(swapchain0);
 
     /* Check if there is a back buffer */
     hr = IDirect3DSwapChain9_GetBackBuffer(swapchain0, 0, D3DBACKBUFFER_TYPE_MONO, &backbuffer);
@@ -337,23 +297,23 @@ static void test_swapchain(void)
     if(backbuffer) IDirect3DSurface9_Release(backbuffer);
 
     /* Try to get a nonexistent swapchain */
-    hr = IDirect3DDevice9_GetSwapChain(pDevice, 1, &swapchainX);
+    hr = IDirect3DDevice9_GetSwapChain(device, 1, &swapchainX);
     ok(hr == D3DERR_INVALIDCALL, "GetSwapChain on an nonexistent swapchain returned (%08x)\n", hr);
     ok(swapchainX == NULL, "Swapchain 1 is %p\n", swapchainX);
     if(swapchainX) IDirect3DSwapChain9_Release(swapchainX);
 
     /* Create a bunch of swapchains */
     d3dpp.BackBufferCount = 0;
-    hr = IDirect3DDevice9_CreateAdditionalSwapChain(pDevice, &d3dpp, &swapchain1);
+    hr = IDirect3DDevice9_CreateAdditionalSwapChain(device, &d3dpp, &swapchain1);
     ok(SUCCEEDED(hr), "Failed to create a swapchain (%08x)\n", hr);
     ok(d3dpp.BackBufferCount == 1, "The back buffer count in the presentparams struct is %d\n", d3dpp.BackBufferCount);
 
     d3dpp.BackBufferCount  = 1;
-    hr = IDirect3DDevice9_CreateAdditionalSwapChain(pDevice, &d3dpp, &swapchain2);
+    hr = IDirect3DDevice9_CreateAdditionalSwapChain(device, &d3dpp, &swapchain2);
     ok(SUCCEEDED(hr), "Failed to create a swapchain (%08x)\n", hr);
 
     d3dpp.BackBufferCount  = 2;
-    hr = IDirect3DDevice9_CreateAdditionalSwapChain(pDevice, &d3dpp, &swapchain3);
+    hr = IDirect3DDevice9_CreateAdditionalSwapChain(device, &d3dpp, &swapchain3);
     ok(SUCCEEDED(hr), "Failed to create a swapchain (%08x)\n", hr);
     if(SUCCEEDED(hr)) {
         /* Swapchain 3, created with backbuffercount 2 */
@@ -418,31 +378,23 @@ static void test_swapchain(void)
      * it should fail, apparently GetSwapChain only returns implicit swapchains
      */
     swapchainX = (void *) 0xdeadbeef;
-    hr = IDirect3DDevice9_GetSwapChain(pDevice, 1, &swapchainX);
+    hr = IDirect3DDevice9_GetSwapChain(device, 1, &swapchainX);
     ok(hr == D3DERR_INVALIDCALL, "Failed to get the second swapchain (%08x)\n", hr);
     ok(swapchainX == NULL, "The swapchain pointer is %p\n", swapchainX);
     if(swapchainX && swapchainX != (void *) 0xdeadbeef ) IDirect3DSwapChain9_Release(swapchainX);
 
+    IDirect3DSwapChain9_Release(swapchain3);
+    IDirect3DSwapChain9_Release(swapchain2);
+    IDirect3DSwapChain9_Release(swapchain1);
+    refcount = IDirect3DDevice9_Release(device);
+    ok(!refcount, "Device has %u references left.\n", refcount);
 cleanup:
-    if(swapchain1) IDirect3DSwapChain9_Release(swapchain1);
-    if(swapchain2) IDirect3DSwapChain9_Release(swapchain2);
-    if(swapchain3) IDirect3DSwapChain9_Release(swapchain3);
-    if (pDevice)
-    {
-        UINT refcount = IDirect3DDevice9_Release(pDevice);
-        ok(!refcount, "Device has %u references left.\n", refcount);
-    }
-    if (pD3d) IDirect3D9_Release(pD3d);
-    DestroyWindow( hwnd );
+    IDirect3D9_Release(d3d);
+    DestroyWindow(window);
 }
 
 static void test_refcount(void)
 {
-    HRESULT                      hr;
-    HWND                         hwnd               = NULL;
-    IDirect3D9                  *pD3d               = NULL;
-    IDirect3D9                  *pD3d2              = NULL;
-    IDirect3DDevice9            *pDevice            = NULL;
     IDirect3DVertexBuffer9      *pVertexBuffer      = NULL;
     IDirect3DIndexBuffer9       *pIndexBuffer       = NULL;
     IDirect3DVertexDeclaration9 *pVertexDeclaration = NULL;
@@ -464,48 +416,42 @@ static void test_refcount(void)
     IDirect3DSwapChain9         *pSwapChain         = NULL;
     IDirect3DQuery9             *pQuery             = NULL;
     D3DPRESENT_PARAMETERS        d3dpp;
-    D3DDISPLAYMODE               d3ddm;
-    int                          refcount = 0, tmp;
+    IDirect3DDevice9 *device;
+    ULONG refcount = 0, tmp;
+    IDirect3D9 *d3d, *d3d2;
+    HWND window;
+    HRESULT hr;
 
     D3DVERTEXELEMENT9 decl[] =
     {
         D3DDECL_END()
     };
 
-    pD3d = Direct3DCreate9(D3D_SDK_VERSION);
-    ok(pD3d != NULL, "Failed to create IDirect3D9 object\n");
-    hwnd = CreateWindowA("d3d9_test_wc", "d3d9_test", WS_OVERLAPPEDWINDOW,
-            100, 100, 160, 160, NULL, NULL, NULL, NULL);
-    ok(hwnd != NULL, "Failed to create window\n");
-    if (!pD3d || !hwnd) goto cleanup;
+    window = CreateWindowA("d3d9_test_wc", "d3d9_test", WS_OVERLAPPEDWINDOW,
+            0, 0, 640, 480, NULL, NULL, NULL, NULL);
+    ok(!!window, "Failed to create a window.\n");
+    d3d = Direct3DCreate9(D3D_SDK_VERSION);
+    ok(!!d3d, "Failed to create a D3D object.\n");
 
-    CHECK_REFCOUNT( pD3d, 1 );
+    CHECK_REFCOUNT(d3d, 1);
 
-    IDirect3D9_GetAdapterDisplayMode( pD3d, D3DADAPTER_DEFAULT, &d3ddm );
-    ZeroMemory( &d3dpp, sizeof(d3dpp) );
-    d3dpp.Windowed         = TRUE;
-    d3dpp.SwapEffect       = D3DSWAPEFFECT_DISCARD;
-    d3dpp.BackBufferFormat = d3ddm.Format;
-    d3dpp.EnableAutoDepthStencil = TRUE;
-    d3dpp.AutoDepthStencilFormat = D3DFMT_D16;
+    if (!(device = create_device(d3d, window, window, TRUE)))
+    {
+        skip("Failed to create a 3D device, skipping test.\n");
+        goto cleanup;
+    }
 
-    hr = IDirect3D9_CreateDevice( pD3d, D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL, hwnd,
-                                  D3DCREATE_SOFTWARE_VERTEXPROCESSING, &d3dpp, &pDevice );
-    ok(hr == S_OK || hr == D3DERR_NOTAVAILABLE || broken(hr == D3DERR_INVALIDCALL),
-       "Failed to create IDirect3D9Device (%08x)\n", hr);
-    if (FAILED(hr)) goto cleanup;
-
-    refcount = get_refcount( (IUnknown *)pDevice );
+    refcount = get_refcount((IUnknown *)device);
     ok(refcount == 1, "Invalid device RefCount %d\n", refcount);
 
-    CHECK_REFCOUNT( pD3d, 2 );
+    CHECK_REFCOUNT(d3d, 2);
 
-    hr = IDirect3DDevice9_GetDirect3D(pDevice, &pD3d2);
-    CHECK_CALL( hr, "GetDirect3D", pDevice, refcount );
+    hr = IDirect3DDevice9_GetDirect3D(device, &d3d2);
+    CHECK_CALL(hr, "GetDirect3D", device, refcount);
 
-    ok(pD3d2 == pD3d, "Expected IDirect3D9 pointers to be equal\n");
-    CHECK_REFCOUNT( pD3d, 3 );
-    CHECK_RELEASE_REFCOUNT( pD3d, 2 );
+    ok(d3d2 == d3d, "Expected IDirect3D9 pointers to be equal.\n");
+    CHECK_REFCOUNT(d3d, 3);
+    CHECK_RELEASE_REFCOUNT(d3d, 2);
 
     /**
      * Check refcount of implicit surfaces and implicit swapchain. Findings:
@@ -515,14 +461,14 @@ static void test_refcount(void)
      *   - they are not freed if refcount reaches 0.
      *   - the refcount is not forwarded to the container.
      */
-    hr = IDirect3DDevice9_GetSwapChain(pDevice, 0, &pSwapChain);
-    CHECK_CALL( hr, "GetSwapChain", pDevice, ++refcount);
+    hr = IDirect3DDevice9_GetSwapChain(device, 0, &pSwapChain);
+    CHECK_CALL(hr, "GetSwapChain", device, ++refcount);
     if (pSwapChain)
     {
         CHECK_REFCOUNT( pSwapChain, 1);
 
-        hr = IDirect3DDevice9_GetRenderTarget(pDevice, 0, &pRenderTarget);
-        CHECK_CALL( hr, "GetRenderTarget", pDevice, ++refcount);
+        hr = IDirect3DDevice9_GetRenderTarget(device, 0, &pRenderTarget);
+        CHECK_CALL(hr, "GetRenderTarget", device, ++refcount);
         CHECK_REFCOUNT( pSwapChain, 1);
         if(pRenderTarget)
         {
@@ -530,27 +476,27 @@ static void test_refcount(void)
             CHECK_REFCOUNT( pRenderTarget, 1);
 
             CHECK_ADDREF_REFCOUNT(pRenderTarget, 2);
-            CHECK_REFCOUNT(pDevice, refcount);
+            CHECK_REFCOUNT(device, refcount);
             CHECK_RELEASE_REFCOUNT(pRenderTarget, 1);
-            CHECK_REFCOUNT(pDevice, refcount);
+            CHECK_REFCOUNT(device, refcount);
 
-            hr = IDirect3DDevice9_GetRenderTarget(pDevice, 0, &pRenderTarget);
-            CHECK_CALL( hr, "GetRenderTarget", pDevice, refcount);
+            hr = IDirect3DDevice9_GetRenderTarget(device, 0, &pRenderTarget);
+            CHECK_CALL(hr, "GetRenderTarget", device, refcount);
             CHECK_REFCOUNT( pRenderTarget, 2);
             CHECK_RELEASE_REFCOUNT( pRenderTarget, 1);
             CHECK_RELEASE_REFCOUNT( pRenderTarget, 0);
-            CHECK_REFCOUNT( pDevice, --refcount);
+            CHECK_REFCOUNT(device, --refcount);
 
             /* The render target is released with the device, so AddRef with refcount=0 is fine here. */
             CHECK_ADDREF_REFCOUNT(pRenderTarget, 1);
-            CHECK_REFCOUNT(pDevice, ++refcount);
+            CHECK_REFCOUNT(device, ++refcount);
             CHECK_RELEASE_REFCOUNT(pRenderTarget, 0);
-            CHECK_REFCOUNT(pDevice, --refcount);
+            CHECK_REFCOUNT(device, --refcount);
         }
 
         /* Render target and back buffer are identical. */
-        hr = IDirect3DDevice9_GetBackBuffer(pDevice, 0, 0, 0, &pBackBuffer);
-        CHECK_CALL( hr, "GetBackBuffer", pDevice, ++refcount);
+        hr = IDirect3DDevice9_GetBackBuffer(device, 0, 0, 0, &pBackBuffer);
+        CHECK_CALL(hr, "GetBackBuffer", device, ++refcount);
         if(pBackBuffer)
         {
             CHECK_RELEASE_REFCOUNT(pBackBuffer, 0);
@@ -558,58 +504,58 @@ static void test_refcount(void)
             pRenderTarget, pBackBuffer);
             pBackBuffer = NULL;
         }
-        CHECK_REFCOUNT( pDevice, --refcount);
+        CHECK_REFCOUNT(device, --refcount);
 
-        hr = IDirect3DDevice9_GetDepthStencilSurface(pDevice, &pStencilSurface);
-        CHECK_CALL( hr, "GetDepthStencilSurface", pDevice, ++refcount);
+        hr = IDirect3DDevice9_GetDepthStencilSurface(device, &pStencilSurface);
+        CHECK_CALL(hr, "GetDepthStencilSurface", device, ++refcount);
         CHECK_REFCOUNT( pSwapChain, 1);
         if(pStencilSurface)
         {
-            CHECK_SURFACE_CONTAINER( pStencilSurface, IID_IDirect3DDevice9, pDevice);
+            CHECK_SURFACE_CONTAINER(pStencilSurface, IID_IDirect3DDevice9, device);
             CHECK_REFCOUNT( pStencilSurface, 1);
 
             CHECK_ADDREF_REFCOUNT(pStencilSurface, 2);
-            CHECK_REFCOUNT(pDevice, refcount);
+            CHECK_REFCOUNT(device, refcount);
             CHECK_RELEASE_REFCOUNT(pStencilSurface, 1);
-            CHECK_REFCOUNT(pDevice, refcount);
+            CHECK_REFCOUNT(device, refcount);
 
             CHECK_RELEASE_REFCOUNT( pStencilSurface, 0);
-            CHECK_REFCOUNT( pDevice, --refcount);
+            CHECK_REFCOUNT(device, --refcount);
 
             /* The stencil surface is released with the device, so AddRef with refcount=0 is fine here. */
             CHECK_ADDREF_REFCOUNT(pStencilSurface, 1);
-            CHECK_REFCOUNT(pDevice, ++refcount);
+            CHECK_REFCOUNT(device, ++refcount);
             CHECK_RELEASE_REFCOUNT(pStencilSurface, 0);
-            CHECK_REFCOUNT(pDevice, --refcount);
+            CHECK_REFCOUNT(device, --refcount);
             pStencilSurface = NULL;
         }
 
         CHECK_RELEASE_REFCOUNT( pSwapChain, 0);
-        CHECK_REFCOUNT( pDevice, --refcount);
+        CHECK_REFCOUNT(device, --refcount);
 
         /* The implicit swapchwin is released with the device, so AddRef with refcount=0 is fine here. */
         CHECK_ADDREF_REFCOUNT(pSwapChain, 1);
-        CHECK_REFCOUNT(pDevice, ++refcount);
+        CHECK_REFCOUNT(device, ++refcount);
         CHECK_RELEASE_REFCOUNT(pSwapChain, 0);
-        CHECK_REFCOUNT(pDevice, --refcount);
+        CHECK_REFCOUNT(device, --refcount);
         pSwapChain = NULL;
     }
 
     /* Buffers */
-    hr = IDirect3DDevice9_CreateIndexBuffer( pDevice, 16, 0, D3DFMT_INDEX32, D3DPOOL_DEFAULT, &pIndexBuffer, NULL );
-    CHECK_CALL( hr, "CreateIndexBuffer", pDevice, ++refcount );
+    hr = IDirect3DDevice9_CreateIndexBuffer(device, 16, 0, D3DFMT_INDEX32, D3DPOOL_DEFAULT, &pIndexBuffer, NULL);
+    CHECK_CALL(hr, "CreateIndexBuffer", device, ++refcount );
     if(pIndexBuffer)
     {
         tmp = get_refcount( (IUnknown *)pIndexBuffer );
 
-        hr = IDirect3DDevice9_SetIndices(pDevice, pIndexBuffer);
+        hr = IDirect3DDevice9_SetIndices(device, pIndexBuffer);
         CHECK_CALL( hr, "SetIndices", pIndexBuffer, tmp);
-        hr = IDirect3DDevice9_SetIndices(pDevice, NULL);
+        hr = IDirect3DDevice9_SetIndices(device, NULL);
         CHECK_CALL( hr, "SetIndices", pIndexBuffer, tmp);
     }
 
-    hr = IDirect3DDevice9_CreateVertexBuffer( pDevice, 16, 0, D3DFVF_XYZ, D3DPOOL_DEFAULT, &pVertexBuffer, NULL );
-    CHECK_CALL( hr, "CreateVertexBuffer", pDevice, ++refcount );
+    hr = IDirect3DDevice9_CreateVertexBuffer(device, 16, 0, D3DFVF_XYZ, D3DPOOL_DEFAULT, &pVertexBuffer, NULL);
+    CHECK_CALL(hr, "CreateVertexBuffer", device, ++refcount);
     if(pVertexBuffer)
     {
         IDirect3DVertexBuffer9 *pVBuf = (void*)~0;
@@ -618,40 +564,40 @@ static void test_refcount(void)
 
         tmp = get_refcount( (IUnknown *)pVertexBuffer );
 
-        hr = IDirect3DDevice9_SetStreamSource(pDevice, 0, pVertexBuffer, 0, 3 * sizeof(float));
+        hr = IDirect3DDevice9_SetStreamSource(device, 0, pVertexBuffer, 0, 3 * sizeof(float));
         CHECK_CALL( hr, "SetStreamSource", pVertexBuffer, tmp);
-        hr = IDirect3DDevice9_SetStreamSource(pDevice, 0, NULL, 0, 0);
+        hr = IDirect3DDevice9_SetStreamSource(device, 0, NULL, 0, 0);
         CHECK_CALL( hr, "SetStreamSource", pVertexBuffer, tmp);
 
-        hr = IDirect3DDevice9_GetStreamSource(pDevice, 0, &pVBuf, &offset, &stride);
+        hr = IDirect3DDevice9_GetStreamSource(device, 0, &pVBuf, &offset, &stride);
         ok(SUCCEEDED(hr), "GetStreamSource did not succeed with NULL stream!\n");
         ok(pVBuf==NULL, "pVBuf not NULL (%p)!\n", pVBuf);
         ok(stride==3*sizeof(float), "stride not 3 floats (got %u)!\n", stride);
         ok(offset==0, "offset not 0 (got %u)!\n", offset);
     }
     /* Shaders */
-    hr = IDirect3DDevice9_CreateVertexDeclaration( pDevice, decl, &pVertexDeclaration );
-    CHECK_CALL( hr, "CreateVertexDeclaration", pDevice, ++refcount );
-    hr = IDirect3DDevice9_CreateVertexShader( pDevice, simple_vs, &pVertexShader );
-    CHECK_CALL( hr, "CreateVertexShader", pDevice, ++refcount );
-    hr = IDirect3DDevice9_CreatePixelShader( pDevice, simple_ps, &pPixelShader );
-    CHECK_CALL( hr, "CreatePixelShader", pDevice, ++refcount );
+    hr = IDirect3DDevice9_CreateVertexDeclaration(device, decl, &pVertexDeclaration);
+    CHECK_CALL(hr, "CreateVertexDeclaration", device, ++refcount);
+    hr = IDirect3DDevice9_CreateVertexShader(device, simple_vs, &pVertexShader);
+    CHECK_CALL(hr, "CreateVertexShader", device, ++refcount);
+    hr = IDirect3DDevice9_CreatePixelShader(device, simple_ps, &pPixelShader);
+    CHECK_CALL(hr, "CreatePixelShader", device, ++refcount);
     /* Textures */
-    hr = IDirect3DDevice9_CreateTexture( pDevice, 32, 32, 3, 0, D3DFMT_X8R8G8B8, D3DPOOL_DEFAULT, &pTexture, NULL );
-    CHECK_CALL( hr, "CreateTexture", pDevice, ++refcount );
+    hr = IDirect3DDevice9_CreateTexture(device, 32, 32, 3, 0, D3DFMT_X8R8G8B8, D3DPOOL_DEFAULT, &pTexture, NULL);
+    CHECK_CALL(hr, "CreateTexture", device, ++refcount);
     if (pTexture)
     {
         tmp = get_refcount( (IUnknown *)pTexture );
 
         /* SetTexture should not increase refcounts */
-        hr = IDirect3DDevice9_SetTexture(pDevice, 0, (IDirect3DBaseTexture9 *) pTexture);
-        CHECK_CALL( hr, "SetTexture", pTexture, tmp);
-        hr = IDirect3DDevice9_SetTexture(pDevice, 0, NULL);
-        CHECK_CALL( hr, "SetTexture", pTexture, tmp);
+        hr = IDirect3DDevice9_SetTexture(device, 0, (IDirect3DBaseTexture9 *)pTexture);
+        CHECK_CALL(hr, "SetTexture", pTexture, tmp);
+        hr = IDirect3DDevice9_SetTexture(device, 0, NULL);
+        CHECK_CALL(hr, "SetTexture", pTexture, tmp);
 
         /* This should not increment device refcount */
         hr = IDirect3DTexture9_GetSurfaceLevel( pTexture, 1, &pTextureLevel );
-        CHECK_CALL( hr, "GetSurfaceLevel", pDevice, refcount );
+        CHECK_CALL(hr, "GetSurfaceLevel", device, refcount);
         /* But should increment texture's refcount */
         CHECK_REFCOUNT( pTexture, tmp+1 );
         /* Because the texture and surface refcount are identical */
@@ -666,17 +612,18 @@ static void test_refcount(void)
             CHECK_REFCOUNT        ( pTextureLevel, tmp   );
         }
     }
-    hr = IDirect3DDevice9_CreateCubeTexture( pDevice, 32, 0, 0, D3DFMT_X8R8G8B8, D3DPOOL_DEFAULT, &pCubeTexture, NULL );
-    CHECK_CALL( hr, "CreateCubeTexture", pDevice, ++refcount );
-    hr = IDirect3DDevice9_CreateVolumeTexture( pDevice, 32, 32, 2, 0, 0, D3DFMT_X8R8G8B8, D3DPOOL_DEFAULT, &pVolumeTexture, NULL );
-    CHECK_CALL( hr, "CreateVolumeTexture", pDevice, ++refcount );
+    hr = IDirect3DDevice9_CreateCubeTexture(device, 32, 0, 0, D3DFMT_X8R8G8B8, D3DPOOL_DEFAULT, &pCubeTexture, NULL);
+    CHECK_CALL(hr, "CreateCubeTexture", device, ++refcount);
+    hr = IDirect3DDevice9_CreateVolumeTexture(device, 32, 32, 2, 0, 0,
+            D3DFMT_X8R8G8B8, D3DPOOL_DEFAULT, &pVolumeTexture, NULL);
+    CHECK_CALL(hr, "CreateVolumeTexture", device, ++refcount);
     if (pVolumeTexture)
     {
         tmp = get_refcount( (IUnknown *)pVolumeTexture );
 
         /* This should not increment device refcount */
         hr = IDirect3DVolumeTexture9_GetVolumeLevel(pVolumeTexture, 0, &pVolumeLevel);
-        CHECK_CALL( hr, "GetVolumeLevel", pDevice, refcount );
+        CHECK_CALL(hr, "GetVolumeLevel", device, refcount);
         /* But should increment volume texture's refcount */
         CHECK_REFCOUNT( pVolumeTexture, tmp+1 );
         /* Because the volume texture and volume refcount are identical */
@@ -692,146 +639,146 @@ static void test_refcount(void)
         }
     }
     /* Surfaces */
-    hr = IDirect3DDevice9_CreateDepthStencilSurface( pDevice, 32, 32, D3DFMT_D24S8, D3DMULTISAMPLE_NONE, 0, TRUE, &pStencilSurface, NULL );
-    CHECK_CALL( hr, "CreateDepthStencilSurface", pDevice, ++refcount );
+    hr = IDirect3DDevice9_CreateDepthStencilSurface(device, 32, 32,
+            D3DFMT_D24S8, D3DMULTISAMPLE_NONE, 0, TRUE, &pStencilSurface, NULL);
+    CHECK_CALL(hr, "CreateDepthStencilSurface", device, ++refcount);
     CHECK_REFCOUNT( pStencilSurface, 1 );
-    hr = IDirect3DDevice9_CreateOffscreenPlainSurface( pDevice, 32, 32, D3DFMT_X8R8G8B8, D3DPOOL_DEFAULT, &pOffscreenSurface, NULL );
-    CHECK_CALL( hr, "CreateOffscreenPlainSurface", pDevice, ++refcount );
+    hr = IDirect3DDevice9_CreateOffscreenPlainSurface(device, 32, 32,
+            D3DFMT_X8R8G8B8, D3DPOOL_DEFAULT, &pOffscreenSurface, NULL);
+    CHECK_CALL(hr, "CreateOffscreenPlainSurface", device, ++refcount);
     CHECK_REFCOUNT( pOffscreenSurface, 1 );
-    hr = IDirect3DDevice9_CreateRenderTarget( pDevice, 32, 32, D3DFMT_X8R8G8B8, D3DMULTISAMPLE_NONE, 0, TRUE, &pRenderTarget3, NULL );
-    CHECK_CALL( hr, "CreateRenderTarget", pDevice, ++refcount );
+    hr = IDirect3DDevice9_CreateRenderTarget(device, 32, 32,
+            D3DFMT_X8R8G8B8, D3DMULTISAMPLE_NONE, 0, TRUE, &pRenderTarget3, NULL);
+    CHECK_CALL(hr, "CreateRenderTarget", device, ++refcount);
     CHECK_REFCOUNT( pRenderTarget3, 1 );
     /* Misc */
-    hr = IDirect3DDevice9_CreateStateBlock( pDevice, D3DSBT_ALL, &pStateBlock );
-    CHECK_CALL( hr, "CreateStateBlock", pDevice, ++refcount );
-    hr = IDirect3DDevice9_CreateAdditionalSwapChain( pDevice, &d3dpp, &pSwapChain );
-    CHECK_CALL( hr, "CreateAdditionalSwapChain", pDevice, ++refcount );
+    hr = IDirect3DDevice9_CreateStateBlock(device, D3DSBT_ALL, &pStateBlock);
+    CHECK_CALL(hr, "CreateStateBlock", device, ++refcount);
+
+    memset(&d3dpp, 0, sizeof(d3dpp));
+    d3dpp.Windowed = TRUE;
+    d3dpp.SwapEffect = D3DSWAPEFFECT_DISCARD;
+    d3dpp.BackBufferFormat = D3DFMT_A8R8G8B8;
+    d3dpp.EnableAutoDepthStencil = TRUE;
+    d3dpp.AutoDepthStencilFormat = D3DFMT_D24S8;
+    hr = IDirect3DDevice9_CreateAdditionalSwapChain(device, &d3dpp, &pSwapChain);
+    CHECK_CALL(hr, "CreateAdditionalSwapChain", device, ++refcount);
     if(pSwapChain)
     {
         /* check implicit back buffer */
         hr = IDirect3DSwapChain9_GetBackBuffer(pSwapChain, 0, 0, &pBackBuffer);
-        CHECK_CALL( hr, "GetBackBuffer", pDevice, ++refcount);
+        CHECK_CALL(hr, "GetBackBuffer", device, ++refcount);
         CHECK_REFCOUNT( pSwapChain, 1);
         if(pBackBuffer)
         {
             CHECK_SURFACE_CONTAINER( pBackBuffer, IID_IDirect3DSwapChain9, pSwapChain);
             CHECK_REFCOUNT( pBackBuffer, 1);
             CHECK_RELEASE_REFCOUNT( pBackBuffer, 0);
-            CHECK_REFCOUNT( pDevice, --refcount);
+            CHECK_REFCOUNT(device, --refcount);
 
             /* The back buffer is released with the swapchain, so AddRef with refcount=0 is fine here. */
             CHECK_ADDREF_REFCOUNT(pBackBuffer, 1);
-            CHECK_REFCOUNT(pDevice, ++refcount);
+            CHECK_REFCOUNT(device, ++refcount);
             CHECK_RELEASE_REFCOUNT(pBackBuffer, 0);
-            CHECK_REFCOUNT(pDevice, --refcount);
+            CHECK_REFCOUNT(device, --refcount);
             pBackBuffer = NULL;
         }
         CHECK_REFCOUNT( pSwapChain, 1);
     }
-    hr = IDirect3DDevice9_CreateQuery( pDevice, D3DQUERYTYPE_EVENT, &pQuery );
-    CHECK_CALL( hr, "CreateQuery", pDevice, ++refcount );
+    hr = IDirect3DDevice9_CreateQuery(device, D3DQUERYTYPE_EVENT, &pQuery);
+    CHECK_CALL(hr, "CreateQuery", device, ++refcount);
 
-    hr = IDirect3DDevice9_BeginStateBlock( pDevice );
-    CHECK_CALL( hr, "BeginStateBlock", pDevice, refcount );
-    hr = IDirect3DDevice9_EndStateBlock( pDevice, &pStateBlock1 );
-    CHECK_CALL( hr, "EndStateBlock", pDevice, ++refcount );
+    hr = IDirect3DDevice9_BeginStateBlock(device);
+    CHECK_CALL(hr, "BeginStateBlock", device, refcount);
+    hr = IDirect3DDevice9_EndStateBlock(device, &pStateBlock1);
+    CHECK_CALL(hr, "EndStateBlock", device, ++refcount);
 
     /* The implicit render target is not freed if refcount reaches 0.
      * Otherwise GetRenderTarget would re-allocate it and the pointer would change.*/
-    hr = IDirect3DDevice9_GetRenderTarget(pDevice, 0, &pRenderTarget2);
-    CHECK_CALL( hr, "GetRenderTarget", pDevice, ++refcount);
+    hr = IDirect3DDevice9_GetRenderTarget(device, 0, &pRenderTarget2);
+    CHECK_CALL(hr, "GetRenderTarget", device, ++refcount);
     if(pRenderTarget2)
     {
         CHECK_RELEASE_REFCOUNT(pRenderTarget2, 0);
         ok(pRenderTarget == pRenderTarget2, "RenderTarget=%p and RenderTarget2=%p should be the same.\n",
            pRenderTarget, pRenderTarget2);
-        CHECK_REFCOUNT( pDevice, --refcount);
+        CHECK_REFCOUNT(device, --refcount);
         pRenderTarget2 = NULL;
     }
     pRenderTarget = NULL;
 
 cleanup:
-    CHECK_RELEASE(pDevice,              pDevice, --refcount);
+    CHECK_RELEASE(device,               device, --refcount);
 
     /* Buffers */
-    CHECK_RELEASE(pVertexBuffer,        pDevice, --refcount);
-    CHECK_RELEASE(pIndexBuffer,         pDevice, --refcount);
+    CHECK_RELEASE(pVertexBuffer,        device, --refcount);
+    CHECK_RELEASE(pIndexBuffer,         device, --refcount);
     /* Shaders */
-    CHECK_RELEASE(pVertexDeclaration,   pDevice, --refcount);
-    CHECK_RELEASE(pVertexShader,        pDevice, --refcount);
-    CHECK_RELEASE(pPixelShader,         pDevice, --refcount);
+    CHECK_RELEASE(pVertexDeclaration,   device, --refcount);
+    CHECK_RELEASE(pVertexShader,        device, --refcount);
+    CHECK_RELEASE(pPixelShader,         device, --refcount);
     /* Textures */
-    CHECK_RELEASE(pTextureLevel,        pDevice, --refcount);
-    CHECK_RELEASE(pCubeTexture,         pDevice, --refcount);
-    CHECK_RELEASE(pVolumeTexture,       pDevice, --refcount);
+    CHECK_RELEASE(pTextureLevel,        device, --refcount);
+    CHECK_RELEASE(pCubeTexture,         device, --refcount);
+    CHECK_RELEASE(pVolumeTexture,       device, --refcount);
     /* Surfaces */
-    CHECK_RELEASE(pStencilSurface,      pDevice, --refcount);
-    CHECK_RELEASE(pOffscreenSurface,    pDevice, --refcount);
-    CHECK_RELEASE(pRenderTarget3,       pDevice, --refcount);
+    CHECK_RELEASE(pStencilSurface,      device, --refcount);
+    CHECK_RELEASE(pOffscreenSurface,    device, --refcount);
+    CHECK_RELEASE(pRenderTarget3,       device, --refcount);
     /* Misc */
-    CHECK_RELEASE(pStateBlock,          pDevice, --refcount);
-    CHECK_RELEASE(pSwapChain,           pDevice, --refcount);
-    CHECK_RELEASE(pQuery,               pDevice, --refcount);
+    CHECK_RELEASE(pStateBlock,          device, --refcount);
+    CHECK_RELEASE(pSwapChain,           device, --refcount);
+    CHECK_RELEASE(pQuery,               device, --refcount);
     /* This will destroy device - cannot check the refcount here */
     if (pStateBlock1)         CHECK_RELEASE_REFCOUNT( pStateBlock1, 0);
-
-    if (pD3d)                 CHECK_RELEASE_REFCOUNT( pD3d, 0);
-
-    DestroyWindow( hwnd );
+    CHECK_RELEASE_REFCOUNT(d3d, 0);
+    DestroyWindow(window);
 }
 
 static void test_cursor(void)
 {
-    HRESULT                      hr;
-    HWND                         hwnd               = NULL;
-    IDirect3D9                  *pD3d               = NULL;
-    IDirect3DDevice9            *pDevice            = NULL;
-    D3DPRESENT_PARAMETERS        d3dpp;
-    D3DDISPLAYMODE               d3ddm;
-    CURSORINFO                   info;
     IDirect3DSurface9 *cursor = NULL;
+    IDirect3DDevice9 *device;
+    CURSORINFO info;
+    IDirect3D9 *d3d;
+    ULONG refcount;
     HCURSOR cur;
+    HWND window;
+    HRESULT hr;
 
     memset(&info, 0, sizeof(info));
     info.cbSize = sizeof(info);
     ok(GetCursorInfo(&info), "GetCursorInfo failed\n");
     cur = info.hCursor;
 
-    pD3d = Direct3DCreate9(D3D_SDK_VERSION);
-    ok(pD3d != NULL, "Failed to create IDirect3D9 object\n");
-    hwnd = CreateWindowA("d3d9_test_wc", "d3d9_test", WS_OVERLAPPEDWINDOW,
-            100, 100, 160, 160, NULL, NULL, NULL, NULL);
-    ok(hwnd != NULL, "Failed to create window\n");
-    if (!pD3d || !hwnd) goto cleanup;
+    window = CreateWindowA("d3d9_test_wc", "d3d9_test", WS_OVERLAPPEDWINDOW,
+            0, 0, 640, 480, NULL, NULL, NULL, NULL);
+    ok(!!window, "Failed to create a window.\n");
+    d3d = Direct3DCreate9(D3D_SDK_VERSION);
+    ok(!!d3d, "Failed to create a D3D object.\n");
+    if (!(device = create_device(d3d, window, window, TRUE)))
+    {
+        skip("Failed to create a 3D device, skipping test.\n");
+        goto cleanup;
+    }
 
-    IDirect3D9_GetAdapterDisplayMode( pD3d, D3DADAPTER_DEFAULT, &d3ddm );
-    ZeroMemory( &d3dpp, sizeof(d3dpp) );
-    d3dpp.Windowed         = TRUE;
-    d3dpp.SwapEffect       = D3DSWAPEFFECT_DISCARD;
-    d3dpp.BackBufferFormat = d3ddm.Format;
-
-    hr = IDirect3D9_CreateDevice( pD3d, D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL, hwnd,
-                                  D3DCREATE_SOFTWARE_VERTEXPROCESSING, &d3dpp, &pDevice );
-    ok(hr == S_OK || hr == D3DERR_NOTAVAILABLE || broken(hr == D3DERR_INVALIDCALL),
-       "Failed to create IDirect3D9Device (%08x)\n", hr);
-    if (FAILED(hr)) goto cleanup;
-
-    IDirect3DDevice9_CreateOffscreenPlainSurface(pDevice, 32, 32, D3DFMT_A8R8G8B8, D3DPOOL_SCRATCH, &cursor, 0);
-    ok(cursor != NULL, "IDirect3DDevice9_CreateOffscreenPlainSurface failed with %08x\n", hr);
+    hr = IDirect3DDevice9_CreateOffscreenPlainSurface(device, 32, 32,
+            D3DFMT_A8R8G8B8, D3DPOOL_SCRATCH, &cursor, NULL);
+    ok(SUCCEEDED(hr), "Failed to create cursor surface, hr %#x.\n", hr);
 
     /* Initially hidden */
-    hr = IDirect3DDevice9_ShowCursor(pDevice, TRUE);
+    hr = IDirect3DDevice9_ShowCursor(device, TRUE);
     ok(hr == FALSE, "IDirect3DDevice9_ShowCursor returned %08x\n", hr);
 
     /* Not enabled without a surface*/
-    hr = IDirect3DDevice9_ShowCursor(pDevice, TRUE);
+    hr = IDirect3DDevice9_ShowCursor(device, TRUE);
     ok(hr == FALSE, "IDirect3DDevice9_ShowCursor returned %08x\n", hr);
 
     /* Fails */
-    hr = IDirect3DDevice9_SetCursorProperties(pDevice, 0, 0, NULL);
+    hr = IDirect3DDevice9_SetCursorProperties(device, 0, 0, NULL);
     ok(hr == D3DERR_INVALIDCALL, "IDirect3DDevice9_SetCursorProperties returned %08x\n", hr);
 
-    hr = IDirect3DDevice9_SetCursorProperties(pDevice, 0, 0, cursor);
+    hr = IDirect3DDevice9_SetCursorProperties(device, 0, 0, cursor);
     ok(hr == D3D_OK, "IDirect3DDevice9_SetCursorProperties returned %08x\n", hr);
 
     IDirect3DSurface9_Release(cursor);
@@ -843,11 +790,11 @@ static void test_cursor(void)
     ok(info.hCursor == cur, "The cursor handle is %p\n", info.hCursor); /* unchanged */
 
     /* Still hidden */
-    hr = IDirect3DDevice9_ShowCursor(pDevice, TRUE);
+    hr = IDirect3DDevice9_ShowCursor(device, TRUE);
     ok(hr == FALSE, "IDirect3DDevice9_ShowCursor returned %08x\n", hr);
 
     /* Enabled now*/
-    hr = IDirect3DDevice9_ShowCursor(pDevice, TRUE);
+    hr = IDirect3DDevice9_ShowCursor(device, TRUE);
     ok(hr == TRUE, "IDirect3DDevice9_ShowCursor returned %08x\n", hr);
 
     /* GDI cursor unchanged */
@@ -857,22 +804,17 @@ static void test_cursor(void)
     ok(info.flags & CURSOR_SHOWING, "The gdi cursor is hidden (%08x)\n", info.flags);
     ok(info.hCursor == cur, "The cursor handle is %p\n", info.hCursor); /* unchanged */
 
+    refcount = IDirect3DDevice9_Release(device);
+    ok(!refcount, "Device has %u references left.\n", refcount);
 cleanup:
-    if (pDevice)
-    {
-        UINT refcount = IDirect3DDevice9_Release(pDevice);
-        ok(!refcount, "Device has %u references left.\n", refcount);
-    }
-    if (pD3d) IDirect3D9_Release(pD3d);
-    DestroyWindow( hwnd );
+    IDirect3D9_Release(d3d);
+    DestroyWindow(window);
 }
 
 static void test_reset(void)
 {
     HRESULT                      hr;
-    HWND                         hwnd               = NULL;
     RECT                         winrect;
-    IDirect3D9                  *pD3d               = NULL;
     D3DPRESENT_PARAMETERS        d3dpp;
     D3DDISPLAYMODE               d3ddm, d3ddm2;
     D3DVIEWPORT9                 vp;
@@ -886,8 +828,10 @@ static void test_reset(void)
     D3DLOCKED_RECT               lockrect;
     IDirect3DDevice9 *device1 = NULL;
     IDirect3DDevice9 *device2 = NULL;
+    IDirect3D9 *d3d;
     D3DCAPS9 caps;
     DWORD value;
+    HWND hwnd;
     struct
     {
         UINT w;
@@ -895,21 +839,20 @@ static void test_reset(void)
     } *modes = NULL;
     UINT mode_count = 0;
 
-    pD3d = Direct3DCreate9(D3D_SDK_VERSION);
-    ok(pD3d != NULL, "Failed to create IDirect3D9 object\n");
     hwnd = CreateWindowA("d3d9_test_wc", "d3d9_test", WS_OVERLAPPEDWINDOW,
             100, 100, 160, 160, NULL, NULL, NULL, NULL);
-    ok(hwnd != NULL, "Failed to create window\n");
-    if (!pD3d || !hwnd) goto cleanup;
+    ok(!!hwnd, "Failed to create a window.\n");
+    d3d = Direct3DCreate9(D3D_SDK_VERSION);
+    ok(!!d3d, "Failed to create a D3D object.\n");
 
-    IDirect3D9_GetAdapterDisplayMode( pD3d, D3DADAPTER_DEFAULT, &d3ddm );
-    adapter_mode_count = IDirect3D9_GetAdapterModeCount(pD3d, D3DADAPTER_DEFAULT, d3ddm.Format);
+    IDirect3D9_GetAdapterDisplayMode(d3d, D3DADAPTER_DEFAULT, &d3ddm);
+    adapter_mode_count = IDirect3D9_GetAdapterModeCount(d3d, D3DADAPTER_DEFAULT, d3ddm.Format);
     modes = HeapAlloc(GetProcessHeap(), 0, sizeof(*modes) * adapter_mode_count);
     for(i = 0; i < adapter_mode_count; ++i)
     {
         UINT j;
         ZeroMemory( &d3ddm2, sizeof(d3ddm2) );
-        hr = IDirect3D9_EnumAdapterModes(pD3d, D3DADAPTER_DEFAULT, d3ddm.Format, i, &d3ddm2);
+        hr = IDirect3D9_EnumAdapterModes(d3d, D3DADAPTER_DEFAULT, d3ddm.Format, i, &d3ddm2);
         ok(hr == D3D_OK, "IDirect3D9_EnumAdapterModes returned %#x\n", hr);
 
         for (j = 0; j < mode_count; ++j)
@@ -951,7 +894,7 @@ static void test_reset(void)
     d3dpp.EnableAutoDepthStencil = TRUE;
     d3dpp.AutoDepthStencilFormat = D3DFMT_D24S8;
 
-    hr = IDirect3D9_CreateDevice(pD3d, D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL,
+    hr = IDirect3D9_CreateDevice(d3d, D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL,
             hwnd, D3DCREATE_SOFTWARE_VERTEXPROCESSING, &d3dpp, &device1);
     if (FAILED(hr))
     {
@@ -1307,7 +1250,7 @@ static void test_reset(void)
     hr = IDirect3DDevice9_TestCooperativeLevel(device1);
     ok(hr == D3DERR_DEVICENOTRESET, "IDirect3DDevice9_TestCooperativeLevel after a failed reset returned %#x\n", hr);
 
-    IDirect3D9_GetAdapterDisplayMode( pD3d, D3DADAPTER_DEFAULT, &d3ddm );
+    IDirect3D9_GetAdapterDisplayMode(d3d, D3DADAPTER_DEFAULT, &d3ddm);
 
     ZeroMemory( &d3dpp, sizeof(d3dpp) );
     d3dpp.Windowed         = TRUE;
@@ -1316,9 +1259,8 @@ static void test_reset(void)
     d3dpp.EnableAutoDepthStencil = FALSE;
     d3dpp.AutoDepthStencilFormat = D3DFMT_D24S8;
 
-    hr = IDirect3D9_CreateDevice(pD3d, D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL,
-            hwnd, D3DCREATE_SOFTWARE_VERTEXPROCESSING, &d3dpp, &device2);
-    if (FAILED(hr))
+    if (FAILED(hr = IDirect3D9_CreateDevice(d3d, D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL,
+            hwnd, D3DCREATE_SOFTWARE_VERTEXPROCESSING, &d3dpp, &device2)))
     {
         skip("could not create device, IDirect3D9_CreateDevice returned %#x\n", hr);
         goto cleanup;
@@ -1356,22 +1298,21 @@ cleanup:
         UINT refcount = IDirect3DDevice9_Release(device1);
         ok(!refcount, "Device has %u references left.\n", refcount);
     }
-    if (pD3d) IDirect3D9_Release(pD3d);
-    if (hwnd) DestroyWindow(hwnd);
+    IDirect3D9_Release(d3d);
+    DestroyWindow(hwnd);
 }
 
 /* Test adapter display modes */
 static void test_display_modes(void)
 {
     D3DDISPLAYMODE dmode;
-    IDirect3D9 *pD3d;
+    IDirect3D9 *d3d;
 
-    pD3d = Direct3DCreate9(D3D_SDK_VERSION);
-    ok(pD3d != NULL, "Failed to create IDirect3D9 object\n");
-    if(!pD3d) return;
+    d3d = Direct3DCreate9(D3D_SDK_VERSION);
+    ok(!!d3d, "Failed to create a D3D object.\n");
 
 #define TEST_FMT(x,r) do { \
-    HRESULT res = IDirect3D9_EnumAdapterModes(pD3d, 0, (x), 0, &dmode); \
+    HRESULT res = IDirect3D9_EnumAdapterModes(d3d, 0, (x), 0, &dmode); \
     ok(res==(r), "EnumAdapterModes("#x") did not return "#r" (got %08x)!\n", res); \
 } while(0)
 
@@ -1446,261 +1387,208 @@ static void test_display_modes(void)
 
     TEST_FMT(0, D3DERR_INVALIDCALL);
 
-    IDirect3D9_Release(pD3d);
+    IDirect3D9_Release(d3d);
 }
 
 static void test_scene(void)
 {
-    HRESULT                      hr;
-    HWND                         hwnd               = NULL;
-    IDirect3D9                  *pD3d               = NULL;
-    IDirect3DDevice9            *pDevice            = NULL;
-    D3DPRESENT_PARAMETERS        d3dpp;
-    D3DDISPLAYMODE               d3ddm;
-    IDirect3DSurface9            *pSurface1 = NULL, *pSurface2 = NULL, *pSurface3 = NULL, *pRenderTarget = NULL;
-    IDirect3DSurface9            *pBackBuffer = NULL, *pDepthStencil = NULL;
+    IDirect3DSurface9 *surface1, *surface2, *surface3;
+    IDirect3DSurface9 *backBuffer, *rt, *ds;
     RECT rect = {0, 0, 128, 128};
-    D3DCAPS9                     caps;
+    IDirect3DDevice9 *device;
+    IDirect3D9 *d3d;
+    ULONG refcount;
+    D3DCAPS9 caps;
+    HWND window;
+    HRESULT hr;
 
-    pD3d = Direct3DCreate9(D3D_SDK_VERSION);
-    ok(pD3d != NULL, "Failed to create IDirect3D9 object\n");
-    hwnd = CreateWindowA("d3d9_test_wc", "d3d9_test", WS_OVERLAPPEDWINDOW,
-            100, 100, 160, 160, NULL, NULL, NULL, NULL);
-    ok(hwnd != NULL, "Failed to create window\n");
-    if (!pD3d || !hwnd) goto cleanup;
-
-    IDirect3D9_GetAdapterDisplayMode( pD3d, D3DADAPTER_DEFAULT, &d3ddm );
-    ZeroMemory( &d3dpp, sizeof(d3dpp) );
-    d3dpp.Windowed         = TRUE;
-    d3dpp.SwapEffect       = D3DSWAPEFFECT_DISCARD;
-    d3dpp.BackBufferWidth  = 800;
-    d3dpp.BackBufferHeight = 600;
-    d3dpp.BackBufferFormat = d3ddm.Format;
-    d3dpp.EnableAutoDepthStencil = TRUE;
-    d3dpp.AutoDepthStencilFormat = D3DFMT_D16;
-
-    hr = IDirect3D9_CreateDevice( pD3d, D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL /* no NULLREF here */, hwnd,
-                                  D3DCREATE_SOFTWARE_VERTEXPROCESSING, &d3dpp, &pDevice );
-    ok(hr == D3D_OK || hr == D3DERR_NOTAVAILABLE || broken(hr == D3DERR_INVALIDCALL), "IDirect3D9_CreateDevice failed with %08x\n", hr);
-    if(!pDevice)
+    window = CreateWindowA("d3d9_test_wc", "d3d9_test", WS_OVERLAPPEDWINDOW,
+            0, 0, 640, 480, NULL, NULL, NULL, NULL);
+    ok(!!window, "Failed to create a window.\n");
+    d3d = Direct3DCreate9(D3D_SDK_VERSION);
+    ok(!!d3d, "Failed to create a D3D object.\n");
+    if (!(device = create_device(d3d, window, window, TRUE)))
     {
-        skip("Failed to create a d3d device\n");
+        skip("Failed to create a 3D device, skipping test.\n");
         goto cleanup;
     }
 
     /* Get the caps, they will be needed to tell if an operation is supposed to be valid */
     memset(&caps, 0, sizeof(caps));
-    hr = IDirect3DDevice9_GetDeviceCaps(pDevice, &caps);
+    hr = IDirect3DDevice9_GetDeviceCaps(device, &caps);
     ok(hr == D3D_OK, "IDirect3DDevice9_GetCaps failed with %08x\n", hr);
-    if(FAILED(hr)) goto cleanup;
 
     /* Test an EndScene without BeginScene. Should return an error */
-    hr = IDirect3DDevice9_EndScene(pDevice);
+    hr = IDirect3DDevice9_EndScene(device);
     ok(hr == D3DERR_INVALIDCALL, "IDirect3DDevice9_EndScene returned %08x\n", hr);
 
     /* Test a normal BeginScene / EndScene pair, this should work */
-    hr = IDirect3DDevice9_BeginScene(pDevice);
+    hr = IDirect3DDevice9_BeginScene(device);
     ok(hr == D3D_OK, "IDirect3DDevice9_BeginScene failed with %08x\n", hr);
-    if(SUCCEEDED(hr))
-    {
-        hr = IDirect3DDevice9_EndScene(pDevice);
-        ok(hr == D3D_OK, "IDirect3DDevice9_EndScene failed with %08x\n", hr);
-    }
+    hr = IDirect3DDevice9_EndScene(device);
+    ok(hr == D3D_OK, "IDirect3DDevice9_EndScene failed with %08x\n", hr);
 
     /* Test another EndScene without having begun a new scene. Should return an error */
-    hr = IDirect3DDevice9_EndScene(pDevice);
+    hr = IDirect3DDevice9_EndScene(device);
     ok(hr == D3DERR_INVALIDCALL, "IDirect3DDevice9_EndScene returned %08x\n", hr);
 
     /* Two nested BeginScene and EndScene calls */
-    hr = IDirect3DDevice9_BeginScene(pDevice);
+    hr = IDirect3DDevice9_BeginScene(device);
     ok(hr == D3D_OK, "IDirect3DDevice9_BeginScene failed with %08x\n", hr);
-    hr = IDirect3DDevice9_BeginScene(pDevice);
+    hr = IDirect3DDevice9_BeginScene(device);
     ok(hr == D3DERR_INVALIDCALL, "IDirect3DDevice9_BeginScene returned %08x\n", hr);
-    hr = IDirect3DDevice9_EndScene(pDevice);
+    hr = IDirect3DDevice9_EndScene(device);
     ok(hr == D3D_OK, "IDirect3DDevice9_EndScene failed with %08x\n", hr);
-    hr = IDirect3DDevice9_EndScene(pDevice);
+    hr = IDirect3DDevice9_EndScene(device);
     ok(hr == D3DERR_INVALIDCALL, "IDirect3DDevice9_EndScene returned %08x\n", hr);
 
     /* Create some surfaces to test stretchrect between the scenes */
-    hr = IDirect3DDevice9_CreateOffscreenPlainSurface(pDevice, 128, 128, D3DFMT_A8R8G8B8, D3DPOOL_DEFAULT, &pSurface1, NULL);
+    hr = IDirect3DDevice9_CreateOffscreenPlainSurface(device, 128, 128,
+            D3DFMT_A8R8G8B8, D3DPOOL_DEFAULT, &surface1, NULL);
     ok(hr == D3D_OK, "IDirect3DDevice9_CreateOffscreenPlainSurface failed with %08x\n", hr);
-    hr = IDirect3DDevice9_CreateOffscreenPlainSurface(pDevice, 128, 128, D3DFMT_A8R8G8B8, D3DPOOL_DEFAULT, &pSurface2, NULL);
+    hr = IDirect3DDevice9_CreateOffscreenPlainSurface(device, 128, 128,
+            D3DFMT_A8R8G8B8, D3DPOOL_DEFAULT, &surface2, NULL);
     ok(hr == D3D_OK, "IDirect3DDevice9_CreateOffscreenPlainSurface failed with %08x\n", hr);
-    hr = IDirect3DDevice9_CreateDepthStencilSurface(pDevice, 800, 600, D3DFMT_D16, D3DMULTISAMPLE_NONE, 0, FALSE, &pSurface3, NULL);
+    hr = IDirect3DDevice9_CreateDepthStencilSurface(device, 800, 600,
+            D3DFMT_D16, D3DMULTISAMPLE_NONE, 0, FALSE, &surface3, NULL);
     ok(hr == D3D_OK, "IDirect3DDevice9_CreateDepthStencilSurface failed with %08x\n", hr);
-    hr = IDirect3DDevice9_CreateRenderTarget(pDevice, 128, 128, d3ddm.Format, D3DMULTISAMPLE_NONE, 0, FALSE, &pRenderTarget, NULL);
+    hr = IDirect3DDevice9_CreateRenderTarget(device, 128, 128,
+            D3DFMT_A8R8G8B8, D3DMULTISAMPLE_NONE, 0, FALSE, &rt, NULL);
     ok(hr == D3D_OK, "IDirect3DDevice9_CreateRenderTarget failed with %08x\n", hr);
 
-    hr = IDirect3DDevice9_GetBackBuffer(pDevice, 0, 0, D3DBACKBUFFER_TYPE_MONO, &pBackBuffer);
+    hr = IDirect3DDevice9_GetBackBuffer(device, 0, 0, D3DBACKBUFFER_TYPE_MONO, &backBuffer);
     ok(hr == D3D_OK, "IDirect3DDevice9_GetBackBuffer failed with %08x\n", hr);
-    hr = IDirect3DDevice9_GetDepthStencilSurface(pDevice, &pDepthStencil);
+    hr = IDirect3DDevice9_GetDepthStencilSurface(device, &ds);
     ok(hr == D3D_OK, "IDirect3DDevice9_GetBackBuffer failed with %08x\n", hr);
 
     /* First make sure a simple StretchRect call works */
-    if(pSurface1 && pSurface2) {
-        hr = IDirect3DDevice9_StretchRect(pDevice, pSurface1, NULL, pSurface2, NULL, 0);
-        ok( hr == D3D_OK, "IDirect3DDevice9_StretchRect failed with %08x\n", hr);
-    }
-    if(pBackBuffer && pRenderTarget) {
-        hr = IDirect3DDevice9_StretchRect(pDevice, pBackBuffer, &rect, pRenderTarget, NULL, 0);
-        ok( hr == D3D_OK, "IDirect3DDevice9_StretchRect failed with %08x\n", hr);
-    }
-    if(pDepthStencil && pSurface3) {
-        HRESULT expected;
-        if(0) /* Disabled for now because it crashes in wine */ {
-            expected = caps.DevCaps2 & D3DDEVCAPS2_CAN_STRETCHRECT_FROM_TEXTURES ? D3D_OK : D3DERR_INVALIDCALL;
-            hr = IDirect3DDevice9_StretchRect(pDevice, pDepthStencil, NULL, pSurface3, NULL, 0);
-            ok( hr == expected, "IDirect3DDevice9_StretchRect returned %08x, expected %08x\n", hr, expected);
-        }
+    hr = IDirect3DDevice9_StretchRect(device, surface1, NULL, surface2, NULL, 0);
+    ok(hr == D3D_OK, "IDirect3DDevice9_StretchRect failed with %08x\n", hr);
+    hr = IDirect3DDevice9_StretchRect(device, backBuffer, &rect, rt, NULL, 0);
+    ok(hr == D3D_OK, "IDirect3DDevice9_StretchRect failed with %08x\n", hr);
+    if (0) /* Disabled for now because it crashes in wine */
+    {
+        HRESULT expected = caps.DevCaps2 & D3DDEVCAPS2_CAN_STRETCHRECT_FROM_TEXTURES ? D3D_OK : D3DERR_INVALIDCALL;
+        hr = IDirect3DDevice9_StretchRect(device, ds, NULL, surface3, NULL, 0);
+        ok(hr == expected, "Got unexpected hr %#x, expected %#x.\n", hr, expected);
     }
 
-    /* Now try it in a BeginScene - EndScene pair. Seems to be allowed in a beginScene - Endscene pair
-     * with normal surfaces and render targets, but not depth stencil surfaces.
-     */
-    hr = IDirect3DDevice9_BeginScene(pDevice);
-    ok( hr == D3D_OK, "IDirect3DDevice9_BeginScene failed with %08x\n", hr);
+    /* Now try it in a BeginScene - EndScene pair. Seems to be allowed in a
+     * BeginScene - Endscene pair with normal surfaces and render targets, but
+     * not depth stencil surfaces. */
+    hr = IDirect3DDevice9_BeginScene(device);
+    ok(hr == D3D_OK, "IDirect3DDevice9_BeginScene failed with %08x\n", hr);
 
-    if(pSurface1 && pSurface2)
-    {
-        hr = IDirect3DDevice9_StretchRect(pDevice, pSurface1, NULL, pSurface2, NULL, 0);
-        ok( hr == D3D_OK, "IDirect3DDevice9_StretchRect failed with %08x\n", hr);
-    }
-    if(pBackBuffer && pRenderTarget)
-    {
-        hr = IDirect3DDevice9_StretchRect(pDevice, pBackBuffer, &rect, pRenderTarget, NULL, 0);
-        ok( hr == D3D_OK, "IDirect3DDevice9_StretchRect failed with %08x\n", hr);
-    }
-    if(pDepthStencil && pSurface3)
-    {
-        /* This is supposed to fail inside a BeginScene - EndScene pair. */
-        hr = IDirect3DDevice9_StretchRect(pDevice, pDepthStencil, NULL, pSurface3, NULL, 0);
-        ok( hr == D3DERR_INVALIDCALL, "IDirect3DDevice9_StretchRect returned %08x, expected D3DERR_INVALIDCALL\n", hr);
-    }
+    hr = IDirect3DDevice9_StretchRect(device, surface1, NULL, surface2, NULL, 0);
+    ok(hr == D3D_OK, "IDirect3DDevice9_StretchRect failed with %08x\n", hr);
+    hr = IDirect3DDevice9_StretchRect(device, backBuffer, &rect, rt, NULL, 0);
+    ok(hr == D3D_OK, "IDirect3DDevice9_StretchRect failed with %08x\n", hr);
+    /* This is supposed to fail inside a BeginScene - EndScene pair. */
+    hr = IDirect3DDevice9_StretchRect(device, ds, NULL, surface3, NULL, 0);
+    ok(hr == D3DERR_INVALIDCALL, "IDirect3DDevice9_StretchRect returned %08x, expected D3DERR_INVALIDCALL\n", hr);
 
-    hr = IDirect3DDevice9_EndScene(pDevice);
-    ok( hr == D3D_OK, "IDirect3DDevice9_EndScene failed with %08x\n", hr);
+    hr = IDirect3DDevice9_EndScene(device);
+    ok(hr == D3D_OK, "IDirect3DDevice9_EndScene failed with %08x\n", hr);
 
     /* Does a SetRenderTarget influence BeginScene / EndScene ?
      * Set a new render target, then see if it started a new scene. Flip the rt back and see if that maybe
      * ended the scene. Expected result is that the scene is not affected by SetRenderTarget
      */
-    hr = IDirect3DDevice9_SetRenderTarget(pDevice, 0, pRenderTarget);
+    hr = IDirect3DDevice9_SetRenderTarget(device, 0, rt);
     ok(hr == D3D_OK, "IDirect3DDevice9_SetRenderTarget failed with %08x\n", hr);
-    hr = IDirect3DDevice9_BeginScene(pDevice);
+    hr = IDirect3DDevice9_BeginScene(device);
     ok( hr == D3D_OK, "IDirect3DDevice9_BeginScene failed with %08x\n", hr);
-    hr = IDirect3DDevice9_SetRenderTarget(pDevice, 0, pBackBuffer);
+    hr = IDirect3DDevice9_SetRenderTarget(device, 0, backBuffer);
     ok(hr == D3D_OK, "IDirect3DDevice9_SetRenderTarget failed with %08x\n", hr);
-    hr = IDirect3DDevice9_EndScene(pDevice);
+    hr = IDirect3DDevice9_EndScene(device);
     ok( hr == D3D_OK, "IDirect3DDevice9_EndScene failed with %08x\n", hr);
 
+    IDirect3DSurface9_Release(rt);
+    IDirect3DSurface9_Release(ds);
+    IDirect3DSurface9_Release(backBuffer);
+    IDirect3DSurface9_Release(surface1);
+    IDirect3DSurface9_Release(surface2);
+    IDirect3DSurface9_Release(surface3);
+    refcount = IDirect3DDevice9_Release(device);
+    ok(!refcount, "Device has %u references left.\n", refcount);
 cleanup:
-    if(pRenderTarget) IDirect3DSurface9_Release(pRenderTarget);
-    if(pDepthStencil) IDirect3DSurface9_Release(pDepthStencil);
-    if(pBackBuffer) IDirect3DSurface9_Release(pBackBuffer);
-    if(pSurface1) IDirect3DSurface9_Release(pSurface1);
-    if(pSurface2) IDirect3DSurface9_Release(pSurface2);
-    if(pSurface3) IDirect3DSurface9_Release(pSurface3);
-    if (pDevice)
-    {
-        UINT refcount = IDirect3DDevice9_Release(pDevice);
-        ok(!refcount, "Device has %u references left.\n", refcount);
-    }
-    if (pD3d) IDirect3D9_Release(pD3d);
-    if(hwnd) DestroyWindow(hwnd);
+    IDirect3D9_Release(d3d);
+    DestroyWindow(window);
 }
 
 static void test_limits(void)
 {
-    HRESULT                      hr;
-    HWND                         hwnd               = NULL;
-    IDirect3D9                  *pD3d               = NULL;
-    IDirect3DDevice9            *pDevice            = NULL;
-    D3DPRESENT_PARAMETERS        d3dpp;
-    D3DDISPLAYMODE               d3ddm;
-    IDirect3DTexture9           *pTexture           = NULL;
-    int i;
+    IDirect3DTexture9 *texture;
+    IDirect3DDevice9 *device;
+    IDirect3D9 *d3d;
+    unsigned int i;
+    ULONG refcount;
+    HWND window;
+    HRESULT hr;
 
-    pD3d = Direct3DCreate9(D3D_SDK_VERSION);
-    ok(pD3d != NULL, "Failed to create IDirect3D9 object\n");
-    hwnd = CreateWindowA("d3d9_test_wc", "d3d9_test", WS_OVERLAPPEDWINDOW,
-            100, 100, 160, 160, NULL, NULL, NULL, NULL);
-    ok(hwnd != NULL, "Failed to create window\n");
-    if (!pD3d || !hwnd) goto cleanup;
-
-    IDirect3D9_GetAdapterDisplayMode( pD3d, D3DADAPTER_DEFAULT, &d3ddm );
-    ZeroMemory( &d3dpp, sizeof(d3dpp) );
-    d3dpp.Windowed         = TRUE;
-    d3dpp.SwapEffect       = D3DSWAPEFFECT_DISCARD;
-    d3dpp.BackBufferWidth  = 800;
-    d3dpp.BackBufferHeight = 600;
-    d3dpp.BackBufferFormat = d3ddm.Format;
-    d3dpp.EnableAutoDepthStencil = TRUE;
-    d3dpp.AutoDepthStencilFormat = D3DFMT_D16;
-
-    hr = IDirect3D9_CreateDevice( pD3d, D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL /* no NULLREF here */, hwnd,
-                                  D3DCREATE_SOFTWARE_VERTEXPROCESSING, &d3dpp, &pDevice );
-    ok(hr == D3D_OK || hr == D3DERR_NOTAVAILABLE || broken(hr == D3DERR_INVALIDCALL), "IDirect3D9_CreateDevice failed with %08x\n", hr);
-    if(!pDevice)
+    window = CreateWindowA("d3d9_test_wc", "d3d9_test", WS_OVERLAPPEDWINDOW,
+            0, 0, 640, 480, NULL, NULL, NULL, NULL);
+    ok(!!window, "Failed to create a window.\n");
+    d3d = Direct3DCreate9(D3D_SDK_VERSION);
+    ok(!!d3d, "Failed to create a D3D object.\n");
+    if (!(device = create_device(d3d, window, window, TRUE)))
     {
-        skip("Failed to create a d3d device\n");
+        skip("Failed to create a 3D device, skipping test.\n");
         goto cleanup;
     }
 
-    hr = IDirect3DDevice9_CreateTexture(pDevice, 16, 16, 1, 0, D3DFMT_A8R8G8B8, D3DPOOL_MANAGED, &pTexture, NULL);
+    hr = IDirect3DDevice9_CreateTexture(device, 16, 16, 1, 0, D3DFMT_A8R8G8B8, D3DPOOL_MANAGED, &texture, NULL);
     ok(hr == D3D_OK, "IDirect3DDevice9_CreateTexture failed with %08x\n", hr);
-    if(!pTexture) goto cleanup;
 
     /* There are 16 pixel samplers. We should be able to access all of them */
-    for(i = 0; i < 16; i++) {
-        hr = IDirect3DDevice9_SetTexture(pDevice, i, (IDirect3DBaseTexture9 *) pTexture);
+    for (i = 0; i < 16; ++i)
+    {
+        hr = IDirect3DDevice9_SetTexture(device, i, (IDirect3DBaseTexture9 *)texture);
         ok(hr == D3D_OK, "IDirect3DDevice9_SetTexture for sampler %d failed with %08x\n", i, hr);
-        hr = IDirect3DDevice9_SetTexture(pDevice, i, NULL);
+        hr = IDirect3DDevice9_SetTexture(device, i, NULL);
         ok(hr == D3D_OK, "IDirect3DDevice9_SetTexture for sampler %d failed with %08x\n", i, hr);
-        hr = IDirect3DDevice9_SetSamplerState(pDevice, i, D3DSAMP_SRGBTEXTURE, TRUE);
+        hr = IDirect3DDevice9_SetSamplerState(device, i, D3DSAMP_SRGBTEXTURE, TRUE);
         ok(hr == D3D_OK, "IDirect3DDevice9_SetSamplerState for sampler %d failed with %08x\n", i, hr);
     }
 
     /* Now test all 8 textures stage states */
-    for(i = 0; i < 8; i++) {
-        hr = IDirect3DDevice9_SetTextureStageState(pDevice, i, D3DTSS_COLOROP, D3DTOP_ADD);
+    for (i = 0; i < 8; ++i)
+    {
+        hr = IDirect3DDevice9_SetTextureStageState(device, i, D3DTSS_COLOROP, D3DTOP_ADD);
         ok(hr == D3D_OK, "IDirect3DDevice9_SetTextureStageState for texture %d failed with %08x\n", i, hr);
     }
 
-    /* Investigations show that accessing higher samplers / textures stage states does not return an error either. Writing
-     * to too high samplers(approximately sampler 40) causes memory corruption in windows, so there is no bounds checking
-     * but how do I test that?
-     */
+    /* Investigations show that accessing higher samplers / textures stage
+     * states does not return an error either. Writing to too high samplers
+     * (approximately sampler 40) causes memory corruption in Windows, so
+     * there is no bounds checking. */
+    IDirect3DTexture9_Release(texture);
+    refcount = IDirect3D9_Release(device);
+    ok(!refcount, "Device has %u references left.\n", refcount);
 cleanup:
-    if(pTexture) IDirect3DTexture9_Release(pTexture);
-    if (pDevice)
-    {
-        UINT refcount = IDirect3D9_Release(pDevice);
-        ok(!refcount, "Device has %u references left.\n", refcount);
-    }
-    if (pD3d) IDirect3D9_Release(pD3d);
-    if(hwnd) DestroyWindow(hwnd);
+    IDirect3D9_Release(d3d);
+    DestroyWindow(window);
 }
 
 static void test_depthstenciltest(void)
 {
     HRESULT                      hr;
-    HWND                         hwnd               = NULL;
-    IDirect3D9                  *pD3d               = NULL;
     IDirect3DDevice9            *pDevice            = NULL;
     D3DPRESENT_PARAMETERS        d3dpp;
     D3DDISPLAYMODE               d3ddm;
     IDirect3DSurface9           *pDepthStencil           = NULL;
     IDirect3DSurface9           *pDepthStencil2          = NULL;
-    DWORD                        state;
+    IDirect3D9 *d3d;
+    DWORD state;
+    HWND hwnd;
 
-    pD3d = Direct3DCreate9(D3D_SDK_VERSION);
-    ok(pD3d != NULL, "Failed to create IDirect3D9 object\n");
     hwnd = CreateWindowA("d3d9_test_wc", "d3d9_test", WS_OVERLAPPEDWINDOW,
             100, 100, 160, 160, NULL, NULL, NULL, NULL);
-    ok(hwnd != NULL, "Failed to create window\n");
-    if (!pD3d || !hwnd) goto cleanup;
+    ok(!!hwnd, "Failed to create a window.\n");
+    d3d = Direct3DCreate9(D3D_SDK_VERSION);
+    ok(!!d3d, "Failed to create a D3D object.\n");
 
-    IDirect3D9_GetAdapterDisplayMode( pD3d, D3DADAPTER_DEFAULT, &d3ddm );
+    IDirect3D9_GetAdapterDisplayMode(d3d, D3DADAPTER_DEFAULT, &d3ddm);
     ZeroMemory( &d3dpp, sizeof(d3dpp) );
     d3dpp.Windowed         = TRUE;
     d3dpp.SwapEffect       = D3DSWAPEFFECT_DISCARD;
@@ -1710,8 +1598,8 @@ static void test_depthstenciltest(void)
     d3dpp.EnableAutoDepthStencil = TRUE;
     d3dpp.AutoDepthStencilFormat = D3DFMT_D16;
 
-    hr = IDirect3D9_CreateDevice( pD3d, D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL /* no NULLREF here */, hwnd,
-                                  D3DCREATE_SOFTWARE_VERTEXPROCESSING, &d3dpp, &pDevice );
+    hr = IDirect3D9_CreateDevice(d3d, D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL /* no NULLREF here */,
+            hwnd, D3DCREATE_SOFTWARE_VERTEXPROCESSING, &d3dpp, &pDevice);
     ok(hr == D3D_OK || hr == D3DERR_NOTAVAILABLE || broken(hr == D3DERR_INVALIDCALL), "IDirect3D9_CreateDevice failed with %08x\n", hr);
     if(!pDevice)
     {
@@ -1779,8 +1667,8 @@ static void test_depthstenciltest(void)
     d3dpp.EnableAutoDepthStencil = FALSE;
     d3dpp.AutoDepthStencilFormat = D3DFMT_UNKNOWN;
 
-    hr = IDirect3D9_CreateDevice( pD3d, D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL /* no NULLREF here */, hwnd,
-                                  D3DCREATE_SOFTWARE_VERTEXPROCESSING, &d3dpp, &pDevice );
+    hr = IDirect3D9_CreateDevice(d3d, D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL /* no NULLREF here */,
+            hwnd, D3DCREATE_SOFTWARE_VERTEXPROCESSING, &d3dpp, &pDevice);
     ok(hr == D3D_OK || hr == D3DERR_NOTAVAILABLE, "IDirect3D9_CreateDevice failed with %08x\n", hr);
     if(!pDevice)
     {
@@ -1813,8 +1701,8 @@ static void test_depthstenciltest(void)
     d3dpp.EnableAutoDepthStencil = FALSE;
     d3dpp.AutoDepthStencilFormat = D3DFMT_D16;
 
-    hr = IDirect3D9_CreateDevice( pD3d, D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL /* no NULLREF here */, hwnd,
-                                  D3DCREATE_SOFTWARE_VERTEXPROCESSING, &d3dpp, &pDevice );
+    hr = IDirect3D9_CreateDevice(d3d, D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL /* no NULLREF here */,
+            hwnd, D3DCREATE_SOFTWARE_VERTEXPROCESSING, &d3dpp, &pDevice);
     ok(hr == D3D_OK || hr == D3DERR_NOTAVAILABLE, "IDirect3D9_CreateDevice failed with %08x\n", hr);
     if(!pDevice)
     {
@@ -1841,8 +1729,8 @@ cleanup:
         UINT refcount = IDirect3D9_Release(pDevice);
         ok(!refcount, "Device has %u references left.\n", refcount);
     }
-    if (pD3d) IDirect3D9_Release(pD3d);
-    if(hwnd) DestroyWindow(hwnd);
+    IDirect3D9_Release(d3d);
+    DestroyWindow(hwnd);
 }
 
 static void test_get_rt(void)
@@ -1856,14 +1744,10 @@ static void test_get_rt(void)
     ULONG ref;
     UINT i;
 
-    if (!(d3d9 = Direct3DCreate9(D3D_SDK_VERSION)))
-    {
-        skip("Failed to create IDirect3D9 object, skipping tests.\n");
-        return;
-    }
-
     window = CreateWindowA("d3d9_test_wc", "d3d9_test", WS_OVERLAPPEDWINDOW,
             0, 0, 128, 128, 0, 0, 0, 0);
+    d3d9 = Direct3DCreate9(D3D_SDK_VERSION);
+    ok(!!d3d9, "Failed to create a D3D object.\n");
     device = create_device(d3d9, window, window, TRUE);
     if (!device)
     {
@@ -1915,41 +1799,24 @@ static void test_draw_indexed(void)
         D3DDECL_END()
     };
 
-    IDirect3DVertexDeclaration9 *vertex_declaration = NULL;
-    IDirect3DVertexBuffer9 *vertex_buffer = NULL;
-    IDirect3DIndexBuffer9 *index_buffer = NULL;
-    D3DPRESENT_PARAMETERS present_parameters;
-    IDirect3DDevice9 *device = NULL;
+    IDirect3DVertexDeclaration9 *vertex_declaration;
+    IDirect3DVertexBuffer9 *vertex_buffer;
+    IDirect3DIndexBuffer9 *index_buffer;
+    IDirect3DDevice9 *device;
     IDirect3D9 *d3d9;
+    ULONG refcount;
+    HWND window;
     HRESULT hr;
-    HWND hwnd;
     void *ptr;
 
-    hwnd = CreateWindowA("d3d9_test_wc", "d3d9_test", 0,
-            0, 0, 10, 10, 0, 0, 0, 0);
-    if (!hwnd)
-    {
-        skip("Failed to create window\n");
-        return;
-    }
-
+    window = CreateWindowA("d3d9_test_wc", "d3d9_test", 0,
+            0, 0, 640, 480, 0, 0, 0, 0);
+    ok(!!window, "Failed to create a window.\n");
     d3d9 = Direct3DCreate9(D3D_SDK_VERSION);
-    if (!d3d9)
+    ok(!!d3d9, "Failed to create a D3D object.\n");
+    if (!(device = create_device(d3d9, window, window, TRUE)))
     {
-        skip("Failed to create IDirect3D9 object\n");
-        goto cleanup;
-    }
-
-    ZeroMemory(&present_parameters, sizeof(present_parameters));
-    present_parameters.Windowed = TRUE;
-    present_parameters.hDeviceWindow = hwnd;
-    present_parameters.SwapEffect = D3DSWAPEFFECT_DISCARD;
-
-    hr = IDirect3D9_CreateDevice(d3d9, D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL,
-            NULL, D3DCREATE_SOFTWARE_VERTEXPROCESSING, &present_parameters, &device);
-    if (FAILED(hr) || !device)
-    {
-        skip("Failed to create device\n");
+        skip("Failed to create a 3D device, skipping test.\n");
         goto cleanup;
     }
 
@@ -2012,24 +1879,20 @@ static void test_draw_indexed(void)
     IDirect3DVertexBuffer9_Release(vertex_buffer);
     IDirect3DIndexBuffer9_Release(index_buffer);
     IDirect3DVertexDeclaration9_Release(vertex_declaration);
-
+    refcount = IDirect3DDevice9_Release(device);
+    ok(!refcount, "Device has %u references left.\n", refcount);
 cleanup:
-    if (device)
-    {
-        UINT refcount = IDirect3DDevice9_Release(device);
-        ok(!refcount, "Device has %u references left.\n", refcount);
-    }
-    if (d3d9) IDirect3D9_Release(d3d9);
-    if (hwnd) DestroyWindow(hwnd);
+    IDirect3D9_Release(d3d9);
+    DestroyWindow(window);
 }
 
 static void test_null_stream(void)
 {
     IDirect3DVertexBuffer9 *buffer = NULL;
-    D3DPRESENT_PARAMETERS present_parameters;
-    IDirect3DDevice9 *device = NULL;
+    IDirect3DDevice9 *device;
     IDirect3D9 *d3d9;
-    HWND hwnd;
+    ULONG refcount;
+    HWND window;
     HRESULT hr;
     IDirect3DVertexShader9 *shader = NULL;
     IDirect3DVertexDeclaration9 *decl = NULL;
@@ -2046,24 +1909,14 @@ static void test_null_stream(void)
         D3DDECL_END()
     };
 
+    window = CreateWindowA("d3d9_test_wc", "d3d9_test", WS_OVERLAPPEDWINDOW,
+            0, 0, 640, 480, NULL, NULL, NULL, NULL);
+    ok(!!window, "Failed to create a window.\n");
     d3d9 = Direct3DCreate9(D3D_SDK_VERSION);
-    ok(d3d9 != NULL, "Failed to create IDirect3D9 object\n");
-    hwnd = CreateWindowA("d3d9_test_wc", "d3d9_test", WS_OVERLAPPEDWINDOW,
-            100, 100, 160, 160, NULL, NULL, NULL, NULL);
-    ok(hwnd != NULL, "Failed to create window\n");
-    if (!d3d9 || !hwnd) goto cleanup;
-
-    ZeroMemory(&present_parameters, sizeof(present_parameters));
-    present_parameters.Windowed = TRUE;
-    present_parameters.hDeviceWindow = hwnd;
-    present_parameters.SwapEffect = D3DSWAPEFFECT_DISCARD;
-
-    hr = IDirect3D9_CreateDevice( d3d9, D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL /* no NULLREF here */, hwnd,
-                                  D3DCREATE_SOFTWARE_VERTEXPROCESSING, &present_parameters, &device );
-    ok(hr == D3D_OK || hr == D3DERR_NOTAVAILABLE || broken(hr == D3DERR_INVALIDCALL), "IDirect3D9_CreateDevice failed with %08x\n", hr);
-    if(!device)
+    ok(!!d3d9, "Failed to create a D3D object.\n");
+    if (!(device = create_device(d3d9, window, window, TRUE)))
     {
-        skip("Failed to create a d3d device\n");
+        skip("Failed to create a 3D device, skipping test.\n");
         goto cleanup;
     }
 
@@ -2110,46 +1963,36 @@ static void test_null_stream(void)
 
 cleanup:
     if (buffer) IDirect3DVertexBuffer9_Release(buffer);
-    if(decl) IDirect3DVertexDeclaration9_Release(decl);
-    if(shader) IDirect3DVertexShader9_Release(shader);
+    if (decl) IDirect3DVertexDeclaration9_Release(decl);
+    if (shader) IDirect3DVertexShader9_Release(shader);
     if (device)
     {
-        UINT refcount = IDirect3DDevice9_Release(device);
+        refcount = IDirect3DDevice9_Release(device);
         ok(!refcount, "Device has %u references left.\n", refcount);
     }
-    if(d3d9) IDirect3D9_Release(d3d9);
+    IDirect3D9_Release(d3d9);
+    DestroyWindow(window);
 }
 
 static void test_lights(void)
 {
-    D3DPRESENT_PARAMETERS present_parameters;
-    IDirect3DDevice9 *device = NULL;
+    IDirect3DDevice9 *device;
     IDirect3D9 *d3d9;
-    HWND hwnd;
+    ULONG refcount;
+    HWND window;
     HRESULT hr;
     unsigned int i;
     BOOL enabled;
     D3DCAPS9 caps;
 
+    window = CreateWindowA("d3d9_test_wc", "d3d9_test", WS_OVERLAPPEDWINDOW,
+            0, 0, 640, 480, NULL, NULL, NULL, NULL);
+    ok(!!window, "Failed to create a window.\n");
     d3d9 = Direct3DCreate9(D3D_SDK_VERSION);
-    ok(d3d9 != NULL, "Failed to create IDirect3D9 object\n");
-    hwnd = CreateWindowA("d3d9_test_wc", "d3d9_test", WS_OVERLAPPEDWINDOW,
-            100, 100, 160, 160, NULL, NULL, NULL, NULL);
-    ok(hwnd != NULL, "Failed to create window\n");
-    if (!d3d9 || !hwnd) goto cleanup;
-
-    ZeroMemory(&present_parameters, sizeof(present_parameters));
-    present_parameters.Windowed = TRUE;
-    present_parameters.hDeviceWindow = hwnd;
-    present_parameters.SwapEffect = D3DSWAPEFFECT_DISCARD;
-
-    hr = IDirect3D9_CreateDevice( d3d9, D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL, hwnd,
-                                  D3DCREATE_HARDWARE_VERTEXPROCESSING, &present_parameters, &device );
-    ok(hr == D3D_OK || hr == D3DERR_NOTAVAILABLE || hr == D3DERR_INVALIDCALL,
-       "IDirect3D9_CreateDevice failed with %08x\n", hr);
-    if(!device)
+    ok(!!d3d9, "Failed to create a D3D object.\n");
+    if (!(device = create_device(d3d9, window, window, TRUE)))
     {
-        skip("Failed to create a d3d device\n");
+        skip("Failed to create a 3D device, skipping test.\n");
         goto cleanup;
     }
 
@@ -2179,94 +2022,72 @@ static void test_lights(void)
         ok(hr == D3D_OK, "Disabling light %u failed with %08x\n", i, hr);
     }
 
+    refcount = IDirect3DDevice9_Release(device);
+    ok(!refcount, "Device has %u references left.\n", refcount);
 cleanup:
-    if (device)
-    {
-        UINT refcount = IDirect3DDevice9_Release(device);
-        ok(!refcount, "Device has %u references left.\n", refcount);
-    }
-    if(d3d9) IDirect3D9_Release(d3d9);
+    IDirect3D9_Release(d3d9);
+    DestroyWindow(window);
 }
 
 static void test_set_stream_source(void)
 {
-    D3DPRESENT_PARAMETERS present_parameters;
-    IDirect3DDevice9 *device = NULL;
+    IDirect3DVertexBuffer9 *vb;
+    IDirect3DDevice9 *device;
     IDirect3D9 *d3d9;
-    HWND hwnd;
+    ULONG refcount;
+    HWND window;
     HRESULT hr;
-    IDirect3DVertexBuffer9 *pVertexBuffer = NULL;
 
+    window = CreateWindowA("d3d9_test_wc", "d3d9_test", WS_OVERLAPPEDWINDOW,
+            0, 0, 640, 480, NULL, NULL, NULL, NULL);
+    ok(!!window, "Failed to create a window.\n");
     d3d9 = Direct3DCreate9(D3D_SDK_VERSION);
-    ok(d3d9 != NULL, "Failed to create IDirect3D9 object\n");
-    hwnd = CreateWindowA("d3d9_test_wc", "d3d9_test", WS_OVERLAPPEDWINDOW,
-            100, 100, 160, 160, NULL, NULL, NULL, NULL);
-    ok(hwnd != NULL, "Failed to create window\n");
-    if (!d3d9 || !hwnd) goto cleanup;
-
-    ZeroMemory(&present_parameters, sizeof(present_parameters));
-    present_parameters.Windowed = TRUE;
-    present_parameters.hDeviceWindow = hwnd;
-    present_parameters.SwapEffect = D3DSWAPEFFECT_DISCARD;
-
-    hr = IDirect3D9_CreateDevice( d3d9, D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL, hwnd,
-                                  D3DCREATE_HARDWARE_VERTEXPROCESSING, &present_parameters, &device );
-    ok(hr == D3D_OK || hr == D3DERR_NOTAVAILABLE || hr == D3DERR_INVALIDCALL,
-       "IDirect3D9_CreateDevice failed with %08x\n", hr);
-    if(!device)
+    ok(!!d3d9, "Failed to create a D3D object.\n");
+    if (!(device = create_device(d3d9, window, window, TRUE)))
     {
-        hr = IDirect3D9_CreateDevice( d3d9, D3DADAPTER_DEFAULT, D3DDEVTYPE_REF, hwnd,
-                                      D3DCREATE_HARDWARE_VERTEXPROCESSING, &present_parameters, &device );
-        ok(hr == D3D_OK || hr == D3DERR_NOTAVAILABLE || hr == D3DERR_INVALIDCALL,
-           "IDirect3D9_CreateDevice failed with %08x\n", hr);
-        if(!device)
-        {
-            skip("Failed to create a d3d device\n");
-            goto cleanup;
-        }
+        skip("Failed to create a 3D device, skipping test.\n");
+        goto cleanup;
     }
 
-    hr = IDirect3DDevice9_CreateVertexBuffer( device, 512, 0, 0, D3DPOOL_DEFAULT, &pVertexBuffer, NULL );
-    ok(hr == D3D_OK, "Failed to create a vertex buffer, hr = %08x\n", hr);
-    if (SUCCEEDED(hr)) {
-        /* Some cards(Geforce 7400 at least) accept non-aligned offsets, others(radeon 9000 verified) reject it,
-         * so accept both results. Wine currently rejects this to be able to optimize the vbo conversion, but writes
-         * a WARN
-         */
-        hr = IDirect3DDevice9_SetStreamSource(device, 0, pVertexBuffer, 0, 32);
-        ok(hr == D3D_OK, "Failed to set the stream source, offset 0, hr = %08x\n", hr);
-        hr = IDirect3DDevice9_SetStreamSource(device, 0, pVertexBuffer, 1, 32);
-        ok(hr == D3DERR_INVALIDCALL || hr == D3D_OK, "Unexpected result when setting the stream source, offset 1, hr = %08x\n", hr);
-        hr = IDirect3DDevice9_SetStreamSource(device, 0, pVertexBuffer, 2, 32);
-        ok(hr == D3DERR_INVALIDCALL || hr == D3D_OK, "Unexpected result when setting the stream source, offset 2, hr = %08x\n", hr);
-        hr = IDirect3DDevice9_SetStreamSource(device, 0, pVertexBuffer, 3, 32);
-        ok(hr == D3DERR_INVALIDCALL || hr == D3D_OK, "Unexpected result when setting the stream source, offset 3, hr = %08x\n", hr);
-        hr = IDirect3DDevice9_SetStreamSource(device, 0, pVertexBuffer, 4, 32);
-        ok(hr == D3D_OK, "Failed to set the stream source, offset 4, hr = %08x\n", hr);
-    }
+    hr = IDirect3DDevice9_CreateVertexBuffer(device, 512, 0, 0, D3DPOOL_DEFAULT, &vb, NULL);
+    ok(SUCCEEDED(hr), "Failed to create a vertex buffer, hr %#x.\n", hr);
+
+    /* Some cards (GeForce 7400 at least) accept non-aligned offsets, others
+     * (Radeon 9000 verified) reject them, so accept both results. Wine
+     * currently rejects this to be able to optimize the vbo conversion, but
+     * writes a WARN. */
+    hr = IDirect3DDevice9_SetStreamSource(device, 0, vb, 0, 32);
+    ok(SUCCEEDED(hr), "Failed to set the stream source, hr %#x.\n", hr);
+    hr = IDirect3DDevice9_SetStreamSource(device, 0, vb, 1, 32);
+    ok(hr == D3DERR_INVALIDCALL || hr == D3D_OK, "Got unexpected hr %#x.\n", hr);
+    hr = IDirect3DDevice9_SetStreamSource(device, 0, vb, 2, 32);
+    ok(hr == D3DERR_INVALIDCALL || hr == D3D_OK, "Got unexpected hr %#x.\n", hr);
+    hr = IDirect3DDevice9_SetStreamSource(device, 0, vb, 3, 32);
+    ok(hr == D3DERR_INVALIDCALL || hr == D3D_OK, "Got unexpected hr %#x.\n", hr);
+    hr = IDirect3DDevice9_SetStreamSource(device, 0, vb, 4, 32);
+    ok(SUCCEEDED(hr), "Failed to set the stream source, hr %#x.\n", hr);
+
     /* Try to set the NULL buffer with an offset and stride 0 */
     hr = IDirect3DDevice9_SetStreamSource(device, 0, NULL, 0, 0);
-    ok(hr == D3D_OK, "Failed to set the stream source, offset 0, hr = %08x\n", hr);
+    ok(SUCCEEDED(hr), "Failed to set the stream source, hr %#x.\n", hr);
     hr = IDirect3DDevice9_SetStreamSource(device, 0, NULL, 1, 0);
-    ok(hr == D3DERR_INVALIDCALL || hr == D3D_OK, "Unexpected result when setting the stream source, offset 1, hr = %08x\n", hr);
+    ok(hr == D3DERR_INVALIDCALL || hr == D3D_OK, "Got unexpected hr %#x.\n", hr);
     hr = IDirect3DDevice9_SetStreamSource(device, 0, NULL, 2, 0);
-    ok(hr == D3DERR_INVALIDCALL || hr == D3D_OK, "Unexpected result when setting the stream source, offset 2, hr = %08x\n", hr);
+    ok(hr == D3DERR_INVALIDCALL || hr == D3D_OK, "Got unexpected hr %#x.\n", hr);
     hr = IDirect3DDevice9_SetStreamSource(device, 0, NULL, 3, 0);
-    ok(hr == D3DERR_INVALIDCALL || hr == D3D_OK, "Unexpected result when setting the stream source, offset 3, hr = %08x\n", hr);
+    ok(hr == D3DERR_INVALIDCALL || hr == D3D_OK, "Got unexpected hr %#x.\n", hr);
     hr = IDirect3DDevice9_SetStreamSource(device, 0, NULL, 4, 0);
-    ok(hr == D3D_OK, "Failed to set the stream source, offset 4, hr = %08x\n", hr);
+    ok(SUCCEEDED(hr), "Failed to set the stream source, hr %#x.\n", hr);
 
     hr = IDirect3DDevice9_SetStreamSource(device, 0, NULL, 0, 0);
-    ok(hr == D3D_OK, "Failed to set the stream source, offset 4, hr = %08x\n", hr);
+    ok(SUCCEEDED(hr), "Failed to set the stream source, hr %#x.\n", hr);
 
+    IDirect3DVertexBuffer9_Release(vb);
+    refcount = IDirect3DDevice9_Release(device);
+    ok(!refcount, "Device has %u references left.\n", refcount);
 cleanup:
-    if (pVertexBuffer) IDirect3DVertexBuffer9_Release(pVertexBuffer);
-    if (device)
-    {
-        UINT refcount = IDirect3DDevice9_Release(device);
-        ok(!refcount, "Device has %u references left.\n", refcount);
-    }
-    if(d3d9) IDirect3D9_Release(d3d9);
+    IDirect3D9_Release(d3d9);
+    DestroyWindow(window);
 }
 
 /* Direct3D9 offers 4 display formats: R5G6B5, X1R5G5B5, X8R8G8B8 and
@@ -2303,11 +2124,8 @@ static void test_display_formats(void)
         {"D3DFMT_UNKNOWN",      D3DFMT_UNKNOWN,     0,                  FALSE,  FALSE},
     };
 
-    if (!(d3d9 = Direct3DCreate9(D3D_SDK_VERSION)))
-    {
-        skip("Failed to create an IDirect3D9 object, skipping test.\n");
-        return;
-    }
+    d3d9 = Direct3DCreate9(D3D_SDK_VERSION);
+    ok(!!d3d9, "Failed to create a D3D object.\n");
 
     for (display = 0; display < sizeof(formats) / sizeof(*formats); ++display)
     {
@@ -2359,7 +2177,7 @@ static void test_display_formats(void)
 
 static void test_scissor_size(void)
 {
-    IDirect3D9 *d3d9_ptr = 0;
+    IDirect3D9 *d3d9_ptr;
     unsigned int i;
     static struct {
         int winx; int winy; int backx; int backy; BOOL window;
@@ -2371,11 +2189,7 @@ static void test_scissor_size(void)
     };
 
     d3d9_ptr = Direct3DCreate9(D3D_SDK_VERSION);
-    ok(d3d9_ptr != NULL, "Failed to create IDirect3D9 object\n");
-    if (!d3d9_ptr){
-        skip("Failed to create IDirect3D9 object\n");
-        return;
-    }
+    ok(!!d3d9_ptr, "Failed to create a D3D object.\n");
 
     for(i=0; i<sizeof(scts)/sizeof(scts[0]); i++) {
         IDirect3DDevice9 *device_ptr = 0;
@@ -2447,77 +2261,44 @@ static void test_scissor_size(void)
     }
 
 err_out:
-    if(d3d9_ptr) IDirect3D9_Release(d3d9_ptr);
-    return;
+    IDirect3D9_Release(d3d9_ptr);
 }
 
 static void test_multi_device(void)
 {
-    IDirect3DDevice9 *device1 = NULL, *device2 = NULL;
-    D3DPRESENT_PARAMETERS present_parameters;
-    HWND hwnd1 = NULL, hwnd2 = NULL;
+    IDirect3DDevice9 *device1, *device2;
+    HWND window1, window2;
     IDirect3D9 *d3d9;
     ULONG refcount;
-    HRESULT hr;
 
+    window1 = CreateWindowA("d3d9_test_wc", "d3d9_test", WS_OVERLAPPEDWINDOW,
+            0, 0, 640, 480, NULL, NULL, NULL, NULL);
+    ok(!!window1, "Failed to create a window.\n");
     d3d9 = Direct3DCreate9(D3D_SDK_VERSION);
-    ok(d3d9 != NULL, "Failed to create a d3d9 object.\n");
-    if (!d3d9) goto fail;
-
-    hwnd1 = CreateWindowA("d3d9_test_wc", "d3d9_test", WS_OVERLAPPEDWINDOW,
-            100, 100, 160, 160, NULL, NULL, NULL, NULL);
-    ok(hwnd1 != NULL, "Failed to create a window.\n");
-    if (!hwnd1) goto fail;
-
-    memset(&present_parameters, 0, sizeof(present_parameters));
-    present_parameters.Windowed = TRUE;
-    present_parameters.hDeviceWindow = hwnd1;
-    present_parameters.SwapEffect = D3DSWAPEFFECT_DISCARD;
-
-    hr = IDirect3D9_CreateDevice(d3d9, D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL, hwnd1,
-            D3DCREATE_SOFTWARE_VERTEXPROCESSING, &present_parameters, &device1);
-    IDirect3D9_Release(d3d9);
-    d3d9 = NULL;
-    if (FAILED(hr)) {
-        skip("Failed to create a device\n");
-        goto fail;
+    ok(!!d3d9, "Failed to create a D3D object.\n");
+    if (!(device1 = create_device(d3d9, window1, window1, TRUE)))
+    {
+        skip("Failed to create a 3D device, skipping test.\n");
+        IDirect3D9_Release(d3d9);
+        DestroyWindow(window1);
+        return;
     }
+    IDirect3D9_Release(d3d9);
 
+    window2 = CreateWindowA("d3d9_test_wc", "d3d9_test", WS_OVERLAPPEDWINDOW,
+            0, 0, 640, 480, NULL, NULL, NULL, NULL);
+    ok(!!window2, "Failed to create a window.\n");
     d3d9 = Direct3DCreate9(D3D_SDK_VERSION);
-    ok(d3d9 != NULL, "Failed to create a d3d9 object.\n");
-    if (!d3d9) goto fail;
-
-    hwnd2 = CreateWindowA("d3d9_test_wc", "d3d9_test", WS_OVERLAPPEDWINDOW,
-            100, 100, 160, 160, NULL, NULL, NULL, NULL);
-    ok(hwnd2 != NULL, "Failed to create a window.\n");
-    if (!hwnd2) goto fail;
-
-    memset(&present_parameters, 0, sizeof(present_parameters));
-    present_parameters.Windowed = TRUE;
-    present_parameters.hDeviceWindow = hwnd2;
-    present_parameters.SwapEffect = D3DSWAPEFFECT_DISCARD;
-
-    hr = IDirect3D9_CreateDevice(d3d9, D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL, hwnd2,
-            D3DCREATE_SOFTWARE_VERTEXPROCESSING, &present_parameters, &device2);
-    ok(SUCCEEDED(hr), "Failed to create a device, hr %#x\n", hr);
+    ok(!!d3d9, "Failed to create a D3D object.\n");
+    device2 = create_device(d3d9, window2, window2, TRUE);
     IDirect3D9_Release(d3d9);
-    d3d9 = NULL;
-    if (FAILED(hr)) goto fail;
 
-fail:
-    if (d3d9) IDirect3D9_Release(d3d9);
-    if (device1)
-    {
-        refcount = IDirect3DDevice9_Release(device1);
-        ok(!refcount, "Device has %u references left.\n", refcount);
-    }
-    if (device2)
-    {
-        refcount = IDirect3DDevice9_Release(device2);
-        ok(!refcount, "Device has %u references left.\n", refcount);
-    }
-    if (hwnd1) DestroyWindow(hwnd1);
-    if (hwnd2) DestroyWindow(hwnd2);
+    refcount = IDirect3DDevice9_Release(device2);
+    ok(!refcount, "Device has %u references left.\n", refcount);
+    refcount = IDirect3DDevice9_Release(device1);
+    ok(!refcount, "Device has %u references left.\n", refcount);
+    DestroyWindow(window2);
+    DestroyWindow(window1);
 }
 
 static HWND filter_messages;
@@ -2630,11 +2411,8 @@ static void test_wndproc(void)
         {0,                     0},
     };
 
-    if (!(d3d9 = Direct3DCreate9(D3D_SDK_VERSION)))
-    {
-        skip("Failed to create IDirect3D9 object, skipping tests.\n");
-        return;
-    }
+    d3d9 = Direct3DCreate9(D3D_SDK_VERSION);
+    ok(!!d3d9, "Failed to create a D3D object.\n");
 
     wc.lpfnWndProc = test_proc;
     wc.lpszClassName = "d3d9_test_wndproc_wc";
@@ -2774,11 +2552,8 @@ static void test_wndproc_windowed(void)
     DWORD res, tid;
     HWND tmp;
 
-    if (!(d3d9 = Direct3DCreate9(D3D_SDK_VERSION)))
-    {
-        skip("Failed to create IDirect3D9 object, skipping tests.\n");
-        return;
-    }
+    d3d9 = Direct3DCreate9(D3D_SDK_VERSION);
+    ok(!!d3d9, "Failed to create a D3D object.\n");
 
     wc.lpfnWndProc = test_proc;
     wc.lpszClassName = "d3d9_test_wndproc_wc";
@@ -2965,7 +2740,7 @@ static void test_reset_fullscreen(void)
 {
     WNDCLASSEXA wc = {0};
     IDirect3DDevice9 *device = NULL;
-    IDirect3D9 *d3d = NULL;
+    IDirect3D9 *d3d;
     ATOM atom;
     static const struct message messages[] =
     {
@@ -2974,7 +2749,7 @@ static void test_reset_fullscreen(void)
     };
 
     d3d = Direct3DCreate9(D3D_SDK_VERSION);
-    ok(d3d != NULL, "Failed to create an IDirect3D object.\n");
+    ok(!!d3d, "Failed to create a D3D object.\n");
     expect_messages = messages;
 
     wc.cbSize = sizeof(wc);
@@ -3014,7 +2789,7 @@ static void test_reset_fullscreen(void)
 
 cleanup:
     if (device) IDirect3DDevice9_Release(device);
-    if (d3d) IDirect3D9_Release(d3d);
+    IDirect3D9_Release(d3d);
     DestroyWindow(device_window);
     device_window = focus_window = NULL;
     UnregisterClassA(wc.lpszClassName, GetModuleHandleA(NULL));
@@ -3057,13 +2832,10 @@ static void test_fpu_setup(void)
     HRESULT hr;
     WORD cw;
 
-    d3d9 = Direct3DCreate9(D3D_SDK_VERSION);
-    ok(!!d3d9, "Failed to create a d3d9 object.\n");
-    if (!d3d9) return;
-
     window = CreateWindowA("d3d9_test_wc", "d3d9_test", WS_CAPTION, 0, 0, screen_width, screen_height, 0, 0, 0, 0);
     ok(!!window, "Failed to create a window.\n");
-    if (!window) goto done;
+    d3d9 = Direct3DCreate9(D3D_SDK_VERSION);
+    ok(!!d3d9, "Failed to create a D3D object.\n");
 
     memset(&present_parameters, 0, sizeof(present_parameters));
     present_parameters.Windowed = TRUE;
@@ -3105,8 +2877,8 @@ static void test_fpu_setup(void)
     IDirect3DDevice9_Release(device);
 
 done:
-    if (window) DestroyWindow(window);
-    if (d3d9) IDirect3D9_Release(d3d9);
+    IDirect3D9_Release(d3d9);
+    DestroyWindow(window);
 #endif
 }
 
@@ -3121,17 +2893,12 @@ static void test_window_style(void)
     HRESULT hr;
     ULONG ref;
 
-
-    if (!(d3d9 = Direct3DCreate9(D3D_SDK_VERSION)))
-    {
-        skip("Failed to create IDirect3D9 object, skipping tests.\n");
-        return;
-    }
-
     focus_window = CreateWindowA("d3d9_test_wc", "d3d9_test", WS_OVERLAPPEDWINDOW,
             0, 0, screen_width / 2, screen_height / 2, 0, 0, 0, 0);
     device_window = CreateWindowA("d3d9_test_wc", "d3d9_test", WS_OVERLAPPEDWINDOW,
             0, 0, screen_width / 2, screen_height / 2, 0, 0, 0, 0);
+    d3d9 = Direct3DCreate9(D3D_SDK_VERSION);
+    ok(!!d3d9, "Failed to create a D3D object.\n");
 
     device_style = GetWindowLongA(device_window, GWL_STYLE);
     device_exstyle = GetWindowLongA(device_window, GWL_EXSTYLE);
@@ -3250,18 +3017,14 @@ static void test_cursor_pos(void)
         {0, 0},
     };
 
-    if (!(d3d9 = Direct3DCreate9(D3D_SDK_VERSION)))
-    {
-        skip("Failed to create IDirect3D9 object, skipping cursor tests.\n");
-        return;
-    }
-
     wc.lpfnWndProc = test_cursor_proc;
     wc.lpszClassName = "d3d9_test_cursor_wc";
     ok(RegisterClassA(&wc), "Failed to register window class.\n");
     window = CreateWindowA("d3d9_test_cursor_wc", "d3d9_test", WS_OVERLAPPEDWINDOW,
             0, 0, 320, 240, NULL, NULL, NULL, NULL);
     ShowWindow(window, SW_SHOW);
+    d3d9 = Direct3DCreate9(D3D_SDK_VERSION);
+    ok(!!d3d9, "Failed to create a D3D object.\n");
 
     device = create_device(d3d9, window, window, TRUE);
     if (!device)
@@ -3322,8 +3085,7 @@ static void test_cursor_pos(void)
 done:
     DestroyWindow(window);
     UnregisterClassA("d3d9_test_cursor_wc", GetModuleHandleA(NULL));
-    if (d3d9)
-        IDirect3D9_Release(d3d9);
+    IDirect3D9_Release(d3d9);
 }
 
 static void test_mode_change(void)
@@ -3338,16 +3100,12 @@ static void test_mode_change(void)
     HRESULT hr;
     DWORD ret;
 
-    if (!(d3d9 = Direct3DCreate9(D3D_SDK_VERSION)))
-    {
-        skip("Failed to create IDirect3D9 object, skipping mode change tests.\n");
-        return;
-    }
-
     focus_window = CreateWindowA("d3d9_test_wc", "d3d9_test", WS_OVERLAPPEDWINDOW,
             0, 0, screen_width / 2, screen_height / 2, 0, 0, 0, 0);
     device_window = CreateWindowA("d3d9_test_wc", "d3d9_test", WS_OVERLAPPEDWINDOW,
             0, 0, screen_width / 2, screen_height / 2, 0, 0, 0, 0);
+    d3d9 = Direct3DCreate9(D3D_SDK_VERSION);
+    ok(!!d3d9, "Failed to create a D3D object.\n");
 
     SetRect(&fullscreen_rect, 0, 0, screen_width, screen_height);
     GetWindowRect(focus_window, &focus_rect);
@@ -3405,8 +3163,7 @@ static void test_mode_change(void)
 done:
     DestroyWindow(device_window);
     DestroyWindow(focus_window);
-    if (d3d9)
-        IDirect3D9_Release(d3d9);
+    IDirect3D9_Release(d3d9);
 
     memset(&devmode, 0, sizeof(devmode));
     devmode.dmSize = sizeof(devmode);
@@ -3426,12 +3183,6 @@ static void test_device_window_reset(void)
     HRESULT hr;
     ULONG ref;
 
-    if (!(d3d9 = Direct3DCreate9(D3D_SDK_VERSION)))
-    {
-        skip("Failed to create IDirect3D9 object, skipping tests.\n");
-        return;
-    }
-
     wc.lpfnWndProc = test_proc;
     wc.lpszClassName = "d3d9_test_wndproc_wc";
     ok(RegisterClassA(&wc), "Failed to register window class.\n");
@@ -3440,6 +3191,8 @@ static void test_device_window_reset(void)
             0, 0, screen_width / 2, screen_height / 2, 0, 0, 0, 0);
     device_window = CreateWindowA("d3d9_test_wndproc_wc", "d3d9_test", WS_OVERLAPPEDWINDOW,
             0, 0, screen_width / 2, screen_height / 2, 0, 0, 0, 0);
+    d3d9 = Direct3DCreate9(D3D_SDK_VERSION);
+    ok(!!d3d9, "Failed to create a D3D object.\n");
 
     SetRect(&fullscreen_rect, 0, 0, screen_width, screen_height);
     GetWindowRect(device_window, &device_rect);
@@ -3517,13 +3270,8 @@ static void test_reset_resources(void)
 
     window = CreateWindowA("static", "d3d9_test", WS_OVERLAPPEDWINDOW,
             0, 0, 640, 480, 0, 0, 0, 0);
-
-    if (!(d3d9 = Direct3DCreate9(D3D_SDK_VERSION)))
-    {
-        skip("Failed to create IDirect3D9 object, skipping tests.\n");
-        DestroyWindow(window);
-        return;
-    }
+    d3d9 = Direct3DCreate9(D3D_SDK_VERSION);
+    ok(!!d3d9, "Failed to create a D3D object.\n");
 
     if (!(device = create_device(d3d9, window, window, TRUE)))
     {
@@ -3591,14 +3339,10 @@ static void test_set_rt_vp_scissor(void)
     HRESULT hr;
     RECT rect;
 
-    if (!(d3d9 = Direct3DCreate9(D3D_SDK_VERSION)))
-    {
-        skip("Failed to create IDirect3D9 object, skipping tests.\n");
-        return;
-    }
-
     window = CreateWindowA("static", "d3d9_test", WS_OVERLAPPEDWINDOW,
             0, 0, 640, 480, 0, 0, 0, 0);
+    d3d9 = Direct3DCreate9(D3D_SDK_VERSION);
+    ok(!!d3d9, "Failed to create a D3D object.\n");
     if (!(device = create_device(d3d9, window, window, TRUE)))
     {
         skip("Failed to create a D3D device, skipping tests.\n");
@@ -3703,14 +3447,10 @@ static void test_volume_get_container(void)
     HWND window;
     HRESULT hr;
 
-    if (!(d3d9 = Direct3DCreate9(D3D_SDK_VERSION)))
-    {
-        skip("Failed to create d3d9 object, skipping tests.\n");
-        return;
-    }
-
     window = CreateWindowA("d3d9_test_wc", "d3d9_test", WS_OVERLAPPEDWINDOW,
             0, 0, 640, 480, 0, 0, 0, 0);
+    d3d9 = Direct3DCreate9(D3D_SDK_VERSION);
+    ok(!!d3d9, "Failed to create a D3D object.\n");
     if (!(device = create_device(d3d9, window, window, TRUE)))
     {
         skip("Failed to create a D3D device, skipping tests.\n");
@@ -3789,14 +3529,10 @@ static void test_volume_resource(void)
     HWND window;
     HRESULT hr;
 
-    if (!(d3d9 = Direct3DCreate9(D3D_SDK_VERSION)))
-    {
-        skip("Failed to create d3d9 object, skipping tests.\n");
-        return;
-    }
-
     window = CreateWindowA("d3d9_test_wc", "d3d9_test", WS_OVERLAPPEDWINDOW,
             0, 0, 640, 480, 0, 0, 0, 0);
+    d3d9 = Direct3DCreate9(D3D_SDK_VERSION);
+    ok(!!d3d9, "Failed to create a D3D object.\n");
     if (!(device = create_device(d3d9, window, window, TRUE)))
     {
         skip("Failed to create a D3D device, skipping tests.\n");
@@ -3861,14 +3597,10 @@ static void test_vb_lock_flags(void)
     HRESULT hr;
     void *data;
 
-    if (!(d3d9 = Direct3DCreate9(D3D_SDK_VERSION)))
-    {
-        skip("Failed to create d3d9 object, skipping tests.\n");
-        return;
-    }
-
     window = CreateWindowA("d3d9_test_wc", "d3d9_test", WS_OVERLAPPEDWINDOW,
             0, 0, 640, 480, 0, 0, 0, 0);
+    d3d9 = Direct3DCreate9(D3D_SDK_VERSION);
+    ok(!!d3d9, "Failed to create a D3D object.\n");
     if (!(device = create_device(d3d9, window, window, TRUE)))
     {
         skip("Failed to create a D3D device, skipping tests.\n");
@@ -3935,14 +3667,10 @@ static void test_vertex_buffer_alignment(void)
     HRESULT hr;
     void *data;
 
-    if (!(d3d9 = Direct3DCreate9(D3D_SDK_VERSION)))
-    {
-        skip("Failed to create d3d9 object, skipping tests.\n");
-        return;
-    }
-
     window = CreateWindowA("d3d9_test_wc", "d3d9_test", WS_OVERLAPPEDWINDOW,
             0, 0, 640, 480, 0, 0, 0, 0);
+    d3d9 = Direct3DCreate9(D3D_SDK_VERSION);
+    ok(!!d3d9, "Failed to create a D3D object.\n");
     if (!(device = create_device(d3d9, window, window, TRUE)))
     {
         skip("Failed to create a D3D device, skipping tests.\n");
@@ -4009,14 +3737,10 @@ static void test_query_support(void)
     HWND window;
     HRESULT hr;
 
-    if (!(d3d9 = Direct3DCreate9(D3D_SDK_VERSION)))
-    {
-        skip("Failed to create d3d9 object, skipping tests.\n");
-        return;
-    }
-
     window = CreateWindowA("d3d9_test_wc", "d3d9_test", WS_OVERLAPPEDWINDOW,
             0, 0, 640, 480, 0, 0, 0, 0);
+    d3d9 = Direct3DCreate9(D3D_SDK_VERSION);
+    ok(!!d3d9, "Failed to create a D3D object.\n");
     if (!(device = create_device(d3d9, window, window, TRUE)))
     {
         skip("Failed to create a D3D device, skipping tests.\n");
@@ -4063,14 +3787,10 @@ static void test_occlusion_query_states(void)
     HRESULT hr;
     BYTE *data;
 
-    if (!(d3d9 = Direct3DCreate9(D3D_SDK_VERSION)))
-    {
-        skip("Failed to create d3d9 object, skipping tests.\n");
-        return;
-    }
-
     window = CreateWindowA("d3d9_test_wc", "d3d9_test", WS_OVERLAPPEDWINDOW,
             0, 0, 640, 480, 0, 0, 0, 0);
+    d3d9 = Direct3DCreate9(D3D_SDK_VERSION);
+    ok(!!d3d9, "Failed to create a D3D object.\n");
     if (!(device = create_device(d3d9, window, window, TRUE)))
     {
         skip("Failed to create a D3D device, skipping tests.\n");
@@ -4163,14 +3883,10 @@ static void test_get_set_vertex_shader(void)
     HWND window;
     HRESULT hr;
 
-    if (!(d3d = Direct3DCreate9(D3D_SDK_VERSION)))
-    {
-        skip("Failed to create D3D object, skipping tests.\n");
-        return;
-    }
-
     window = CreateWindowA("d3d9_test_wc", "d3d9_test", WS_OVERLAPPEDWINDOW,
             0, 0, 640, 480, 0, 0, 0, 0);
+    d3d = Direct3DCreate9(D3D_SDK_VERSION);
+    ok(!!d3d, "Failed to create a D3D object.\n");
     if (!(device = create_device(d3d, window, window, TRUE)))
     {
         skip("Failed to create a D3D device, skipping tests.\n");
@@ -4229,14 +3945,10 @@ static void test_vertex_shader_constant(void)
     HWND window;
     HRESULT hr;
 
-    if (!(d3d = Direct3DCreate9(D3D_SDK_VERSION)))
-    {
-        skip("Failed to create D3D object, skipping tests.\n");
-        return;
-    }
-
     window = CreateWindowA("d3d9_test_wc", "d3d9_test", WS_OVERLAPPEDWINDOW,
             0, 0, 640, 480, 0, 0, 0, 0);
+    d3d = Direct3DCreate9(D3D_SDK_VERSION);
+    ok(!!d3d, "Failed to create a D3D object.\n");
     if (!(device = create_device(d3d, window, window, TRUE)))
     {
         skip("Failed to create a D3D device, skipping tests.\n");
@@ -4293,14 +4005,10 @@ static void test_get_set_pixel_shader(void)
     HWND window;
     HRESULT hr;
 
-    if (!(d3d = Direct3DCreate9(D3D_SDK_VERSION)))
-    {
-        skip("Failed to create D3D object, skipping tests.\n");
-        return;
-    }
-
     window = CreateWindowA("d3d9_test_wc", "d3d9_test", WS_OVERLAPPEDWINDOW,
             0, 0, 640, 480, 0, 0, 0, 0);
+    d3d = Direct3DCreate9(D3D_SDK_VERSION);
+    ok(!!d3d, "Failed to create a D3D object.\n");
     if (!(device = create_device(d3d, window, window, TRUE)))
     {
         skip("Failed to create a D3D device, skipping tests.\n");
@@ -4359,14 +4067,10 @@ static void test_pixel_shader_constant(void)
     HWND window;
     HRESULT hr;
 
-    if (!(d3d = Direct3DCreate9(D3D_SDK_VERSION)))
-    {
-        skip("Failed to create D3D object, skipping tests.\n");
-        return;
-    }
-
     window = CreateWindowA("d3d9_test_wc", "d3d9_test", WS_OVERLAPPEDWINDOW,
             0, 0, 640, 480, 0, 0, 0, 0);
+    d3d = Direct3DCreate9(D3D_SDK_VERSION);
+    ok(!!d3d, "Failed to create a D3D object.\n");
     if (!(device = create_device(d3d, window, window, TRUE)))
     {
         skip("Failed to create a D3D device, skipping tests.\n");
@@ -4458,14 +4162,10 @@ float4 main(const float4 color : COLOR) : SV_TARGET
     HWND window;
     HRESULT hr;
 
-    if (!(d3d = Direct3DCreate9(D3D_SDK_VERSION)))
-    {
-        skip("Failed to create D3D object, skipping tests.\n");
-        return;
-    }
-
     window = CreateWindowA("d3d9_test_wc", "d3d9_test", WS_OVERLAPPEDWINDOW,
             0, 0, 640, 480, 0, 0, 0, 0);
+    d3d = Direct3DCreate9(D3D_SDK_VERSION);
+    ok(!!d3d, "Failed to create a D3D object.\n");
     if (!(device = create_device(d3d, window, window, TRUE)))
     {
         skip("Failed to create a D3D device, skipping tests.\n");
@@ -4510,14 +4210,10 @@ static void test_texture_stage_states(void)
     HWND window;
     HRESULT hr;
 
-    if (!(d3d = Direct3DCreate9(D3D_SDK_VERSION)))
-    {
-        skip("Failed to create D3D object, skipping tests.\n");
-        return;
-    }
-
     window = CreateWindowA("d3d9_test_wc", "d3d9_test", WS_OVERLAPPEDWINDOW,
             0, 0, 640, 480, 0, 0, 0, 0);
+    d3d = Direct3DCreate9(D3D_SDK_VERSION);
+    ok(!!d3d, "Failed to create a D3D object.\n");
     if (!(device = create_device(d3d, window, window, TRUE)))
     {
         skip("Failed to create a D3D device, skipping tests.\n");
@@ -4676,14 +4372,10 @@ static void test_cube_textures(void)
     HWND window;
     HRESULT hr;
 
-    if (!(d3d = Direct3DCreate9(D3D_SDK_VERSION)))
-    {
-        skip("Failed to create D3D object, skipping tests.\n");
-        return;
-    }
-
     window = CreateWindowA("d3d9_test_wc", "d3d9_test", WS_OVERLAPPEDWINDOW,
             0, 0, 640, 480, 0, 0, 0, 0);
+    d3d = Direct3DCreate9(D3D_SDK_VERSION);
+    ok(!!d3d, "Failed to create a D3D object.\n");
     if (!(device = create_device(d3d, window, window, TRUE)))
     {
         skip("Failed to create a D3D device, skipping tests.\n");
@@ -4744,11 +4436,8 @@ static void test_mipmap_gen(void)
     HWND window;
     HRESULT hr;
 
-    if (!(d3d = Direct3DCreate9(D3D_SDK_VERSION)))
-    {
-        skip("Failed to create D3D object, skipping tests.\n");
-        return;
-    }
+    d3d = Direct3DCreate9(D3D_SDK_VERSION);
+    ok(!!d3d, "Failed to create a D3D object.\n");
 
     if (FAILED(IDirect3D9_CheckDeviceFormat(d3d, 0, D3DDEVTYPE_HAL, D3DFMT_X8R8G8B8,
             D3DUSAGE_AUTOGENMIPMAP, D3DRTYPE_TEXTURE, D3DFMT_X8R8G8B8)))
@@ -4869,11 +4558,8 @@ static void test_filter(void)
     HWND window;
     HRESULT hr;
 
-    if (!(d3d = Direct3DCreate9(D3D_SDK_VERSION)))
-    {
-        skip("Failed to create D3D object, skipping tests.\n");
-        return;
-    }
+    d3d = Direct3DCreate9(D3D_SDK_VERSION);
+    ok(!!d3d, "Failed to create a D3D object.\n");
 
     if (FAILED(IDirect3D9_CheckDeviceFormat(d3d, 0, D3DDEVTYPE_HAL, D3DFMT_X8R8G8B8,
             0, D3DRTYPE_TEXTURE, D3DFMT_A32B32G32R32F)))
@@ -4960,14 +4646,10 @@ static void test_get_texture(void)
     HWND window;
     HRESULT hr;
 
-    if (!(d3d = Direct3DCreate9(D3D_SDK_VERSION)))
-    {
-        skip("Failed to create D3D object, skipping tests.\n");
-        return;
-    }
-
     window = CreateWindowA("d3d9_test_wc", "d3d9_test", WS_OVERLAPPEDWINDOW,
             0, 0, 640, 480, 0, 0, 0, 0);
+    d3d = Direct3DCreate9(D3D_SDK_VERSION);
+    ok(!!d3d, "Failed to create a D3D object.\n");
     if (!(device = create_device(d3d, window, window, TRUE)))
     {
         skip("Failed to create a D3D device, skipping tests.\n");
@@ -4999,14 +4681,10 @@ static void test_lod(void)
     HRESULT hr;
     DWORD ret;
 
-    if (!(d3d = Direct3DCreate9(D3D_SDK_VERSION)))
-    {
-        skip("Failed to create D3D object, skipping tests.\n");
-        return;
-    }
-
     window = CreateWindowA("d3d9_test_wc", "d3d9_test", WS_OVERLAPPEDWINDOW,
             0, 0, 640, 480, 0, 0, 0, 0);
+    d3d = Direct3DCreate9(D3D_SDK_VERSION);
+    ok(!!d3d, "Failed to create a D3D object.\n");
     if (!(device = create_device(d3d, window, window, TRUE)))
     {
         skip("Failed to create a D3D device, skipping tests.\n");
@@ -5049,14 +4727,10 @@ static void test_surface_get_container(void)
     HWND window;
     HRESULT hr;
 
-    if (!(d3d = Direct3DCreate9(D3D_SDK_VERSION)))
-    {
-        skip("Failed to create D3D object, skipping tests.\n");
-        return;
-    }
-
     window = CreateWindowA("d3d9_test_wc", "d3d9_test", WS_OVERLAPPEDWINDOW,
             0, 0, 640, 480, 0, 0, 0, 0);
+    d3d = Direct3DCreate9(D3D_SDK_VERSION);
+    ok(!!d3d, "Failed to create a D3D object.\n");
     if (!(device = create_device(d3d, window, window, TRUE)))
     {
         skip("Failed to create a D3D device, skipping tests.\n");
@@ -5123,14 +4797,10 @@ static void test_surface_alignment(void)
     HWND window;
     HRESULT hr;
 
-    if (!(d3d = Direct3DCreate9(D3D_SDK_VERSION)))
-    {
-        skip("Failed to create D3D object, skipping tests.\n");
-        return;
-    }
-
     window = CreateWindowA("d3d9_test_wc", "d3d9_test", WS_OVERLAPPEDWINDOW,
             0, 0, 640, 480, 0, 0, 0, 0);
+    d3d = Direct3DCreate9(D3D_SDK_VERSION);
+    ok(!!d3d, "Failed to create a D3D object.\n");
     if (!(device = create_device(d3d, window, window, TRUE)))
     {
         skip("Failed to create a D3D device, skipping tests.\n");
@@ -5228,14 +4898,10 @@ static void test_lockrect_offset(void)
     BYTE *base;
     HRESULT hr;
 
-    if (!(d3d = Direct3DCreate9(D3D_SDK_VERSION)))
-    {
-        skip("Failed to create D3D object, skipping tests.\n");
-        return;
-    }
-
     window = CreateWindowA("d3d9_test_wc", "d3d9_test", WS_OVERLAPPEDWINDOW,
             0, 0, 640, 480, 0, 0, 0, 0);
+    d3d = Direct3DCreate9(D3D_SDK_VERSION);
+    ok(!!d3d, "Failed to create a D3D object.\n");
     if (!(device = create_device(d3d, window, window, TRUE)))
     {
         skip("Failed to create a D3D device, skipping tests.\n");
@@ -5324,14 +4990,10 @@ static void test_lockrect_invalid(void)
     BYTE *base;
     HRESULT hr;
 
-    if (!(d3d = Direct3DCreate9(D3D_SDK_VERSION)))
-    {
-        skip("Failed to create D3D object, skipping tests.\n");
-        return;
-    }
-
     window = CreateWindowA("d3d9_test_wc", "d3d9_test", WS_OVERLAPPEDWINDOW,
             0, 0, 640, 480, 0, 0, 0, 0);
+    d3d = Direct3DCreate9(D3D_SDK_VERSION);
+    ok(!!d3d, "Failed to create a D3D object.\n");
     if (!(device = create_device(d3d, window, window, TRUE)))
     {
         skip("Failed to create a D3D device, skipping tests.\n");
@@ -5421,14 +5083,10 @@ static void test_private_data(void)
     DWORD size;
     DWORD data[4] = {1, 2, 3, 4};
 
-    if (!(d3d = Direct3DCreate9(D3D_SDK_VERSION)))
-    {
-        skip("Failed to create D3D object, skipping tests.\n");
-        return;
-    }
-
     window = CreateWindowA("d3d9_test_wc", "d3d9_test", WS_OVERLAPPEDWINDOW,
             0, 0, 640, 480, 0, 0, 0, 0);
+    d3d = Direct3DCreate9(D3D_SDK_VERSION);
+    ok(!!d3d, "Failed to create a D3D object.\n");
     if (!(device = create_device(d3d, window, window, TRUE)))
     {
         skip("Failed to create a D3D device, skipping tests.\n");
@@ -5572,14 +5230,10 @@ static void test_getdc(void)
     HRESULT hr;
     HDC dc;
 
-    if (!(d3d = Direct3DCreate9(D3D_SDK_VERSION)))
-    {
-        skip("Failed to create D3D object, skipping tests.\n");
-        return;
-    }
-
     window = CreateWindowA("d3d9_test_wc", "d3d9_test", WS_OVERLAPPEDWINDOW,
             0, 0, 640, 480, 0, 0, 0, 0);
+    d3d = Direct3DCreate9(D3D_SDK_VERSION);
+    ok(!!d3d, "Failed to create a D3D object.\n");
     if (!(device = create_device(d3d, window, window, TRUE)))
     {
         skip("Failed to create a D3D device, skipping tests.\n");
@@ -5643,14 +5297,10 @@ static void test_surface_dimensions(void)
     HWND window;
     HRESULT hr;
 
-    if (!(d3d = Direct3DCreate9(D3D_SDK_VERSION)))
-    {
-        skip("Failed to create D3D object, skipping tests.\n");
-        return;
-    }
-
     window = CreateWindowA("d3d9_test_wc", "d3d9_test", WS_OVERLAPPEDWINDOW,
             0, 0, 640, 480, 0, 0, 0, 0);
+    d3d = Direct3DCreate9(D3D_SDK_VERSION);
+    ok(!!d3d, "Failed to create a D3D object.\n");
     if (!(device = create_device(d3d, window, window, TRUE)))
     {
         skip("Failed to create a D3D device, skipping tests.\n");
@@ -5686,11 +5336,8 @@ static void test_surface_format_null(void)
     HWND window;
     HRESULT hr;
 
-    if (!(d3d = Direct3DCreate9(D3D_SDK_VERSION)))
-    {
-        skip("Failed to create D3D object, skipping tests.\n");
-        return;
-    }
+    d3d = Direct3DCreate9(D3D_SDK_VERSION);
+    ok(!!d3d, "Failed to create a D3D object.\n");
 
     hr = IDirect3D9_CheckDeviceFormat(d3d, 0, D3DDEVTYPE_HAL, D3DFMT_X8R8G8B8,
             D3DUSAGE_RENDERTARGET, D3DRTYPE_SURFACE, D3DFMT_NULL);
@@ -5793,14 +5440,10 @@ static void test_surface_double_unlock(void)
     HWND window;
     HRESULT hr;
 
-    if (!(d3d = Direct3DCreate9(D3D_SDK_VERSION)))
-    {
-        skip("Failed to create D3D object, skipping tests.\n");
-        return;
-    }
-
     window = CreateWindowA("d3d9_test_wc", "d3d9_test", WS_OVERLAPPEDWINDOW,
             0, 0, 640, 480, 0, 0, 0, 0);
+    d3d = Direct3DCreate9(D3D_SDK_VERSION);
+    ok(!!d3d, "Failed to create a D3D object.\n");
     if (!(device = create_device(d3d, window, window, TRUE)))
     {
         skip("Failed to create a D3D device, skipping tests.\n");
@@ -5913,14 +5556,10 @@ static void test_surface_blocks(void)
     BOOL tex_pow2, cube_pow2;
     D3DCAPS9 caps;
 
-    if (!(d3d = Direct3DCreate9(D3D_SDK_VERSION)))
-    {
-        skip("Failed to create D3D object, skipping tests.\n");
-        return;
-    }
-
     window = CreateWindowA("d3d9_test_wc", "d3d9_test", WS_OVERLAPPEDWINDOW,
             0, 0, 640, 480, 0, 0, 0, 0);
+    d3d = Direct3DCreate9(D3D_SDK_VERSION);
+    ok(!!d3d, "Failed to create a D3D object.\n");
     if (!(device = create_device(d3d, window, window, TRUE)))
     {
         skip("Failed to create a D3D device, skipping tests.\n");
@@ -6229,14 +5868,10 @@ static void test_set_palette(void)
     unsigned int i;
     D3DCAPS9 caps;
 
-    if (!(d3d9 = Direct3DCreate9(D3D_SDK_VERSION)))
-    {
-        skip("Failed to create IDirect3D9 object, skipping tests.\n");
-        return;
-    }
-
     window = CreateWindowA("static", "d3d9_test", WS_OVERLAPPEDWINDOW,
             0, 0, 640, 480, 0, 0, 0, 0);
+    d3d9 = Direct3DCreate9(D3D_SDK_VERSION);
+    ok(!!d3d9, "Failed to create a D3D object.\n");
     if (!(device = create_device(d3d9, window, window, TRUE)))
     {
         skip("Failed to create a D3D device, skipping tests.\n");
@@ -6297,14 +5932,10 @@ static void test_swvp_buffer(void)
         float x, y, z;
     } *ptr, *ptr2;
 
-    if (!(d3d9 = Direct3DCreate9(D3D_SDK_VERSION)))
-    {
-        skip("Failed to create IDirect3D9 object, skipping tests.\n");
-        return;
-    }
-
     window = CreateWindowA("static", "d3d9_test", WS_OVERLAPPEDWINDOW,
             0, 0, 640, 480, 0, 0, 0, 0);
+    d3d9 = Direct3DCreate9(D3D_SDK_VERSION);
+    ok(!!d3d9, "Failed to create a D3D object.\n");
 
     present_parameters.Windowed = TRUE;
     present_parameters.hDeviceWindow = window;
@@ -6402,14 +6033,10 @@ static void test_npot_textures(void)
     unsigned int i, levels;
     BOOL tex_pow2, cube_pow2, vol_pow2;
 
-    if (!(d3d9 = Direct3DCreate9(D3D_SDK_VERSION)))
-    {
-        skip("Failed to create IDirect3D9 object, skipping tests.\n");
-        return;
-    }
-
     window = CreateWindowA("static", "d3d9_test", WS_OVERLAPPEDWINDOW,
             0, 0, 640, 480, 0, 0, 0, 0);
+    d3d9 = Direct3DCreate9(D3D_SDK_VERSION);
+    ok(!!d3d9, "Failed to create a D3D object.\n");
     if (!(device = create_device(d3d9, window, window, TRUE)))
     {
         skip("Failed to create a D3D device, skipping tests.\n");
@@ -6509,14 +6136,10 @@ static void test_vidmem_accounting(void)
     unsigned int i;
     UINT vidmem_start, vidmem_end, diff;
 
-    if (!(d3d9 = Direct3DCreate9(D3D_SDK_VERSION)))
-    {
-        skip("Failed to create IDirect3D9 object, skipping tests.\n");
-        return;
-    }
-
     window = CreateWindowA("static", "d3d9_test", WS_OVERLAPPEDWINDOW,
             0, 0, 640, 480, 0, 0, 0, 0);
+    d3d9 = Direct3DCreate9(D3D_SDK_VERSION);
+    ok(!!d3d9, "Failed to create a D3D object.\n");
     if (!(device = create_device(d3d9, window, window, TRUE)))
     {
         skip("Failed to create a D3D device, skipping tests.\n");
@@ -6584,14 +6207,10 @@ static void test_volume_locking(void)
         { D3DPOOL_SCRATCH,      D3DUSAGE_DYNAMIC,   D3DERR_INVALIDCALL, D3D_OK              },
     };
 
-    if (!(d3d9 = Direct3DCreate9(D3D_SDK_VERSION)))
-    {
-        skip("Failed to create IDirect3D9 object, skipping tests.\n");
-        return;
-    }
-
     window = CreateWindowA("static", "d3d9_test", WS_OVERLAPPEDWINDOW,
             0, 0, 640, 480, 0, 0, 0, 0);
+    d3d9 = Direct3DCreate9(D3D_SDK_VERSION);
+    ok(!!d3d9, "Failed to create a D3D object.\n");
     if (!(device = create_device(d3d9, window, window, TRUE)))
     {
         skip("Failed to create a D3D device, skipping tests.\n");
@@ -6695,14 +6314,10 @@ static void test_update_volumetexture(void)
         { 8, 8, 4, 4, D3DFMT_A8R8G8B8, D3DFMT_X8R8G8B8 }, /* Different format      */
     };
 
-    if (!(d3d9 = Direct3DCreate9(D3D_SDK_VERSION)))
-    {
-        skip("Failed to create IDirect3D9 object, skipping tests.\n");
-        return;
-    }
-
     window = CreateWindowA("static", "d3d9_test", WS_OVERLAPPEDWINDOW,
             0, 0, 640, 480, 0, 0, 0, 0);
+    d3d9 = Direct3DCreate9(D3D_SDK_VERSION);
+    ok(!!d3d9, "Failed to create a D3D object.\n");
     if (!(device = create_device(d3d9, window, window, TRUE)))
     {
         skip("Failed to create a D3D device, skipping tests.\n");
@@ -6805,14 +6420,10 @@ static void test_create_rt_ds_fail(void)
     IDirect3D9 *d3d9;
     IDirect3DSurface9 *surface;
 
-    if (!(d3d9 = Direct3DCreate9(D3D_SDK_VERSION)))
-    {
-        skip("Failed to create IDirect3D9 object, skipping tests.\n");
-        return;
-    }
-
     window = CreateWindowA("static", "d3d9_test", WS_OVERLAPPEDWINDOW,
             0, 0, 640, 480, 0, 0, 0, 0);
+    d3d9 = Direct3DCreate9(D3D_SDK_VERSION);
+    ok(!!d3d9, "Failed to create a D3D object.\n");
     if (!(device = create_device(d3d9, window, window, TRUE)))
     {
         skip("Failed to create a D3D device, skipping tests.\n");
@@ -6919,14 +6530,10 @@ static void test_volume_blocks(void)
     BOOL pow2;
     unsigned int offset, expected_offset;
 
-    if (!(d3d9 = Direct3DCreate9(D3D_SDK_VERSION)))
-    {
-        skip("Failed to create IDirect3D9 object, skipping tests.\n");
-        return;
-    }
-
     window = CreateWindowA("static", "d3d9_test", WS_OVERLAPPEDWINDOW,
             0, 0, 640, 480, 0, 0, 0, 0);
+    d3d9 = Direct3DCreate9(D3D_SDK_VERSION);
+    ok(!!d3d9, "Failed to create a D3D object.\n");
     if (!(device = create_device(d3d9, window, window, TRUE)))
     {
         skip("Failed to create a D3D device, skipping tests.\n");
@@ -7240,14 +6847,10 @@ static void test_lockbox_invalid(void)
     BYTE *base;
     HRESULT hr;
 
-    if (!(d3d = Direct3DCreate9(D3D_SDK_VERSION)))
-    {
-        skip("Failed to create D3D object, skipping tests.\n");
-        return;
-    }
-
     window = CreateWindowA("d3d9_test_wc", "d3d9_test", WS_OVERLAPPEDWINDOW,
             0, 0, 640, 480, 0, 0, 0, 0);
+    d3d = Direct3DCreate9(D3D_SDK_VERSION);
+    ok(!!d3d, "Failed to create a D3D object.\n");
     if (!(device = create_device(d3d, window, window, TRUE)))
     {
         skip("Failed to create a D3D device, skipping tests.\n");
@@ -7342,14 +6945,10 @@ static void test_shared_handle(void)
     void *mem;
     D3DCAPS9 caps;
 
-    if (!(d3d = Direct3DCreate9(D3D_SDK_VERSION)))
-    {
-        skip("Failed to create D3D object, skipping tests.\n");
-        return;
-    }
-
     window = CreateWindowA("d3d9_test_wc", "d3d9_test", WS_OVERLAPPEDWINDOW,
             0, 0, 640, 480, 0, 0, 0, 0);
+    d3d = Direct3DCreate9(D3D_SDK_VERSION);
+    ok(!!d3d, "Failed to create a D3D object.\n");
     if (!(device = create_device(d3d, window, window, TRUE)))
     {
         skip("Failed to create a D3D device, skipping tests.\n");
@@ -7498,11 +7097,7 @@ static void test_pixel_format(void)
     }
 
     d3d9 = Direct3DCreate9(D3D_SDK_VERSION);
-    if (!d3d9)
-    {
-        skip("Failed to create IDirect3D9 object\n");
-        goto cleanup;
-    }
+    ok(!!d3d9, "Failed to create a D3D object.\n");
 
     test_format = GetPixelFormat(hdc);
     ok(test_format == format, "window has pixel format %d, expected %d\n", test_format, format);
