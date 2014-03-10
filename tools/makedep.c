@@ -454,12 +454,23 @@ static char *get_relative_path( const char *from, const char *dest )
 
 
 /*******************************************************************
+ *         concat_paths
+ */
+static char *concat_paths( const char *base, const char *path )
+{
+    if (!base) return xstrdup( path[0] ? path : "." );
+    if (path[0] == '/') return xstrdup( path );
+    if (!path[0]) return xstrdup( base );
+    return strmake( "%s/%s", base, path );
+}
+
+
+/*******************************************************************
  *         base_dir_path
  */
 static char *base_dir_path( const char *path )
 {
-    if (base_dir && path[0] != '/') return strmake( "%s/%s", base_dir, path );
-    return xstrdup( path );
+    return concat_paths( base_dir, path );
 }
 
 
@@ -468,8 +479,7 @@ static char *base_dir_path( const char *path )
  */
 static char *src_dir_path( const char *path )
 {
-    if (src_dir) return strmake( "%s/%s", src_dir, path );
-    return xstrdup( path );
+    return concat_paths( src_dir, path );
 }
 
 
@@ -478,8 +488,7 @@ static char *src_dir_path( const char *path )
  */
 static char *top_obj_dir_path( const char *path )
 {
-    if (top_obj_dir) return strmake( "%s/%s", top_obj_dir, path );
-    return xstrdup( path );
+    return concat_paths( top_obj_dir, path );
 }
 
 
@@ -488,7 +497,7 @@ static char *top_obj_dir_path( const char *path )
  */
 static char *top_dir_path( const char *path )
 {
-    if (top_src_dir) return strmake( "%s/%s", top_src_dir, path );
+    if (top_src_dir) return concat_paths( top_src_dir, path );
     return top_obj_dir_path( path );
 }
 
@@ -1894,32 +1903,36 @@ static struct strarray output_sources(void)
 
         if (spec_file)
         {
-            if (c2man_files.count && top_obj_dir)
+            if (c2man_files.count)
             {
                 char *manext = get_expanded_make_variable( "api_manext" );
 
                 output( "manpages::\n" );
-                output( "\t%s -w %s -R%s", top_dir_path( "tools/c2man.pl" ), spec_file, top_obj_dir );
+                output( "\t%s -w %s", top_dir_path( "tools/c2man.pl" ), spec_file );
+                output_filename( strmake( "-R%s", top_dir_path( "" )));
                 output_filename( strmake( "-I%s", top_dir_path( "include" )));
-                output_filename( strmake( "-o %s/documentation/man%s", top_obj_dir, manext ? manext : "3w" ));
+                output_filename( strmake( "-o %s/man%s", top_obj_dir_path( "documentation" ), manext ? manext : "3w" ));
                 output_filenames( c2man_files );
                 output( "\n" );
                 output( "htmlpages::\n" );
-                output( "\t%s -Th -w %s -R%s", top_dir_path( "tools/c2man.pl" ), spec_file, top_obj_dir );
+                output( "\t%s -Th -w %s", top_dir_path( "tools/c2man.pl" ), spec_file );
+                output_filename( strmake( "-R%s", top_dir_path( "" )));
                 output_filename( strmake( "-I%s", top_dir_path( "include" )));
-                output_filename( strmake( "-o %s/documentation/html", top_obj_dir ));
+                output_filename( strmake( "-o %s", top_obj_dir_path( "documentation/html" )));
                 output_filenames( c2man_files );
                 output( "\n" );
                 output( "sgmlpages::\n" );
-                output( "\t%s -Ts -w %s -R%s", top_dir_path( "tools/c2man.pl" ), spec_file, top_obj_dir );
+                output( "\t%s -Ts -w %s", top_dir_path( "tools/c2man.pl" ), spec_file );
+                output_filename( strmake( "-R%s", top_dir_path( "" )));
                 output_filename( strmake( "-I%s", top_dir_path( "include" )));
-                output_filename( strmake( "-o %s/documentation/api-guide", top_obj_dir ));
+                output_filename( strmake( "-o %s", top_obj_dir_path( "documentation/api-guide" )));
                 output_filenames( c2man_files );
                 output( "\n" );
                 output( "xmlpages::\n" );
-                output( "\t%s -Tx -w %s -R%s", top_dir_path( "tools/c2man.pl" ), spec_file, top_obj_dir );
+                output( "\t%s -Tx -w %s", top_dir_path( "tools/c2man.pl" ), spec_file );
+                output_filename( strmake( "-R%s", top_dir_path( "" )));
                 output_filename( strmake( "-I%s", top_dir_path( "include" )));
-                output_filename( strmake( "-o %s/documentation/api-guide-xml", top_obj_dir ));
+                output_filename( strmake( "-o %s", top_obj_dir_path( "documentation/api-guide-xml" )));
                 output_filenames( c2man_files );
                 output( "\n" );
                 strarray_add( &phony_targets, "manpages" );

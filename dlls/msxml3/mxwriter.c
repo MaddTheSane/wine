@@ -779,7 +779,6 @@ static ULONG WINAPI mxwriter_Release(IMXWriter *iface)
         SysFreeString(This->encoding);
 
         SysFreeString(This->element);
-        release_dispex(&This->dispex);
         heap_free(This);
     }
 
@@ -1202,7 +1201,7 @@ static void mxwriter_write_starttag(mxwriter *writer, const WCHAR *qname, int le
     write_node_indent(writer);
 
     write_output_buffer(writer->buffer, ltW, 1);
-    write_output_buffer(writer->buffer, qname, len);
+    write_output_buffer(writer->buffer, qname ? qname : emptyW, qname ? len : 0);
     writer_inc_indent(writer);
 }
 
@@ -2605,7 +2604,6 @@ static ULONG WINAPI MXAttributes_Release(IMXAttributes *iface)
             SysFreeString(This->attr[i].value);
         }
 
-        release_dispex(&This->dispex);
         heap_free(This->attr);
         heap_free(This);
     }

@@ -2124,6 +2124,7 @@ static void test_saxreader(void)
     static const CHAR testXmlA[] = "test.xml";
     static const WCHAR testXmlW[] = {'t','e','s','t','.','x','m','l',0};
     IXMLDOMDocument *doc;
+    char seqname[50];
     VARIANT_BOOL v;
 
     while (table->clsid)
@@ -2453,7 +2454,8 @@ static void test_saxreader(void)
         V_VT(&var) = VT_UNKNOWN;
         V_UNKNOWN(&var) = (IUnknown*)stream;
 
-        if (IsEqualGUID(table->clsid, &CLSID_SAXXMLReader60))
+        if (IsEqualGUID(table->clsid, &CLSID_SAXXMLReader60) ||
+            IsEqualGUID(table->clsid, &CLSID_SAXXMLReader40))
             test_seq = cdata_test_alt;
         else
             test_seq = cdata_test;
@@ -2461,14 +2463,16 @@ static void test_saxreader(void)
         set_expected_seq(test_seq);
         hr = ISAXXMLReader_parse(reader, var);
         ok(hr == S_OK, "got 0x%08x\n", hr);
-        ok_sequence(sequences, CONTENT_HANDLER_INDEX, test_seq, "cdata test", TRUE);
+        sprintf(seqname, "%s: cdata test", table->name);
+        ok_sequence(sequences, CONTENT_HANDLER_INDEX, test_seq, seqname, TRUE);
 
         /* 2. CDATA sections */
         stream = create_test_stream(test2_cdata_xml, -1);
         V_VT(&var) = VT_UNKNOWN;
         V_UNKNOWN(&var) = (IUnknown*)stream;
 
-        if (IsEqualGUID(table->clsid, &CLSID_SAXXMLReader60))
+        if (IsEqualGUID(table->clsid, &CLSID_SAXXMLReader60) ||
+            IsEqualGUID(table->clsid, &CLSID_SAXXMLReader40))
             test_seq = cdata_test2_alt;
         else
             test_seq = cdata_test2;
@@ -2476,7 +2480,8 @@ static void test_saxreader(void)
         set_expected_seq(test_seq);
         hr = ISAXXMLReader_parse(reader, var);
         ok(hr == S_OK, "got 0x%08x\n", hr);
-        ok_sequence(sequences, CONTENT_HANDLER_INDEX, test_seq, "cdata test 2", TRUE);
+        sprintf(seqname, "%s: cdata test 2", table->name);
+        ok_sequence(sequences, CONTENT_HANDLER_INDEX, test_seq, seqname, TRUE);
 
         IStream_Release(stream);
 
@@ -2485,7 +2490,8 @@ static void test_saxreader(void)
         V_VT(&var) = VT_UNKNOWN;
         V_UNKNOWN(&var) = (IUnknown*)stream;
 
-        if (IsEqualGUID(table->clsid, &CLSID_SAXXMLReader60))
+        if (IsEqualGUID(table->clsid, &CLSID_SAXXMLReader60) ||
+            IsEqualGUID(table->clsid, &CLSID_SAXXMLReader40))
             test_seq = cdata_test3_alt;
         else
             test_seq = cdata_test3;
@@ -2493,7 +2499,8 @@ static void test_saxreader(void)
         set_expected_seq(test_seq);
         hr = ISAXXMLReader_parse(reader, var);
         ok(hr == S_OK, "got 0x%08x\n", hr);
-        ok_sequence(sequences, CONTENT_HANDLER_INDEX, test_seq, "cdata test 3", TRUE);
+        sprintf(seqname, "%s: cdata test 3", table->name);
+        ok_sequence(sequences, CONTENT_HANDLER_INDEX, test_seq, seqname, TRUE);
 
         IStream_Release(stream);
 
@@ -4387,6 +4394,7 @@ static void test_mxwriter_encoding(void)
 
 static void test_obj_dispex(IUnknown *obj)
 {
+    static const WCHAR testW[] = {'t','e','s','t','p','r','o','p',0};
     static const WCHAR starW[] = {'*',0};
     DISPID dispid = DISPID_SAX_XMLREADER_GETFEATURE;
     IDispatchEx *dispex;
@@ -4395,6 +4403,7 @@ static void test_obj_dispex(IUnknown *obj)
     UINT ticnt;
     HRESULT hr;
     BSTR name;
+    DISPID did;
 
     hr = IUnknown_QueryInterface(obj, &IID_IDispatchEx, (void**)&dispex);
     EXPECT_HR(hr, S_OK);
@@ -4425,9 +4434,15 @@ static void test_obj_dispex(IUnknown *obj)
     hr = IDispatchEx_GetNextDispID(dispex, fdexEnumDefault, DISPID_SAX_XMLREADER_GETFEATURE, &dispid);
     EXPECT_HR(hr, E_NOTIMPL);
 
+    unk = (IUnknown*)0xdeadbeef;
     hr = IDispatchEx_GetNameSpaceParent(dispex, &unk);
     EXPECT_HR(hr, E_NOTIMPL);
-    if (hr == S_OK && unk) IUnknown_Release(unk);
+    ok(unk == (IUnknown*)0xdeadbeef, "got %p\n", unk);
+
+    name = SysAllocString(testW);
+    hr = IDispatchEx_GetDispID(dispex, name, fdexNameEnsure, &did);
+    ok(hr == DISP_E_UNKNOWNNAME, "got 0x%08x\n", hr);
+    SysFreeString(name);
 
     IDispatchEx_Release(dispex);
 }
@@ -4491,8 +4506,15 @@ static void test_saxreader_dispex(void)
     ok(hr == S_OK, "got 0x%08x\n", hr);
 
     IVBSAXXMLReader_Release(vbreader);
-
     ISAXXMLReader_Release(reader);
+
+    if (is_clsid_supported(&CLSID_SAXXMLReader60, reader_support_data))
+    {
+        hr = CoCreateInstance(&CLSID_SAXXMLReader60, NULL, CLSCTX_INPROC_SERVER, &IID_IUnknown, (void**)&unk);
+        ok(hr == S_OK, "got 0x%08x\n", hr);
+        test_obj_dispex(unk);
+        IUnknown_Release(unk);
+    }
 }
 
 static void test_mxwriter_dispex(void)
@@ -4512,8 +4534,15 @@ static void test_mxwriter_dispex(void)
     test_obj_dispex(unk);
     IUnknown_Release(unk);
     IDispatchEx_Release(dispex);
-
     IMXWriter_Release(writer);
+
+    if (is_clsid_supported(&CLSID_MXXMLWriter60, mxwriter_support_data))
+    {
+        hr = CoCreateInstance(&CLSID_MXXMLWriter60, NULL, CLSCTX_INPROC_SERVER, &IID_IUnknown, (void**)&unk);
+        ok(hr == S_OK, "got 0x%08x\n", hr);
+        test_obj_dispex(unk);
+        IUnknown_Release(unk);
+    }
 }
 
 static void test_mxwriter_comment(void)
@@ -5049,25 +5078,25 @@ static void test_mxattr_addAttribute(void)
         EXPECT_HR(hr, E_INVALIDARG);
 
         hr = ISAXAttributes_getValue(saxattr, 0, NULL, &len);
-        EXPECT_HR(hr, E_INVALIDARG);
+        ok(hr == E_POINTER /* win8 */ || hr == E_INVALIDARG, "got 0x%08x\n", hr);
 
         hr = ISAXAttributes_getValue(saxattr, 0, &value, NULL);
-        EXPECT_HR(hr, E_INVALIDARG);
+        ok(hr == E_POINTER /* win8 */ || hr == E_INVALIDARG, "got 0x%08x\n", hr);
 
         hr = ISAXAttributes_getValue(saxattr, 0, NULL, NULL);
-        EXPECT_HR(hr, E_INVALIDARG);
+        ok(hr == E_POINTER /* win8 */ || hr == E_INVALIDARG, "got 0x%08x\n", hr);
 
         hr = ISAXAttributes_getType(saxattr, 0, &value, &len);
         EXPECT_HR(hr, E_INVALIDARG);
 
         hr = ISAXAttributes_getType(saxattr, 0, NULL, &len);
-        EXPECT_HR(hr, E_INVALIDARG);
+        ok(hr == E_POINTER /* win8 */ || hr == E_INVALIDARG, "got 0x%08x\n", hr);
 
         hr = ISAXAttributes_getType(saxattr, 0, &value, NULL);
-        EXPECT_HR(hr, E_INVALIDARG);
+        ok(hr == E_POINTER /* win8 */ || hr == E_INVALIDARG, "got 0x%08x\n", hr);
 
         hr = ISAXAttributes_getType(saxattr, 0, NULL, NULL);
-        EXPECT_HR(hr, E_INVALIDARG);
+        ok(hr == E_POINTER /* win8 */ || hr == E_INVALIDARG, "got 0x%08x\n", hr);
 
         hr = IMXAttributes_addAttribute(mxattr, _bstr_(table->uri), _bstr_(table->local),
             _bstr_(table->qname), _bstr_(table->type), _bstr_(table->value));
@@ -5158,22 +5187,22 @@ static void test_mxattr_addAttribute(void)
                 IsEqualGUID(table->clsid, &CLSID_SAXAttributes60))
             {
                 hr = ISAXAttributes_getValueFromQName(saxattr, NULL, 0, NULL, NULL);
-                EXPECT_HR(hr, E_INVALIDARG);
+                ok(hr == E_POINTER /* win8 */ || hr == E_INVALIDARG, "got 0x%08x\n", hr);
 
                 hr = ISAXAttributes_getValueFromQName(saxattr, _bstr_(table->qname), 0, NULL, NULL);
-                EXPECT_HR(hr, E_INVALIDARG);
+                ok(hr == E_POINTER /* win8 */ || hr == E_INVALIDARG, "got 0x%08x\n", hr);
 
                 hr = ISAXAttributes_getValueFromQName(saxattr, _bstr_(table->qname), 0, &value, NULL);
-                EXPECT_HR(hr, E_INVALIDARG);
+                ok(hr == E_POINTER /* win8 */ || hr == E_INVALIDARG, "got 0x%08x\n", hr);
 
                 hr = ISAXAttributes_getValueFromName(saxattr, NULL, 0, NULL, 0, NULL, NULL);
-                EXPECT_HR(hr, E_INVALIDARG);
+                ok(hr == E_POINTER /* win8 */ || hr == E_INVALIDARG, "got 0x%08x\n", hr);
 
                 hr = ISAXAttributes_getValueFromName(saxattr, _bstr_(table->uri), 0, NULL, 0, NULL, NULL);
-                EXPECT_HR(hr, E_INVALIDARG);
+                ok(hr == E_POINTER /* win8 */ || hr == E_INVALIDARG, "got 0x%08x\n", hr);
 
                 hr = ISAXAttributes_getValueFromName(saxattr, _bstr_(table->uri), 0, NULL, 0, &value, NULL);
-                EXPECT_HR(hr, E_INVALIDARG);
+                ok(hr == E_POINTER /* win8 */ || hr == E_INVALIDARG, "got 0x%08x\n", hr);
             }
             else
             {

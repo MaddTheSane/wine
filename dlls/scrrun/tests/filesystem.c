@@ -127,19 +127,26 @@ static void test_interfaces(void)
 
 static void test_createfolder(void)
 {
+    WCHAR pathW[MAX_PATH], buffW[MAX_PATH];
     HRESULT hr;
-    WCHAR pathW[MAX_PATH];
     BSTR path;
     IFolder *folder;
+    BOOL ret;
+
+    GetTempPathW(MAX_PATH, pathW);
+    GetTempFileNameW(pathW, NULL, 0, buffW);
+    DeleteFileW(buffW);
+    ret = CreateDirectoryW(buffW, NULL);
+    ok(ret, "got %d, %d\n", ret, GetLastError());
 
     /* create existing directory */
-    GetCurrentDirectoryW(sizeof(pathW)/sizeof(WCHAR), pathW);
-    path = SysAllocString(pathW);
+    path = SysAllocString(buffW);
     folder = (void*)0xdeabeef;
     hr = IFileSystem3_CreateFolder(fs3, path, &folder);
     ok(hr == CTL_E_FILEALREADYEXISTS, "got 0x%08x\n", hr);
     ok(folder == NULL, "got %p\n", folder);
     SysFreeString(path);
+    RemoveDirectoryW(buffW);
 }
 
 static void test_textstream(void)
@@ -1089,12 +1096,10 @@ todo_wine
             ok(0, "unexpected file %s was found\n", wine_dbgstr_w(str));
         SysFreeString(str);
 
-        /* FIXME: uncomment once Wine is fixed
-        IFile_Release(file); */
+        IFile_Release(file);
         VariantClear(&var);
     }
 
-todo_wine
     ok(found_a == 1 && found_b == 1 && found_c == 1,
        "each file should be found 1 time instead of %d/%d/%d\n",
        found_a, found_b, found_c);
@@ -1102,15 +1107,12 @@ todo_wine
     VariantInit(&var);
     fetched = -1;
     hr = IEnumVARIANT_Next(enumvar, 1, &var, &fetched);
-todo_wine
     ok(hr == S_FALSE, "got 0x%08x\n", hr);
-todo_wine
     ok(fetched == 0, "got %d\n", fetched);
 
     hr = IEnumVARIANT_Reset(enumvar);
     ok(hr == S_OK, "got 0x%08x\n", hr);
     hr = IEnumVARIANT_Skip(enumvar, 2);
-todo_wine
     ok(hr == S_OK, "got 0x%08x\n", hr);
     hr = IEnumVARIANT_Skip(enumvar, 0);
     ok(hr == S_OK, "got 0x%08x\n", hr);
@@ -1123,9 +1125,7 @@ todo_wine
     ok(fetched == 0, "got %d\n", fetched);
     fetched = -1;
     hr = IEnumVARIANT_Next(enumvar, 2, var2, &fetched);
-todo_wine
     ok(hr == S_FALSE, "got 0x%08x\n", hr);
-todo_wine
     ok(fetched == 1, "got %d\n", fetched);
     ok(V_VT(&var2[0]) == VT_DISPATCH, "got type %d\n", V_VT(&var2[0]));
     VariantClear(&var2[0]);
