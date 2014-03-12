@@ -4043,6 +4043,8 @@ static void test_block_formats_creation(void)
     DWORD supported_fmts = 0, supported_overlay_fmts = 0;
     DWORD num_fourcc_codes = 0, *fourcc_codes;
     DDSURFACEDESC2 ddsd;
+    DDCAPS hal_caps;
+
     static const struct
     {
         DWORD fourcc;
@@ -4132,12 +4134,19 @@ static void test_block_formats_creation(void)
     }
     HeapFree(GetProcessHeap(), 0, fourcc_codes);
 
+    memset(&hal_caps, 0, sizeof(hal_caps));
+    hal_caps.dwSize = sizeof(hal_caps);
+    hr = IDirectDraw4_GetCaps(ddraw, &hal_caps, NULL);
+    ok(SUCCEEDED(hr), "Failed to get caps, hr %#x.\n", hr);
+
     for (i = 0; i < sizeof(formats) / sizeof(*formats); i++)
     {
         for (j = 0; j < sizeof(types) / sizeof(*types); j++)
         {
             BOOL support;
-            if (formats[i].overlay != types[j].overlay)
+
+            if (formats[i].overlay != types[j].overlay
+                    || (types[j].overlay && !(hal_caps.dwCaps & DDCAPS_OVERLAY)))
                 continue;
 
             if (formats[i].overlay)
@@ -6071,6 +6080,23 @@ static void test_private_data(void)
     hr = IDirectDrawSurface4_SetPrivateData(surface, &IID_IDirect3D, ddraw,
             sizeof(ddraw) * 2, DDSPD_IUNKNOWNPOINTER);
     ok(hr == DDERR_INVALIDPARAMS, "Got unexpected hr %#x.\n", hr);
+
+    /* Note that with a size != 0 and size != sizeof(IUnknown *) and
+     * DDSPD_IUNKNOWNPOINTER set SetPrivateData in ddraw4 and ddraw7
+     * erases the old content and returns an error. This behavior has
+     * been fixed in d3d8 and d3d9. Unless an application is found
+     * that depends on this we don't care about this behavior. */
+    hr = IDirectDrawSurface4_SetPrivateData(surface, &IID_IDirect3D, ddraw,
+            sizeof(ddraw), DDSPD_IUNKNOWNPOINTER);
+    ok(SUCCEEDED(hr), "Failed to set private data, hr %#x.\n", hr);
+    hr = IDirectDrawSurface4_SetPrivateData(surface, &IID_IDirect3D, ddraw,
+            0, DDSPD_IUNKNOWNPOINTER);
+    ok(hr == DDERR_INVALIDPARAMS, "Got unexpected hr %#x.\n", hr);
+    size = sizeof(ptr);
+    hr = IDirectDrawSurface4_GetPrivateData(surface, &IID_IDirect3D, &ptr, &size);
+    ok(SUCCEEDED(hr), "Failed to get private data, hr %#x.\n", hr);
+    hr = IDirectDrawSurface4_FreePrivateData(surface, &IID_IDirect3D);
+    ok(SUCCEEDED(hr), "Failed to free private data, hr %#x.\n", hr);
 
     refcount = get_refcount((IUnknown *)ddraw);
     hr = IDirectDrawSurface4_SetPrivateData(surface, &IID_IDirect3D, ddraw,

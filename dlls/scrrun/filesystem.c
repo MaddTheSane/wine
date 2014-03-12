@@ -54,6 +54,7 @@ struct drivecollection {
     IDriveCollection IDriveCollection_iface;
     LONG ref;
     DWORD drives;
+    LONG count;
 };
 
 struct enumdata {
@@ -1061,6 +1062,7 @@ static HRESULT create_filecoll_enum(struct filecollection *collection, IUnknown 
 
     This->IEnumVARIANT_iface.lpVtbl = &filecollenumvariantvtbl;
     This->ref = 1;
+    This->data.u.filecoll.find = NULL;
     This->data.u.filecoll.coll = collection;
     IFileCollection_AddRef(&collection->IFileCollection_iface);
 
@@ -1103,16 +1105,18 @@ static HRESULT WINAPI drivecoll_enumvariant_Next(IEnumVARIANT *iface, ULONG celt
 {
     struct enumvariant *This = impl_from_IEnumVARIANT(iface);
     ULONG count = 0;
-    HRESULT hr;
 
     TRACE("(%p)->(%d %p %p)\n", This, celt, var, fetched);
 
     if (fetched)
         *fetched = 0;
 
+    if (!celt) return S_OK;
+
     while (find_next_drive(This) == S_OK)
     {
         IDrive *drive;
+        HRESULT hr;
 
         hr = create_drive('A' + This->data.u.drivecoll.cur, &drive);
         if (FAILED(hr)) return hr;
@@ -1123,22 +1127,24 @@ static HRESULT WINAPI drivecoll_enumvariant_Next(IEnumVARIANT *iface, ULONG celt
         if (++count >= celt) break;
     }
 
-    if (count < celt)
-        return S_FALSE;
-
     if (fetched)
         *fetched = count;
 
-    return S_OK;
+    return (count < celt) ? S_FALSE : S_OK;
 }
 
 static HRESULT WINAPI drivecoll_enumvariant_Skip(IEnumVARIANT *iface, ULONG celt)
 {
     struct enumvariant *This = impl_from_IEnumVARIANT(iface);
 
-    FIXME("(%p)->(%d): stub\n", This, celt);
+    TRACE("(%p)->(%d)\n", This, celt);
 
-    return E_NOTIMPL;
+    if (!celt) return S_OK;
+
+    while (celt && find_next_drive(This) == S_OK)
+        celt--;
+
+    return celt ? S_FALSE : S_OK;
 }
 
 static HRESULT WINAPI drivecoll_enumvariant_Reset(IEnumVARIANT *iface)
@@ -1671,8 +1677,13 @@ static HRESULT WINAPI drivecoll_get__NewEnum(IDriveCollection *iface, IUnknown *
 static HRESULT WINAPI drivecoll_get_Count(IDriveCollection *iface, LONG *count)
 {
     struct drivecollection *This = impl_from_IDriveCollection(iface);
-    FIXME("(%p)->(%p): stub\n", This, count);
-    return E_NOTIMPL;
+
+    TRACE("(%p)->(%p)\n", This, count);
+
+    if (!count) return E_POINTER;
+
+    *count = This->count;
+    return S_OK;
 }
 
 static const IDriveCollectionVtbl drivecollectionvtbl = {
@@ -1691,6 +1702,7 @@ static const IDriveCollectionVtbl drivecollectionvtbl = {
 static HRESULT create_drivecoll(IDriveCollection **drives)
 {
     struct drivecollection *This;
+    DWORD mask;
 
     *drives = NULL;
 
@@ -1699,7 +1711,10 @@ static HRESULT create_drivecoll(IDriveCollection **drives)
 
     This->IDriveCollection_iface.lpVtbl = &drivecollectionvtbl;
     This->ref = 1;
-    This->drives = GetLogicalDrives();
+    This->drives = mask = GetLogicalDrives();
+    /* count set bits */
+    for (This->count = 0; mask; This->count++)
+        mask &= mask - 1;
 
     *drives = &This->IDriveCollection_iface;
     return S_OK;
@@ -1811,8 +1826,14 @@ static HRESULT WINAPI folder_Invoke(IFolder *iface, DISPID dispIdMember,
 static HRESULT WINAPI folder_get_Path(IFolder *iface, BSTR *path)
 {
     struct folder *This = impl_from_IFolder(iface);
-    FIXME("(%p)->(%p): stub\n", This, path);
-    return E_NOTIMPL;
+
+    TRACE("(%p)->(%p)\n", This, path);
+
+    if(!path)
+        return E_POINTER;
+
+    *path = SysAllocString(This->path);
+    return *path ? S_OK : E_OUTOFMEMORY;
 }
 
 static HRESULT WINAPI folder_get_Name(IFolder *iface, BSTR *name)

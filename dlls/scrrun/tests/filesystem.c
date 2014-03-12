@@ -795,7 +795,7 @@ static void test_GetFolder(void)
 /* Please keep the tests for IFolderCollection and IFileCollection in sync */
 static void test_FolderCollection(void)
 {
-    static const WCHAR fooW[] = {'\\','f','o','o',0};
+    static const WCHAR fooW[] = {'f','o','o',0};
     static const WCHAR aW[] = {'\\','a',0};
     static const WCHAR bW[] = {'\\','b',0};
     static const WCHAR cW[] = {'\\','c',0};
@@ -823,6 +823,14 @@ static void test_FolderCollection(void)
 
     hr = IFolder_get_SubFolders(folder, NULL);
     ok(hr == E_POINTER, "got 0x%08x\n", hr);
+
+    hr = IFolder_get_Path(folder, NULL);
+    ok(hr == E_POINTER, "got 0x%08x\n", hr);
+
+    hr = IFolder_get_Path(folder, &str);
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+    ok(!lstrcmpW(buffW, str), "got %s, expected %s\n", wine_dbgstr_w(str), wine_dbgstr_w(buffW));
+    SysFreeString(str);
 
     lstrcpyW(pathW, buffW);
     lstrcatW(pathW, aW);
@@ -1142,6 +1150,48 @@ todo_wine
     IFileCollection_Release(files);
 }
 
+static void test_DriveCollection(void)
+{
+    IDriveCollection *drives;
+    IEnumVARIANT *enumvar;
+    ULONG fetched;
+    VARIANT var;
+    HRESULT hr;
+    LONG count;
+
+    hr = IFileSystem3_get_Drives(fs3, &drives);
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+
+    hr = IDriveCollection_get__NewEnum(drives, (IUnknown**)&enumvar);
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+
+    hr = IDriveCollection_get_Count(drives, NULL);
+    ok(hr == E_POINTER, "got 0x%08x\n", hr);
+
+    count = 0;
+    hr = IDriveCollection_get_Count(drives, &count);
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+    ok(count > 0, "got %d\n", count);
+
+    V_VT(&var) = VT_EMPTY;
+    fetched = -1;
+    hr = IEnumVARIANT_Next(enumvar, 0, &var, &fetched);
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+    ok(fetched == 0, "got %d\n", fetched);
+
+    hr = IEnumVARIANT_Skip(enumvar, 0);
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+
+    hr = IEnumVARIANT_Skip(enumvar, count);
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+
+    hr = IEnumVARIANT_Skip(enumvar, 1);
+    ok(hr == S_FALSE, "got 0x%08x\n", hr);
+
+    IEnumVARIANT_Release(enumvar);
+    IDriveCollection_Release(drives);
+}
+
 START_TEST(filesystem)
 {
     HRESULT hr;
@@ -1169,6 +1219,7 @@ START_TEST(filesystem)
     test_GetFolder();
     test_FolderCollection();
     test_FileCollection();
+    test_DriveCollection();
 
     IFileSystem3_Release(fs3);
 
