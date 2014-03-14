@@ -124,6 +124,7 @@ AddService=PlugPlay,0,PlugPlayService
 AddService=FontCache3.0.0.0,0,WPFFontCacheService
 AddService=LanmanServer,0,LanmanServerService
 AddService=FontCache,0,FontCacheService
+AddService=Schedule,0,TaskSchedulerService
 
 [DefaultInstall.NT.Services]
 AddService=BITS,0,BITSService
@@ -136,6 +137,7 @@ AddService=PlugPlay,0,PlugPlayService
 AddService=FontCache3.0.0.0,0,WPFFontCacheService
 AddService=LanmanServer,0,LanmanServerService
 AddService=FontCache,0,FontCacheService
+AddService=Schedule,0,TaskSchedulerService
 
 [DefaultInstall.ntamd64.Services]
 AddService=BITS,0,BITSService
@@ -148,6 +150,7 @@ AddService=PlugPlay,0,PlugPlayService
 AddService=FontCache3.0.0.0,0,WPFFontCacheService
 AddService=LanmanServer,0,LanmanServerService
 AddService=FontCache,0,FontCacheService
+AddService=Schedule,0,TaskSchedulerService
 
 [Strings]
 MciExtStr="Software\Microsoft\Windows NT\CurrentVersion\MCI Extensions"
@@ -2510,6 +2513,7 @@ HKLM,%CurrentVersion%\Telephony\Country List\998,"SameAreaRule",,"G"
 10,logs,
 10,temp,
 11,mui,
+11,tasks,
 11,spool\drivers\color,
 11,spool\printers,
 10,,explorer.exe
@@ -3025,6 +3029,19 @@ ErrorControl=1
 [FontCacheServiceKeys]
 HKR,Parameters,"ServiceDll",,"%11%\fntcache.dll"
 ;; HKLM,%CurrentVersionNT%\SvcHost,"netsvcs",0x00010008,"fontcache"
+
+[TaskSchedulerService]
+AddReg=TaskSchedulerServiceKeys
+Description="Task Scheduler"
+DisplayName="Task Scheduler"
+ServiceBinary="%11%\svchost.exe -k netsvcs"
+ServiceType=32
+StartType=3
+ErrorControl=1
+
+[TaskSchedulerServiceKeys]
+HKR,Parameters,"ServiceDll",,"%11%\schedsvc.dll"
+HKLM,%CurrentVersionNT%\SvcHost,"netsvcs",0x00010008,"Schedule"
 
 [Services]
 HKLM,%CurrentVersion%\RunServices,"winemenubuilder",2,"%11%\winemenubuilder.exe -a -r"

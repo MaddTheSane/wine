@@ -4332,6 +4332,9 @@ static HRESULT d3dx9_copy_data(struct d3dx_object *object, const char **ptr)
     read_dword(ptr, &object->size);
     TRACE("Data size: %#x\n", object->size);
 
+    if (!object->size)
+        return D3D_OK;
+
     object->data = HeapAlloc(GetProcessHeap(), 0, object->size);
     if (!object->data)
     {
@@ -5340,7 +5343,7 @@ HRESULT WINAPI D3DXCreateEffectEx(struct IDirect3DDevice9 *device, const void *s
             (ID3DInclude *)include, flags, (ID3DBlob **)compilation_errors, pool);
     if (FAILED(hr))
     {
-        WARN("Failed to initialize shader reflection\n");
+        WARN("Failed to create effect object.\n");
         HeapFree(GetProcessHeap(), 0, object);
         return hr;
     }

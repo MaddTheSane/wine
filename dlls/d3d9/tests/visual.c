@@ -171,13 +171,13 @@ out:
     return ret;
 }
 
-static IDirect3DDevice9 *create_device(IDirect3D9 *d3d9)
+static IDirect3DDevice9 *create_device(IDirect3D9 *d3d, HWND device_window, HWND focus_window, BOOL windowed)
 {
     D3DPRESENT_PARAMETERS present_parameters = {0};
     IDirect3DDevice9 *device;
 
-    present_parameters.Windowed = TRUE;
-    present_parameters.hDeviceWindow = create_window();
+    present_parameters.Windowed = windowed;
+    present_parameters.hDeviceWindow = device_window;
     present_parameters.SwapEffect = D3DSWAPEFFECT_DISCARD;
     present_parameters.BackBufferWidth = 640;
     present_parameters.BackBufferHeight = 480;
@@ -185,18 +185,19 @@ static IDirect3DDevice9 *create_device(IDirect3D9 *d3d9)
     present_parameters.EnableAutoDepthStencil = TRUE;
     present_parameters.AutoDepthStencilFormat = D3DFMT_D24S8;
 
-    if (SUCCEEDED(IDirect3D9_CreateDevice(d3d9, D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL,
-            present_parameters.hDeviceWindow, D3DCREATE_HARDWARE_VERTEXPROCESSING, &present_parameters, &device)))
+    if (SUCCEEDED(IDirect3D9_CreateDevice(d3d, D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL, focus_window,
+            D3DCREATE_HARDWARE_VERTEXPROCESSING, &present_parameters, &device)))
         return device;
 
-    DestroyWindow(present_parameters.hDeviceWindow);
     return NULL;
 }
 
 static IDirect3DDevice9 *init_d3d9(void)
 {
     D3DADAPTER_IDENTIFIER9 identifier;
+    IDirect3DDevice9 *device;
     IDirect3D9 *d3d9;
+    HWND window;
     HRESULT hr;
 
     if (!(d3d9 = Direct3DCreate9(D3D_SDK_VERSION)))
@@ -220,7 +221,13 @@ static IDirect3DDevice9 *init_d3d9(void)
           HIWORD(U(identifier.DriverVersion).HighPart), LOWORD(U(identifier.DriverVersion).HighPart),
           HIWORD(U(identifier.DriverVersion).LowPart), LOWORD(U(identifier.DriverVersion).LowPart));
 
-    return create_device(d3d9);
+    window = CreateWindowA("static", "d3d9_test", WS_OVERLAPPEDWINDOW | WS_VISIBLE,
+            0, 0, 640, 480, NULL, NULL, NULL, NULL);
+    if ((device = create_device(d3d9, window, window, TRUE)))
+        return device;
+
+    DestroyWindow(window);
+    return NULL;
 }
 
 static void cleanup_device(IDirect3DDevice9 *device)
@@ -8723,10 +8730,13 @@ cleanup:
     IDirect3DVertexDeclaration9_Release(vertex_declaration);
 }
 
-static void stencil_cull_test(IDirect3D9 *d3d9)
+static void stencil_cull_test(void)
 {
     IDirect3DDevice9 *device;
+    IDirect3D9 *d3d;
+    ULONG refcount;
     D3DCAPS9 caps;
+    HWND window;
     HRESULT hr;
     static const float quad1[] =
     {
@@ -8768,10 +8778,15 @@ static void stencil_cull_test(IDirect3D9 *d3d9)
     unsigned int i;
     DWORD color;
 
-    device = create_device(d3d9);
-    if (!device)
+    window = CreateWindowA("static", "d3d9_test", WS_OVERLAPPEDWINDOW | WS_VISIBLE,
+            0, 0, 640, 480, NULL, NULL, NULL, NULL);
+    d3d = Direct3DCreate9(D3D_SDK_VERSION);
+    ok(!!d3d, "Failed to create a D3D object.\n");
+    if (!(device = create_device(d3d, window, window, TRUE)))
     {
         skip("Cannot create a device with a D24S8 stencil buffer.\n");
+        DestroyWindow(window);
+        IDirect3D9_Release(d3d);
         return;
     }
     hr = IDirect3DDevice9_GetDeviceCaps(device, &caps);
@@ -8922,7 +8937,10 @@ static void stencil_cull_test(IDirect3D9 *d3d9)
     ok(hr == D3D_OK, "IDirect3DDevice9_Present failed with %08x\n", hr);
 
 cleanup:
-    cleanup_device(device);
+    refcount = IDirect3DDevice9_Release(device);
+    ok(!refcount, "Device has %u references left.\n", refcount);
+    IDirect3D9_Release(d3d);
+    DestroyWindow(window);
 }
 
 static void vpos_register_test(IDirect3DDevice9 *device)
@@ -13528,10 +13546,11 @@ static void multisample_get_rtdata_test(IDirect3DDevice9 *device)
     IDirect3DSurface9_Release(rt);
 }
 
-static void multisampled_depth_buffer_test(IDirect3D9 *d3d9)
+static void multisampled_depth_buffer_test(void)
 {
     IDirect3DDevice9 *device = 0;
     IDirect3DSurface9 *original_rt, *rt, *readback, *ds, *original_ds;
+    IDirect3D9 *d3d;
     D3DCAPS9 caps;
     HRESULT hr;
     D3DPRESENT_PARAMETERS present_parameters;
@@ -13572,18 +13591,21 @@ static void multisampled_depth_buffer_test(IDirect3D9 *d3d9)
         {560, 450, D3DCOLOR_ARGB(0xff, 0x00, 0x00, 0xff)},
     };
 
-    hr = IDirect3D9_CheckDeviceMultiSampleType(d3d9, D3DADAPTER_DEFAULT,
-            D3DDEVTYPE_HAL, D3DFMT_A8R8G8B8, TRUE, D3DMULTISAMPLE_2_SAMPLES, NULL);
-    if (FAILED(hr))
+    d3d = Direct3DCreate9(D3D_SDK_VERSION);
+    ok(!!d3d, "Failed to create a D3D object.\n");
+
+    if (FAILED(IDirect3D9_CheckDeviceMultiSampleType(d3d, D3DADAPTER_DEFAULT,
+            D3DDEVTYPE_HAL, D3DFMT_A8R8G8B8, TRUE, D3DMULTISAMPLE_2_SAMPLES, NULL)))
     {
         skip("Multisampling not supported for D3DFMT_A8R8G8B8, skipping multisampled depth buffer test.\n");
+        IDirect3D9_Release(d3d);
         return;
     }
-    hr = IDirect3D9_CheckDeviceMultiSampleType(d3d9, D3DADAPTER_DEFAULT,
-            D3DDEVTYPE_HAL, D3DFMT_D24S8, TRUE, D3DMULTISAMPLE_2_SAMPLES, NULL);
-    if (FAILED(hr))
+    if (FAILED(IDirect3D9_CheckDeviceMultiSampleType(d3d, D3DADAPTER_DEFAULT,
+            D3DDEVTYPE_HAL, D3DFMT_D24S8, TRUE, D3DMULTISAMPLE_2_SAMPLES, NULL)))
     {
         skip("Multisampling not supported for D3DFMT_D24S8, skipping multisampled depth buffer test.\n");
+        IDirect3D9_Release(d3d);
         return;
     }
 
@@ -13598,7 +13620,7 @@ static void multisampled_depth_buffer_test(IDirect3D9 *d3d9)
     present_parameters.AutoDepthStencilFormat = D3DFMT_D24S8;
     present_parameters.MultiSampleType = D3DMULTISAMPLE_2_SAMPLES;
 
-    hr = IDirect3D9_CreateDevice(d3d9, D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL,
+    hr = IDirect3D9_CreateDevice(d3d, D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL,
             present_parameters.hDeviceWindow, D3DCREATE_HARDWARE_VERTEXPROCESSING,
             &present_parameters, &device);
     ok(hr == D3D_OK, "Failed to create a device, hr %#x.\n", hr);
@@ -13735,7 +13757,7 @@ static void multisampled_depth_buffer_test(IDirect3D9 *d3d9)
     present_parameters.AutoDepthStencilFormat = D3DFMT_D24S8;
     present_parameters.MultiSampleType = D3DMULTISAMPLE_NONE;
 
-    hr = IDirect3D9_CreateDevice(d3d9, D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL,
+    hr = IDirect3D9_CreateDevice(d3d, D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL,
             present_parameters.hDeviceWindow, D3DCREATE_HARDWARE_VERTEXPROCESSING,
             &present_parameters, &device);
     ok(hr == D3D_OK, "Failed to create a device, hr %#x.\n", hr);
@@ -13828,9 +13850,10 @@ static void multisampled_depth_buffer_test(IDirect3D9 *d3d9)
     IDirect3DSurface9_Release(rt);
 cleanup:
     cleanup_device(device);
+    IDirect3D9_Release(d3d);
 }
 
-static void resz_test(IDirect3D9 *d3d9)
+static void resz_test(void)
 {
     IDirect3DDevice9 *device = 0;
     IDirect3DSurface9 *rt, *original_rt, *ds, *readback, *intz_ds;
@@ -13882,36 +13905,40 @@ static void resz_test(IDirect3D9 *d3d9)
     };
     IDirect3DTexture9 *texture;
     IDirect3DPixelShader9 *ps;
+    IDirect3D9 *d3d;
     DWORD value;
 
-    hr = IDirect3D9_CheckDeviceMultiSampleType(d3d9, D3DADAPTER_DEFAULT,
-            D3DDEVTYPE_HAL, D3DFMT_A8R8G8B8, TRUE, D3DMULTISAMPLE_2_SAMPLES, NULL);
-    if (FAILED(hr))
+    d3d = Direct3DCreate9(D3D_SDK_VERSION);
+    ok(!!d3d, "Failed to create a D3D object.\n");
+
+    if (FAILED(IDirect3D9_CheckDeviceMultiSampleType(d3d, D3DADAPTER_DEFAULT,
+            D3DDEVTYPE_HAL, D3DFMT_A8R8G8B8, TRUE, D3DMULTISAMPLE_2_SAMPLES, NULL)))
     {
         skip("Multisampling not supported for D3DFMT_A8R8G8B8, skipping RESZ test.\n");
+        IDirect3D9_Release(d3d);
         return;
     }
-    hr = IDirect3D9_CheckDeviceMultiSampleType(d3d9, D3DADAPTER_DEFAULT,
-            D3DDEVTYPE_HAL, D3DFMT_D24S8, TRUE, D3DMULTISAMPLE_2_SAMPLES, NULL);
-    if (FAILED(hr))
+    if (FAILED(IDirect3D9_CheckDeviceMultiSampleType(d3d, D3DADAPTER_DEFAULT,
+            D3DDEVTYPE_HAL, D3DFMT_D24S8, TRUE, D3DMULTISAMPLE_2_SAMPLES, NULL)))
     {
         skip("Multisampling not supported for D3DFMT_D24S8, skipping RESZ test.\n");
+        IDirect3D9_Release(d3d);
         return;
     }
 
-    hr = IDirect3D9_CheckDeviceFormat(d3d9, D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL, D3DFMT_X8R8G8B8,
-            D3DUSAGE_DEPTHSTENCIL, D3DRTYPE_TEXTURE, MAKEFOURCC('I','N','T','Z'));
-    if (FAILED(hr))
+    if (FAILED(IDirect3D9_CheckDeviceFormat(d3d, D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL, D3DFMT_X8R8G8B8,
+            D3DUSAGE_DEPTHSTENCIL, D3DRTYPE_TEXTURE, MAKEFOURCC('I','N','T','Z'))))
     {
         skip("No INTZ support, skipping RESZ test.\n");
+        IDirect3D9_Release(d3d);
         return;
     }
 
-    hr = IDirect3D9_CheckDeviceFormat(d3d9, D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL, D3DFMT_X8R8G8B8,
-            D3DUSAGE_RENDERTARGET, D3DRTYPE_SURFACE, MAKEFOURCC('R','E','S','Z'));
-    if (FAILED(hr))
+    if (FAILED(IDirect3D9_CheckDeviceFormat(d3d, D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL, D3DFMT_X8R8G8B8,
+            D3DUSAGE_RENDERTARGET, D3DRTYPE_SURFACE, MAKEFOURCC('R','E','S','Z'))))
     {
         skip("No RESZ support, skipping RESZ test.\n");
+        IDirect3D9_Release(d3d);
         return;
     }
 
@@ -13926,7 +13953,7 @@ static void resz_test(IDirect3D9 *d3d9)
     present_parameters.AutoDepthStencilFormat = D3DFMT_D24S8;
     present_parameters.MultiSampleType = D3DMULTISAMPLE_NONE;
 
-    hr = IDirect3D9_CreateDevice(d3d9, D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL,
+    hr = IDirect3D9_CreateDevice(d3d, D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL,
             present_parameters.hDeviceWindow, D3DCREATE_HARDWARE_VERTEXPROCESSING, &present_parameters, &device);
     ok(hr == D3D_OK, "Failed to create a device, hr %#x.\n", hr);
 
@@ -13936,12 +13963,14 @@ static void resz_test(IDirect3D9 *d3d9)
     {
         skip("No pixel shader 2.0 support, skipping INTZ test.\n");
         cleanup_device(device);
+        IDirect3D9_Release(d3d);
         return;
     }
     if (caps.TextureCaps & D3DPTEXTURECAPS_POW2)
     {
         skip("No unconditional NP2 texture support, skipping INTZ test.\n");
         cleanup_device(device);
+        IDirect3D9_Release(d3d);
         return;
     }
 
@@ -14082,7 +14111,7 @@ static void resz_test(IDirect3D9 *d3d9)
     present_parameters.AutoDepthStencilFormat = D3DFMT_D24S8;
     present_parameters.MultiSampleType = D3DMULTISAMPLE_2_SAMPLES;
 
-    hr = IDirect3D9_CreateDevice(d3d9, D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL,
+    hr = IDirect3D9_CreateDevice(d3d, D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL,
             present_parameters.hDeviceWindow, D3DCREATE_HARDWARE_VERTEXPROCESSING, &present_parameters, &device);
     ok(hr == D3D_OK, "Failed to create a device, hr %#x.\n", hr);
 
@@ -14301,6 +14330,7 @@ static void resz_test(IDirect3D9 *d3d9)
     IDirect3DSurface9_Release(readback);
     IDirect3DSurface9_Release(original_rt);
     cleanup_device(device);
+    IDirect3D9_Release(d3d);
 }
 
 static void zenable_test(IDirect3DDevice9 *device)
@@ -14970,8 +15000,8 @@ static void add_dirty_rect_test_draw(IDirect3DDevice9 *device)
     quad[] =
     {
         {{-1.0, -1.0, 0.0}, {0.0, 0.0}},
-        {{ 1.0, -1.0, 0.0}, {1.0, 0.0}},
         {{-1.0,  1.0, 0.0}, {0.0, 1.0}},
+        {{ 1.0, -1.0, 0.0}, {1.0, 0.0}},
         {{ 1.0,  1.0, 0.0}, {1.0, 1.0}},
     };
 
@@ -14983,16 +15013,32 @@ static void add_dirty_rect_test_draw(IDirect3DDevice9 *device)
     ok(SUCCEEDED(hr), "Failed to end scene, hr %#x.\n", hr);
 }
 
-static void add_dirty_rect_test(IDirect3DDevice9 *device)
+static void add_dirty_rect_test(void)
 {
     HRESULT hr;
     IDirect3DTexture9 *tex_dst1, *tex_dst2, *tex_src_red, *tex_src_green, *tex_managed;
     IDirect3DSurface9 *surface_dst2, *surface_src_green, *surface_src_red, *surface_managed;
+    IDirect3DDevice9 *device;
+    IDirect3D9 *d3d;
     unsigned int i;
+    ULONG refcount;
     DWORD *texel;
+    HWND window;
     D3DLOCKED_RECT locked_rect;
     static const RECT part_rect = {96, 96, 160, 160};
     DWORD color;
+
+    window = CreateWindowA("static", "d3d9_test", WS_OVERLAPPEDWINDOW | WS_VISIBLE,
+            0, 0, 640, 480, NULL, NULL, NULL, NULL);
+    d3d = Direct3DCreate9(D3D_SDK_VERSION);
+    ok(!!d3d, "Failed to create a D3D object.\n");
+    if (!(device = create_device(d3d, window, window, TRUE)))
+    {
+        skip("Failed to create a D3D device, skipping tests.\n");
+        IDirect3D9_Release(d3d);
+        DestroyWindow(window);
+        return;
+    }
 
     hr = IDirect3DDevice9_CreateTexture(device, 256, 256, 1, 0, D3DFMT_X8R8G8B8,
             D3DPOOL_DEFAULT, &tex_dst1, NULL);
@@ -15281,11 +15327,14 @@ static void add_dirty_rect_test(IDirect3DDevice9 *device)
     IDirect3DTexture9_Release(tex_dst1);
     IDirect3DTexture9_Release(tex_dst2);
     IDirect3DTexture9_Release(tex_managed);
+    refcount = IDirect3DDevice9_Release(device);
+    ok(!refcount, "Device has %u references left.\n", refcount);
+    IDirect3D9_Release(d3d);
+    DestroyWindow(window);
 }
 
 START_TEST(visual)
 {
-    IDirect3D9 *d3d9;
     IDirect3DDevice9 *device_ptr;
     D3DCAPS9 caps;
     HRESULT hr;
@@ -15453,18 +15502,14 @@ START_TEST(visual)
     fog_special_test(device_ptr);
     volume_srgb_test(device_ptr);
     volume_dxt5_test(device_ptr);
-    add_dirty_rect_test(device_ptr);
 
-    hr = IDirect3DDevice9_GetDirect3D(device_ptr, &d3d9);
-    ok(SUCCEEDED(hr), "Failed to get d3d9 interface, hr %#x.\n", hr);
     cleanup_device(device_ptr);
     device_ptr = NULL;
 
-    multisampled_depth_buffer_test(d3d9);
-    resz_test(d3d9);
-    stencil_cull_test(d3d9);
-
-    IDirect3D9_Release(d3d9);
+    add_dirty_rect_test();
+    multisampled_depth_buffer_test();
+    resz_test();
+    stencil_cull_test();
 
 cleanup:
     cleanup_device(device_ptr);
