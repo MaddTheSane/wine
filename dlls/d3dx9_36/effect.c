@@ -96,6 +96,7 @@ enum STATE_TYPE
     ST_CONSTANT,
     ST_PARAMETER,
     ST_FXLC,
+    ST_ARRAY_SELECTOR,
 };
 
 struct d3dx_parameter
@@ -118,6 +119,8 @@ struct d3dx_parameter
 
     struct d3dx_parameter *annotations;
     struct d3dx_parameter *members;
+
+    struct d3dx_parameter *referenced_param;
 };
 
 struct d3dx_object
@@ -761,7 +764,31 @@ static void get_matrix(struct d3dx_parameter *param, D3DXMATRIX *matrix, BOOL tr
     }
 }
 
-static void set_matrix(struct d3dx_parameter *param, const D3DXMATRIX *matrix, BOOL transpose)
+static void set_matrix(struct d3dx_parameter *param, const D3DXMATRIX *matrix)
+{
+    UINT i, k;
+
+    if (param->type == D3DXPT_FLOAT)
+    {
+        if (param->columns == 4)
+            memcpy(param->data, matrix->u.m, param->rows * 4 * sizeof(float));
+        else
+            for (i = 0; i < param->rows; ++i)
+                memcpy((float *)param->data + i * param->columns, matrix->u.m + i, param->columns * sizeof(float));
+        return;
+    }
+
+    for (i = 0; i < param->rows; ++i)
+    {
+        for (k = 0; k < param->columns; ++k)
+        {
+            set_number((FLOAT *)param->data + i * param->columns + k, param->type,
+                    &matrix->u.m[i][k], D3DXPT_FLOAT);
+        }
+    }
+}
+
+static void set_matrix_transpose(struct d3dx_parameter *param, const D3DXMATRIX *matrix)
 {
     UINT i, k;
 
@@ -770,7 +797,7 @@ static void set_matrix(struct d3dx_parameter *param, const D3DXMATRIX *matrix, B
         for (k = 0; k < param->columns; ++k)
         {
             set_number((FLOAT *)param->data + i * param->columns + k, param->type,
-                    transpose ? &matrix->u.m[k][i] : &matrix->u.m[i][k], D3DXPT_FLOAT);
+                    &matrix->u.m[k][i], D3DXPT_FLOAT);
         }
     }
 }
@@ -1913,7 +1940,7 @@ static HRESULT d3dx9_base_effect_set_matrix(struct d3dx9_base_effect *base,
         switch (param->class)
         {
             case D3DXPC_MATRIX_ROWS:
-                set_matrix(param, matrix, FALSE);
+                set_matrix(param, matrix);
                 return D3D_OK;
 
             case D3DXPC_SCALAR:
@@ -1981,7 +2008,7 @@ static HRESULT d3dx9_base_effect_set_matrix_array(struct d3dx9_base_effect *base
             case D3DXPC_MATRIX_ROWS:
                 for (i = 0; i < count; ++i)
                 {
-                    set_matrix(&param->members[i], &matrix[i], FALSE);
+                    set_matrix(&param->members[i], &matrix[i]);
                 }
                 return D3D_OK;
 
@@ -2055,7 +2082,7 @@ static HRESULT d3dx9_base_effect_set_matrix_pointer_array(struct d3dx9_base_effe
             case D3DXPC_MATRIX_ROWS:
                 for (i = 0; i < count; ++i)
                 {
-                    set_matrix(&param->members[i], matrix[i], FALSE);
+                    set_matrix(&param->members[i], matrix[i]);
                 }
                 return D3D_OK;
 
@@ -2125,7 +2152,7 @@ static HRESULT d3dx9_base_effect_set_matrix_transpose(struct d3dx9_base_effect *
         switch (param->class)
         {
             case D3DXPC_MATRIX_ROWS:
-                set_matrix(param, matrix, TRUE);
+                set_matrix_transpose(param, matrix);
                 return D3D_OK;
 
             case D3DXPC_SCALAR:
@@ -2196,7 +2223,7 @@ static HRESULT d3dx9_base_effect_set_matrix_transpose_array(struct d3dx9_base_ef
             case D3DXPC_MATRIX_ROWS:
                 for (i = 0; i < count; ++i)
                 {
-                    set_matrix(&param->members[i], &matrix[i], TRUE);
+                    set_matrix_transpose(&param->members[i], &matrix[i]);
                 }
                 return D3D_OK;
 
@@ -2270,7 +2297,7 @@ static HRESULT d3dx9_base_effect_set_matrix_transpose_pointer_array(struct d3dx9
             case D3DXPC_MATRIX_ROWS:
                 for (i = 0; i < count; ++i)
                 {
-                    set_matrix(&param->members[i], matrix[i], TRUE);
+                    set_matrix_transpose(&param->members[i], matrix[i]);
                 }
                 return D3D_OK;
 
@@ -4939,12 +4966,81 @@ err_out:
     return hr;
 }
 
+static HRESULT d3dx9_create_object(struct d3dx9_base_effect *base, struct d3dx_object *object)
+{
+    struct d3dx_parameter *param = object->param;
+    struct IDirect3DDevice9 *device = base->effect->device;
+    HRESULT hr;
+
+    if (*(char **)param->data)
+        ERR("Parameter data already allocated.\n");
+
+    switch (param->type)
+    {
+        case D3DXPT_STRING:
+            *(char **)param->data = HeapAlloc(GetProcessHeap(), 0, object->size);
+            if (!*(char **)param->data)
+            {
+                ERR("Out of memory.\n");
+                return E_OUTOFMEMORY;
+            }
+            memcpy(*(char **)param->data, object->data, object->size);
+            break;
+        case D3DXPT_VERTEXSHADER:
+            if (FAILED(hr = IDirect3DDevice9_CreateVertexShader(device, object->data,
+                    (IDirect3DVertexShader9 **)param->data)))
+            {
+                WARN("Failed to create vertex shader.\n");
+                return hr;
+            }
+            break;
+        case D3DXPT_PIXELSHADER:
+            if (FAILED(hr = IDirect3DDevice9_CreatePixelShader(device, object->data,
+                    (IDirect3DPixelShader9 **)param->data)))
+            {
+                WARN("Failed to create pixel shader.\n");
+                return hr;
+            }
+            break;
+        default:
+            break;
+    }
+    return D3D_OK;
+}
+
+static HRESULT d3dx9_parse_array_selector(struct d3dx9_base_effect *base, struct d3dx_parameter *param)
+{
+    DWORD string_size;
+    struct d3dx_object *object = &base->objects[param->object_id];
+    char *ptr = object->data;
+
+    TRACE("Parsing array entry selection state for parameter %p.\n", param);
+
+    string_size = *(DWORD *)ptr;
+    param->referenced_param = get_parameter_by_name(base, NULL, ptr + 4);
+    if (param->referenced_param)
+    {
+        TRACE("Mapping to parameter %s.\n", debugstr_a(param->referenced_param->name));
+    }
+    else
+    {
+        FIXME("Referenced parameter %s not found.\n", ptr + 4);
+        return D3DXERR_INVALIDDATA;
+    }
+    TRACE("Unknown DWORD: 0x%.8x.\n", *(DWORD *)(ptr + string_size));
+
+    FIXME("Parse preshader.\n");
+
+    return D3D_OK;
+}
+
 static HRESULT d3dx9_parse_resource(struct d3dx9_base_effect *base, const char *data, const char **ptr)
 {
     DWORD technique_index;
     DWORD index, state_index, usage, element_index;
     struct d3dx_state *state;
     struct d3dx_parameter *param;
+    struct d3dx_object *object;
     HRESULT hr = E_FAIL;
 
     read_dword(ptr, &technique_index);
@@ -5022,21 +5118,26 @@ static HRESULT d3dx9_parse_resource(struct d3dx9_base_effect *base, const char *
         state = &pass->states[state_index];
     }
 
+    TRACE("State operation %#x (%s).\n", state->operation, state_table[state->operation].name);
     param = &state->parameter;
+    TRACE("Using object id %u.\n", param->object_id);
+    object = &base->objects[param->object_id];
 
-    /*
-     * TODO: Do we need to create the shader/string here or later when we access them?
-     */
+    TRACE("Usage %u: class %s, type %s.\n", usage, debug_d3dxparameter_class(param->class),
+            debug_d3dxparameter_type(param->type));
     switch (usage)
     {
         case 0:
-            TRACE("usage 0: type %s\n", debug_d3dxparameter_type(param->type));
             switch (param->type)
             {
                 case D3DXPT_VERTEXSHADER:
                 case D3DXPT_PIXELSHADER:
                     state->type = ST_CONSTANT;
-                    hr = d3dx9_copy_data(&base->objects[param->object_id], ptr);
+                    if (FAILED(hr = d3dx9_copy_data(&base->objects[param->object_id], ptr)))
+                        return hr;
+
+                    if (object->data)
+                        hr = d3dx9_create_object(base, object);
                     break;
 
                 case D3DXPT_BOOL:
@@ -5055,7 +5156,27 @@ static HRESULT d3dx9_parse_resource(struct d3dx9_base_effect *base, const char *
 
         case 1:
             state->type = ST_PARAMETER;
-            hr = d3dx9_copy_data(&base->objects[param->object_id], ptr);
+            if (FAILED(hr = d3dx9_copy_data(&base->objects[param->object_id], ptr)))
+                return hr;
+
+            TRACE("Looking for parameter %s.\n", debugstr_a(object->data));
+            param->referenced_param = get_parameter_by_name(base, NULL, object->data);
+            if (param->referenced_param)
+            {
+                TRACE("Mapping to parameter %p.\n", param->referenced_param);
+            }
+            else
+            {
+                FIXME("Referenced parameter %s not found.\n", (char *)object->data);
+                return D3DXERR_INVALIDDATA;
+            }
+            break;
+
+        case 2:
+            state->type = ST_ARRAY_SELECTOR;
+            if (FAILED(hr = d3dx9_copy_data(object, ptr)))
+                return hr;
+            hr = d3dx9_parse_array_selector(base, param);
             break;
 
         default:
@@ -5153,11 +5274,13 @@ static HRESULT d3dx9_parse_effect(struct d3dx9_base_effect *base, const char *da
         read_dword(&ptr, &id);
         TRACE("Id: %u\n", id);
 
-        hr = d3dx9_copy_data(&base->objects[id], &ptr);
-        if (hr != D3D_OK)
-        {
-            WARN("Failed to parse data %u\n", i);
+        if (FAILED(hr = d3dx9_copy_data(&base->objects[id], &ptr)))
             goto err_out;
+
+        if (base->objects[id].data)
+        {
+            if (FAILED(hr = d3dx9_create_object(base, &base->objects[id])))
+                goto err_out;
         }
     }
 
