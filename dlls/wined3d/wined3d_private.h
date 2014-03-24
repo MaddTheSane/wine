@@ -1086,7 +1086,9 @@ struct wined3d_context
     DWORD lowest_disabled_stage : 4;    /* Max MAX_TEXTURES, 8 */
     DWORD rebind_fbo : 1;
     DWORD needs_set : 1;
-    DWORD padding : 18;
+    DWORD hdc_is_private : 1;
+    DWORD hdc_has_format : 1;           /* only meaningful if hdc_is_private */
+    DWORD padding : 16;
     DWORD shader_update_mask;
     DWORD constant_update_mask;
     DWORD                   numbered_array_mask;
@@ -2006,7 +2008,6 @@ struct wined3d_resource
     DWORD priority;
     void *heap_memory;
     struct list resource_list_entry;
-    struct wined3d_private_store private_store;
 
     void *parent;
     const struct wined3d_parent_ops *parent_ops;
