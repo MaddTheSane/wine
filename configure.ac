@@ -1780,6 +1780,7 @@ then
   WINE_TRY_CFLAGS([-Wstrict-prototypes])
   WINE_TRY_CFLAGS([-Wtype-limits])
   WINE_TRY_CFLAGS([-Wunused-but-set-parameter])
+  WINE_TRY_CFLAGS([-Wvla])
   WINE_TRY_CFLAGS([-Wwrite-strings])
 
   dnl Check for noisy string.h
@@ -3334,7 +3335,7 @@ WINE_CONFIG_PROGRAM(regasm,,[install])
 WINE_CONFIG_PROGRAM(regedit,,[install,installbin,manpage,po])
 WINE_CONFIG_TEST(programs/regedit/tests)
 WINE_CONFIG_PROGRAM(regsvcs,,[install])
-WINE_CONFIG_PROGRAM(regsvr32,,[install,installbin,manpage])
+WINE_CONFIG_PROGRAM(regsvr32,,[install,installbin,manpage,po])
 WINE_CONFIG_PROGRAM(rpcss,,[clean,install])
 WINE_CONFIG_PROGRAM(rundll.exe16,enable_win16,[install])
 WINE_CONFIG_PROGRAM(rundll32,,[install])
