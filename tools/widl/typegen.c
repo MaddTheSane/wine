@@ -85,6 +85,8 @@ static const unsigned short IsSimpleRef = 0x0100;
 static unsigned int field_memsize(const type_t *type, unsigned int *offset);
 static unsigned int fields_memsize(const var_list_t *fields, unsigned int *align);
 static unsigned int type_memsize_and_alignment(const type_t *t, unsigned int *align);
+static unsigned int write_array_tfs(FILE *file, const attr_list_t *attrs, type_t *type,
+                                    const char *name, unsigned int *typestring_offset);
 static unsigned int write_struct_tfs(FILE *file, type_t *type, const char *name, unsigned int *tfsoff);
 static int write_embedded_types(FILE *file, const attr_list_t *attrs, type_t *type,
                                 const char *name, int write_ptr, unsigned int *tfsoff);
@@ -2316,7 +2318,7 @@ static void write_member_type(FILE *file, const type_t *cont,
         error("Unsupported member type %d\n", type_get_type(type));
 }
 
-static void write_array_element_type(FILE *file, const type_t *type,
+static void write_array_element_type(FILE *file, const attr_list_t *attrs, const type_t *type,
                                      int cont_is_complex, unsigned int *tfsoff)
 {
     type_t *elem = type_array_get_element(type);
@@ -2331,7 +2333,7 @@ static void write_array_element_type(FILE *file, const type_t *type,
                                     ref->typestring_offset, tfsoff);
             return;
         }
-        if (cont_is_complex && is_string_type(NULL, elem))
+        if (cont_is_complex && is_string_type(attrs, elem))
         {
             write_string_tfs(file, NULL, elem, TYPE_CONTEXT_CONTAINER, NULL, tfsoff);
             return;
@@ -2728,7 +2730,7 @@ static int write_varying_array_pointer_descriptions(
     return pointer_count;
 }
 
-static void write_pointer_description(FILE *file, type_t *type,
+static void write_pointer_description(FILE *file, const attr_list_t *attrs, type_t *type,
                                       unsigned int *typestring_offset)
 {
     unsigned int offset_in_buffer;
@@ -2757,7 +2759,7 @@ static void write_pointer_description(FILE *file, type_t *type,
     if (is_conformant_array(type) &&
         (type_array_is_decl_as_ptr(type) || !current_structure))
         write_conformant_array_pointer_descriptions(
-            file, NULL, type, 0, typestring_offset);
+            file, attrs, type, 0, typestring_offset);
     else if (type_get_type(type) == TYPE_STRUCT &&
              get_struct_fc(type) == RPC_FC_CPSTRUCT)
     {
@@ -2808,6 +2810,9 @@ static unsigned int write_string_tfs(FILE *file, const attr_list_t *attrs,
         elem_type = type_array_get_element(type);
     else
         elem_type = type_pointer_get_ref(type);
+
+    if (type_get_type(elem_type) == TYPE_POINTER && is_array(type))
+        return write_array_tfs(file, attrs, type, name, typestring_offset);
 
     if (type_get_type(elem_type) != TYPE_BASIC)
     {
@@ -2899,7 +2904,8 @@ static unsigned int write_array_tfs(FILE *file, const attr_list_t *attrs, type_t
     if (!pointer_type)
         pointer_type = RPC_FC_RP;
 
-    write_embedded_types(file, attrs, type_array_get_element(type), name, FALSE, typestring_offset);
+    if (!is_string_type(attrs, type_array_get_element(type)))
+        write_embedded_types(file, attrs, type_array_get_element(type), name, FALSE, typestring_offset);
 
     size = type_memsize(is_conformant_array(type) ? type_array_get_element(type) : type);
     align = type_buffer_alignment(is_conformant_array(type) ? type_array_get_element(type) : type);
@@ -2962,12 +2968,12 @@ static unsigned int write_array_tfs(FILE *file, const attr_list_t *attrs, type_t
             print_file(file, 2, "0x%x,\t/* FC_PP */\n", RPC_FC_PP);
             print_file(file, 2, "0x%x,\t/* FC_PAD */\n", RPC_FC_PAD);
             *typestring_offset += 2;
-            write_pointer_description(file, type, typestring_offset);
+            write_pointer_description(file, is_string_type(attrs, type) ? attrs : NULL, type, typestring_offset);
             print_file(file, 2, "0x%x,\t/* FC_END */\n", RPC_FC_END);
             *typestring_offset += 1;
         }
 
-        write_array_element_type(file, type, FALSE, typestring_offset);
+        write_array_element_type(file, is_string_type(attrs, type) ? attrs : NULL, type, FALSE, typestring_offset);
         write_end(file, typestring_offset);
     }
     else
@@ -2982,7 +2988,7 @@ static unsigned int write_array_tfs(FILE *file, const attr_list_t *attrs, type_t
             += write_conf_or_var_desc(file, current_structure, baseoff,
                                       type, length_is);
 
-        write_array_element_type(file, type, TRUE, typestring_offset);
+        write_array_element_type(file, is_string_type(attrs, type) ? attrs : NULL, type, TRUE, typestring_offset);
         write_end(file, typestring_offset);
     }
 
@@ -3149,7 +3155,7 @@ static unsigned int write_struct_tfs(FILE *file, type_t *type,
         print_file(file, 2, "0x%x,\t/* FC_PP */\n", RPC_FC_PP);
         print_file(file, 2, "0x%x,\t/* FC_PAD */\n", RPC_FC_PAD);
         *tfsoff += 2;
-        write_pointer_description(file, type, tfsoff);
+        write_pointer_description(file, NULL, type, tfsoff);
         print_file(file, 2, "0x%x,\t/* FC_END */\n", RPC_FC_END);
         *tfsoff += 1;
     }
@@ -3581,12 +3587,26 @@ static unsigned int write_type_tfs(FILE *file, int indent,
     case TGT_POINTER:
     {
         enum type_context ref_context;
+        type_t *ref = type_pointer_get_ref(type);
+
         if (context == TYPE_CONTEXT_TOPLEVELPARAM)
             ref_context = TYPE_CONTEXT_PARAM;
         else if (context == TYPE_CONTEXT_CONTAINER_NO_POINTERS)
             ref_context = TYPE_CONTEXT_CONTAINER;
         else
             ref_context = context;
+
+        if (is_string_type(attrs, ref))
+        {
+            if (context != TYPE_CONTEXT_CONTAINER_NO_POINTERS)
+                write_pointer_tfs(file, attrs, type, *typeformat_offset + 4, context, typeformat_offset);
+
+            offset = write_type_tfs(file, indent, attrs, ref, name, ref_context, typeformat_offset);
+            if (context == TYPE_CONTEXT_CONTAINER_NO_POINTERS)
+                return 0;
+            return offset;
+        }
+
         offset = write_type_tfs( file, indent, attrs, type_pointer_get_ref(type), name,
                                  ref_context, typeformat_offset);
         if (context == TYPE_CONTEXT_CONTAINER_NO_POINTERS)
