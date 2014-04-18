@@ -93,12 +93,13 @@ START_TEST(rpcapi)
     };
     WCHAR xmlW[sizeof(xml1)], *xml;
     HRESULT hr;
-    DWORD version, start_index, count, i, enumed;
+    DWORD version, start_index, count, i, enumed, enabled, state;
     WCHAR *path;
     TASK_XML_ERROR_INFO *info;
     TASK_NAMES names;
     unsigned char *binding_str;
     PTOP_LEVEL_EXCEPTION_FILTER old_exception_filter;
+    IID iid;
 
     hr = RpcStringBindingComposeA(NULL, ncalrpc, NULL, NULL, NULL, &binding_str);
     ok(hr == RPC_S_OK, "RpcStringBindingCompose error %#x\n", hr);
@@ -269,7 +270,7 @@ START_TEST(rpcapi)
     count = 0xdeadbeef;
     names = NULL;
     hr = SchRpcEnumFolders(Wine, 0, &start_index, 0, &count, &names);
-    ok(hr == S_OK, "expected S_FALSE, got %#x\n", hr);
+    ok(hr == S_OK, "expected S_OK, got %#x\n", hr);
     ok(count == 2, "expected 2, got %u\n", count);
     ok(start_index == 2, "expected 2, got %u\n", start_index);
     ok(names != NULL, "names should not be NULL\n");
@@ -381,7 +382,7 @@ START_TEST(rpcapi)
     count = 0xdeadbeef;
     names = NULL;
     hr = SchRpcEnumTasks(Wine, 0, &start_index, 0, &count, &names);
-    ok(hr == S_OK, "expected S_FALSE, got %#x\n", hr);
+    ok(hr == S_OK, "expected S_OK, got %#x\n", hr);
     ok(count == 2, "expected 2, got %u\n", count);
     ok(start_index == 2, "expected 2, got %u\n", start_index);
     ok(names != NULL, "names should not be NULL\n");
@@ -405,7 +406,9 @@ START_TEST(rpcapi)
     ok(count == 1, "expected 1, got %u\n", count);
     ok(start_index == 1, "expected 1, got %u\n", start_index);
     ok(names != NULL, "names should not be NULL\n");
-    ok(!lstrcmpW(names[0], Task1), "expected Task1, got %s\n", wine_dbgstr_w(names[0]));
+    /* returned name depends whether directory randomization is on */
+    ok(!lstrcmpW(names[0], Task1) || !lstrcmpW(names[0], Task2),
+       "expected Task1, got %s\n", wine_dbgstr_w(names[0]));
     MIDL_user_free(names[0]);
     MIDL_user_free(names);
 
@@ -465,9 +468,46 @@ START_TEST(rpcapi)
     ok(count == 1, "expected 1, got %u\n", count);
     ok(start_index == 3, "expected 3, got %u\n", start_index);
     ok(names != NULL, "names should not be NULL\n");
-    ok(!lstrcmpW(names[0], Task3), "expected Task3, got %s\n", wine_dbgstr_w(names[0]));
+    /* returned name depends whether directory randomization is on */
+    ok(!lstrcmpW(names[0], Task1) || !lstrcmpW(names[0], Task2) || !lstrcmpW(names[0], Task3),
+       "expected Task3, got %s\n", wine_dbgstr_w(names[0]));
     MIDL_user_free(names[0]);
     MIDL_user_free(names);
+
+    if (0) /* crashes under win7 */
+    {
+    hr = SchRpcGetTaskInfo(NULL, 0, NULL, NULL);
+    hr = SchRpcGetTaskInfo(Task1, 0, NULL, NULL);
+    hr = SchRpcGetTaskInfo(Task1, 0, &enabled, NULL);
+    hr = SchRpcGetTaskInfo(Task1, 0, NULL, &state);
+    }
+
+    hr = SchRpcGetTaskInfo(Task1, 0, &enabled, &state);
+    ok(hr == HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND), "expected ERROR_FILE_NOT_FOUND, got %#x\n", hr);
+
+    enabled = state = 0xdeadbeef;
+    hr = SchRpcGetTaskInfo(Wine_Task1, 0, &enabled, &state);
+    ok(hr == S_OK, "expected S_OK, got %#x\n", hr);
+    ok(enabled == 0, "expected 0, got %u\n", enabled);
+    ok(state == TASK_STATE_UNKNOWN, "expected TASK_STATE_UNKNOWN, got %u\n", state);
+
+    enabled = state = 0xdeadbeef;
+    hr = SchRpcGetTaskInfo(Wine_Task1, SCH_FLAG_STATE, &enabled, &state);
+    ok(hr == S_OK, "expected S_OK, got %#x\n", hr);
+    ok(enabled == 0, "expected 0, got %u\n", enabled);
+    ok(state == TASK_STATE_DISABLED, "expected TASK_STATE_DISABLED, got %u\n", state);
+
+    hr = SchRpcEnableTask(Wine_Task1, 0xdeadbeef);
+todo_wine
+    ok(hr == S_OK, "expected S_OK, got %#x\n", hr);
+
+    enabled = state = 0xdeadbeef;
+    hr = SchRpcGetTaskInfo(Wine_Task1, SCH_FLAG_STATE, &enabled, &state);
+    ok(hr == S_OK, "expected S_OK, got %#x\n", hr);
+todo_wine
+    ok(enabled == 1, "expected 1, got %u\n", enabled);
+todo_wine
+    ok(state == TASK_STATE_READY, "expected TASK_STATE_READY, got %u\n", state);
 
     hr = SchRpcDelete(Wine_Task1+1, 0);
     ok(hr == S_OK, "expected S_OK, got %#x\n", hr);
@@ -477,6 +517,17 @@ START_TEST(rpcapi)
     ok(hr == S_OK, "expected S_OK, got %#x\n", hr);
     hr = SchRpcDelete(Wine, 0);
     ok(hr == S_OK, "expected S_OK, got %#x\n", hr);
+
+    path = NULL;
+    info = NULL;
+    hr = SchRpcRegisterTask(NULL, xmlW, TASK_CREATE, NULL, TASK_LOGON_NONE, 0, NULL, &path, &info);
+    ok(hr == S_OK, "expected S_OK, got %#x\n", hr);
+    ok(!info, "expected NULL, info %p\n", info);
+    hr = IIDFromString(path, &iid);
+    ok(hr == S_OK, "IIDFromString(%s) error %#x\n", wine_dbgstr_w(path), hr);
+    hr = SchRpcDelete(path, 0);
+    ok(hr == S_OK, "expected S_OK, got %#x\n", hr);
+    MIDL_user_free(path);
 
     hr = RpcBindingFree(&rpc_handle);
     ok(hr == RPC_S_OK, "RpcBindingFree error %#x\n", hr);

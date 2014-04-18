@@ -3015,7 +3015,6 @@ static BOOL MENU_TrackMenu( HMENU hmenu, UINT wFlags, INT x, INT y,
     TRACE("hmenu=%p flags=0x%08x (%d,%d) hwnd=%p %s\n",
           hmenu, wFlags, x, y, hwnd, wine_dbgstr_rect( lprect));
 
-    fEndMenu = FALSE;
     if (!(menu = MENU_GetMenu( hmenu )))
     {
         WARN("Invalid menu handle %p\n", hmenu);
@@ -3306,12 +3305,20 @@ static BOOL MENU_InitTracking(HWND hWnd, HMENU hMenu, BOOL bPopup, UINT wFlags)
 
     HideCaret(0);
 
+    if (!(menu = MENU_GetMenu( hMenu ))) return FALSE;
+
     /* This makes the menus of applications built with Delphi work.
      * It also enables menus to be displayed in more than one window,
      * but there are some bugs left that need to be fixed in this case.
      */
-    if (!bPopup && (menu = MENU_GetMenu( hMenu ))) menu->hWnd = hWnd;
-    if (!top_popup) top_popup_hmenu = hMenu;
+    if (!bPopup) menu->hWnd = hWnd;
+    if (!top_popup)
+    {
+        top_popup = menu->hWnd;
+        top_popup_hmenu = hMenu;
+    }
+
+    fEndMenu = FALSE;
 
     /* Send WM_ENTERMENULOOP and WM_INITMENU message only if TPM_NONOTIFY flag is not specified */
     if (!(wFlags & TPM_NONOTIFY))
@@ -4360,17 +4367,18 @@ HMENU WINAPI GetSubMenu( HMENU hMenu, INT nPos )
 BOOL WINAPI DrawMenuBar( HWND hWnd )
 {
     LPPOPUPMENU lppop;
-    HMENU hMenu = GetMenu(hWnd);
+    HMENU hMenu;
 
-    if (!WIN_ALLOWED_MENU(GetWindowLongW( hWnd, GWL_STYLE )))
+    if (!IsWindow( hWnd ))
         return FALSE;
-    if (!hMenu || !(lppop = MENU_GetMenu( hMenu ))) return FALSE;
 
-    lppop->Height = 0; /* Make sure we call MENU_MenuBarCalcSize */
-    lppop->hwndOwner = hWnd;
-    SetWindowPos( hWnd, 0, 0, 0, 0, 0, SWP_NOSIZE | SWP_NOMOVE |
-                  SWP_NOACTIVATE | SWP_NOZORDER | SWP_FRAMECHANGED );
-    return TRUE;
+    if ((hMenu = GetMenu( hWnd )) && (lppop = MENU_GetMenu( hMenu ))) {
+        lppop->Height = 0; /* Make sure we call MENU_MenuBarCalcSize */
+        lppop->hwndOwner = hWnd;
+    }
+
+    return SetWindowPos( hWnd, 0, 0, 0, 0, 0, SWP_NOSIZE | SWP_NOMOVE |
+                         SWP_NOACTIVATE | SWP_NOZORDER | SWP_FRAMECHANGED );
 }
 
 /***********************************************************************

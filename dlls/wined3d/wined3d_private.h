@@ -1045,6 +1045,16 @@ enum wined3d_event_query_result wined3d_event_query_finish(const struct wined3d_
 void wined3d_event_query_issue(struct wined3d_event_query *query, const struct wined3d_device *device) DECLSPEC_HIDDEN;
 BOOL wined3d_event_query_supported(const struct wined3d_gl_info *gl_info) DECLSPEC_HIDDEN;
 
+struct wined3d_timestamp_query
+{
+    struct list entry;
+    GLuint id;
+    struct wined3d_context *context;
+};
+
+void context_alloc_timestamp_query(struct wined3d_context *context, struct wined3d_timestamp_query *query) DECLSPEC_HIDDEN;
+void context_free_timestamp_query(struct wined3d_timestamp_query *query) DECLSPEC_HIDDEN;
+
 struct wined3d_context
 {
     const struct wined3d_gl_info *gl_info;
@@ -1136,6 +1146,11 @@ struct wined3d_context
     UINT free_event_query_size;
     UINT free_event_query_count;
     struct list event_queries;
+
+    GLuint *free_timestamp_queries;
+    UINT free_timestamp_query_size;
+    UINT free_timestamp_query_count;
+    struct list timestamp_queries;
 
     struct wined3d_stream_info stream_info;
 
@@ -1474,6 +1489,9 @@ enum wined3d_pci_device
     CARD_NVIDIA_GEFORCE_GTX670      = 0x1189,
     CARD_NVIDIA_GEFORCE_GTX670MX    = 0x11a1,
     CARD_NVIDIA_GEFORCE_GTX680      = 0x1180,
+    CARD_NVIDIA_GEFORCE_GTX750      = 0x1381,
+    CARD_NVIDIA_GEFORCE_GTX750TI    = 0x1380,
+    CARD_NVIDIA_GEFORCE_GTX760      = 0x1187,
     CARD_NVIDIA_GEFORCE_GTX765M     = 0x11e2,
     CARD_NVIDIA_GEFORCE_GTX770M     = 0x11e0,
     CARD_NVIDIA_GEFORCE_GTX770      = 0x1184,

@@ -5084,31 +5084,41 @@ struct WS_hostent* WINAPI WS_gethostbyaddr(const char *addr, int len, int type)
 {
     struct WS_hostent *retval = NULL;
     struct hostent* host;
-
+    int unixtype = convert_af_w2u(type);
+    const char *paddr = addr;
+    unsigned long loopback;
 #ifdef HAVE_LINUX_GETHOSTBYNAME_R_6
     char *extrabuf;
-    int ebufsize=1024;
+    int ebufsize = 1024;
     struct hostent hostentry;
-    int locerr=ENOBUFS;
+    int locerr = ENOBUFS;
+#endif
+
+    /* convert back the magic loopback address if necessary */
+    if (unixtype == AF_INET && len == 4 && !memcmp(addr, magic_loopback_addr, 4))
+    {
+        loopback = htonl(INADDR_LOOPBACK);
+        paddr = (char*) &loopback;
+    }
+
+#ifdef HAVE_LINUX_GETHOSTBYNAME_R_6
     host = NULL;
     extrabuf=HeapAlloc(GetProcessHeap(),0,ebufsize) ;
     while(extrabuf) {
-        int res = gethostbyaddr_r(addr, len, type,
+        int res = gethostbyaddr_r(paddr, len, unixtype,
                                   &hostentry, extrabuf, ebufsize, &host, &locerr);
-        if( res != ERANGE) break;
+        if (res != ERANGE) break;
         ebufsize *=2;
         extrabuf=HeapReAlloc(GetProcessHeap(),0,extrabuf,ebufsize) ;
     }
-    if (!host) SetLastError((locerr < 0) ? wsaErrno() : wsaHerrno(locerr));
-#else
-    EnterCriticalSection( &csWSgetXXXbyYYY );
-    host = gethostbyaddr(addr, len, type);
-    if (!host) SetLastError((h_errno < 0) ? wsaErrno() : wsaHerrno(h_errno));
-#endif
-    if( host != NULL ) retval = WS_dup_he(host);
-#ifdef  HAVE_LINUX_GETHOSTBYNAME_R_6
+    if (host) retval = WS_dup_he(host);
+    else SetLastError((locerr < 0) ? wsaErrno() : wsaHerrno(locerr));
     HeapFree(GetProcessHeap(),0,extrabuf);
 #else
+    EnterCriticalSection( &csWSgetXXXbyYYY );
+    host = gethostbyaddr(paddr, len, unixtype);
+    if (host) retval = WS_dup_he(host);
+    else SetLastError((h_errno < 0) ? wsaErrno() : wsaHerrno(h_errno));
     LeaveCriticalSection( &csWSgetXXXbyYYY );
 #endif
     TRACE("ptr %p, len %d, type %d ret %p\n", addr, len, type, retval);
@@ -6408,7 +6418,7 @@ static struct WS_hostent *WS_dup_he(const struct hostent* p_he)
     p_to = WS_create_he(p_he->h_name, i + 1, alias_size, addresses + 1, p_he->h_length);
 
     if (!p_to) return NULL;
-    p_to->h_addrtype = p_he->h_addrtype;
+    p_to->h_addrtype = convert_af_u2w(p_he->h_addrtype);
     p_to->h_length = p_he->h_length;
 
     for(i = 0, p = p_to->h_addr_list[0]; p_he->h_addr_list[i]; i++, p += p_to->h_length)

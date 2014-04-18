@@ -1948,14 +1948,11 @@ static void test_null_stream(void)
     ok(SUCCEEDED(hr), "IDirect3DDevice9_SetVertexDeclaration failed (0x%08x)\n", hr);
 
     hr = IDirect3DDevice9_BeginScene(device);
-    ok(hr == D3D_OK, "IDirect3DDevice9_BeginScene failed (0x%08x)\n", hr);
-    if(SUCCEEDED(hr)) {
-        hr = IDirect3DDevice9_DrawPrimitive(device, D3DPT_POINTLIST, 0, 1);
-        ok(SUCCEEDED(hr), "IDirect3DDevice9_DrawPrimitive failed (0x%08x)\n", hr);
-
-        hr = IDirect3DDevice9_EndScene(device);
-        ok(hr == D3D_OK, "IDirect3DDevice9_EndScene failed (0x%08x)\n", hr);
-    }
+    ok(SUCCEEDED(hr), "Failed to begin scene, hr %#x.\n", hr);
+    hr = IDirect3DDevice9_DrawPrimitive(device, D3DPT_POINTLIST, 0, 1);
+    ok(SUCCEEDED(hr), "Failed to draw, hr %#x.\n", hr);
+    hr = IDirect3DDevice9_EndScene(device);
+    ok(SUCCEEDED(hr), "Failed to end scene, hr %#x.\n", hr);
 
     IDirect3DDevice9_SetStreamSource(device, 0, NULL, 0, 0);
     IDirect3DDevice9_SetVertexShader(device, NULL);
@@ -3866,6 +3863,154 @@ static void test_occlusion_query_states(void)
 
     HeapFree(GetProcessHeap(), 0, data);
     IDirect3DQuery9_Release(query);
+    refcount = IDirect3DDevice9_Release(device);
+    ok(!refcount, "Device has %u references left.\n", refcount);
+    IDirect3D9_Release(d3d9);
+    DestroyWindow(window);
+}
+
+static void test_timestamp_query(void)
+{
+    static const float point[3] = {0.0, 0.0, 0.0};
+    IDirect3DQuery9 *query, *disjoint_query, *freq_query;
+    unsigned int data_size, i;
+    IDirect3DDevice9 *device;
+    IDirect3D9 *d3d9;
+    ULONG refcount;
+    HWND window;
+    HRESULT hr;
+    UINT64 timestamp, freq;
+    BOOL disjoint;
+
+    window = CreateWindowA("d3d9_test_wc", "d3d9_test", WS_OVERLAPPEDWINDOW,
+            0, 0, 640, 480, 0, 0, 0, 0);
+    d3d9 = Direct3DCreate9(D3D_SDK_VERSION);
+    ok(!!d3d9, "Failed to create a D3D object.\n");
+    if (!(device = create_device(d3d9, window, window, TRUE)))
+    {
+        skip("Failed to create a D3D device, skipping tests.\n");
+        IDirect3D9_Release(d3d9);
+        DestroyWindow(window);
+        return;
+    }
+
+    hr = IDirect3DDevice9_CreateQuery(device, D3DQUERYTYPE_TIMESTAMPFREQ, &freq_query);
+    ok(hr == D3D_OK || hr == D3DERR_NOTAVAILABLE, "Got unexpected hr %#x.\n", hr);
+    if (FAILED(hr))
+    {
+        skip("Timestamp queries are not supported, skipping tests.\n");
+        IDirect3DDevice9_Release(device);
+        IDirect3D9_Release(d3d9);
+        DestroyWindow(window);
+        return;
+    }
+    data_size = IDirect3DQuery9_GetDataSize(freq_query);
+    ok(data_size == sizeof(UINT64), "Query data size is %u, 8 expected.\n", data_size);
+
+    hr = IDirect3DDevice9_CreateQuery(device, D3DQUERYTYPE_TIMESTAMPDISJOINT, &disjoint_query);
+    ok(hr == D3D_OK, "Got unexpected hr %#x.\n", hr);
+    data_size = IDirect3DQuery9_GetDataSize(disjoint_query);
+    ok(data_size == sizeof(BOOL), "Query data size is %u, 4 expected.\n", data_size);
+
+    hr = IDirect3DDevice9_CreateQuery(device, D3DQUERYTYPE_TIMESTAMP, &query);
+    ok(hr == D3D_OK, "Got unexpected hr %#x.\n", hr);
+    data_size = IDirect3DQuery9_GetDataSize(query);
+    ok(data_size == sizeof(UINT64), "Query data size is %u, 8 expected.\n", data_size);
+
+    hr = IDirect3DQuery9_Issue(freq_query, D3DISSUE_END);
+    ok(hr == D3D_OK, "Got unexpected hr %#x.\n", hr);
+    for (i = 0; i < 500; ++i)
+    {
+        if ((hr = IDirect3DQuery9_GetData(freq_query, NULL, 0, D3DGETDATA_FLUSH)) != S_FALSE)
+            break;
+        Sleep(10);
+    }
+    ok(hr == D3D_OK, "Got unexpected hr %#x.\n", hr);
+    hr = IDirect3DQuery9_GetData(freq_query, &freq, sizeof(freq), D3DGETDATA_FLUSH);
+    ok(hr == D3D_OK, "Got unexpected hr %#x.\n", hr);
+
+    hr = IDirect3DQuery9_GetData(query, NULL, 0, D3DGETDATA_FLUSH);
+    ok(hr == S_OK, "Got unexpected hr %#x.\n", hr);
+    hr = IDirect3DQuery9_GetData(query, &timestamp, sizeof(timestamp), D3DGETDATA_FLUSH);
+    ok(hr == S_OK, "Got unexpected hr %#x.\n", hr);
+
+    hr = IDirect3DQuery9_Issue(disjoint_query, D3DISSUE_END);
+    ok(hr == D3D_OK, "Got unexpected hr %#x.\n", hr);
+    hr = IDirect3DQuery9_Issue(disjoint_query, D3DISSUE_BEGIN);
+    ok(hr == D3D_OK, "Got unexpected hr %#x.\n", hr);
+    hr = IDirect3DQuery9_Issue(disjoint_query, D3DISSUE_BEGIN);
+    ok(hr == D3D_OK, "Got unexpected hr %#x.\n", hr);
+
+    hr = IDirect3DQuery9_GetData(query, &timestamp, sizeof(timestamp), D3DGETDATA_FLUSH);
+    ok(hr == S_FALSE || hr == D3D_OK, "Got unexpected hr %#x.\n", hr);
+
+    hr = IDirect3DDevice9_SetFVF(device, D3DFVF_XYZ);
+    ok(SUCCEEDED(hr), "Failed to set FVF, hr %#x.\n", hr);
+    hr = IDirect3DDevice9_BeginScene(device);
+    ok(SUCCEEDED(hr), "Failed to begin scene, hr %#x.\n", hr);
+    hr = IDirect3DDevice9_DrawPrimitiveUP(device, D3DPT_POINTLIST, 1, point, 3 * sizeof(float));
+    ok(SUCCEEDED(hr), "Failed to draw, hr %#x.\n", hr);
+    hr = IDirect3DDevice9_EndScene(device);
+    ok(SUCCEEDED(hr), "Failed to end scene, hr %#x.\n", hr);
+
+    hr = IDirect3DQuery9_Issue(query, D3DISSUE_END);
+    ok(hr == D3D_OK, "Got unexpected hr %#x.\n", hr);
+    for (i = 0; i < 500; ++i)
+    {
+        if ((hr = IDirect3DQuery9_GetData(query, NULL, 0, D3DGETDATA_FLUSH)) != S_FALSE)
+            break;
+        Sleep(10);
+    }
+    ok(hr == S_OK, "Got unexpected hr %#x.\n", hr);
+
+    hr = IDirect3DQuery9_GetData(query, &timestamp, sizeof(timestamp), D3DGETDATA_FLUSH);
+    ok(hr == S_OK, "Got unexpected hr %#x.\n", hr);
+    hr = IDirect3DQuery9_GetData(query, &timestamp, sizeof(timestamp), D3DGETDATA_FLUSH);
+    ok(hr == S_OK, "Got unexpected hr %#x.\n", hr);
+
+    hr = IDirect3DQuery9_Issue(query, D3DISSUE_BEGIN);
+    ok(hr == D3D_OK, "Got unexpected hr %#x.\n", hr);
+    hr = IDirect3DQuery9_Issue(query, D3DISSUE_END);
+    ok(hr == D3D_OK, "Got unexpected hr %#x.\n", hr);
+    hr = IDirect3DQuery9_Issue(query, D3DISSUE_END);
+    ok(hr == D3D_OK, "Got unexpected hr %#x.\n", hr);
+
+    hr = IDirect3DQuery9_Issue(disjoint_query, D3DISSUE_END);
+    ok(hr == D3D_OK, "Got unexpected hr %#x.\n", hr);
+    for (i = 0; i < 500; ++i)
+    {
+        if ((hr = IDirect3DQuery9_GetData(disjoint_query, NULL, 0, D3DGETDATA_FLUSH)) != S_FALSE)
+            break;
+        Sleep(10);
+    }
+    ok(hr == S_OK, "Got unexpected hr %#x.\n", hr);
+    hr = IDirect3DQuery9_GetData(disjoint_query, &disjoint, sizeof(disjoint), D3DGETDATA_FLUSH);
+    ok(hr == S_OK, "Got unexpected hr %#x.\n", hr);
+
+    /* It's not strictly necessary for the TIMESTAMP query to be inside
+     * a TIMESTAMP_DISJOINT query. */
+    hr = IDirect3DDevice9_BeginScene(device);
+    ok(SUCCEEDED(hr), "Failed to begin scene, hr %#x.\n", hr);
+    hr = IDirect3DDevice9_DrawPrimitiveUP(device, D3DPT_POINTLIST, 1, point, 3 * sizeof(float));
+    ok(SUCCEEDED(hr), "Failed to draw, hr %#x.\n", hr);
+    hr = IDirect3DDevice9_EndScene(device);
+    ok(SUCCEEDED(hr), "Failed to end scene, hr %#x.\n", hr);
+
+    hr = IDirect3DQuery9_Issue(query, D3DISSUE_END);
+    ok(hr == D3D_OK, "Got unexpected hr %#x.\n", hr);
+    for (i = 0; i < 500; ++i)
+    {
+        if ((hr = IDirect3DQuery9_GetData(query, NULL, 0, D3DGETDATA_FLUSH)) != S_FALSE)
+            break;
+        Sleep(10);
+    }
+    ok(hr == S_OK, "Got unexpected hr %#x.\n", hr);
+    hr = IDirect3DQuery9_GetData(query, &timestamp, sizeof(timestamp), D3DGETDATA_FLUSH);
+    ok(hr == S_OK, "Got unexpected hr %#x.\n", hr);
+
+    IDirect3DQuery9_Release(query);
+    IDirect3DQuery9_Release(disjoint_query);
+    IDirect3DQuery9_Release(freq_query);
     refcount = IDirect3DDevice9_Release(device);
     ok(!refcount, "Device has %u references left.\n", refcount);
     IDirect3D9_Release(d3d9);
@@ -7621,6 +7766,238 @@ static void test_vdecl_apply(void)
     DestroyWindow(window);
 }
 
+static void test_resource_type(void)
+{
+    IDirect3DDevice9 *device;
+    IDirect3DSurface9 *surface;
+    IDirect3DTexture9 *texture;
+    IDirect3DCubeTexture9 *cube_texture;
+    IDirect3DVolume9 *volume;
+    IDirect3DVolumeTexture9 *volume_texture;
+    D3DSURFACE_DESC surface_desc;
+    D3DVOLUME_DESC volume_desc;
+    D3DRESOURCETYPE type;
+    IDirect3D9 *d3d;
+    ULONG refcount;
+    HWND window;
+    HRESULT hr;
+
+    window = CreateWindowA("static", "d3d9_test", WS_OVERLAPPEDWINDOW,
+            0, 0, 640, 480, NULL, NULL, NULL, NULL);
+    d3d = Direct3DCreate9(D3D_SDK_VERSION);
+    ok(!!d3d, "Failed to create a D3D object.\n");
+    if (!(device = create_device(d3d, window, window, TRUE)))
+    {
+        skip("Failed to create a D3D device, skipping tests.\n");
+        IDirect3D9_Release(d3d);
+        DestroyWindow(window);
+        return;
+    }
+
+    hr = IDirect3DDevice9_CreateOffscreenPlainSurface(device, 4, 4, D3DFMT_X8R8G8B8,
+            D3DPOOL_SYSTEMMEM, &surface, NULL);
+    ok(SUCCEEDED(hr), "Failed to create surface, hr %#x.\n", hr);
+    type = IDirect3DSurface9_GetType(surface);
+    ok(type == D3DRTYPE_SURFACE, "Expected type D3DRTYPE_SURFACE, got %u.\n", type);
+    hr = IDirect3DSurface9_GetDesc(surface, &surface_desc);
+    ok(SUCCEEDED(hr), "Failed to get surface description, hr %#x.\n", hr);
+    ok(surface_desc.Type == D3DRTYPE_SURFACE, "Expected type D3DRTYPE_SURFACE, got %u.\n",
+            surface_desc.Type);
+    IDirect3DSurface9_Release(surface);
+
+    hr = IDirect3DDevice9_CreateTexture(device, 2, 8, 4, 0, D3DFMT_X8R8G8B8,
+            D3DPOOL_SYSTEMMEM, &texture, NULL);
+    ok(SUCCEEDED(hr), "Failed to create texture, hr %#x.\n", hr);
+    type = IDirect3DTexture9_GetType(texture);
+    ok(type == D3DRTYPE_TEXTURE, "Expected type D3DRTYPE_TEXTURE, got %u.\n", type);
+
+    hr = IDirect3DTexture9_GetSurfaceLevel(texture, 0, &surface);
+    ok(SUCCEEDED(hr), "Failed to get surface level, hr %#x.\n", hr);
+    /* The following code crashes, for the sake of completeness:
+     * type = texture->lpVtbl->GetType((IDirect3DTexture9 *)surface);
+     * ok(type == D3DRTYPE_PONIES, "Expected type D3DRTYPE_PONIES, got %u.\n", type);
+     *
+     * So applications will not depend on getting the "right" resource type - whatever it
+     * may be - from the "wrong" vtable. */
+    type = IDirect3DSurface9_GetType(surface);
+    ok(type == D3DRTYPE_SURFACE, "Expected type D3DRTYPE_SURFACE, got %u.\n", type);
+    hr = IDirect3DSurface9_GetDesc(surface, &surface_desc);
+    ok(SUCCEEDED(hr), "Failed to get surface description, hr %#x.\n", hr);
+    ok(surface_desc.Type == D3DRTYPE_SURFACE, "Expected type D3DRTYPE_SURFACE, got %u.\n",
+            surface_desc.Type);
+    ok(surface_desc.Width == 2, "Expected width 2, got %u.\n", surface_desc.Width);
+    ok(surface_desc.Height == 8, "Expected height 8, got %u.\n", surface_desc.Height);
+    hr = IDirect3DTexture9_GetLevelDesc(texture, 0, &surface_desc);
+    ok(SUCCEEDED(hr), "Failed to get level description, hr %#x.\n", hr);
+    ok(surface_desc.Type == D3DRTYPE_SURFACE, "Expected type D3DRTYPE_SURFACE, got %u.\n",
+            surface_desc.Type);
+    ok(surface_desc.Width == 2, "Expected width 2, got %u.\n", surface_desc.Width);
+    ok(surface_desc.Height == 8, "Expected height 8, got %u.\n", surface_desc.Height);
+    IDirect3DSurface9_Release(surface);
+
+    hr = IDirect3DTexture9_GetSurfaceLevel(texture, 2, &surface);
+    ok(SUCCEEDED(hr), "Failed to get surface level, hr %#x.\n", hr);
+    type = IDirect3DSurface9_GetType(surface);
+    ok(type == D3DRTYPE_SURFACE, "Expected type D3DRTYPE_SURFACE, got %u.\n", type);
+    hr = IDirect3DSurface9_GetDesc(surface, &surface_desc);
+    ok(SUCCEEDED(hr), "Failed to get surface description, hr %#x.\n", hr);
+    ok(surface_desc.Type == D3DRTYPE_SURFACE, "Expected type D3DRTYPE_SURFACE, got %u.\n",
+            surface_desc.Type);
+    ok(surface_desc.Width == 1, "Expected width 1, got %u.\n", surface_desc.Width);
+    ok(surface_desc.Height == 2, "Expected height 2, got %u.\n", surface_desc.Height);
+    hr = IDirect3DTexture9_GetLevelDesc(texture, 2, &surface_desc);
+    ok(SUCCEEDED(hr), "Failed to get level description, hr %#x.\n", hr);
+    ok(surface_desc.Type == D3DRTYPE_SURFACE, "Expected type D3DRTYPE_SURFACE, got %u.\n",
+            surface_desc.Type);
+    ok(surface_desc.Width == 1, "Expected width 1, got %u.\n", surface_desc.Width);
+    ok(surface_desc.Height == 2, "Expected height 2, got %u.\n", surface_desc.Height);
+    IDirect3DSurface9_Release(surface);
+    IDirect3DTexture9_Release(texture);
+
+    hr = IDirect3DDevice9_CreateCubeTexture(device, 1, 1, 0, D3DFMT_X8R8G8B8,
+            D3DPOOL_SYSTEMMEM, &cube_texture, NULL);
+    ok(SUCCEEDED(hr), "Failed to create cube texture, hr %#x.\n", hr);
+    type = IDirect3DCubeTexture9_GetType(cube_texture);
+    ok(type == D3DRTYPE_CUBETEXTURE, "Expected type D3DRTYPE_CUBETEXTURE, got %u.\n", type);
+
+    hr = IDirect3DCubeTexture9_GetCubeMapSurface(cube_texture,
+            D3DCUBEMAP_FACE_NEGATIVE_X, 0, &surface);
+    ok(SUCCEEDED(hr), "Failed to get cube map surface, hr %#x.\n", hr);
+    type = IDirect3DSurface9_GetType(surface);
+    ok(type == D3DRTYPE_SURFACE, "Expected type D3DRTYPE_SURFACE, got %u.\n", type);
+    hr = IDirect3DSurface9_GetDesc(surface, &surface_desc);
+    ok(SUCCEEDED(hr), "Failed to get surface description, hr %#x.\n", hr);
+    ok(surface_desc.Type == D3DRTYPE_SURFACE, "Expected type D3DRTYPE_SURFACE, got %u.\n",
+            surface_desc.Type);
+    hr = IDirect3DCubeTexture9_GetLevelDesc(cube_texture, 0, &surface_desc);
+    ok(SUCCEEDED(hr), "Failed to get level description, hr %#x.\n", hr);
+    ok(surface_desc.Type == D3DRTYPE_SURFACE, "Expected type D3DRTYPE_SURFACE, got %u.\n",
+            surface_desc.Type);
+    IDirect3DSurface9_Release(surface);
+    IDirect3DCubeTexture9_Release(cube_texture);
+
+    hr = IDirect3DDevice9_CreateVolumeTexture(device, 2, 4, 8, 4, 0, D3DFMT_X8R8G8B8,
+            D3DPOOL_SYSTEMMEM, &volume_texture, NULL);
+    type = IDirect3DVolumeTexture9_GetType(volume_texture);
+    ok(type == D3DRTYPE_VOLUMETEXTURE, "Expected type D3DRTYPE_VOLUMETEXTURE, got %u.\n", type);
+
+    hr = IDirect3DVolumeTexture9_GetVolumeLevel(volume_texture, 0, &volume);
+    ok(SUCCEEDED(hr), "Failed to get volume level, hr %#x.\n", hr);
+    /* IDirect3DVolume9 is not an IDirect3DResource9 and has no GetType method. */
+    hr = IDirect3DVolume9_GetDesc(volume, &volume_desc);
+    ok(SUCCEEDED(hr), "Failed to get volume description, hr %#x.\n", hr);
+    ok(volume_desc.Type == D3DRTYPE_VOLUME, "Expected type D3DRTYPE_VOLUME, got %u.\n",
+            volume_desc.Type);
+    ok(volume_desc.Width == 2, "Expected width 2, got %u.\n", volume_desc.Width);
+    ok(volume_desc.Height == 4, "Expected height 4, got %u.\n", volume_desc.Height);
+    ok(volume_desc.Depth == 8, "Expected depth 8, got %u.\n", volume_desc.Depth);
+    hr = IDirect3DVolumeTexture9_GetLevelDesc(volume_texture, 0, &volume_desc);
+    ok(SUCCEEDED(hr), "Failed to get level description, hr %#x.\n", hr);
+    ok(volume_desc.Type == D3DRTYPE_VOLUME, "Expected type D3DRTYPE_VOLUME, got %u.\n",
+            volume_desc.Type);
+    ok(volume_desc.Width == 2, "Expected width 2, got %u.\n", volume_desc.Width);
+    ok(volume_desc.Height == 4, "Expected height 4, got %u.\n", volume_desc.Height);
+    ok(volume_desc.Depth == 8, "Expected depth 8, got %u.\n", volume_desc.Depth);
+    IDirect3DVolume9_Release(volume);
+
+    hr = IDirect3DVolumeTexture9_GetVolumeLevel(volume_texture, 2, &volume);
+    ok(SUCCEEDED(hr), "Failed to get volume level, hr %#x.\n", hr);
+    /* IDirect3DVolume9 is not an IDirect3DResource9 and has no GetType method. */
+    hr = IDirect3DVolume9_GetDesc(volume, &volume_desc);
+    ok(SUCCEEDED(hr), "Failed to get volume description, hr %#x.\n", hr);
+    ok(volume_desc.Type == D3DRTYPE_VOLUME, "Expected type D3DRTYPE_VOLUME, got %u.\n",
+            volume_desc.Type);
+    ok(volume_desc.Width == 1, "Expected width 1, got %u.\n", volume_desc.Width);
+    ok(volume_desc.Height == 1, "Expected height 1, got %u.\n", volume_desc.Height);
+    ok(volume_desc.Depth == 2, "Expected depth 2, got %u.\n", volume_desc.Depth);
+    hr = IDirect3DVolumeTexture9_GetLevelDesc(volume_texture, 2, &volume_desc);
+    ok(SUCCEEDED(hr), "Failed to get level description, hr %#x.\n", hr);
+    ok(volume_desc.Type == D3DRTYPE_VOLUME, "Expected type D3DRTYPE_VOLUME, got %u.\n",
+            volume_desc.Type);
+    ok(volume_desc.Width == 1, "Expected width 1, got %u.\n", volume_desc.Width);
+    ok(volume_desc.Height == 1, "Expected height 1, got %u.\n", volume_desc.Height);
+    ok(volume_desc.Depth == 2, "Expected depth 2, got %u.\n", volume_desc.Depth);
+    IDirect3DVolume9_Release(volume);
+    IDirect3DVolumeTexture9_Release(volume_texture);
+
+    refcount = IDirect3DDevice9_Release(device);
+    ok(!refcount, "Device has %u references left.\n", refcount);
+    IDirect3D9_Release(d3d);
+    DestroyWindow(window);
+}
+
+static void test_mipmap_lock(void)
+{
+    IDirect3DDevice9 *device;
+    IDirect3DSurface9 *surface, *surface2, *surface_dst, *surface_dst2;
+    IDirect3DTexture9 *texture, *texture_dst;
+    IDirect3D9 *d3d;
+    ULONG refcount;
+    HWND window;
+    HRESULT hr;
+    D3DLOCKED_RECT locked_rect;
+
+    window = CreateWindowA("static", "d3d9_test", WS_OVERLAPPEDWINDOW,
+            0, 0, 640, 480, NULL, NULL, NULL, NULL);
+    d3d = Direct3DCreate9(D3D_SDK_VERSION);
+    ok(!!d3d, "Failed to create a D3D object.\n");
+    if (!(device = create_device(d3d, window, window, TRUE)))
+    {
+        skip("Failed to create a D3D device, skipping tests.\n");
+        IDirect3D9_Release(d3d);
+        DestroyWindow(window);
+        return;
+    }
+
+    hr = IDirect3DDevice9_CreateTexture(device, 4, 4, 2, 0, D3DFMT_X8R8G8B8,
+            D3DPOOL_DEFAULT, &texture_dst, NULL);
+    ok(SUCCEEDED(hr), "Failed to create texture, hr %#x.\n", hr);
+    hr = IDirect3DTexture9_GetSurfaceLevel(texture_dst, 0, &surface_dst);
+    ok(SUCCEEDED(hr), "Failed to get surface level, hr %#x.\n", hr);
+    hr = IDirect3DTexture9_GetSurfaceLevel(texture_dst, 1, &surface_dst2);
+    ok(SUCCEEDED(hr), "Failed to get surface level, hr %#x.\n", hr);
+
+    hr = IDirect3DDevice9_CreateTexture(device, 4, 4, 2, 0, D3DFMT_X8R8G8B8,
+            D3DPOOL_SYSTEMMEM, &texture, NULL);
+    ok(SUCCEEDED(hr), "Failed to create texture, hr %#x.\n", hr);
+    hr = IDirect3DTexture9_GetSurfaceLevel(texture, 0, &surface);
+    ok(SUCCEEDED(hr), "Failed to get surface level, hr %#x.\n", hr);
+    hr = IDirect3DTexture9_GetSurfaceLevel(texture, 1, &surface2);
+    ok(SUCCEEDED(hr), "Failed to get surface level, hr %#x.\n", hr);
+
+    hr = IDirect3DSurface9_LockRect(surface, &locked_rect, NULL, 0);
+    ok(SUCCEEDED(hr), "Failed to lock surface, hr %#x.\n", hr);
+    hr = IDirect3DSurface9_LockRect(surface2, &locked_rect, NULL, 0);
+    ok(SUCCEEDED(hr), "Failed to lock surface, hr %#x.\n", hr);
+    hr = IDirect3DSurface9_UnlockRect(surface);
+    ok(SUCCEEDED(hr), "Failed to unlock surface, hr %#x.\n", hr);
+
+    hr = IDirect3DDevice9_UpdateSurface(device, surface, NULL, surface_dst, NULL);
+    ok(SUCCEEDED(hr), "Failed to update surface, hr %#x.\n", hr);
+    hr = IDirect3DDevice9_UpdateSurface(device, surface2, NULL, surface_dst2, NULL);
+    todo_wine ok(hr == D3DERR_INVALIDCALL, "Got unexpected hr %#x.\n", hr);
+
+    /* Apparently there's no validation on the container. */
+    hr = IDirect3DDevice9_UpdateTexture(device, (IDirect3DBaseTexture9 *)texture,
+            (IDirect3DBaseTexture9 *)texture_dst);
+    ok(SUCCEEDED(hr), "Failed to update texture, hr %#x.\n", hr);
+
+    hr = IDirect3DSurface9_UnlockRect(surface2);
+    ok(SUCCEEDED(hr), "Failed to unlock surface, hr %#x.\n", hr);
+
+    IDirect3DSurface9_Release(surface_dst2);
+    IDirect3DSurface9_Release(surface_dst);
+    IDirect3DSurface9_Release(surface2);
+    IDirect3DSurface9_Release(surface);
+    IDirect3DTexture9_Release(texture_dst);
+    IDirect3DTexture9_Release(texture);
+
+    refcount = IDirect3DDevice9_Release(device);
+    ok(!refcount, "Device has %u references left.\n", refcount);
+    IDirect3D9_Release(d3d);
+    DestroyWindow(window);
+}
+
 START_TEST(device)
 {
     WNDCLASSA wc = {0};
@@ -7674,6 +8051,7 @@ START_TEST(device)
     test_vertex_buffer_alignment();
     test_query_support();
     test_occlusion_query_states();
+    test_timestamp_query();
     test_get_set_vertex_shader();
     test_vertex_shader_constant();
     test_get_set_pixel_shader();
@@ -7709,6 +8087,8 @@ START_TEST(device)
     test_begin_end_state_block();
     test_shader_constant_apply();
     test_vdecl_apply();
+    test_resource_type();
+    test_mipmap_lock();
 
     UnregisterClassA("d3d9_test_wc", GetModuleHandleA(NULL));
 }

@@ -4559,6 +4559,7 @@ static void test_messages(void)
     HMENU hmenu;
     MSG msg;
     LRESULT res;
+    POINT pos;
 
     flush_sequence();
 
@@ -4819,13 +4820,23 @@ static void test_messages(void)
     after_end_dialog = FALSE;
     test_def_id = FALSE;
 
-    hwnd = CreateWindowExA(0, "TestDialogClass", NULL, WS_POPUP,
+    ok(GetCursorPos(&pos), "GetCursorPos failed\n");
+    ok(SetCursorPos(109, 109), "SetCursorPos failed\n");
+
+    hwnd = CreateWindowExA(0, "TestDialogClass", NULL, WS_POPUP|WS_CHILD,
                            0, 0, 100, 100, 0, 0, GetModuleHandleA(0), NULL);
     ok(hwnd != 0, "Failed to create custom dialog window\n");
     flush_sequence();
     trace("call ShowWindow(%p, SW_SHOW)\n", hwnd);
     ShowWindow(hwnd, SW_SHOW);
     ok_sequence(WmShowCustomDialogSeq, "ShowCustomDialog", TRUE);
+
+    flush_events();
+    flush_sequence();
+    ok(DrawMenuBar(hwnd), "DrawMenuBar failed: %d\n", GetLastError());
+    flush_events();
+    ok_sequence(WmDrawMenuBarSeq, "DrawMenuBar", FALSE);
+    ok(SetCursorPos(pos.x, pos.y), "SetCursorPos failed\n");
     DestroyWindow(hwnd);
 
     flush_sequence();
@@ -4836,7 +4847,8 @@ static void test_messages(void)
     flush_sequence();
 
     /* Message sequence for SetMenu */
-    ok(!DrawMenuBar(hwnd), "DrawMenuBar should return FALSE for a window without a menu\n");
+    ok(!DrawMenuBar(hwnd), "DrawMenuBar should return FALSE for a destroyed window\n");
+    ok(GetLastError() == ERROR_INVALID_WINDOW_HANDLE, "last error is %d\n", GetLastError());
     ok_sequence(WmEmptySeq, "DrawMenuBar for a window without a menu", FALSE);
 
     hmenu = CreateMenu();

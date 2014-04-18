@@ -180,16 +180,37 @@ HRESULT __cdecl SchRpcRegisterTask(const WCHAR *path, const WCHAR *xml, DWORD fl
     /* FIXME: assume that validation is performed on the client side */
     if (flags & TASK_VALIDATE_ONLY) return S_OK;
 
-    full_name = get_full_name(path, &relative_path);
-    if (!full_name) return E_OUTOFMEMORY;
-
-    if (strchrW(path, '\\') || strchrW(path, '/'))
+    if (path)
     {
-        WCHAR *p = strrchrW(full_name, '/');
-        if (!p) p = strrchrW(full_name, '\\');
-        *p = 0;
-        hr = create_directory(full_name);
-        *p = '\\';
+        full_name = get_full_name(path, &relative_path);
+        if (!full_name) return E_OUTOFMEMORY;
+
+        if (strchrW(path, '\\') || strchrW(path, '/'))
+        {
+            WCHAR *p = strrchrW(full_name, '/');
+            if (!p) p = strrchrW(full_name, '\\');
+            *p = 0;
+            hr = create_directory(full_name);
+            if (hr != S_OK && hr != HRESULT_FROM_WIN32(ERROR_ALREADY_EXISTS))
+            {
+                heap_free(full_name);
+                return hr;
+            }
+            *p = '\\';
+        }
+    }
+    else
+    {
+        IID iid;
+        WCHAR uuid_str[39];
+
+        UuidCreate(&iid);
+        StringFromGUID2(&iid, uuid_str, 39);
+
+        full_name = get_full_name(uuid_str, &relative_path);
+        if (!full_name) return E_OUTOFMEMORY;
+        /* skip leading '\' */
+        relative_path++;
     }
 
     switch (flags & (TASK_CREATE | TASK_UPDATE))
@@ -240,9 +261,15 @@ static int detect_encoding(const void *buffer, DWORD size)
 static HRESULT read_xml(const WCHAR *name, WCHAR **xml)
 {
     HANDLE hfile;
-    DWORD size;
+    DWORD size, attrs;
     char *src;
     int cp;
+
+    attrs = GetFileAttributesW(name);
+    if (attrs == INVALID_FILE_ATTRIBUTES)
+        return HRESULT_FROM_WIN32(GetLastError());
+    if (attrs & FILE_ATTRIBUTE_DIRECTORY)
+        return HRESULT_FROM_WIN32(ERROR_PATH_NOT_FOUND);
 
     hfile = CreateFileW(name, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, 0, 0);
     if (hfile == INVALID_HANDLE_VALUE)
@@ -653,8 +680,22 @@ HRESULT __cdecl SchRpcGetLastRunInfo(const WCHAR *path, SYSTEMTIME *last_runtime
 
 HRESULT __cdecl SchRpcGetTaskInfo(const WCHAR *path, DWORD flags, DWORD *enabled, DWORD *task_state)
 {
+    WCHAR *full_name, *xml;
+    HRESULT hr;
+
     FIXME("%s,%#x,%p,%p: stub\n", debugstr_w(path), flags, enabled, task_state);
-    return E_NOTIMPL;
+
+    full_name = get_full_name(path, NULL);
+    if (!full_name) return E_OUTOFMEMORY;
+
+    hr = read_xml(full_name, &xml);
+    heap_free(full_name);
+    if (hr != S_OK) return hr;
+    heap_free(xml);
+
+    *enabled = 0;
+    *task_state = (flags & SCH_FLAG_STATE) ? TASK_STATE_DISABLED : TASK_STATE_UNKNOWN;
+    return S_OK;
 }
 
 HRESULT __cdecl SchRpcGetNumberOfMissedRuns(const WCHAR *path, DWORD *runs)

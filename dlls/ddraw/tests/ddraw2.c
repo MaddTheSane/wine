@@ -504,6 +504,21 @@ static void test_clipper_blt(void)
         0x00000000, 0x00000000, 0x00ff0000, 0x00ffffff,
         0x00000000, 0x00000000, 0x00ff0000, 0x00ffffff,
     };
+    /* Nvidia on Windows seems to have an off-by-one error
+     * when processing source rectangles. Our left = 1 and
+     * right = 5 input reads from x = {1, 2, 3}. x = 4 is
+     * read as well, but only for the edge pixels on the
+     * output image. The bug happens on the y axis as well,
+     * but we only read one row there, and all source rows
+     * contain the same data. This bug is not dependent on
+     * the presence of a clipper. */
+    static const D3DCOLOR expected1_broken[] =
+    {
+        0x000000ff, 0x000000ff, 0x00000000, 0x00000000,
+        0x000000ff, 0x000000ff, 0x00000000, 0x00000000,
+        0x00000000, 0x00000000, 0x00ff0000, 0x00ff0000,
+        0x00000000, 0x00000000, 0x0000ff00, 0x00ff0000,
+    };
     static const D3DCOLOR expected2[] =
     {
         0x000000ff, 0x000000ff, 0x00000000, 0x00000000,
@@ -617,7 +632,8 @@ static void test_clipper_blt(void)
             x = 80 * ((2 * j) + 1);
             y = 60 * ((2 * i) + 1);
             color = get_surface_color(dst_surface, x, y);
-            ok(compare_color(color, expected1[i * 4 + j], 1),
+            ok(compare_color(color, expected1[i * 4 + j], 1)
+                    || broken(compare_color(color, expected1_broken[i * 4 + j], 1)),
                     "Expected color 0x%08x at %u,%u, got 0x%08x.\n", expected1[i * 4 + j], x, y, color);
         }
     }
@@ -2272,6 +2288,7 @@ static void test_coop_level_mode_set(void)
     HWND window, window2;
     HRESULT hr;
     ULONG ref;
+    MSG msg;
 
     static const UINT exclusive_messages[] =
     {
@@ -2333,6 +2350,7 @@ static void test_coop_level_mode_set(void)
             fullscreen_rect.left, fullscreen_rect.top, fullscreen_rect.right, fullscreen_rect.bottom,
             r.left, r.top, r.right, r.bottom);
 
+    PeekMessageA(&msg, 0, 0, 0, PM_NOREMOVE);
     expect_messages = exclusive_messages;
     screen_size.cx = 0;
     screen_size.cy = 0;
@@ -2378,6 +2396,7 @@ static void test_coop_level_mode_set(void)
             s.left, s.top, s.right, s.bottom,
             r.left, r.top, r.right, r.bottom);
 
+    PeekMessageA(&msg, 0, 0, 0, PM_NOREMOVE);
     expect_messages = exclusive_messages;
     screen_size.cx = 0;
     screen_size.cy = 0;
@@ -2458,6 +2477,7 @@ static void test_coop_level_mode_set(void)
             fullscreen_rect.left, fullscreen_rect.top, fullscreen_rect.right, fullscreen_rect.bottom,
             r.left, r.top, r.right, r.bottom);
 
+    PeekMessageA(&msg, 0, 0, 0, PM_NOREMOVE);
     expect_messages = normal_messages;
     screen_size.cx = 0;
     screen_size.cy = 0;
@@ -2508,6 +2528,7 @@ static void test_coop_level_mode_set(void)
             fullscreen_rect.left, fullscreen_rect.top, fullscreen_rect.right, fullscreen_rect.bottom,
             r.left, r.top, r.right, r.bottom);
 
+    PeekMessageA(&msg, 0, 0, 0, PM_NOREMOVE);
     expect_messages = normal_messages;
     screen_size.cx = 0;
     screen_size.cy = 0;
@@ -2589,6 +2610,7 @@ static void test_coop_level_mode_set(void)
             fullscreen_rect.left, fullscreen_rect.top, fullscreen_rect.right, fullscreen_rect.bottom,
             r.left, r.top, r.right, r.bottom);
 
+    PeekMessageA(&msg, 0, 0, 0, PM_NOREMOVE);
     expect_messages = normal_messages;
     screen_size.cx = 0;
     screen_size.cy = 0;
@@ -2632,6 +2654,7 @@ static void test_coop_level_mode_set(void)
             fullscreen_rect.left, fullscreen_rect.top, fullscreen_rect.right, fullscreen_rect.bottom,
             r.left, r.top, r.right, r.bottom);
 
+    PeekMessageA(&msg, 0, 0, 0, PM_NOREMOVE);
     expect_messages = normal_messages;
     screen_size.cx = 0;
     screen_size.cy = 0;
@@ -2682,6 +2705,7 @@ static void test_coop_level_mode_set(void)
     hr = set_display_mode(ddraw, 640, 480);
     ok(SUCCEEDED(hr), "Failed to set display mode, hr %#x.\n", hr);
 
+    PeekMessageA(&msg, 0, 0, 0, PM_NOREMOVE);
     expect_messages = exclusive_messages;
     screen_size.cx = 0;
     screen_size.cy = 0;
@@ -2748,6 +2772,7 @@ static void test_coop_level_mode_set(void)
     hr = set_display_mode(ddraw, 640, 480);
     ok(SUCCEEDED(hr), "Failed to set display mode, hr %#x.\n", hr);
 
+    PeekMessageA(&msg, 0, 0, 0, PM_NOREMOVE);
     expect_messages = exclusive_messages;
     screen_size.cx = 0;
     screen_size.cy = 0;
@@ -5606,6 +5631,72 @@ static void test_create_surface_pitch(void)
     DestroyWindow(window);
 }
 
+static void test_mipmap_lock(void)
+{
+    IDirectDrawSurface *surface1;
+    IDirectDrawSurface2 *surface, *surface2;
+    DDSURFACEDESC surface_desc;
+    IDirectDraw2 *ddraw;
+    ULONG refcount;
+    HWND window;
+    HRESULT hr;
+    DDSCAPS caps = {DDSCAPS_COMPLEX};
+    DDCAPS hal_caps;
+
+    window = CreateWindowA("static", "ddraw_test", WS_OVERLAPPEDWINDOW,
+            0, 0, 640, 480, 0, 0, 0, 0);
+    ddraw = create_ddraw();
+    ok(!!ddraw, "Failed to create a ddraw object.\n");
+    hr = IDirectDraw2_SetCooperativeLevel(ddraw, window, DDSCL_NORMAL);
+    ok(SUCCEEDED(hr), "Failed to set cooperative level, hr %#x.\n", hr);
+
+    memset(&hal_caps, 0, sizeof(hal_caps));
+    hal_caps.dwSize = sizeof(hal_caps);
+    hr = IDirectDraw2_GetCaps(ddraw, &hal_caps, NULL);
+    ok(SUCCEEDED(hr), "Failed to get caps, hr %#x.\n", hr);
+    if ((hal_caps.ddsCaps.dwCaps & (DDSCAPS_TEXTURE | DDSCAPS_MIPMAP)) != (DDSCAPS_TEXTURE | DDSCAPS_MIPMAP))
+    {
+        skip("Mipmapped textures not supported, skipping mipmap lock test.\n");
+        IDirectDraw2_Release(ddraw);
+        DestroyWindow(window);
+        return;
+    }
+
+    memset(&surface_desc, 0, sizeof(surface_desc));
+    surface_desc.dwSize = sizeof(surface_desc);
+    surface_desc.dwFlags = DDSD_CAPS | DDSD_WIDTH | DDSD_HEIGHT | DDSD_MIPMAPCOUNT;
+    surface_desc.dwWidth = 4;
+    surface_desc.dwHeight = 4;
+    U2(surface_desc).dwMipMapCount = 2;
+    surface_desc.ddsCaps.dwCaps = DDSCAPS_TEXTURE | DDSCAPS_COMPLEX | DDSCAPS_MIPMAP
+            | DDSCAPS_SYSTEMMEMORY;
+    hr = IDirectDraw2_CreateSurface(ddraw, &surface_desc, &surface1, NULL);
+    ok(SUCCEEDED(hr), "Failed to create surface, hr %#x.\n", hr);
+
+    hr = IDirectDrawSurface_QueryInterface(surface1, &IID_IDirectDrawSurface2, (void **)&surface);
+    ok(SUCCEEDED(hr), "Failed to get IDirectDrawSurface2 interface, hr %#x.\n", hr);
+    IDirectDrawSurface_Release(surface1);
+    hr = IDirectDrawSurface2_GetAttachedSurface(surface, &caps, &surface2);
+    ok(SUCCEEDED(hr), "Failed to get attached surface, hr %#x.\n", hr);
+
+    memset(&surface_desc, 0, sizeof(surface_desc));
+    surface_desc.dwSize = sizeof(surface_desc);
+    hr = IDirectDrawSurface2_Lock(surface, NULL, &surface_desc, 0, NULL);
+    ok(SUCCEEDED(hr), "Failed to lock surface, hr %#x.\n", hr);
+    memset(&surface_desc, 0, sizeof(surface_desc));
+    surface_desc.dwSize = sizeof(surface_desc);
+    hr = IDirectDrawSurface2_Lock(surface2, NULL, &surface_desc, 0, NULL);
+    ok(SUCCEEDED(hr), "Failed to lock surface, hr %#x.\n", hr);
+    IDirectDrawSurface2_Unlock(surface2, NULL);
+    IDirectDrawSurface2_Unlock(surface, NULL);
+
+    IDirectDrawSurface2_Release(surface2);
+    IDirectDrawSurface2_Release(surface);
+    refcount = IDirectDraw2_Release(ddraw);
+    ok(!refcount, "Got unexpected refcount %u.\n", refcount);
+    DestroyWindow(window);
+}
+
 START_TEST(ddraw2)
 {
     IDirectDraw2 *ddraw;
@@ -5656,4 +5747,5 @@ START_TEST(ddraw2)
     test_surface_attachment();
     test_pixel_format();
     test_create_surface_pitch();
+    test_mipmap_lock();
 }

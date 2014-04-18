@@ -38,6 +38,7 @@ PUBLIC_IDL_H_SRCS = \
 	downloadmgr.idl \
 	dwrite.idl \
 	dwrite_1.idl \
+	dwrite_2.idl \
 	dxgi.idl \
 	dxgi1_2.idl \
 	dxva2api.idl \
@@ -79,6 +80,7 @@ PUBLIC_IDL_H_SRCS = \
 	netcfgx.idl \
 	netcon.idl \
 	netfw.idl \
+	netlistmgr.idl \
 	oaidl.idl \
 	objectarray.idl \
 	objidl.idl \
