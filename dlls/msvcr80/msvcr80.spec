@@ -113,8 +113,8 @@
 @ cdecl -arch=win64 ?_wsopen@@YAHPEB_WHHH@Z(wstr long long long) MSVCRT__wsopen
 @ thiscall -arch=i386 ?before@type_info@@QBEHABV1@@Z(ptr ptr) MSVCRT_type_info_before
 @ cdecl -arch=win64 ?before@type_info@@QEBAHAEBV1@@Z(ptr ptr) MSVCRT_type_info_before
-@ stub -arch=win32 ?name@type_info@@QBEPBDPAU__type_info_node@@@Z  # public: char const * __thiscall type_info::name(struct __type_info_node *)const
-@ stub -arch=win64 ?name@type_info@@QEBAPEBDPEAU__type_info_node@@@Z  # public: char const * __ptr64 __cdecl type_info::name(struct __type_info_node * __ptr64)const __ptr64
+@ thiscall -arch=win32 ?name@type_info@@QBEPBDPAU__type_info_node@@@Z(ptr ptr) type_info_name_internal_method
+@ cdecl -arch=win64 ?name@type_info@@QEBAPEBDPEAU__type_info_node@@@Z(ptr ptr) type_info_name_internal_method
 @ cdecl -arch=arm ?raw_name@type_info@@QBAPBDXZ(ptr) MSVCRT_type_info_raw_name
 @ thiscall -arch=i386 ?raw_name@type_info@@QBEPBDXZ(ptr) MSVCRT_type_info_raw_name
 @ cdecl -arch=win64 ?raw_name@type_info@@QEBAPEBDXZ(ptr) MSVCRT_type_info_raw_name
@@ -858,7 +858,7 @@
 @ stub _mbsspnp_l
 @ cdecl _mbsstr(str str)
 @ stub _mbsstr_l
-@ cdecl _mbstok(str str) MSVCR100__mbstok
+@ cdecl _mbstok(str str)
 @ cdecl _mbstok_l(str str ptr)
 @ cdecl _mbstok_s(str str ptr)
 @ cdecl _mbstok_s_l(str str ptr ptr)
@@ -1315,7 +1315,7 @@
 @ cdecl -arch=arm,x86_64 atan2f(float float) MSVCRT_atan2f
 @ cdecl atexit(ptr) MSVCRT_atexit
 @ cdecl atof(str) MSVCRT_atof
-@ cdecl atoi(str) MSVCR100_atoi
+@ cdecl atoi(str) MSVCRT_atoi
 @ cdecl atol(str) ntdll.atol
 @ cdecl bsearch(ptr ptr long long ptr) MSVCRT_bsearch
 @ cdecl bsearch_s(ptr ptr long long ptr ptr) MSVCRT_bsearch_s

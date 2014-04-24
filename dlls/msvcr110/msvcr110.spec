@@ -755,9 +755,9 @@
 @ stub -arch=arm ?lock_read@reader_writer_lock@Concurrency@@QAAXXZ
 @ stub -arch=i386 ?lock_read@reader_writer_lock@Concurrency@@QAEXXZ
 @ stub -arch=win64 ?lock_read@reader_writer_lock@Concurrency@@QEAAXXZ
-@ stub -arch=arm ?name@type_info@@QBAPBDPAU__type_info_node@@@Z
-@ stub -arch=i386 ?name@type_info@@QBEPBDPAU__type_info_node@@@Z  # public: char const * __thiscall type_info::name(struct __type_info_node *)const
-@ stub -arch=win64 ?name@type_info@@QEBAPEBDPEAU__type_info_node@@@Z  # public: char const * __ptr64 __cdecl type_info::name(struct __type_info_node * __ptr64)const __ptr64
+@ cdecl -arch=arm ?name@type_info@@QBAPBDPAU__type_info_node@@@Z(ptr ptr) type_info_name_internal_method
+@ thiscall -arch=i386 ?name@type_info@@QBEPBDPAU__type_info_node@@@Z(ptr ptr) type_info_name_internal_method
+@ cdecl -arch=win64 ?name@type_info@@QEBAPEBDPEAU__type_info_node@@@Z(ptr ptr) type_info_name_internal_method
 @ stub -arch=arm ?native_handle@critical_section@Concurrency@@QAAAAV12@XZ
 @ stub -arch=i386 ?native_handle@critical_section@Concurrency@@QAEAAV12@XZ
 @ stub -arch=win64 ?native_handle@critical_section@Concurrency@@QEAAAEAV12@XZ
@@ -1544,7 +1544,7 @@
 @ stub _mbsspnp_l
 @ cdecl _mbsstr(str str)
 @ stub _mbsstr_l
-@ cdecl _mbstok(str str) MSVCR100__mbstok
+@ cdecl _mbstok(str str)
 @ cdecl _mbstok_l(str str ptr)
 @ cdecl _mbstok_s(str str ptr)
 @ cdecl _mbstok_s_l(str str ptr ptr)
@@ -1991,7 +1991,7 @@
 @ cdecl -arch=arm,x86_64 atan2f(float float) MSVCRT_atan2f
 @ cdecl atexit(ptr) MSVCRT_atexit
 @ cdecl atof(str) MSVCRT_atof
-@ cdecl atoi(str) MSVCR100_atoi
+@ cdecl atoi(str) MSVCRT_atoi
 @ cdecl atol(str) ntdll.atol
 @ cdecl bsearch(ptr ptr long long ptr) MSVCRT_bsearch
 @ cdecl bsearch_s(ptr ptr long long ptr ptr) MSVCRT_bsearch_s

@@ -152,10 +152,24 @@ struct nvertex
     DWORD diffuse;
 };
 
-static void test_sanity(IDirect3DDevice8 *device)
+static void test_sanity(void)
 {
+    IDirect3DDevice8 *device;
+    IDirect3D8 *d3d;
     D3DCOLOR color;
+    ULONG refcount;
+    HWND window;
     HRESULT hr;
+
+    window = CreateWindowA("static", "d3d8_test", WS_OVERLAPPEDWINDOW | WS_VISIBLE,
+            0, 0, 640, 480, NULL, NULL, NULL, NULL);
+    d3d = Direct3DCreate8(D3D_SDK_VERSION);
+    ok(!!d3d, "Failed to create a D3D object.\n");
+    if (!(device = create_device(d3d, window, window, TRUE)))
+    {
+        skip("Failed to create a D3D device, skipping tests.\n");
+        goto done;
+    }
 
     hr = IDirect3DDevice8_Clear(device, 0, NULL, D3DCLEAR_TARGET, 0xffff0000, 1.0f, 0);
     ok(SUCCEEDED(hr), "Failed to clear, hr %#x.\n", hr);
@@ -172,14 +186,24 @@ static void test_sanity(IDirect3DDevice8 *device)
 
     hr = IDirect3DDevice8_Present(device, NULL, NULL, NULL, NULL);
     ok(SUCCEEDED(hr), "Failed to present, hr %#x.\n", hr);
+
+    refcount = IDirect3DDevice8_Release(device);
+    ok(!refcount, "Device has %u references left.\n", refcount);
+done:
+    IDirect3D8_Release(d3d);
+    DestroyWindow(window);
 }
 
-static void lighting_test(IDirect3DDevice8 *device)
+static void lighting_test(void)
 {
-    HRESULT hr;
-    DWORD fvf = D3DFVF_XYZ | D3DFVF_DIFFUSE;
     DWORD nfvf = D3DFVF_XYZ | D3DFVF_DIFFUSE | D3DFVF_NORMAL;
-    DWORD color;
+    DWORD fvf = D3DFVF_XYZ | D3DFVF_DIFFUSE;
+    IDirect3DDevice8 *device;
+    IDirect3D8 *d3d;
+    D3DCOLOR color;
+    ULONG refcount;
+    HWND window;
+    HRESULT hr;
 
     static const struct vertex unlitquad[] =
     {
@@ -217,6 +241,16 @@ static void lighting_test(IDirect3DDevice8 *device)
         0.0f, 0.0f, 1.0f, 0.0f,
         0.0f, 0.0f, 0.0f, 1.0f,
     }}};
+
+    window = CreateWindowA("static", "d3d8_test", WS_OVERLAPPEDWINDOW | WS_VISIBLE,
+            0, 0, 640, 480, NULL, NULL, NULL, NULL);
+    d3d = Direct3DCreate8(D3D_SDK_VERSION);
+    ok(!!d3d, "Failed to create a D3D object.\n");
+    if (!(device = create_device(d3d, window, window, TRUE)))
+    {
+        skip("Failed to create a D3D device, skipping tests.\n");
+        goto done;
+    }
 
     hr = IDirect3DDevice8_Clear(device, 0, NULL, D3DCLEAR_TARGET, 0xffffffff, 0.0, 0);
     ok(hr == D3D_OK, "IDirect3DDevice8_Clear failed with %#08x\n", hr);
@@ -293,17 +327,33 @@ static void lighting_test(IDirect3DDevice8 *device)
 
     IDirect3DDevice8_Present(device, NULL, NULL, NULL, NULL);
 
-    hr = IDirect3DDevice8_SetRenderState(device, D3DRS_LIGHTING, FALSE);
-    ok(hr == D3D_OK, "IDirect3DDevice8_SetRenderState returned %#08x\n", hr);
+    refcount = IDirect3DDevice8_Release(device);
+    ok(!refcount, "Device has %u references left.\n", refcount);
+done:
+    IDirect3D8_Release(d3d);
+    DestroyWindow(window);
 }
 
-static void clear_test(IDirect3DDevice8 *device)
+static void clear_test(void)
 {
     /* Tests the correctness of clearing parameters */
+    D3DRECT rect_negneg, rect[2];
+    IDirect3DDevice8 *device;
+    IDirect3D8 *d3d;
+    D3DCOLOR color;
+    ULONG refcount;
+    HWND window;
     HRESULT hr;
-    D3DRECT rect[2];
-    D3DRECT rect_negneg;
-    DWORD color;
+
+    window = CreateWindowA("static", "d3d8_test", WS_OVERLAPPEDWINDOW | WS_VISIBLE,
+            0, 0, 640, 480, NULL, NULL, NULL, NULL);
+    d3d = Direct3DCreate8(D3D_SDK_VERSION);
+    ok(!!d3d, "Failed to create a D3D object.\n");
+    if (!(device = create_device(d3d, window, window, TRUE)))
+    {
+        skip("Failed to create a D3D device, skipping tests.\n");
+        goto done;
+    }
 
     hr = IDirect3DDevice8_Clear(device, 0, NULL, D3DCLEAR_TARGET, 0xffffffff, 0.0, 0);
     ok(hr == D3D_OK, "IDirect3DDevice8_Clear failed with %#08x\n", hr);
@@ -370,58 +420,85 @@ static void clear_test(IDirect3DDevice8 *device)
             "Clear with count = 1, rect = NULL has color %#08x\n", color);
 
     IDirect3DDevice8_Present(device, NULL, NULL, NULL, NULL);
+
+    refcount = IDirect3DDevice8_Release(device);
+    ok(!refcount, "Device has %u references left.\n", refcount);
+done:
+    IDirect3D8_Release(d3d);
+    DestroyWindow(window);
 }
 
-struct sVertex {
-    float x, y, z;
-    DWORD diffuse;
-    DWORD specular;
-};
-
-struct sVertexT {
-    float x, y, z, rhw;
-    DWORD diffuse;
-    DWORD specular;
-};
-
-static void fog_test(IDirect3DDevice8 *device)
+static void fog_test(void)
 {
-    HRESULT hr;
-    DWORD color;
-    float start = 0.0, end = 1.0;
-
-    /* Gets full z based fog with linear fog, no fog with specular color */
-    struct sVertex untransformed_1[] = {
-        {-1,    -1,   0.1f,         0xFFFF0000,     0xFF000000  },
-        {-1,     0,   0.1f,         0xFFFF0000,     0xFF000000  },
-        { 0,     0,   0.1f,         0xFFFF0000,     0xFF000000  },
-        { 0,    -1,   0.1f,         0xFFFF0000,     0xFF000000  },
-    };
-    /* Ok, I am too lazy to deal with transform matrices */
-    struct sVertex untransformed_2[] = {
-        {-1,     0,   1.0f,         0xFFFF0000,     0xFF000000  },
-        {-1,     1,   1.0f,         0xFFFF0000,     0xFF000000  },
-        { 0,     1,   1.0f,         0xFFFF0000,     0xFF000000  },
-        { 0,     0,   1.0f,         0xFFFF0000,     0xFF000000  },
-    };
-    /* Untransformed ones. Give them a different diffuse color to make the test look
-     * nicer. It also makes making sure that they are drawn correctly easier.
-     */
-    struct sVertexT transformed_1[] = {
-        {320,    0,   1.0f, 1.0f,   0xFFFFFF00,     0xFF000000  },
-        {640,    0,   1.0f, 1.0f,   0xFFFFFF00,     0xFF000000  },
-        {640,  240,   1.0f, 1.0f,   0xFFFFFF00,     0xFF000000  },
-        {320,  240,   1.0f, 1.0f,   0xFFFFFF00,     0xFF000000  },
-    };
-    struct sVertexT transformed_2[] = {
-        {320,  240,   1.0f, 1.0f,   0xFFFFFF00,     0xFF000000  },
-        {640,  240,   1.0f, 1.0f,   0xFFFFFF00,     0xFF000000  },
-        {640,  480,   1.0f, 1.0f,   0xFFFFFF00,     0xFF000000  },
-        {320,  480,   1.0f, 1.0f,   0xFFFFFF00,     0xFF000000  },
-    };
-    WORD Indices[] = {0, 1, 2, 2, 3, 0};
-
+    float start = 0.0f, end = 1.0f;
+    IDirect3DDevice8 *device;
+    IDirect3D8 *d3d;
+    D3DCOLOR color;
+    ULONG refcount;
     D3DCAPS8 caps;
+    HWND window;
+    HRESULT hr;
+
+    /* Gets full z based fog with linear fog, no fog with specular color. */
+    static const struct
+    {
+        float x, y, z;
+        D3DCOLOR diffuse;
+        D3DCOLOR specular;
+    }
+    untransformed_1[] =
+    {
+        {-1.0f, -1.0f, 0.1f, 0xffff0000, 0xff000000},
+        {-1.0f,  0.0f, 0.1f, 0xffff0000, 0xff000000},
+        { 0.0f,  0.0f, 0.1f, 0xffff0000, 0xff000000},
+        { 0.0f, -1.0f, 0.1f, 0xffff0000, 0xff000000},
+    },
+    /* Ok, I am too lazy to deal with transform matrices. */
+    untransformed_2[] =
+    {
+        {-1.0f,  0.0f, 1.0f, 0xffff0000, 0xff000000},
+        {-1.0f,  1.0f, 1.0f, 0xffff0000, 0xff000000},
+        { 0.0f,  1.0f, 1.0f, 0xffff0000, 0xff000000},
+        { 0.0f,  0.0f, 1.0f, 0xffff0000, 0xff000000},
+    },
+    far_quad1[] =
+    {
+        {-1.0f, -1.0f, 0.5f, 0xffff0000, 0xff000000},
+        {-1.0f,  0.0f, 0.5f, 0xffff0000, 0xff000000},
+        { 0.0f,  0.0f, 0.5f, 0xffff0000, 0xff000000},
+        { 0.0f, -1.0f, 0.5f, 0xffff0000, 0xff000000},
+    },
+    far_quad2[] =
+    {
+        {-1.0f,  0.0f, 1.5f, 0xffff0000, 0xff000000},
+        {-1.0f,  1.0f, 1.5f, 0xffff0000, 0xff000000},
+        { 0.0f,  1.0f, 1.5f, 0xffff0000, 0xff000000},
+        { 0.0f,  0.0f, 1.5f, 0xffff0000, 0xff000000},
+    };
+
+    /* Untransformed ones. Give them a different diffuse color to make the
+     * test look nicer. It also makes making sure that they are drawn
+     * correctly easier. */
+    static const struct
+    {
+        float x, y, z, rhw;
+        D3DCOLOR diffuse;
+        D3DCOLOR specular;
+    }
+    transformed_1[] =
+    {
+        {320.0f,   0.0f, 1.0f, 1.0f, 0xffffff00, 0xff000000},
+        {640.0f,   0.0f, 1.0f, 1.0f, 0xffffff00, 0xff000000},
+        {640.0f, 240.0f, 1.0f, 1.0f, 0xffffff00, 0xff000000},
+        {320.0f, 240.0f, 1.0f, 1.0f, 0xffffff00, 0xff000000},
+    },
+    transformed_2[] =
+    {
+        {320.0f, 240.0f, 1.0f, 1.0f, 0xffffff00, 0xff000000},
+        {640.0f, 240.0f, 1.0f, 1.0f, 0xffffff00, 0xff000000},
+        {640.0f, 480.0f, 1.0f, 1.0f, 0xffffff00, 0xff000000},
+        {320.0f, 480.0f, 1.0f, 1.0f, 0xffffff00, 0xff000000},
+    };
     static const D3DMATRIX ident_mat =
     {{{
         1.0f, 0.0f, 0.0f, 0.0f,
@@ -450,36 +527,38 @@ static void fog_test(IDirect3DDevice8 *device)
         0.0f, 0.0f,  1.0f, 0.0f,
         0.0f, 0.0f, -1.0f, 1.0f,
     }}};
+    static const WORD Indices[] = {0, 1, 2, 2, 3, 0};
 
-    struct sVertex far_quad1[] =
+    window = CreateWindowA("static", "d3d8_test", WS_OVERLAPPEDWINDOW | WS_VISIBLE,
+            0, 0, 640, 480, NULL, NULL, NULL, NULL);
+    d3d = Direct3DCreate8(D3D_SDK_VERSION);
+    ok(!!d3d, "Failed to create a D3D object.\n");
+    if (!(device = create_device(d3d, window, window, TRUE)))
     {
-        {-1.0f, -1.0f, 0.5f, 0xffff0000, 0xff000000},
-        {-1.0f,  0.0f, 0.5f, 0xffff0000, 0xff000000},
-        { 0.0f,  0.0f, 0.5f, 0xffff0000, 0xff000000},
-        { 0.0f, -1.0f, 0.5f, 0xffff0000, 0xff000000},
-    };
-    struct sVertex far_quad2[] =
-    {
-        {-1.0f, 0.0f, 1.5f, 0xffff0000, 0xff000000},
-        {-1.0f, 1.0f, 1.5f, 0xffff0000, 0xff000000},
-        { 0.0f, 1.0f, 1.5f, 0xffff0000, 0xff000000},
-        { 0.0f, 0.0f, 1.5f, 0xffff0000, 0xff000000},
-    };
+        skip("Failed to create a D3D device, skipping tests.\n");
+        goto done;
+    }
 
     memset(&caps, 0, sizeof(caps));
     hr = IDirect3DDevice8_GetDeviceCaps(device, &caps);
     ok(hr == D3D_OK, "IDirect3DDevice8_GetDeviceCaps returned %08x\n", hr);
-
     hr = IDirect3DDevice8_Clear(device, 0, NULL, D3DCLEAR_TARGET, 0xffff00ff, 0.0, 0);
     ok(hr == D3D_OK, "IDirect3DDevice8_Clear returned %#08x\n", hr);
 
     /* Setup initial states: No lighting, fog on, fog color */
+    hr = IDirect3DDevice8_SetRenderState(device, D3DRS_ZENABLE, FALSE);
+    ok(SUCCEEDED(hr), "Failed to disable D3DRS_ZENABLE, hr %#x.\n", hr);
     hr = IDirect3DDevice8_SetRenderState(device, D3DRS_LIGHTING, FALSE);
     ok(hr == D3D_OK, "Turning off lighting returned %#08x\n", hr);
     hr = IDirect3DDevice8_SetRenderState(device, D3DRS_FOGENABLE, TRUE);
     ok(hr == D3D_OK, "Turning on fog calculations returned %#08x\n", hr);
     hr = IDirect3DDevice8_SetRenderState(device, D3DRS_FOGCOLOR, 0xFF00FF00 /* A nice green */);
     ok(hr == D3D_OK, "Setting fog color returned %#08x\n", hr);
+    /* Some of the tests seem to depend on the projection matrix explicitly
+     * being set to an identity matrix, even though that's the default.
+     * (AMD Radeon HD 6310, Windows 7) */
+    hr = IDirect3DDevice8_SetTransform(device, D3DTS_PROJECTION, &ident_mat);
+    ok(SUCCEEDED(hr), "Failed to set projection transform, hr %#x.\n", hr);
 
     /* First test: Both table fog and vertex fog off */
     hr = IDirect3DDevice8_SetRenderState(device, D3DRS_FOGTABLEMODE, D3DFOG_NONE);
@@ -612,20 +691,17 @@ static void fog_test(IDirect3DDevice8 *device)
                 "Fogged out quad has color %08x\n", color);
 
         IDirect3DDevice8_Present(device, NULL, NULL, NULL, NULL);
-
-        hr = IDirect3DDevice8_SetTransform(device, D3DTS_WORLDMATRIX(0), &ident_mat);
-        ok(hr == D3D_OK, "SetTransform returned %#08x\n", hr);
-        hr = IDirect3DDevice8_SetTransform(device, D3DTS_PROJECTION, &ident_mat);
-        ok(hr == D3D_OK, "SetTransform returned %#08x\n", hr);
     }
     else
     {
         skip("D3DPRASTERCAPS_FOGTABLE not supported, skipping some fog tests\n");
     }
 
-    /* Turn off the fog master switch to avoid confusing other tests */
-    hr = IDirect3DDevice8_SetRenderState(device, D3DRS_FOGENABLE, FALSE);
-    ok(hr == D3D_OK, "Turning off fog calculations returned %#08x\n", hr);
+    refcount = IDirect3DDevice8_Release(device);
+    ok(!refcount, "Device has %u references left.\n", refcount);
+done:
+    IDirect3D8_Release(d3d);
+    DestroyWindow(window);
 }
 
 /* This tests fog in combination with shaders.
@@ -1387,7 +1463,9 @@ static void cnd_test(void)
     hr = IDirect3DDevice8_Present(device, NULL, NULL, NULL, NULL);
     ok(hr == D3D_OK, "IDirect3DDevice8_Present failed with %08x\n", hr);
 
-    /* Retest with the coissue flag on the alpha instruction instead. This works "as expected". */
+    /* Retest with the coissue flag on the alpha instruction instead. This
+     * works "as expected". The Windows 8 testbot (WARP) seems to handle this
+     * the same as coissue on .rgb. */
     hr = IDirect3DDevice8_Clear(device, 0, NULL, D3DCLEAR_TARGET, 0xff00ffff, 0.0f, 0);
     ok(hr == D3D_OK, "IDirect3DDevice8_Clear returned %08x\n", hr);
 
@@ -1429,13 +1507,13 @@ static void cnd_test(void)
 
     /* 1.1 shader */
     color = getPixelColor(device, 238, 358);
-    ok(color_match(color, 0x00ffffff, 1),
+    ok(color_match(color, 0x00ffffff, 1) || broken(color_match(color, 0x00000000, 1)),
             "pixel 238, 358 has color %08x, expected 0x00ffffff\n", color);
     color = getPixelColor(device, 242, 358);
     ok(color_match(color, 0x00000000, 1),
             "pixel 242, 358 has color %08x, expected 0x00000000\n", color);
     color = getPixelColor(device, 238, 362);
-    ok(color_match(color, 0x00ffffff, 1),
+    ok(color_match(color, 0x00ffffff, 1) || broken(color_match(color, 0x00000000, 1)),
             "pixel 238, 362 has color %08x, expected 0x00ffffff\n", color);
     color = getPixelColor(device, 242, 362);
     ok(color_match(color, 0x00000000, 1),
@@ -1443,13 +1521,13 @@ static void cnd_test(void)
 
     /* 1.2 shader */
     color = getPixelColor(device, 558, 358);
-    ok(color_match(color, 0x00ffffff, 1),
+    ok(color_match(color, 0x00ffffff, 1) || broken(color_match(color, 0x00000000, 1)),
             "pixel 558, 358 has color %08x, expected 0x00ffffff\n", color);
     color = getPixelColor(device, 562, 358);
     ok(color_match(color, 0x00000000, 1),
             "pixel 562, 358 has color %08x, expected 0x00000000\n", color);
     color = getPixelColor(device, 558, 362);
-    ok(color_match(color, 0x00ffffff, 1),
+    ok(color_match(color, 0x00ffffff, 1) || broken(color_match(color, 0x00000000, 1)),
             "pixel 558, 362 has color %08x, expected 0x00ffffff\n", color);
     color = getPixelColor(device, 562, 362);
     ok(color_match(color, 0x00000000, 1),
@@ -1457,13 +1535,13 @@ static void cnd_test(void)
 
     /* 1.3 shader */
     color = getPixelColor(device, 558, 118);
-    ok(color_match(color, 0x00ffffff, 1),
+    ok(color_match(color, 0x00ffffff, 1) || broken(color_match(color, 0x00000000, 1)),
             "pixel 558, 118 has color %08x, expected 0x00ffffff\n", color);
     color = getPixelColor(device, 562, 118);
     ok(color_match(color, 0x00000000, 1),
             "pixel 562, 118 has color %08x, expected 0x00000000\n", color);
     color = getPixelColor(device, 558, 122);
-    ok(color_match(color, 0x00ffffff, 1),
+    ok(color_match(color, 0x00ffffff, 1) || broken(color_match(color, 0x00000000, 1)),
             "pixel 558, 122 has color %08x, expected 0x00ffffff\n", color);
     color = getPixelColor(device, 562, 122);
     ok(color_match(color, 0x00000000, 1),
@@ -1491,8 +1569,17 @@ done:
     DestroyWindow(window);
 }
 
-static void z_range_test(IDirect3DDevice8 *device)
+static void z_range_test(void)
 {
+    IDirect3DDevice8 *device;
+    IDirect3D8 *d3d;
+    D3DCOLOR color;
+    ULONG refcount;
+    D3DCAPS8 caps;
+    DWORD shader;
+    HWND window;
+    HRESULT hr;
+
     static const struct vertex quad[] =
     {
         {-1.0f, 0.0f,  1.1f, 0xffff0000},
@@ -1509,22 +1596,18 @@ static void z_range_test(IDirect3DDevice8 *device)
     };
     static const struct tvertex quad3[] =
     {
-        {  0.0f, 240.0f,  1.1f, 1.0f, 0xffffff00},
-        {  0.0f, 480.0f,  1.1f, 1.0f, 0xffffff00},
         {640.0f, 240.0f, -1.1f, 1.0f, 0xffffff00},
         {640.0f, 480.0f, -1.1f, 1.0f, 0xffffff00},
+        {  0.0f, 240.0f,  1.1f, 1.0f, 0xffffff00},
+        {  0.0f, 480.0f,  1.1f, 1.0f, 0xffffff00},
     };
     static const struct tvertex quad4[] =
     {
-        {  0.0f, 240.0f,  1.1f, 1.0f, 0xff00ff00},
-        {  0.0f, 480.0f,  1.1f, 1.0f, 0xff00ff00},
         {640.0f, 240.0f, -1.1f, 1.0f, 0xff00ff00},
         {640.0f, 480.0f, -1.1f, 1.0f, 0xff00ff00},
+        {  0.0f, 240.0f,  1.1f, 1.0f, 0xff00ff00},
+        {  0.0f, 480.0f,  1.1f, 1.0f, 0xff00ff00},
     };
-    HRESULT hr;
-    DWORD color;
-    DWORD shader;
-    D3DCAPS8 caps;
     static const DWORD shader_code[] =
     {
         0xfffe0101,                                     /* vs_1_1           */
@@ -1541,6 +1624,16 @@ static void z_range_test(IDirect3DDevice8 *device)
         D3DVSD_END()
     };
 
+    window = CreateWindowA("static", "d3d8_test", WS_OVERLAPPEDWINDOW | WS_VISIBLE,
+            0, 0, 640, 480, NULL, NULL, NULL, NULL);
+    d3d = Direct3DCreate8(D3D_SDK_VERSION);
+    ok(!!d3d, "Failed to create a D3D object.\n");
+    if (!(device = create_device(d3d, window, window, TRUE)))
+    {
+        skip("Failed to create a D3D device, skipping tests.\n");
+        goto done;
+    }
+
     hr = IDirect3DDevice8_GetDeviceCaps(device, &caps);
     ok(SUCCEEDED(hr), "Failed to get device caps, hr %#x.\n", hr);
 
@@ -1555,6 +1648,8 @@ static void z_range_test(IDirect3DDevice8 *device)
     hr = IDirect3DDevice8_Clear(device, 0, NULL, D3DCLEAR_TARGET, 0xffffffff, 0.0f, 0);
     ok(SUCCEEDED(hr), "Failed to clear, hr %#x.\n", hr);
 
+    hr = IDirect3DDevice8_SetRenderState(device, D3DRS_LIGHTING, FALSE);
+    ok(SUCCEEDED(hr), "Failed to disabled lighting, hr %#x.\n", hr);
     hr = IDirect3DDevice8_SetRenderState(device, D3DRS_CLIPPING, TRUE);
     ok(SUCCEEDED(hr), "Failed to enable clipping, hr %#x.\n", hr);
     hr = IDirect3DDevice8_SetRenderState(device, D3DRS_ZENABLE, D3DZB_TRUE);
@@ -1644,7 +1739,8 @@ static void z_range_test(IDirect3DDevice8 *device)
     if (caps.VertexShaderVersion < D3DVS_VERSION(1, 1))
     {
         skip("Vertex shaders not supported\n");
-        goto out;
+        IDirect3DDevice8_Release(device);
+        goto done;
     }
     hr = IDirect3DDevice8_CreateVertexShader(device, vertex_declaration, shader_code, &shader, 0);
     ok(SUCCEEDED(hr), "Failed to create vertex shader, hr %#x.\n", hr);
@@ -1703,13 +1799,11 @@ static void z_range_test(IDirect3DDevice8 *device)
     hr = IDirect3DDevice8_Present(device, NULL, NULL, NULL, NULL);
     ok(SUCCEEDED(hr), "Failed to present, hr %#x.\n", hr);
 
-out:
-    hr = IDirect3DDevice8_SetRenderState(device, D3DRS_ZENABLE, D3DZB_FALSE);
-    ok(SUCCEEDED(hr), "Failed to disable z test, hr %#x.\n", hr);
-    hr = IDirect3DDevice8_SetRenderState(device, D3DRS_CLIPPING, FALSE);
-    ok(SUCCEEDED(hr), "Failed to disable clipping, hr %#x.\n", hr);
-    hr = IDirect3DDevice8_SetRenderState(device, D3DRS_ZWRITEENABLE, TRUE);
-    ok(SUCCEEDED(hr), "Failed to enable z writes, hr %#x.\n", hr);
+    refcount = IDirect3DDevice8_Release(device);
+    ok(!refcount, "Device has %u references left.\n", refcount);
+done:
+    IDirect3D8_Release(d3d);
+    DestroyWindow(window);
 }
 
 static void test_scalar_instructions(void)
@@ -1882,49 +1976,63 @@ done:
     DestroyWindow(window);
 }
 
-static void offscreen_test(IDirect3DDevice8 *device)
+static void offscreen_test(void)
 {
+    IDirect3DSurface8 *backbuffer, *offscreen, *depthstencil;
+    IDirect3DTexture8 *offscreenTexture;
+    IDirect3DDevice8 *device;
+    IDirect3D8 *d3d;
+    D3DCOLOR color;
+    ULONG refcount;
+    HWND window;
     HRESULT hr;
-    IDirect3DTexture8 *offscreenTexture = NULL;
-    IDirect3DSurface8 *backbuffer = NULL, *offscreen = NULL, *depthstencil = NULL;
-    DWORD color;
 
-    static const float quad[][5] = {
+    static const float quad[][5] =
+    {
         {-0.5f, -0.5f, 0.1f, 0.0f, 0.0f},
         {-0.5f,  0.5f, 0.1f, 0.0f, 1.0f},
         { 0.5f, -0.5f, 0.1f, 1.0f, 0.0f},
         { 0.5f,  0.5f, 0.1f, 1.0f, 1.0f},
     };
 
-    hr = IDirect3DDevice8_GetDepthStencilSurface(device, &depthstencil);
-    ok(hr == D3D_OK, "IDirect3DDevice8_GetDepthStencilSurface failed, hr = %#08x\n", hr);
+    window = CreateWindowA("static", "d3d8_test", WS_OVERLAPPEDWINDOW | WS_VISIBLE,
+            0, 0, 640, 480, NULL, NULL, NULL, NULL);
+    d3d = Direct3DCreate8(D3D_SDK_VERSION);
+    ok(!!d3d, "Failed to create a D3D object.\n");
+    if (!(device = create_device(d3d, window, window, TRUE)))
+    {
+        skip("Failed to create a D3D device, skipping tests.\n");
+        goto done;
+    }
 
-    hr = IDirect3DDevice8_Clear(device, 0, NULL, D3DCLEAR_TARGET, 0xffff0000, 0.0, 0);
+    hr = IDirect3DDevice8_Clear(device, 0, NULL, D3DCLEAR_TARGET | D3DCLEAR_ZBUFFER, 0xffff0000, 1.0f, 0);
     ok(hr == D3D_OK, "Clear failed, hr = %#08x\n", hr);
 
-    hr = IDirect3DDevice8_CreateTexture(device, 128, 128, 1, D3DUSAGE_RENDERTARGET, D3DFMT_X8R8G8B8, D3DPOOL_DEFAULT, &offscreenTexture);
+    hr = IDirect3DDevice8_CreateTexture(device, 128, 128, 1, D3DUSAGE_RENDERTARGET,
+            D3DFMT_X8R8G8B8, D3DPOOL_DEFAULT, &offscreenTexture);
     ok(hr == D3D_OK || hr == D3DERR_INVALIDCALL, "Creating the offscreen render target failed, hr = %#08x\n", hr);
-    if(!offscreenTexture) {
+    if (!offscreenTexture)
+    {
         trace("Failed to create an X8R8G8B8 offscreen texture, trying R5G6B5\n");
-        hr = IDirect3DDevice8_CreateTexture(device, 128, 128, 1, D3DUSAGE_RENDERTARGET, D3DFMT_R5G6B5, D3DPOOL_DEFAULT, &offscreenTexture);
+        hr = IDirect3DDevice8_CreateTexture(device, 128, 128, 1, D3DUSAGE_RENDERTARGET,
+                D3DFMT_R5G6B5, D3DPOOL_DEFAULT, &offscreenTexture);
         ok(hr == D3D_OK || hr == D3DERR_INVALIDCALL, "Creating the offscreen render target failed, hr = %#08x\n", hr);
-        if(!offscreenTexture) {
-            skip("Cannot create an offscreen render target\n");
-            goto out;
+        if (!offscreenTexture)
+        {
+            skip("Cannot create an offscreen render target.\n");
+            IDirect3DDevice8_Release(device);
+            goto done;
         }
     }
 
+    hr = IDirect3DDevice8_GetDepthStencilSurface(device, &depthstencil);
+    ok(hr == D3D_OK, "IDirect3DDevice8_GetDepthStencilSurface failed, hr = %#08x\n", hr);
+
     hr = IDirect3DDevice8_GetBackBuffer(device, 0, D3DBACKBUFFER_TYPE_MONO, &backbuffer);
     ok(hr == D3D_OK, "Can't get back buffer, hr = %#08x\n", hr);
-    if(!backbuffer) {
-        goto out;
-    }
 
     hr = IDirect3DTexture8_GetSurfaceLevel(offscreenTexture, 0, &offscreen);
     ok(hr == D3D_OK, "Can't get offscreen surface, hr = %#08x\n", hr);
-    if(!offscreen) {
-        goto out;
-    }
 
     hr = IDirect3DDevice8_SetVertexShader(device, D3DFVF_XYZ | D3DFVF_TEX1);
     ok(hr == D3D_OK, "SetVertexShader failed, hr = %#08x\n", hr);
@@ -1973,36 +2081,20 @@ static void offscreen_test(IDirect3DDevice8 *device)
     /* Part of the originally cleared back buffer */
     color = getPixelColor(device, 10, 10);
     ok(color == 0x00ff0000, "Offscreen failed: Got color 0x%08x, expected 0x00ff0000.\n", color);
-    if(0) {
-        /* Lower left corner of the screen, where back buffer offscreen rendering draws the offscreen texture.
-        * It should be red, but the offscreen texture may leave some junk there. Not tested yet. Depending on
-        * the offscreen rendering mode this test would succeed or fail
-        */
-        color = getPixelColor(device, 10, 470);
-        ok(color == 0x00ff0000, "Offscreen failed: Got color 0x%08x, expected 0x00ff0000.\n", color);
-    }
+    color = getPixelColor(device, 10, 470);
+    ok(color == 0x00ff0000, "Offscreen failed: Got color 0x%08x, expected 0x00ff0000.\n", color);
 
     IDirect3DDevice8_Present(device, NULL, NULL, NULL, NULL);
 
-out:
-    hr = IDirect3DDevice8_SetTexture(device, 0, NULL);
-    ok(SUCCEEDED(hr), "IDirect3DDevice8_SetTexture returned %#x.\n", hr);
-
-    /* restore things */
-    if(backbuffer) {
-        hr = IDirect3DDevice8_SetRenderTarget(device, backbuffer, depthstencil);
-        ok(SUCCEEDED(hr), "IDirect3DDevice8_SetRenderTarget returned %#x.\n", hr);
-        IDirect3DSurface8_Release(backbuffer);
-    }
-    if(offscreenTexture) {
-        IDirect3DTexture8_Release(offscreenTexture);
-    }
-    if(offscreen) {
-        IDirect3DSurface8_Release(offscreen);
-    }
-    if(depthstencil) {
-        IDirect3DSurface8_Release(depthstencil);
-    }
+    IDirect3DSurface8_Release(backbuffer);
+    IDirect3DTexture8_Release(offscreenTexture);
+    IDirect3DSurface8_Release(offscreen);
+    IDirect3DSurface8_Release(depthstencil);
+    refcount = IDirect3DDevice8_Release(device);
+    ok(!refcount, "Device has %u references left.\n", refcount);
+done:
+    IDirect3D8_Release(d3d);
+    DestroyWindow(window);
 }
 
 static void alpha_test(void)
@@ -2536,44 +2628,53 @@ done:
  *     clipped when D3DPMISCCAPS_CLIPTLVERTS is set, clamped when it isn't.
  *   - The viewport's MinZ/MaxZ is irrelevant for this.
  */
-static void depth_clamp_test(IDirect3DDevice8 *device)
+static void depth_clamp_test(void)
 {
-    const struct tvertex quad1[] =
+    IDirect3DDevice8 *device;
+    D3DVIEWPORT8 vp;
+    IDirect3D8 *d3d;
+    D3DCOLOR color;
+    ULONG refcount;
+    D3DCAPS8 caps;
+    HWND window;
+    HRESULT hr;
+
+    static const struct tvertex quad1[] =
     {
         {  0.0f,   0.0f,  5.0f, 1.0f, 0xff002b7f},
         {640.0f,   0.0f,  5.0f, 1.0f, 0xff002b7f},
         {  0.0f, 480.0f,  5.0f, 1.0f, 0xff002b7f},
         {640.0f, 480.0f,  5.0f, 1.0f, 0xff002b7f},
     };
-    const struct tvertex quad2[] =
+    static const struct tvertex quad2[] =
     {
         {  0.0f, 300.0f, 10.0f, 1.0f, 0xfff9e814},
         {640.0f, 300.0f, 10.0f, 1.0f, 0xfff9e814},
         {  0.0f, 360.0f, 10.0f, 1.0f, 0xfff9e814},
         {640.0f, 360.0f, 10.0f, 1.0f, 0xfff9e814},
     };
-    const struct tvertex quad3[] =
+    static const struct tvertex quad3[] =
     {
         {112.0f, 108.0f,  5.0f, 1.0f, 0xffffffff},
         {208.0f, 108.0f,  5.0f, 1.0f, 0xffffffff},
         {112.0f, 204.0f,  5.0f, 1.0f, 0xffffffff},
         {208.0f, 204.0f,  5.0f, 1.0f, 0xffffffff},
     };
-    const struct tvertex quad4[] =
+    static const struct tvertex quad4[] =
     {
         { 42.0f,  41.0f, 10.0f, 1.0f, 0xffffffff},
         {112.0f,  41.0f, 10.0f, 1.0f, 0xffffffff},
         { 42.0f, 108.0f, 10.0f, 1.0f, 0xffffffff},
         {112.0f, 108.0f, 10.0f, 1.0f, 0xffffffff},
     };
-    const struct vertex quad5[] =
+    static const struct vertex quad5[] =
     {
         { -0.5f,   0.5f, 10.0f,       0xff14f914},
         {  0.5f,   0.5f, 10.0f,       0xff14f914},
         { -0.5f,  -0.5f, 10.0f,       0xff14f914},
         {  0.5f,  -0.5f, 10.0f,       0xff14f914},
     };
-    const struct vertex quad6[] =
+    static const struct vertex quad6[] =
     {
         { -1.0f,   0.5f, 10.0f,       0xfff91414},
         {  1.0f,   0.5f, 10.0f,       0xfff91414},
@@ -2581,10 +2682,18 @@ static void depth_clamp_test(IDirect3DDevice8 *device)
         {  1.0f,  0.25f, 10.0f,       0xfff91414},
     };
 
-    D3DVIEWPORT8 vp;
-    D3DCOLOR color;
-    D3DCAPS8 caps;
-    HRESULT hr;
+    window = CreateWindowA("static", "d3d8_test", WS_OVERLAPPEDWINDOW | WS_VISIBLE,
+            0, 0, 640, 480, NULL, NULL, NULL, NULL);
+    d3d = Direct3DCreate8(D3D_SDK_VERSION);
+    ok(!!d3d, "Failed to create a D3D object.\n");
+    if (!(device = create_device(d3d, window, window, TRUE)))
+    {
+        skip("Failed to create a D3D device, skipping tests.\n");
+        goto done;
+    }
+
+    hr = IDirect3DDevice8_GetDeviceCaps(device, &caps);
+    ok(SUCCEEDED(hr), "Failed to get device caps, hr %#x.\n", hr);
 
     vp.X = 0;
     vp.Y = 0;
@@ -2592,9 +2701,6 @@ static void depth_clamp_test(IDirect3DDevice8 *device)
     vp.Height = 480;
     vp.MinZ = 0.0;
     vp.MaxZ = 7.5;
-
-    hr = IDirect3DDevice8_GetDeviceCaps(device, &caps);
-    ok(SUCCEEDED(hr), "Failed to get device caps, hr %#x.\n", hr);
 
     hr = IDirect3DDevice8_SetViewport(device, &vp);
     ok(SUCCEEDED(hr), "SetViewport failed, hr %#x.\n", hr);
@@ -2677,10 +2783,11 @@ static void depth_clamp_test(IDirect3DDevice8 *device)
     hr = IDirect3DDevice8_Present(device, NULL, NULL, NULL, NULL);
     ok(SUCCEEDED(hr), "Present failed (0x%08x)\n", hr);
 
-    vp.MinZ = 0.0;
-    vp.MaxZ = 1.0;
-    hr = IDirect3DDevice8_SetViewport(device, &vp);
-    ok(SUCCEEDED(hr), "SetViewport failed, hr %#x.\n", hr);
+    refcount = IDirect3DDevice8_Release(device);
+    ok(!refcount, "Device has %u references left.\n", refcount);
+done:
+    IDirect3D8_Release(d3d);
+    DestroyWindow(window);
 }
 
 static void depth_buffer_test(void)
@@ -4017,6 +4124,15 @@ static void zenable_test(void)
             0x00ff0000, 0x00606060, 0x009f609f, 0x00ff0000,
             0x00ff0000, 0x00602060, 0x009f209f, 0x00ff0000,
         };
+        /* The Windows 8 testbot (WARP) appears to not clip z for regular
+         * vertices either. */
+        static const D3DCOLOR expected_broken[] =
+        {
+            0x0020df20, 0x0060df60, 0x009fdf9f, 0x00dfdfdf,
+            0x00209f20, 0x00609f60, 0x009f9f9f, 0x00df9fdf,
+            0x00206020, 0x00606060, 0x009f609f, 0x00df60df,
+            0x00202020, 0x00602060, 0x009f209f, 0x00df20df,
+        };
         static const DWORD decl[] =
         {
             D3DVSD_STREAM(0),
@@ -4050,7 +4166,8 @@ static void zenable_test(void)
                 x = 80 * ((2 * j) + 1);
                 y = 60 * ((2 * i) + 1);
                 color = getPixelColor(device, x, y);
-                ok(color_match(color, expected[i * 4 + j], 1),
+                ok(color_match(color, expected[i * 4 + j], 1)
+                        || broken(color_match(color, expected_broken[i * 4 + j], 1)),
                         "Expected color 0x%08x at %u, %u, got 0x%08x.\n", expected[i * 4 + j], x, y, color);
             }
         }
@@ -4912,10 +5029,7 @@ done:
 START_TEST(visual)
 {
     D3DADAPTER_IDENTIFIER8 identifier;
-    IDirect3DDevice8 *device_ptr;
     IDirect3D8 *d3d;
-    ULONG refcount;
-    HWND window;
     HRESULT hr;
 
     if (!(d3d = Direct3DCreate8(D3D_SDK_VERSION)))
@@ -4935,28 +5049,15 @@ START_TEST(visual)
             HIWORD(U(identifier.DriverVersion).HighPart), LOWORD(U(identifier.DriverVersion).HighPart),
             HIWORD(U(identifier.DriverVersion).LowPart), LOWORD(U(identifier.DriverVersion).LowPart));
 
-    window = CreateWindowA("static", "d3d8_test", WS_OVERLAPPEDWINDOW | WS_VISIBLE,
-            0, 0, 640, 480, NULL, NULL, NULL, NULL);
-    if (!(device_ptr = create_device(d3d, window, window, TRUE)))
-    {
-        skip("Failed to create a D3D device, skipping tests.\n");
-        goto cleanup;
-    }
-
-    test_sanity(device_ptr);
-    depth_clamp_test(device_ptr);
-    lighting_test(device_ptr);
-    clear_test(device_ptr);
-    fog_test(device_ptr);
-    z_range_test(device_ptr);
-    offscreen_test(device_ptr);
-
-    refcount = IDirect3DDevice8_Release(device_ptr);
-    ok(!refcount, "Device has %u references left.\n", refcount);
-cleanup:
     IDirect3D8_Release(d3d);
-    DestroyWindow(window);
 
+    test_sanity();
+    depth_clamp_test();
+    lighting_test();
+    clear_test();
+    fog_test();
+    z_range_test();
+    offscreen_test();
     alpha_test();
     test_scalar_instructions();
     fog_with_shader_test();
