@@ -34,6 +34,9 @@
 
 #include <limits.h>
 #include <stdio.h>
+#ifdef HAVE_FLOAT_H
+# include <float.h>
+#endif
 
 #include "wined3d_private.h"
 
@@ -6019,7 +6022,7 @@ static GLhandleARB create_glsl_blt_shader(const struct wined3d_gl_info *gl_info,
     GLhandleARB vshader_id, pshader_id;
     const char *blt_pshader;
 
-    static const char *blt_vshader =
+    static const char blt_vshader[] =
         "#version 120\n"
         "void main(void)\n"
         "{\n"
@@ -6590,7 +6593,10 @@ static void shader_glsl_get_caps(const struct wined3d_gl_info *gl_info, struct s
      * the shader will generate incorrect results too. Unfortunately, GL deliberately doesn't
      * offer a way to query this.
      */
-    caps->ps_1x_max_value = 8.0;
+    if (shader_model >= 4)
+        caps->ps_1x_max_value = FLT_MAX;
+    else
+        caps->ps_1x_max_value = 1024.0f;
 
     /* Ideally we'd only set caps like sRGB writes here if supported by both
      * the shader backend and the fragment pipe, but we can get called before

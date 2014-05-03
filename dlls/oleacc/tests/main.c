@@ -18,8 +18,13 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA
  */
 
-#include <oleacc.h>
+#define COBJMACROS
+
 #include "wine/test.h"
+#include <stdio.h>
+
+#include "initguid.h"
+#include <oleacc.h>
 
 static void test_getroletext(void)
 {
@@ -135,7 +140,285 @@ static void test_getroletext(void)
     }
 }
 
+static int Object_ref = 1;
+static HRESULT WINAPI Object_QueryInterface(IUnknown *iface, REFIID riid, void **ppv)
+{
+    if(IsEqualIID(riid, &IID_IUnknown)) {
+        *ppv = iface;
+        IUnknown_AddRef(iface);
+        return S_OK;
+    }
+    return E_NOINTERFACE;
+}
+
+static ULONG WINAPI Object_AddRef(IUnknown *iface)
+{
+    return InterlockedIncrement(&Object_ref);
+}
+
+static ULONG WINAPI Object_Release(IUnknown *iface)
+{
+    return InterlockedDecrement(&Object_ref);
+}
+
+static IUnknownVtbl ObjectVtbl = {
+    Object_QueryInterface,
+    Object_AddRef,
+    Object_Release
+};
+
+static IUnknown Object = {&ObjectVtbl};
+
+static void test_LresultFromObject(const char *name)
+{
+    PROCESS_INFORMATION proc;
+    STARTUPINFOA startup;
+    char cmdline[MAX_PATH];
+    IUnknown *unk;
+    HRESULT hres;
+    LRESULT lres;
+
+    lres = LresultFromObject(NULL, 0, 0);
+    ok(lres == E_INVALIDARG, "got %lx\n", lres);
+
+    hres = ObjectFromLresult(0, &IID_IUnknown, 0, (void**)&unk);
+    ok(hres==MAKE_HRESULT(SEVERITY_ERROR,FACILITY_WIN32,ERROR_INVALID_ADDRESS)
+            || hres==E_FAIL, "got %x\n", hres);
+    hres = ObjectFromLresult(0x10000, &IID_IUnknown, 0, (void**)&unk);
+    ok(hres==MAKE_HRESULT(SEVERITY_ERROR,FACILITY_WIN32,ERROR_INVALID_ADDRESS)
+            || hres==E_FAIL, "got %x\n", hres);
+
+    ok(Object_ref == 1, "Object_ref = %d\n", Object_ref);
+    lres = LresultFromObject(&IID_IUnknown, 0, &Object);
+    ok(SUCCEEDED(lres), "got %lx\n", lres);
+    ok(Object_ref > 1, "Object_ref = %d\n", Object_ref);
+
+    hres = ObjectFromLresult(lres, &IID_IUnknown, 0, (void**)&unk);
+    ok(hres == S_OK, "hres = %x\n", hres);
+    ok(unk == &Object, "unk != &Object\n");
+    IUnknown_Release(unk);
+    ok(Object_ref == 1, "Object_ref = %d\n", Object_ref);
+
+    lres = LresultFromObject(&IID_IUnknown, 0, &Object);
+    ok(SUCCEEDED(lres), "got %lx\n", lres);
+    ok(Object_ref > 1, "Object_ref = %d\n", Object_ref);
+
+    sprintf(cmdline, "\"%s\" main ObjectFromLresult %lx", name, lres);
+    memset(&startup, 0, sizeof(startup));
+    startup.cb = sizeof(startup);
+    CreateProcessA(NULL, cmdline, NULL, NULL, FALSE, 0, NULL, NULL, &startup, &proc);
+    winetest_wait_child_process(proc.hProcess);
+    ok(Object_ref == 1, "Object_ref = %d\n", Object_ref);
+}
+
+static LRESULT WINAPI test_window_proc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
+{
+    switch(msg) {
+    case WM_GETOBJECT:
+        if(lparam == OBJID_QUERYCLASSNAMEIDX) {
+            ok(!wparam, "wparam = %lx\n", wparam);
+            return 0;
+        }
+
+        ok(wparam==0xffffffff || broken(wparam==0x8000), "wparam = %lx\n", wparam);
+        if(lparam == (DWORD)OBJID_CURSOR)
+            return E_UNEXPECTED;
+        if(lparam == (DWORD)OBJID_CLIENT)
+            return LresultFromObject(&IID_IUnknown, wparam, &Object);
+
+        ok(0, "unexpected (%ld)\n", lparam);
+        return 0;
+    }
+
+    return DefWindowProcA(hwnd, msg, wparam, lparam);
+}
+
+static BOOL register_window_class(void)
+{
+    WNDCLASSA cls;
+
+    memset(&cls, 0, sizeof(cls));
+    cls.lpfnWndProc = test_window_proc;
+    cls.lpszClassName = "oleacc_test";
+    cls.hInstance = GetModuleHandleA(NULL);
+
+    return RegisterClassA(&cls);
+}
+
+static void unregister_window_class(void)
+{
+    UnregisterClassA("oleacc_test", NULL);
+}
+
+static void test_AccessibleObjectFromWindow(void)
+{
+    IUnknown *unk;
+    HRESULT hr;
+    HWND hwnd;
+
+    hr = AccessibleObjectFromWindow(NULL, OBJID_CURSOR, &IID_IUnknown, NULL);
+    ok(hr == E_INVALIDARG, "got %x\n", hr);
+
+    hr = AccessibleObjectFromWindow(NULL, OBJID_CURSOR, &IID_IUnknown, (void**)&unk);
+    todo_wine ok(hr == S_OK, "got %x\n", hr);
+    if(hr == S_OK) IUnknown_Release(unk);
+
+    hwnd = CreateWindowA("oleacc_test", "test", WS_OVERLAPPEDWINDOW,
+            0, 0, 0, 0, NULL, NULL, NULL, NULL);
+    ok(hwnd != NULL, "CreateWindow failed\n");
+
+    hr = AccessibleObjectFromWindow(hwnd, OBJID_CURSOR, &IID_IUnknown, (void**)&unk);
+    ok(hr == E_UNEXPECTED, "got %x\n", hr);
+
+    ok(Object_ref == 1, "Object_ref = %d\n", Object_ref);
+    hr = AccessibleObjectFromWindow(hwnd, OBJID_CLIENT, &IID_IUnknown, (void**)&unk);
+    ok(hr == S_OK, "got %x\n", hr);
+    ok(Object_ref == 2, "Object_ref = %d\n", Object_ref);
+    IUnknown_Release(unk);
+
+    DestroyWindow(hwnd);
+}
+
+static void test_default_client_accessible_object(void)
+{
+    static const WCHAR testW[] = {'t','e','s','t',' ','t',' ','&','j','u','n','k',0};
+    static const WCHAR shortcutW[] = {'A','l','t','+','t',0};
+
+    IAccessible *acc;
+    HWND chld, hwnd;
+    HRESULT hr;
+    VARIANT vid, v;
+    BSTR str;
+    LONG l;
+
+    hwnd = CreateWindowA("oleacc_test", "test &t &junk", WS_OVERLAPPEDWINDOW,
+            0, 0, 0, 0, NULL, NULL, NULL, NULL);
+    ok(hwnd != NULL, "CreateWindow failed\n");
+    chld = CreateWindowA("static", "message", WS_CHILD,
+            0, 0, 0, 0, hwnd, NULL, NULL, NULL);
+    ok(chld != NULL, "CreateWindow failed\n");
+
+    hr = CreateStdAccessibleObject(NULL, OBJID_CLIENT, &IID_IAccessible, (void**)&acc);
+    ok(hr == E_FAIL, "got %x\n", hr);
+
+    hr = CreateStdAccessibleObject(hwnd, OBJID_CLIENT, &IID_IAccessible, (void**)&acc);
+    ok(hr == S_OK, "got %x\n", hr);
+
+    hr = IAccessible_get_accChildCount(acc, &l);
+    ok(hr == S_OK, "got %x\n", hr);
+    ok(l == 1, "l = %d\n", l);
+
+    V_VT(&vid) = VT_I4;
+    V_I4(&vid) = CHILDID_SELF;
+    hr = IAccessible_get_accName(acc, vid, &str);
+    ok(hr == S_OK, "got %x\n", hr);
+    ok(!lstrcmpW(str, testW), "name = %s\n", wine_dbgstr_w(str));
+    SysFreeString(str);
+
+    V_I4(&vid) = 1;
+    str = (void*)0xdeadbeef;
+    hr = IAccessible_get_accName(acc, vid, &str);
+    ok(hr == E_INVALIDARG, "got %x\n", hr);
+    ok(!str, "str != NULL\n");
+    V_I4(&vid) = CHILDID_SELF;
+
+    str = (void*)0xdeadbeef;
+    hr = IAccessible_get_accValue(acc, vid, &str);
+    ok(hr == S_FALSE, "got %x\n", hr);
+    ok(!str, "str != NULL\n");
+
+    str = (void*)0xdeadbeef;
+    hr = IAccessible_get_accDescription(acc, vid, &str);
+    ok(hr == S_FALSE, "got %x\n", hr);
+    ok(!str, "str != NULL\n");
+
+    V_VT(&v) = VT_DISPATCH;
+    V_DISPATCH(&v) = (void*)0xdeadbeef;
+    hr = IAccessible_get_accRole(acc, vid, &v);
+    ok(hr == S_OK, "got %x\n", hr);
+    ok(V_VT(&v) == VT_I4, "V_VT(&v) = %d\n", V_VT(&v));
+    ok(V_I4(&v) == ROLE_SYSTEM_CLIENT, "V_I4(&v) = %d\n", V_I4(&v));
+
+    V_VT(&v) = VT_DISPATCH;
+    V_DISPATCH(&v) = (void*)0xdeadbeef;
+    hr = IAccessible_get_accState(acc, vid, &v);
+    ok(hr == S_OK, "got %x\n", hr);
+    ok(V_VT(&v) == VT_I4, "V_VT(&v) = %d\n", V_VT(&v));
+    ok(V_I4(&v) == (STATE_SYSTEM_FOCUSABLE|STATE_SYSTEM_INVISIBLE) ||
+            broken(V_I4(&v) == STATE_SYSTEM_INVISIBLE), "V_I4(&v) = %x\n", V_I4(&v));
+
+    str = (void*)0xdeadbeef;
+    hr = IAccessible_get_accHelp(acc, vid, &str);
+    ok(hr == S_FALSE, "got %x\n", hr);
+    ok(!str, "str != NULL\n");
+
+    hr = IAccessible_get_accKeyboardShortcut(acc, vid, &str);
+    ok(hr == S_OK, "got %x\n", hr);
+    ok(!lstrcmpW(str, shortcutW), "str = %s\n", wine_dbgstr_w(str));
+    SysFreeString(str);
+
+    str = (void*)0xdeadbeef;
+    hr = IAccessible_get_accDefaultAction(acc, vid, &str);
+    ok(hr == S_FALSE, "got %x\n", hr);
+    ok(!str, "str != NULL\n");
+
+    DestroyWindow(hwnd);
+
+    hr = IAccessible_get_accChildCount(acc, &l);
+    ok(hr == S_OK, "got %x\n", hr);
+    ok(l == 0, "l = %d\n", l);
+
+    hr = IAccessible_get_accName(acc, vid, &str);
+    ok(hr == E_INVALIDARG, "got %x\n", hr);
+
+    hr = IAccessible_get_accValue(acc, vid, &str);
+    ok(hr == S_FALSE, "got %x\n", hr);
+
+    hr = IAccessible_get_accRole(acc, vid, &v);
+    ok(hr == S_OK, "got %x\n", hr);
+    ok(V_VT(&v) == VT_I4, "V_VT(&v) = %d\n", V_VT(&v));
+    ok(V_I4(&v) == ROLE_SYSTEM_CLIENT, "V_I4(&v) = %d\n", V_I4(&v));
+
+    hr = IAccessible_get_accState(acc, vid, &v);
+    ok(hr == S_OK, "got %x\n", hr);
+    ok(V_VT(&v) == VT_I4, "V_VT(&v) = %d\n", V_VT(&v));
+    ok(V_I4(&v) == STATE_SYSTEM_INVISIBLE, "V_I4(&v) = %x\n", V_I4(&v));
+
+    IAccessible_Release(acc);
+}
+
 START_TEST(main)
 {
+    int argc;
+    char **argv;
+
+    CoInitializeEx(NULL, COINIT_MULTITHREADED);
+
+    argc = winetest_get_mainargs(&argv);
+    if(argc == 4 && !strcmp(argv[2], "ObjectFromLresult")) {
+        IUnknown *unk;
+        HRESULT hres;
+        LRESULT lres;
+
+        sscanf(argv[3], "%lx", &lres);
+        hres = ObjectFromLresult(lres, &IID_IUnknown, 0, (void**)&unk);
+        ok(hres == S_OK, "hres = %x\n", hres);
+        IUnknown_Release(unk);
+
+        CoUninitialize();
+        return;
+    }
+
+    if(!register_window_class()) {
+        skip("can't register test window class\n");
+        return;
+    }
+
     test_getroletext();
+    test_LresultFromObject(argv[0]);
+    test_AccessibleObjectFromWindow();
+    test_default_client_accessible_object();
+
+    unregister_window_class();
+    CoUninitialize();
 }
