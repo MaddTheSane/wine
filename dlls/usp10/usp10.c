@@ -2848,6 +2848,7 @@ HRESULT WINAPI ScriptShapeOpenType( HDC hdc, SCRIPT_CACHE *psc,
     unsigned int g;
     BOOL rtl;
     int cluster;
+    static int once = 0;
 
     TRACE("(%p, %p, %p, %s, %s, %p, %p, %d, %s, %d, %d, %p, %p, %p, %p, %p )\n",
      hdc, psc, psa,
@@ -2862,7 +2863,7 @@ HRESULT WINAPI ScriptShapeOpenType( HDC hdc, SCRIPT_CACHE *psc,
     if (cChars > cMaxGlyphs) return E_OUTOFMEMORY;
 
     if (cRanges)
-        FIXME("Ranges not supported yet\n");
+        if(!once++) FIXME("Ranges not supported yet\n");
 
     rtl = (psa && !psa->fLogicalOrder && psa->fRTL);
 
@@ -3077,6 +3078,7 @@ HRESULT WINAPI ScriptPlaceOpenType( HDC hdc, SCRIPT_CACHE *psc, SCRIPT_ANALYSIS 
 {
     HRESULT hr;
     int i;
+    static int once = 0;
 
     TRACE("(%p, %p, %p, %s, %s, %p, %p, %d, %s, %p, %p, %d, %p, %p, %d, %p %p %p)\n",
      hdc, psc, psa,
@@ -3090,7 +3092,7 @@ HRESULT WINAPI ScriptPlaceOpenType( HDC hdc, SCRIPT_CACHE *psc, SCRIPT_ANALYSIS 
     if (!pGoffset) return E_FAIL;
 
     if (cRanges)
-        FIXME("Ranges not supported yet\n");
+        if (!once++) FIXME("Ranges not supported yet\n");
 
     ((ScriptCache *)*psc)->userScript = tagScript;
     ((ScriptCache *)*psc)->userLang = tagLangSys;

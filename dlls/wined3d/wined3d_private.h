@@ -2341,7 +2341,6 @@ enum wined3d_conversion_type
 {
     WINED3D_CT_NONE,
     WINED3D_CT_PALETTED,
-    WINED3D_CT_PALETTED_CK,
     WINED3D_CT_CK_565,
     WINED3D_CT_CK_5551,
     WINED3D_CT_CK_RGB24,
@@ -2349,7 +2348,7 @@ enum wined3d_conversion_type
     WINED3D_CT_CK_ARGB32,
 };
 
-void d3dfmt_p8_init_palette(const struct wined3d_surface *surface, BYTE table[256][4], BOOL colorkey) DECLSPEC_HIDDEN;
+void d3dfmt_p8_init_palette(const struct wined3d_surface *surface, BYTE table[256][4]) DECLSPEC_HIDDEN;
 
 struct wined3d_sampler
 {
@@ -2635,11 +2634,6 @@ struct wined3d_swapchain
     HDC backup_dc;
     HWND backup_wnd;
 };
-
-static inline BOOL swapchain_is_p8(const struct wined3d_swapchain *swapchain)
-{
-    return swapchain->desc.backbuffer_format == WINED3DFMT_P8_UINT;
-}
 
 void x11_copy_to_screen(const struct wined3d_swapchain *swapchain, const RECT *rect) DECLSPEC_HIDDEN;
 
@@ -2958,7 +2952,7 @@ struct wined3d_palette
     struct wined3d_device *device;
 
     unsigned int size;
-    PALETTEENTRY palents[256];
+    RGBQUAD colors[256];
     DWORD flags;
 };
 

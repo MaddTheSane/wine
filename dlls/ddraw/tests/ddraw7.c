@@ -6688,19 +6688,19 @@ static void test_material(void)
     ok(!memcmp(&U(material).diffuse, &null_color, sizeof(null_color)),
             "Got unexpected diffuse color {%.8e, %.8e, %.8e, %.8e}.\n",
             U1(U(material).diffuse).r, U2(U(material).diffuse).g,
-            U3(U(material).diffuse).b, U3(U(material).diffuse).a);
+            U3(U(material).diffuse).b, U4(U(material).diffuse).a);
     ok(!memcmp(&U1(material).ambient, &null_color, sizeof(null_color)),
             "Got unexpected ambient color {%.8e, %.8e, %.8e, %.8e}.\n",
             U1(U1(material).ambient).r, U2(U1(material).ambient).g,
-            U3(U1(material).ambient).b, U3(U1(material).ambient).a);
+            U3(U1(material).ambient).b, U4(U1(material).ambient).a);
     ok(!memcmp(&U2(material).specular, &null_color, sizeof(null_color)),
             "Got unexpected specular color {%.8e, %.8e, %.8e, %.8e}.\n",
             U1(U2(material).specular).r, U2(U2(material).specular).g,
-            U3(U2(material).specular).b, U3(U2(material).specular).a);
+            U3(U2(material).specular).b, U4(U2(material).specular).a);
     ok(!memcmp(&U3(material).emissive, &null_color, sizeof(null_color)),
             "Got unexpected emissive color {%.8e, %.8e, %.8e, %.8e}.\n",
             U1(U3(material).emissive).r, U2(U3(material).emissive).g,
-            U3(U3(material).emissive).b, U3(U3(material).emissive).a);
+            U3(U3(material).emissive).b, U4(U3(material).emissive).a);
     ok(U4(material).power == 0.0f, "Got unexpected power %.8e.\n", U4(material).power);
 
     refcount = IDirect3DDevice7_Release(device);
@@ -6818,7 +6818,7 @@ static void test_palette_gdi(void)
 
     i = GetDIBColorTable(dc, 4, 1, &rgbquad[4]);
     ok(i == 1, "Expected count 1, got %u.\n", i);
-    todo_wine ok(!memcmp(&rgbquad[4], &expected1[4], sizeof(rgbquad[4])),
+    ok(!memcmp(&rgbquad[4], &expected1[4], sizeof(rgbquad[4])),
             "Got color table entry %u r=%#x g=%#x b=%#x, expected r=%#x g=%#x b=%#x.\n",
             i, rgbquad[4].rgbRed, rgbquad[4].rgbGreen, rgbquad[4].rgbBlue,
             expected1[4].rgbRed, expected1[4].rgbGreen, expected1[4].rgbBlue);
@@ -6831,7 +6831,7 @@ static void test_palette_gdi(void)
 
     i = GetDIBColorTable(dc, 4, 1, &rgbquad[4]);
     ok(i == 1, "Expected count 1, got %u.\n", i);
-    todo_wine ok(!memcmp(&rgbquad[4], &expected1[4], sizeof(rgbquad[4])),
+    ok(!memcmp(&rgbquad[4], &expected1[4], sizeof(rgbquad[4])),
             "Got color table entry %u r=%#x g=%#x b=%#x, expected r=%#x g=%#x b=%#x.\n",
             i, rgbquad[4].rgbRed, rgbquad[4].rgbGreen, rgbquad[4].rgbBlue,
             expected1[4].rgbRed, expected1[4].rgbGreen, expected1[4].rgbBlue);
@@ -7007,6 +7007,159 @@ static void test_palette_gdi(void)
     DestroyWindow(window);
 }
 
+static void test_palette_alpha(void)
+{
+    IDirectDrawSurface7 *surface;
+    DDSURFACEDESC2 surface_desc;
+    IDirectDraw7 *ddraw;
+    IDirectDrawPalette *palette;
+    ULONG refcount;
+    HWND window;
+    HRESULT hr;
+    PALETTEENTRY palette_entries[256];
+    unsigned int i;
+    static const struct
+    {
+        DWORD caps, flags;
+        BOOL attach_allowed;
+        const char *name;
+    }
+    test_data[] =
+    {
+        {DDSCAPS_OFFSCREENPLAIN, DDSD_WIDTH | DDSD_HEIGHT, FALSE, "offscreenplain"},
+        {DDSCAPS_TEXTURE, DDSD_WIDTH | DDSD_HEIGHT, TRUE, "texture"},
+        {DDSCAPS_PRIMARYSURFACE, 0, FALSE, "primary"}
+    };
+
+    window = CreateWindowA("static", "ddraw_test", WS_OVERLAPPEDWINDOW,
+            0, 0, 640, 480, 0, 0, 0, 0);
+    ddraw = create_ddraw();
+    ok(!!ddraw, "Failed to create a ddraw object.\n");
+    if (FAILED(hr = IDirectDraw7_SetDisplayMode(ddraw, 640, 480, 8, 0, 0)))
+    {
+        win_skip("Failed to set 8 bpp display mode, skipping test.\n");
+        IDirectDraw7_Release(ddraw);
+        DestroyWindow(window);
+        return;
+    }
+    ok(SUCCEEDED(hr), "Failed to set display mode, hr %#x.\n", hr);
+    hr = IDirectDraw7_SetCooperativeLevel(ddraw, window, DDSCL_EXCLUSIVE | DDSCL_FULLSCREEN);
+    ok(SUCCEEDED(hr), "Failed to set cooperative level, hr %#x.\n", hr);
+
+    memset(palette_entries, 0, sizeof(palette_entries));
+    palette_entries[1].peFlags = 0x42;
+    palette_entries[2].peFlags = 0xff;
+    palette_entries[3].peFlags = 0x80;
+    hr = IDirectDraw7_CreatePalette(ddraw, DDPCAPS_ALLOW256 | DDPCAPS_8BIT, palette_entries, &palette, NULL);
+    ok(SUCCEEDED(hr), "Failed to create palette, hr %#x.\n", hr);
+
+    memset(palette_entries, 0x66, sizeof(palette_entries));
+    hr = IDirectDrawPalette_GetEntries(palette, 0, 1, 4, palette_entries);
+    ok(SUCCEEDED(hr), "Failed to get palette entries, hr %#x.\n", hr);
+    ok(palette_entries[0].peFlags == 0x42, "Got unexpected peFlags 0x%02x, expected 0xff.\n",
+            palette_entries[0].peFlags);
+    ok(palette_entries[1].peFlags == 0xff, "Got unexpected peFlags 0x%02x, expected 0xff.\n",
+            palette_entries[1].peFlags);
+    ok(palette_entries[2].peFlags == 0x80, "Got unexpected peFlags 0x%02x, expected 0x80.\n",
+            palette_entries[2].peFlags);
+    ok(palette_entries[3].peFlags == 0x00, "Got unexpected peFlags 0x%02x, expected 0x00.\n",
+            palette_entries[3].peFlags);
+
+    IDirectDrawPalette_Release(palette);
+
+    memset(palette_entries, 0, sizeof(palette_entries));
+    palette_entries[1].peFlags = 0x42;
+    palette_entries[1].peRed   = 0xff;
+    palette_entries[2].peFlags = 0xff;
+    palette_entries[3].peFlags = 0x80;
+    hr = IDirectDraw7_CreatePalette(ddraw, DDPCAPS_ALLOW256 | DDPCAPS_8BIT | DDPCAPS_ALPHA,
+            palette_entries, &palette, NULL);
+    ok(SUCCEEDED(hr), "Failed to create palette, hr %#x.\n", hr);
+
+    memset(palette_entries, 0x66, sizeof(palette_entries));
+    hr = IDirectDrawPalette_GetEntries(palette, 0, 1, 4, palette_entries);
+    ok(SUCCEEDED(hr), "Failed to get palette entries, hr %#x.\n", hr);
+    ok(palette_entries[0].peFlags == 0x42, "Got unexpected peFlags 0x%02x, expected 0xff.\n",
+            palette_entries[0].peFlags);
+    ok(palette_entries[1].peFlags == 0xff, "Got unexpected peFlags 0x%02x, expected 0xff.\n",
+            palette_entries[1].peFlags);
+    ok(palette_entries[2].peFlags == 0x80, "Got unexpected peFlags 0x%02x, expected 0x80.\n",
+            palette_entries[2].peFlags);
+    ok(palette_entries[3].peFlags == 0x00, "Got unexpected peFlags 0x%02x, expected 0x00.\n",
+            palette_entries[3].peFlags);
+
+    for (i = 0; i < sizeof(test_data) / sizeof(*test_data); i++)
+    {
+        memset(&surface_desc, 0, sizeof(surface_desc));
+        surface_desc.dwSize = sizeof(surface_desc);
+        surface_desc.dwFlags = DDSD_CAPS | test_data[i].flags;
+        surface_desc.dwWidth = 128;
+        surface_desc.dwHeight = 128;
+        surface_desc.ddsCaps.dwCaps = test_data[i].caps;
+        hr = IDirectDraw7_CreateSurface(ddraw, &surface_desc, &surface, NULL);
+        ok(SUCCEEDED(hr), "Failed to create %s surface, hr %#x.\n", test_data[i].name, hr);
+
+        hr = IDirectDrawSurface7_SetPalette(surface, palette);
+        if (test_data[i].attach_allowed)
+            ok(SUCCEEDED(hr), "Failed to attach palette to %s surface, hr %#x.\n", test_data[i].name, hr);
+        else
+            ok(hr == DDERR_INVALIDSURFACETYPE, "Got unexpected hr %#x, %s surface.\n", hr, test_data[i].name);
+
+        if (SUCCEEDED(hr))
+        {
+            HDC dc;
+            RGBQUAD rgbquad;
+            UINT retval;
+
+            hr = IDirectDrawSurface7_GetDC(surface, &dc);
+            ok(SUCCEEDED(hr), "Failed to get DC, hr %#x, %s surface.\n", hr, test_data[i].name);
+            retval = GetDIBColorTable(dc, 1, 1, &rgbquad);
+            ok(retval == 1, "GetDIBColorTable returned unexpected result %u.\n", retval);
+            ok(rgbquad.rgbRed == 0xff, "Expected rgbRed = 0xff, got %#x, %s surface.\n",
+                    rgbquad.rgbRed, test_data[i].name);
+            ok(rgbquad.rgbGreen == 0, "Expected rgbGreen = 0, got %#x, %s surface.\n",
+                    rgbquad.rgbGreen, test_data[i].name);
+            ok(rgbquad.rgbBlue == 0, "Expected rgbBlue = 0, got %#x, %s surface.\n",
+                    rgbquad.rgbBlue, test_data[i].name);
+            todo_wine ok(rgbquad.rgbReserved == 0, "Expected rgbReserved = 0, got %u, %s surface.\n",
+                    rgbquad.rgbReserved, test_data[i].name);
+            hr = IDirectDrawSurface7_ReleaseDC(surface, dc);
+            ok(SUCCEEDED(hr), "Failed to release DC, hr %#x.\n", hr);
+        }
+        IDirectDrawSurface7_Release(surface);
+    }
+
+    /* Test INVALIDSURFACETYPE vs INVALIDPIXELFORMAT. */
+    memset(&surface_desc, 0, sizeof(surface_desc));
+    surface_desc.dwSize = sizeof(surface_desc);
+    surface_desc.dwFlags = DDSD_CAPS | DDSD_WIDTH | DDSD_HEIGHT | DDSD_PIXELFORMAT;
+    surface_desc.dwWidth = 128;
+    surface_desc.dwHeight = 128;
+    surface_desc.ddsCaps.dwCaps = DDSCAPS_OFFSCREENPLAIN;
+    U4(surface_desc).ddpfPixelFormat.dwSize = sizeof(U4(surface_desc).ddpfPixelFormat);
+    U4(surface_desc).ddpfPixelFormat.dwFlags = DDPF_RGB;
+    U1(U4(surface_desc).ddpfPixelFormat).dwRGBBitCount = 32;
+    U2(U4(surface_desc).ddpfPixelFormat).dwRBitMask = 0x00ff0000;
+    U3(U4(surface_desc).ddpfPixelFormat).dwGBitMask = 0x0000ff00;
+    U4(U4(surface_desc).ddpfPixelFormat).dwBBitMask = 0x000000ff;
+    hr = IDirectDraw7_CreateSurface(ddraw, &surface_desc, &surface, NULL);
+    ok(SUCCEEDED(hr), "Failed to create surface, hr %#x.\n", hr);
+    hr = IDirectDrawSurface7_SetPalette(surface, palette);
+    ok(hr == DDERR_INVALIDSURFACETYPE, "Got unexpected hr %#x.\n", hr);
+    IDirectDrawSurface7_Release(surface);
+
+    /* The Windows 8 testbot keeps extra references to the primary
+     * while in 8 bpp mode. */
+    hr = IDirectDraw7_RestoreDisplayMode(ddraw);
+    ok(SUCCEEDED(hr), "Failed to restore display mode, hr %#x.\n", hr);
+
+    refcount = IDirectDrawPalette_Release(palette);
+    ok(!refcount, "Got unexpected refcount %u.\n", refcount);
+    refcount = IDirectDraw7_Release(ddraw);
+    ok(!refcount, "Got unexpected refcount %u.\n", refcount);
+    DestroyWindow(window);
+}
+
 START_TEST(ddraw7)
 {
     HMODULE module = GetModuleHandleA("ddraw.dll");
@@ -7075,4 +7228,5 @@ START_TEST(ddraw7)
     test_p8_rgb_blit();
     test_material();
     test_palette_gdi();
+    test_palette_alpha();
 }

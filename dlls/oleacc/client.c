@@ -27,6 +27,7 @@ WINE_DEFAULT_DEBUG_CHANNEL(oleacc);
 
 typedef struct {
     IAccessible IAccessible_iface;
+    IOleWindow IOleWindow_iface;
 
     LONG ref;
 
@@ -48,11 +49,16 @@ static HRESULT WINAPI Client_QueryInterface(IAccessible *iface, REFIID riid, voi
             IsEqualIID(riid, &IID_IDispatch) ||
             IsEqualIID(riid, &IID_IUnknown)) {
         *ppv = iface;
-        IAccessible_AddRef(iface);
-        return S_OK;
+    }else if(IsEqualIID(riid, &IID_IOleWindow)) {
+        *ppv = &This->IOleWindow_iface;
+    }else {
+        WARN("no interface: %s\n", debugstr_guid(riid));
+        *ppv = NULL;
+        return E_NOINTERFACE;
     }
 
-    return E_NOINTERFACE;
+    IAccessible_AddRef(iface);
+    return S_OK;
 }
 
 static ULONG WINAPI Client_AddRef(IAccessible *iface)
@@ -113,8 +119,11 @@ static HRESULT WINAPI Client_Invoke(IAccessible *iface, DISPID dispIdMember,
 static HRESULT WINAPI Client_get_accParent(IAccessible *iface, IDispatch **ppdispParent)
 {
     Client *This = impl_from_Client(iface);
-    FIXME("(%p)->(%p)\n", This, ppdispParent);
-    return E_NOTIMPL;
+
+    TRACE("(%p)->(%p)\n", This, ppdispParent);
+
+    return AccessibleObjectFromWindow(This->hwnd, OBJID_WINDOW,
+            &IID_IDispatch, (void**)ppdispParent);
 }
 
 static HRESULT WINAPI Client_get_accChildCount(IAccessible *iface, LONG *pcountChildren)
@@ -323,9 +332,31 @@ static HRESULT WINAPI Client_accLocation(IAccessible *iface, LONG *pxLeft,
         LONG *pyTop, LONG *pcxWidth, LONG *pcyHeight, VARIANT varID)
 {
     Client *This = impl_from_Client(iface);
-    FIXME("(%p)->(%p %p %p %p %s)\n", This, pxLeft, pyTop,
+    RECT rect;
+    POINT pt;
+
+    TRACE("(%p)->(%p %p %p %p %s)\n", This, pxLeft, pyTop,
             pcxWidth, pcyHeight, debugstr_variant(&varID));
-    return E_NOTIMPL;
+
+    *pxLeft = *pyTop = *pcxWidth = *pcyHeight = 0;
+    if(convert_child_id(&varID) != CHILDID_SELF)
+        return E_INVALIDARG;
+
+    if(!GetClientRect(This->hwnd, &rect))
+        return S_OK;
+
+    pt.x = rect.left,
+    pt.y = rect.top;
+    MapWindowPoints(This->hwnd, NULL, &pt, 1);
+    *pxLeft = pt.x;
+    *pyTop = pt.y;
+
+    pt.x = rect.right;
+    pt.y = rect.bottom;
+    MapWindowPoints(This->hwnd, NULL, &pt, 1);
+    *pcxWidth = pt.x - *pxLeft;
+    *pcyHeight = pt.y - *pyTop;
+    return S_OK;
 }
 
 static HRESULT WINAPI Client_accNavigate(IAccessible *iface,
@@ -340,8 +371,26 @@ static HRESULT WINAPI Client_accHitTest(IAccessible *iface,
         LONG xLeft, LONG yTop, VARIANT *pvarID)
 {
     Client *This = impl_from_Client(iface);
-    FIXME("(%p)->(%d %d %p)\n", This, xLeft, yTop, pvarID);
-    return E_NOTIMPL;
+    HWND child;
+    POINT pt;
+
+    TRACE("(%p)->(%d %d %p)\n", This, xLeft, yTop, pvarID);
+
+    V_VT(pvarID) = VT_I4;
+    V_I4(pvarID) = 0;
+
+    pt.x = xLeft;
+    pt.y = yTop;
+    if(!IsWindowVisible(This->hwnd) || !ScreenToClient(This->hwnd, &pt))
+        return S_OK;
+
+    child = ChildWindowFromPointEx(This->hwnd, pt, CWP_SKIPINVISIBLE);
+    if(!child || child==This->hwnd)
+        return S_OK;
+
+    V_VT(pvarID) = VT_DISPATCH;
+    return AccessibleObjectFromWindow(child, OBJID_WINDOW,
+            &IID_IDispatch, (void**)&V_DISPATCH(pvarID));
 }
 
 static HRESULT WINAPI Client_accDoDefaultAction(IAccessible *iface, VARIANT varID)
@@ -396,6 +445,54 @@ static const IAccessibleVtbl ClientVtbl = {
     Client_put_accValue
 };
 
+static inline Client* impl_from_Client_OleWindow(IOleWindow *iface)
+{
+    return CONTAINING_RECORD(iface, Client, IOleWindow_iface);
+}
+
+static HRESULT WINAPI Client_OleWindow_QueryInterface(IOleWindow *iface, REFIID riid, void **ppv)
+{
+    Client *This = impl_from_Client_OleWindow(iface);
+    return IAccessible_QueryInterface(&This->IAccessible_iface, riid, ppv);
+}
+
+static ULONG WINAPI Client_OleWindow_AddRef(IOleWindow *iface)
+{
+    Client *This = impl_from_Client_OleWindow(iface);
+    return IAccessible_AddRef(&This->IAccessible_iface);
+}
+
+static ULONG WINAPI Client_OleWindow_Release(IOleWindow *iface)
+{
+    Client *This = impl_from_Client_OleWindow(iface);
+    return IAccessible_Release(&This->IAccessible_iface);
+}
+
+static HRESULT WINAPI Client_OleWindow_GetWindow(IOleWindow *iface, HWND *phwnd)
+{
+    Client *This = impl_from_Client_OleWindow(iface);
+
+    TRACE("(%p)->(%p)\n", This, phwnd);
+
+    *phwnd = This->hwnd;
+    return S_OK;
+}
+
+static HRESULT WINAPI Client_OleWindow_ContextSensitiveHelp(IOleWindow *iface, BOOL fEnterMode)
+{
+    Client *This = impl_from_Client_OleWindow(iface);
+    FIXME("(%p)->(%x)\n", This, fEnterMode);
+    return E_NOTIMPL;
+}
+
+static const IOleWindowVtbl ClientOleWindowVtbl = {
+    Client_OleWindow_QueryInterface,
+    Client_OleWindow_AddRef,
+    Client_OleWindow_Release,
+    Client_OleWindow_GetWindow,
+    Client_OleWindow_ContextSensitiveHelp
+};
+
 HRESULT create_client_object(HWND hwnd, const IID *iid, void **obj)
 {
     Client *client;
@@ -409,6 +506,7 @@ HRESULT create_client_object(HWND hwnd, const IID *iid, void **obj)
         return E_OUTOFMEMORY;
 
     client->IAccessible_iface.lpVtbl = &ClientVtbl;
+    client->IOleWindow_iface.lpVtbl = &ClientOleWindowVtbl;
     client->ref = 1;
     client->hwnd = hwnd;
 

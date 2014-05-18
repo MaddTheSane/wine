@@ -1798,11 +1798,8 @@ static HRESULT WINAPI d3d_device2_GetCurrentViewport(IDirect3DDevice2 *iface, ID
 
 static BOOL validate_surface_palette(struct ddraw_surface *surface)
 {
-    return !(surface->surface_desc.u4.ddpfPixelFormat.dwFlags
-            & (DDPF_PALETTEINDEXED1 | DDPF_PALETTEINDEXED2
-            | DDPF_PALETTEINDEXED4 | DDPF_PALETTEINDEXED8
-            | DDPF_PALETTEINDEXEDTO8))
-            || wined3d_surface_get_palette(surface->wined3d_surface);
+    return !format_is_paletteindexed(&surface->surface_desc.u4.ddpfPixelFormat)
+            || surface->palette;
 }
 
 static HRESULT d3d_device_set_render_target(struct d3d_device *device,

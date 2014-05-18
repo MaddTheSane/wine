@@ -78,6 +78,41 @@ const char * const wine_vflags[16] =
  "|VT_VECTOR|VT_ARRAY|VT_BYREF|VT_HARDTYPE",
 };
 
+const char *debugstr_variant(const VARIANT *v)
+{
+    if(!v)
+        return "(null)";
+
+    switch(V_VT(v)) {
+    case VT_EMPTY:
+        return wine_dbg_sprintf("%p {VT_EMPTY}", v);
+    case VT_NULL:
+        return wine_dbg_sprintf("%p {VT_NULL}", v);
+    case VT_I1:
+        return wine_dbg_sprintf("%p {VT_I1: %d}", v, V_I1(v));
+    case VT_I2:
+        return wine_dbg_sprintf("%p {VT_I2: %d}", v, V_I2(v));
+    case VT_I4:
+        return wine_dbg_sprintf("%p {VT_I4: %d}", v, V_I4(v));
+    case VT_R4:
+        return wine_dbg_sprintf("%p {VT_R4: %f}", v, V_R4(v));
+    case VT_R8:
+        return wine_dbg_sprintf("%p {VT_R8: %lf}", v, V_R8(v));
+    case VT_BSTR:
+        return wine_dbg_sprintf("%p {VT_BSTR: %s}", v, debugstr_w(V_BSTR(v)));
+    case VT_DISPATCH:
+        return wine_dbg_sprintf("%p {VT_DISPATCH: %p}", v, V_DISPATCH(v));
+    case VT_ERROR:
+        return wine_dbg_sprintf("%p {VT_ERROR: %08x}", v, V_ERROR(v));
+    case VT_BOOL:
+        return wine_dbg_sprintf("%p {VT_BOOL: %x}", v, V_BOOL(v));
+    case VT_UINT:
+        return wine_dbg_sprintf("%p {VT_UINT: %u}", v, V_UINT(v));
+    default:
+        return wine_dbg_sprintf("%p {vt %s%s}", v, debugstr_VT(v), debugstr_VF(v));
+    }
+}
+
 /* Convert a variant from one type to another */
 static inline HRESULT VARIANT_Coerce(VARIANTARG* pd, LCID lcid, USHORT wFlags,
                                      VARIANTARG* ps, VARTYPE vt)
@@ -86,9 +121,8 @@ static inline HRESULT VARIANT_Coerce(VARIANTARG* pd, LCID lcid, USHORT wFlags,
   VARTYPE vtFrom =  V_TYPE(ps);
   DWORD dwFlags = 0;
 
-  TRACE("(%p->(%s%s),0x%08x,0x%04x,%p->(%s%s),%s%s)\n", pd, debugstr_VT(pd),
-        debugstr_VF(pd), lcid, wFlags, ps, debugstr_VT(ps), debugstr_VF(ps),
-        debugstr_vt(vt), debugstr_vf(vt));
+  TRACE("(%s,0x%08x,0x%04x,%s,%s%s)\n", debugstr_variant(pd), lcid, wFlags,
+        debugstr_variant(ps), debugstr_vt(vt), debugstr_vf(vt));
 
   if (vt == VT_BSTR || vtFrom == VT_BSTR)
   {
@@ -583,7 +617,7 @@ HRESULT VARIANT_ClearInd(VARIANTARG *pVarg)
 {
     HRESULT hres;
 
-    TRACE("(%p->(%s%s))\n", pVarg, debugstr_VT(pVarg), debugstr_VF(pVarg));
+    TRACE("(%s)\n", debugstr_variant(pVarg));
 
     hres = VARIANT_ValidateType(V_VT(pVarg));
     if (FAILED(hres))
@@ -655,7 +689,7 @@ HRESULT WINAPI VariantClear(VARIANTARG* pVarg)
 {
   HRESULT hres;
 
-  TRACE("(%p->(%s%s))\n", pVarg, debugstr_VT(pVarg), debugstr_VF(pVarg));
+  TRACE("(%s)\n", debugstr_variant(pVarg));
 
   hres = VARIANT_ValidateType(V_VT(pVarg));
 
@@ -755,9 +789,7 @@ HRESULT WINAPI VariantCopy(VARIANTARG* pvargDest, VARIANTARG* pvargSrc)
 {
   HRESULT hres = S_OK;
 
-  TRACE("(%p->(%s%s),%p->(%s%s))\n", pvargDest, debugstr_VT(pvargDest),
-        debugstr_VF(pvargDest), pvargSrc, debugstr_VT(pvargSrc),
-        debugstr_VF(pvargSrc));
+  TRACE("(%s,%s)\n", debugstr_variant(pvargDest), debugstr_variant(pvargSrc));
 
   if (V_TYPE(pvargSrc) == VT_CLSID || /* VT_CLSID is a special case */
       FAILED(VARIANT_ValidateType(V_VT(pvargSrc))))
@@ -820,7 +852,7 @@ static inline size_t VARIANT_DataSize(const VARIANT* pv)
   case VT_CY:    return sizeof(CY);
   case VT_ERROR: return sizeof(SCODE);
   }
-  TRACE("Shouldn't be called for vt %s%s!\n", debugstr_VT(pv), debugstr_VF(pv));
+  TRACE("Shouldn't be called for variant %s!\n", debugstr_variant(pv));
   return 0;
 }
 
@@ -858,9 +890,7 @@ HRESULT WINAPI VariantCopyInd(VARIANT* pvargDest, VARIANTARG* pvargSrc)
   VARTYPE vt;
   HRESULT hres = S_OK;
 
-  TRACE("(%p->(%s%s),%p->(%s%s))\n", pvargDest, debugstr_VT(pvargDest),
-        debugstr_VF(pvargDest), pvargSrc, debugstr_VT(pvargSrc),
-        debugstr_VF(pvargSrc));
+  TRACE("(%s,%s)\n", debugstr_variant(pvargDest), debugstr_variant(pvargSrc));
 
   if (!V_ISBYREF(pvargSrc))
     return VariantCopy(pvargDest, pvargSrc);
@@ -946,8 +976,7 @@ VariantCopyInd_Return:
   if (pSrc != pvargSrc)
     VariantClear(pSrc);
 
-  TRACE("returning 0x%08x, %p->(%s%s)\n", hres, pvargDest,
-        debugstr_VT(pvargDest), debugstr_VF(pvargDest));
+  TRACE("returning 0x%08x, %s\n", hres, debugstr_variant(pvargDest));
   return hres;
 }
 
@@ -1001,10 +1030,8 @@ HRESULT WINAPI VariantChangeTypeEx(VARIANTARG* pvargDest, VARIANTARG* pvargSrc,
 {
   HRESULT res = S_OK;
 
-  TRACE("(%p->(%s%s),%p->(%s%s),0x%08x,0x%04x,%s%s)\n", pvargDest,
-        debugstr_VT(pvargDest), debugstr_VF(pvargDest), pvargSrc,
-        debugstr_VT(pvargSrc), debugstr_VF(pvargSrc), lcid, wFlags,
-        debugstr_vt(vt), debugstr_vf(vt));
+  TRACE("(%s,%s,0x%08x,0x%04x,%s%s)\n", debugstr_variant(pvargDest),
+        debugstr_variant(pvargSrc), lcid, wFlags, debugstr_vt(vt), debugstr_vf(vt));
 
   if (vt == VT_CLSID)
     res = DISP_E_BADVARTYPE;
@@ -1052,8 +1079,7 @@ HRESULT WINAPI VariantChangeTypeEx(VARIANTARG* pvargDest, VARIANTARG* pvargSrc,
     }
   }
 
-  TRACE("returning 0x%08x, %p->(%s%s)\n", res, pvargDest,
-        debugstr_VT(pvargDest), debugstr_VF(pvargDest));
+  TRACE("returning 0x%08x, %s\n", res, debugstr_variant(pvargDest));
   return res;
 }
 
@@ -2533,8 +2559,7 @@ HRESULT WINAPI VarCat(LPVARIANT left, LPVARIANT right, LPVARIANT out)
     leftvt = V_VT(left);
     rightvt = V_VT(right);
 
-    TRACE("(%p->(%s%s),%p->(%s%s),%p)\n", left, debugstr_VT(left),
-          debugstr_VF(left), right, debugstr_VT(right), debugstr_VF(right), out);
+    TRACE("%s,%s,%p)\n", debugstr_variant(left), debugstr_variant(right), out);
 
     if (!str_true[0]) {
         VARIANT_GetLocalisedText(LOCALE_USER_DEFAULT, IDS_FALSE, str_false);
@@ -2777,8 +2802,7 @@ HRESULT WINAPI VarCmp(LPVARIANT left, LPVARIANT right, LCID lcid, DWORD flags)
     DWORD       xmask;
     HRESULT     rc;
 
-    TRACE("(%p->(%s%s),%p->(%s%s),0x%08x,0x%08x)\n", left, debugstr_VT(left),
-          debugstr_VF(left), right, debugstr_VT(right), debugstr_VF(right), lcid, flags);
+    TRACE("(%s,%s,0x%08x,0x%08x)\n", debugstr_variant(left), debugstr_variant(right), lcid, flags);
 
     lvt = V_VT(left) & VT_TYPEMASK;
     rvt = V_VT(right) & VT_TYPEMASK;
@@ -2982,8 +3006,7 @@ HRESULT WINAPI VarAnd(LPVARIANT left, LPVARIANT right, LPVARIANT result)
     VariantInit(&tempLeft);
     VariantInit(&tempRight);
 
-    TRACE("(%p->(%s%s),%p->(%s%s),%p)\n", left, debugstr_VT(left),
-          debugstr_VF(left), right, debugstr_VT(right), debugstr_VF(right), result);
+    TRACE("(%s,%s,%p)\n", debugstr_variant(left), debugstr_variant(right), result);
 
     /* Handle VT_DISPATCH by storing and taking address of returned value */
     if ((V_VT(left) & VT_TYPEMASK) == VT_DISPATCH)
@@ -3237,9 +3260,7 @@ HRESULT WINAPI VarAdd(LPVARIANT left, LPVARIANT right, LPVARIANT result)
         vt_ERROR, vt_ERROR, vt_UI1, vt_ERROR, vt_ERROR, vt_I8
     };
 
-    TRACE("(%p->(%s%s),%p->(%s%s),%p)\n", left, debugstr_VT(left),
-          debugstr_VF(left), right, debugstr_VT(right), debugstr_VF(right),
-          result);
+    TRACE("(%s,%s,%p)\n", debugstr_variant(left), debugstr_variant(right), result);
 
     VariantInit(&lv);
     VariantInit(&rv);
@@ -3393,7 +3414,7 @@ end:
     VariantClear(&tv);
     VariantClear(&tempLeft);
     VariantClear(&tempRight);
-    TRACE("returning 0x%8x (variant type %s)\n", hres, debugstr_VT(result));
+    TRACE("returning 0x%8x %s\n", hres, debugstr_variant(result));
     return hres;
 }
 
@@ -3450,9 +3471,7 @@ HRESULT WINAPI VarMul(LPVARIANT left, LPVARIANT right, LPVARIANT result)
         vt_ERROR, vt_ERROR, vt_UI1, vt_ERROR, vt_ERROR, vt_I8
     };
 
-    TRACE("(%p->(%s%s),%p->(%s%s),%p)\n", left, debugstr_VT(left),
-          debugstr_VF(left), right, debugstr_VT(right), debugstr_VF(right),
-          result);
+    TRACE("(%s,%s,%p)\n", debugstr_variant(left), debugstr_variant(right), result);
 
     VariantInit(&lv);
     VariantInit(&rv);
@@ -3584,7 +3603,7 @@ end:
     VariantClear(&tv);
     VariantClear(&tempLeft);
     VariantClear(&tempRight);
-    TRACE("returning 0x%8x (variant type %s)\n", hres, debugstr_VT(result));
+    TRACE("returning 0x%8x %s\n", hres, debugstr_variant(result));
     return hres;
 }
 
@@ -3616,8 +3635,7 @@ HRESULT WINAPI VarDiv(LPVARIANT left, LPVARIANT right, LPVARIANT result)
     VariantInit(&lv);
     VariantInit(&rv);
 
-    TRACE("(%p->(%s%s),%p->(%s%s),%p)\n", left, debugstr_VT(left),
-          debugstr_VF(left), right, debugstr_VT(right), debugstr_VF(right), result);
+    TRACE("(%s,%s,%p)\n", debugstr_variant(left), debugstr_variant(right), result);
 
     /* Handle VT_DISPATCH by storing and taking address of returned value */
     if ((V_VT(left) & VT_TYPEMASK) == VT_DISPATCH)
@@ -3747,7 +3765,7 @@ end:
     VariantClear(&rv);
     VariantClear(&tempLeft);
     VariantClear(&tempRight);
-    TRACE("returning 0x%8x (variant type %s)\n", hres, debugstr_VT(result));
+    TRACE("returning 0x%8x %s\n", hres, debugstr_variant(result));
     return hres;
 }
 
@@ -3779,8 +3797,7 @@ HRESULT WINAPI VarSub(LPVARIANT left, LPVARIANT right, LPVARIANT result)
     VariantInit(&tempLeft);
     VariantInit(&tempRight);
 
-    TRACE("(%p->(%s%s),%p->(%s%s),%p)\n", left, debugstr_VT(left),
-          debugstr_VF(left), right, debugstr_VT(right), debugstr_VF(right), result);
+    TRACE("(%s,%s,%p)\n", debugstr_variant(left), debugstr_variant(right), result);
 
     if ((V_VT(left) & VT_TYPEMASK) == VT_DISPATCH &&
         (V_VT(left)&(~VT_TYPEMASK)) == 0 &&
@@ -4014,7 +4031,7 @@ end:
     VariantClear(&rv);
     VariantClear(&tempLeft);
     VariantClear(&tempRight);
-    TRACE("returning 0x%8x (variant type %s)\n", hres, debugstr_VT(result));
+    TRACE("returning 0x%8x %s\n", hres, debugstr_variant(result));
     return hres;
 }
 
@@ -4050,9 +4067,7 @@ HRESULT WINAPI VarOr(LPVARIANT pVarLeft, LPVARIANT pVarRight, LPVARIANT pVarOut)
     VariantInit(&varRight);
     VariantInit(&varStr);
 
-    TRACE("(%p->(%s%s),%p->(%s%s),%p)\n", pVarLeft, debugstr_VT(pVarLeft),
-          debugstr_VF(pVarLeft), pVarRight, debugstr_VT(pVarRight),
-          debugstr_VF(pVarRight), pVarOut);
+    TRACE("(%s,%s,%p)\n", debugstr_variant(pVarLeft), debugstr_variant(pVarRight), pVarOut);
 
     /* Handle VT_DISPATCH by storing and taking address of returned value */
     if ((V_VT(pVarLeft) & VT_TYPEMASK) == VT_DISPATCH)
@@ -4359,8 +4374,7 @@ HRESULT WINAPI VarAbs(LPVARIANT pVarIn, LPVARIANT pVarOut)
 
     VariantInit(&temp);
 
-    TRACE("(%p->(%s%s),%p)\n", pVarIn, debugstr_VT(pVarIn),
-          debugstr_VF(pVarIn), pVarOut);
+    TRACE("(%s,%p)\n", debugstr_variant(pVarIn), pVarOut);
 
     /* Handle VT_DISPATCH by storing and taking address of returned value */
     if ((V_VT(pVarIn) & VT_TYPEMASK) == VT_DISPATCH && ((V_VT(pVarIn) & ~VT_TYPEMASK) == 0))
@@ -4463,8 +4477,7 @@ HRESULT WINAPI VarFix(LPVARIANT pVarIn, LPVARIANT pVarOut)
 
     VariantInit(&temp);
 
-    TRACE("(%p->(%s%s),%p)\n", pVarIn, debugstr_VT(pVarIn),
-          debugstr_VF(pVarIn), pVarOut);
+    TRACE("(%s,%p)\n", debugstr_variant(pVarIn), pVarOut);
 
     /* Handle VT_DISPATCH by storing and taking address of returned value */
     if ((V_VT(pVarIn) & VT_TYPEMASK) == VT_DISPATCH && ((V_VT(pVarIn) & ~VT_TYPEMASK) == 0))
@@ -4570,8 +4583,7 @@ HRESULT WINAPI VarInt(LPVARIANT pVarIn, LPVARIANT pVarOut)
 
     VariantInit(&temp);
 
-    TRACE("(%p->(%s%s),%p)\n", pVarIn, debugstr_VT(pVarIn),
-          debugstr_VF(pVarIn), pVarOut);
+    TRACE("(%s,%p)\n", debugstr_variant(pVarIn), pVarOut);
 
     /* Handle VT_DISPATCH by storing and taking address of returned value */
     if ((V_VT(pVarIn) & VT_TYPEMASK) == VT_DISPATCH && ((V_VT(pVarIn) & ~VT_TYPEMASK) == 0))
@@ -4645,9 +4657,7 @@ HRESULT WINAPI VarXor(LPVARIANT pVarLeft, LPVARIANT pVarRight, LPVARIANT pVarOut
     double d;
     HRESULT hRet;
 
-    TRACE("(%p->(%s%s),%p->(%s%s),%p)\n", pVarLeft, debugstr_VT(pVarLeft),
-          debugstr_VF(pVarLeft), pVarRight, debugstr_VT(pVarRight),
-          debugstr_VF(pVarRight), pVarOut);
+    TRACE("(%s,%s,%p)\n", debugstr_variant(pVarLeft), debugstr_variant(pVarRight), pVarOut);
 
     if (V_EXTRA_TYPE(pVarLeft) || V_EXTRA_TYPE(pVarRight) ||
         V_VT(pVarLeft) > VT_UINT || V_VT(pVarRight) > VT_UINT ||
@@ -4824,9 +4834,7 @@ HRESULT WINAPI VarEqv(LPVARIANT pVarLeft, LPVARIANT pVarRight, LPVARIANT pVarOut
 {
     HRESULT hRet;
 
-    TRACE("(%p->(%s%s),%p->(%s%s),%p)\n", pVarLeft, debugstr_VT(pVarLeft),
-          debugstr_VF(pVarLeft), pVarRight, debugstr_VT(pVarRight),
-          debugstr_VF(pVarRight), pVarOut);
+    TRACE("(%s,%s,%p)\n", debugstr_variant(pVarLeft), debugstr_variant(pVarRight), pVarOut);
 
     hRet = VarXor(pVarLeft, pVarRight, pVarOut);
     if (SUCCEEDED(hRet))
@@ -4883,8 +4891,7 @@ HRESULT WINAPI VarNeg(LPVARIANT pVarIn, LPVARIANT pVarOut)
 
     VariantInit(&temp);
 
-    TRACE("(%p->(%s%s),%p)\n", pVarIn, debugstr_VT(pVarIn),
-          debugstr_VF(pVarIn), pVarOut);
+    TRACE("(%s,%p)\n", debugstr_variant(pVarIn), pVarOut);
 
     /* Handle VT_DISPATCH by storing and taking address of returned value */
     if ((V_VT(pVarIn) & VT_TYPEMASK) == VT_DISPATCH && ((V_VT(pVarIn) & ~VT_TYPEMASK) == 0))
@@ -5013,8 +5020,7 @@ HRESULT WINAPI VarNot(LPVARIANT pVarIn, LPVARIANT pVarOut)
 
     VariantInit(&temp);
 
-    TRACE("(%p->(%s%s),%p)\n", pVarIn, debugstr_VT(pVarIn),
-          debugstr_VF(pVarIn), pVarOut);
+    TRACE("(%s,%p)\n", debugstr_variant(pVarIn), pVarOut);
 
     /* Handle VT_DISPATCH by storing and taking address of returned value */
     if ((V_VT(pVarIn) & VT_TYPEMASK) == VT_DISPATCH && ((V_VT(pVarIn) & ~VT_TYPEMASK) == 0))
@@ -5138,7 +5144,7 @@ HRESULT WINAPI VarRound(LPVARIANT pVarIn, int deci, LPVARIANT pVarOut)
 
     VariantInit(&temp);
 
-    TRACE("(%p->(%s%s),%d)\n", pVarIn, debugstr_VT(pVarIn), debugstr_VF(pVarIn), deci);
+    TRACE("(%s,%d)\n", debugstr_variant(pVarIn), deci);
 
     /* Handle VT_DISPATCH by storing and taking address of returned value */
     if ((V_VT(pVarIn) & VT_TYPEMASK) == VT_DISPATCH && ((V_VT(pVarIn) & ~VT_TYPEMASK) == 0))
@@ -5243,10 +5249,7 @@ VarRound_Exit:
       V_VT(pVarOut) = VT_EMPTY;
     VariantClear(&temp);
 
-    TRACE("returning 0x%08x (%s%s),%f\n", hRet, debugstr_VT(pVarOut),
-	debugstr_VF(pVarOut), (V_VT(pVarOut) == VT_R4) ? V_R4(pVarOut) :
-	(V_VT(pVarOut) == VT_R8) ? V_R8(pVarOut) : 0);
-
+    TRACE("returning 0x%08x %s\n", hRet, debugstr_variant(pVarOut));
     return hRet;
 }
 
@@ -5276,8 +5279,7 @@ HRESULT WINAPI VarIdiv(LPVARIANT left, LPVARIANT right, LPVARIANT result)
     VARIANT lv,rv;
     VARIANT tempLeft, tempRight;
 
-    TRACE("(%p->(%s%s),%p->(%s%s),%p)\n", left, debugstr_VT(left),
-          debugstr_VF(left), right, debugstr_VT(right), debugstr_VF(right), result);
+    TRACE("(%s,%s,%p)\n", debugstr_variant(left), debugstr_variant(right), result);
 
     VariantInit(&lv);
     VariantInit(&rv);
@@ -5435,8 +5437,7 @@ HRESULT WINAPI VarMod(LPVARIANT left, LPVARIANT right, LPVARIANT result)
     VariantInit(&lv);
     VariantInit(&rv);
 
-    TRACE("(%p->(%s%s),%p->(%s%s),%p)\n", left, debugstr_VT(left),
-		  debugstr_VF(left), right, debugstr_VT(right), debugstr_VF(right), result);
+    TRACE("(%s,%s,%p)\n", debugstr_variant(left), debugstr_variant(right), result);
 
     /* Handle VT_DISPATCH by storing and taking address of returned value */
     if ((V_VT(left) & VT_TYPEMASK) == VT_DISPATCH)
@@ -5674,8 +5675,7 @@ HRESULT WINAPI VarPow(LPVARIANT left, LPVARIANT right, LPVARIANT result)
     VARTYPE rightExtraFlags,leftExtraFlags,ExtraFlags;
     VARIANT tempLeft, tempRight;
 
-    TRACE("(%p->(%s%s),%p->(%s%s),%p)\n", left, debugstr_VT(left), debugstr_VF(left),
-          right, debugstr_VT(right), debugstr_VF(right), result);
+    TRACE("(%s,%s,%p)\n", debugstr_variant(left), debugstr_variant(right), result);
 
     VariantInit(&dl);
     VariantInit(&dr);
@@ -5795,8 +5795,7 @@ HRESULT WINAPI VarImp(LPVARIANT left, LPVARIANT right, LPVARIANT result)
     VariantInit(&tempLeft);
     VariantInit(&tempRight);
 
-    TRACE("(%p->(%s%s),%p->(%s%s),%p)\n", left, debugstr_VT(left),
-          debugstr_VF(left), right, debugstr_VT(right), debugstr_VF(right), result);
+    TRACE("(%s,%s,%p)\n", debugstr_variant(left), debugstr_variant(right), result);
 
     /* Handle VT_DISPATCH by storing and taking address of returned value */
     if ((V_VT(left) & VT_TYPEMASK) == VT_DISPATCH)
