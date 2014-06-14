@@ -5071,11 +5071,13 @@ static void test_EM_STREAMIN(void)
   DWORD phase;
   LRESULT result;
   EDITSTREAM es;
-  char buffer[1024] = {0};
+  char buffer[1024] = {0}, tmp[16];
+  CHARRANGE range;
 
   const char * streamText0 = "{\\rtf1 TestSomeText}";
   const char * streamText0a = "{\\rtf1 TestSomeText\\par}";
   const char * streamText0b = "{\\rtf1 TestSomeText\\par\\par}";
+  const char * ptr;
 
   const char * streamText1 =
   "{\\rtf1\\ansi\\ansicpg1252\\deff0\\deflang12298{\\fonttbl{\\f0\\fswiss\\fprq2\\fcharset0 System;}}\r\n"
@@ -5100,6 +5102,9 @@ static void test_EM_STREAMIN(void)
       "This text just needs to be long enough to cause run to be split onto "
       "two separate lines and make sure the null terminating character is "
       "handled properly.\0";
+
+  const WCHAR UTF8Split_exp[4] = {0xd6, 0xcf, 0xcb, 0};
+
   int length4 = strlen(streamText4) + 1;
   struct StringWithLength cookieForStream4 = {
       length4,
@@ -5129,7 +5134,8 @@ static void test_EM_STREAMIN(void)
   ok(es.dwError == 0, "EM_STREAMIN: Test 0 set error %d, expected %d\n", es.dwError, 0);
 
   /* Native richedit 2.0 ignores last \par */
-  es.dwCookie = (DWORD_PTR)&streamText0a;
+  ptr = streamText0a;
+  es.dwCookie = (DWORD_PTR)&ptr;
   es.dwError = 0;
   es.pfnCallback = test_EM_STREAMIN_esCallback;
   result = SendMessageA(hwndRichEdit, EM_STREAMIN, SF_RTF, (LPARAM)&es);
@@ -5157,6 +5163,43 @@ static void test_EM_STREAMIN(void)
   ok (result  == 0,
       "EM_STREAMIN: Test 0-b set wrong text: Result: %s\n",buffer);
   ok(es.dwError == 0, "EM_STREAMIN: Test 0-b set error %d, expected %d\n", es.dwError, 0);
+
+  /* Show that when using SFF_SELECTION the last \par is not ignored. */
+  ptr = streamText0a;
+  es.dwCookie = (DWORD_PTR)&ptr;
+  es.dwError = 0;
+  es.pfnCallback = test_EM_STREAMIN_esCallback;
+  result = SendMessageA(hwndRichEdit, EM_STREAMIN, SF_RTF, (LPARAM)&es);
+  ok(result == 12, "got %ld, expected %d\n", result, 12);
+
+  result = SendMessageA(hwndRichEdit, WM_GETTEXT, 1024, (LPARAM)buffer);
+  ok (result  == 12,
+      "EM_STREAMIN: Test 0-a returned %ld, expected 12\n", result);
+  result = strcmp (buffer,"TestSomeText");
+  ok (result  == 0,
+      "EM_STREAMIN: Test 0-a set wrong text: Result: %s\n",buffer);
+  ok(es.dwError == 0, "EM_STREAMIN: Test 0-a set error %d, expected %d\n", es.dwError, 0);
+
+  range.cpMin = 0;
+  range.cpMax = -1;
+  result = SendMessageA(hwndRichEdit, EM_EXSETSEL, 0, (LPARAM)&range);
+  ok (result == 13, "got %ld\n", result);
+
+  ptr = streamText0a;
+  es.dwCookie = (DWORD_PTR)&ptr;
+  es.dwError = 0;
+  es.pfnCallback = test_EM_STREAMIN_esCallback;
+
+  result = SendMessageA(hwndRichEdit, EM_STREAMIN, SFF_SELECTION | SF_RTF, (LPARAM)&es);
+  ok(result == 13, "got %ld, expected 13\n", result);
+
+  result = SendMessageA(hwndRichEdit, WM_GETTEXT, 1024, (LPARAM)buffer);
+  ok (result  == 14,
+      "EM_STREAMIN: Test SFF_SELECTION 0-a returned %ld, expected 14\n", result);
+  result = strcmp (buffer,"TestSomeText\r\n");
+  ok (result  == 0,
+      "EM_STREAMIN: Test SFF_SELECTION 0-a set wrong text: Result: %s\n",buffer);
+  ok(es.dwError == 0, "EM_STREAMIN: Test SFF_SELECTION 0-a set error %d, expected %d\n", es.dwError, 0);
 
   es.dwCookie = (DWORD_PTR)&streamText1;
   es.dwError = 0;
@@ -5217,10 +5260,12 @@ static void test_EM_STREAMIN(void)
   result = SendMessageA(hwndRichEdit, EM_STREAMIN, SF_TEXT, (LPARAM)&es);
   ok(result == 8, "got %ld\n", result);
 
+  WideCharToMultiByte(CP_ACP, 0, UTF8Split_exp, -1, tmp, sizeof(tmp), NULL, NULL);
+
   result = SendMessageA(hwndRichEdit, WM_GETTEXT, 1024, (LPARAM)buffer);
   ok(result  == 3,
       "EM_STREAMIN: Test UTF8Split returned %ld\n", result);
-  result = memcmp (buffer,"\xd6\xcf\xcb", 3);
+  result = memcmp (buffer, tmp, 3);
   ok(result  == 0,
       "EM_STREAMIN: Test UTF8Split set wrong text: Result: %s\n",buffer);
   ok(es.dwError == 0, "EM_STREAMIN: Test UTF8Split set error %d, expected %d\n", es.dwError, 0);

@@ -722,8 +722,8 @@
 @ cdecl _mbscoll(str str)
 @ cdecl _mbscoll_l(str str ptr)
 @ cdecl _mbscpy(ptr str)
-# stub _mbscpy_s(ptr long str)
-# stub _mbscpy_s_l(ptr long str ptr)
+@ cdecl _mbscpy_s(ptr long str)
+@ cdecl _mbscpy_s_l(ptr long str ptr)
 @ cdecl _mbscspn(str str)
 # stub _mbscspn_l(str str ptr)
 @ cdecl _mbsdec(ptr ptr)
@@ -755,7 +755,7 @@
 @ cdecl _mbsnbcpy(ptr str long)
 # stub _mbsnbcpy_l(ptr str long ptr)
 @ cdecl _mbsnbcpy_s(ptr long str long)
-# stub _mbsnbcpy_s_l(ptr long str long ptr)
+@ cdecl _mbsnbcpy_s_l(ptr long str long ptr)
 @ cdecl _mbsnbicmp(str str long)
 # stub _mbsnbicmp_l(str str long ptr)
 @ cdecl _mbsnbicoll(str str long)
@@ -988,7 +988,7 @@
 @ cdecl _strupr_l(str ptr) MSVCRT__strupr_l
 @ cdecl _strupr_s(str long) MSVCRT__strupr_s
 @ cdecl _strupr_s_l(str long ptr) MSVCRT__strupr_s_l
-# stub _strxfrm_l(ptr str long ptr)
+@ cdecl _strxfrm_l(ptr str long ptr) MSVCRT__strxfrm_l
 @ cdecl _swab(str str long) MSVCRT__swab
 @ varargs _swprintf(ptr wstr) MSVCRT_swprintf
 # stub _swprintf_c(ptr long str)
@@ -1106,10 +1106,10 @@
 @ cdecl _wcsicmp_l(wstr wstr ptr) MSVCRT__wcsicmp_l
 @ cdecl _wcsicoll(wstr wstr) MSVCRT__wcsicoll
 @ cdecl _wcsicoll_l(wstr wstr ptr) MSVCRT__wcsicoll_l
-@ cdecl _wcslwr(wstr) ntdll._wcslwr
-# stub _wcslwr_l(wstr ptr)
+@ cdecl _wcslwr(wstr) MSVCRT__wcslwr
+@ cdecl _wcslwr_l(wstr ptr) MSVCRT__wcslwr_l
 @ cdecl _wcslwr_s(wstr long) MSVCRT__wcslwr_s
-# stub _wcslwr_s_l(wstr long ptr)
+@ cdecl _wcslwr_s_l(wstr long ptr) MSVCRT__wcslwr_s_l
 @ cdecl _wcsncoll(wstr wstr long) MSVCRT__wcsncoll
 @ cdecl _wcsncoll_l(wstr wstr long ptr) MSVCRT__wcsncoll_l
 @ cdecl _wcsnicmp(wstr wstr long) MSVCRT__wcsnicmp
@@ -1134,7 +1134,7 @@
 @ cdecl _wcsupr_l(wstr ptr) MSVCRT__wcsupr_l
 @ cdecl _wcsupr_s(wstr long) MSVCRT__wcsupr_s
 @ cdecl _wcsupr_s_l(wstr long ptr) MSVCRT__wcsupr_s_l
-# stub _wcsxfrm_l(ptr wstr long ptr)
+@ cdecl _wcsxfrm_l(ptr wstr long ptr) MSVCRT__wcsxfrm_l
 @ cdecl _wctime(ptr) MSVCRT__wctime
 @ cdecl _wctime32(ptr) MSVCRT__wctime32
 # stub _wctime32_s(ptr long ptr)
@@ -1509,7 +1509,7 @@
 @ cdecl wcstombs(ptr ptr long) MSVCRT_wcstombs
 @ cdecl wcstombs_s(ptr ptr long wstr long) MSVCRT_wcstombs_s
 @ cdecl wcstoul(wstr ptr long) MSVCRT_wcstoul
-@ stub wcsxfrm(ptr wstr long)
+@ cdecl wcsxfrm(ptr wstr long) MSVCRT_wcsxfrm
 @ cdecl wctob(long) MSVCRT_wctob
 @ cdecl wctomb(ptr long) MSVCRT_wctomb
 @ cdecl wctomb_s(ptr ptr long long) MSVCRT_wctomb_s

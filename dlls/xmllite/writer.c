@@ -37,6 +37,8 @@ WINE_DEFAULT_DEBUG_CHANNEL(xmllite);
 DEFINE_GUID(IID_IXmlWriterOutput, 0xc1131708, 0x0f59, 0x477f, 0x93, 0x59, 0x7d, 0x33, 0x24, 0x51, 0xbc, 0x1a);
 
 static const WCHAR closepiW[] = {'?','>'};
+static const WCHAR ltW[] = {'<'};
+static const WCHAR gtW[] = {'>'};
 
 struct output_buffer
 {
@@ -51,7 +53,9 @@ typedef enum
     XmlWriterState_Initial,      /* output is not set yet */
     XmlWriterState_Ready,        /* SetOutput() was called, ready to start */
     XmlWriterState_PIDocStarted, /* document was started with manually added 'xml' PI */
-    XmlWriterState_DocStarted    /* document was started with WriteStartDocument() */
+    XmlWriterState_DocStarted,   /* document was started with WriteStartDocument() */
+    XmlWriterState_ElemStarted,  /* writing element */
+    XmlWriterState_Content       /* content is accepted at this point */
 } XmlWriterState;
 
 typedef struct
@@ -78,6 +82,8 @@ typedef struct _xmlwriter
     BOOL omitxmldecl;
     XmlConformanceLevel conformance;
     XmlWriterState state;
+    BOOL bomwritten;
+    BOOL starttagopen;
 } xmlwriter;
 
 static inline xmlwriter *impl_from_IXmlWriter(IXmlWriter *iface)
@@ -224,6 +230,20 @@ static HRESULT write_output_buffer_quoted(xmlwriteroutput *output, const WCHAR *
     return S_OK;
 }
 
+/* TODO: test if we need to validate char range */
+static HRESULT write_output_qname(xmlwriteroutput *output, const WCHAR *prefix, const WCHAR *local_name)
+{
+    if (prefix) {
+        static const WCHAR colW[] = {':'};
+        write_output_buffer(output, prefix, -1);
+        write_output_buffer(output, colW, 1);
+    }
+
+    write_output_buffer(output, local_name, -1);
+
+    return S_OK;
+}
+
 static void writeroutput_release_stream(xmlwriteroutput *writeroutput)
 {
     if (writeroutput->stream) {
@@ -270,6 +290,37 @@ static HRESULT writeroutput_flush_stream(xmlwriteroutput *output)
     } while (buffer->written > 0);
 
     return S_OK;
+}
+
+static HRESULT write_encoding_bom(xmlwriter *writer)
+{
+    if (!writer->bom || writer->bomwritten) return S_OK;
+
+    if (writer->output->encoding == XmlEncoding_UTF16) {
+        static const char utf16bom[] = {0xff, 0xfe};
+        struct output_buffer *buffer = &writer->output->buffer;
+        int len = sizeof(utf16bom);
+        HRESULT hr;
+
+        hr = grow_output_buffer(writer->output, len);
+        if (FAILED(hr)) return hr;
+        memcpy(buffer->data + buffer->written, utf16bom, len);
+        buffer->written += len;
+    }
+
+    writer->bomwritten = TRUE;
+    return S_OK;
+}
+
+static HRESULT writer_close_starttag(xmlwriter *writer)
+{
+    HRESULT hr;
+
+    if (!writer->starttagopen) return S_OK;
+    hr = write_output_buffer(writer->output, gtW, 1);
+    writer->starttagopen = FALSE;
+    writer->state = XmlWriterState_Content;
+    return hr;
 }
 
 static HRESULT WINAPI xmlwriter_QueryInterface(IXmlWriter *iface, REFIID riid, void **ppvObject)
@@ -329,6 +380,7 @@ static HRESULT WINAPI xmlwriter_SetOutput(IXmlWriter *iface, IUnknown *output)
         writeroutput_release_stream(This->output);
         IUnknown_Release(&This->output->IXmlWriterOutput_iface);
         This->output = NULL;
+        This->bomwritten = FALSE;
     }
 
     /* just reset current output */
@@ -392,13 +444,26 @@ static HRESULT WINAPI xmlwriter_GetProperty(IXmlWriter *iface, UINT property, LO
     return S_OK;
 }
 
-static HRESULT WINAPI xmlwriter_SetProperty(IXmlWriter *iface, UINT nProperty, LONG_PTR pValue)
+static HRESULT WINAPI xmlwriter_SetProperty(IXmlWriter *iface, UINT property, LONG_PTR value)
 {
     xmlwriter *This = impl_from_IXmlWriter(iface);
 
-    FIXME("%p %u %lu\n", This, nProperty, pValue);
+    TRACE("(%p)->(%s %lu)\n", This, debugstr_writer_prop(property), value);
 
-    return E_NOTIMPL;
+    switch (property)
+    {
+        case XmlWriterProperty_ByteOrderMark:
+            This->bom = !!value;
+            break;
+        case XmlWriterProperty_OmitXmlDeclaration:
+            This->omitxmldecl = !!value;
+            break;
+        default:
+            FIXME("Unimplemented property (%u)\n", property);
+            return E_NOTIMPL;
+    }
+
+    return S_OK;
 }
 
 static HRESULT WINAPI xmlwriter_WriteAttributes(IXmlWriter *iface, IXmlReader *pReader,
@@ -462,16 +527,40 @@ static HRESULT WINAPI xmlwriter_WriteDocType(IXmlWriter *iface, LPCWSTR pwszName
     return E_NOTIMPL;
 }
 
-static HRESULT WINAPI xmlwriter_WriteElementString(IXmlWriter *iface, LPCWSTR pwszPrefix,
-                                     LPCWSTR pwszLocalName, LPCWSTR pwszNamespaceUri,
-                                     LPCWSTR pwszValue)
+static HRESULT WINAPI xmlwriter_WriteElementString(IXmlWriter *iface, LPCWSTR prefix,
+                                     LPCWSTR local_name, LPCWSTR uri, LPCWSTR value)
 {
     xmlwriter *This = impl_from_IXmlWriter(iface);
+    static const WCHAR closeW[] = {'<','/'};
 
-    FIXME("%p %s %s %s %s\n", This, wine_dbgstr_w(pwszPrefix), wine_dbgstr_w(pwszLocalName),
-                        wine_dbgstr_w(pwszNamespaceUri), wine_dbgstr_w(pwszValue));
+    TRACE("(%p)->(%s %s %s %s)\n", This, wine_dbgstr_w(prefix), wine_dbgstr_w(local_name),
+                        wine_dbgstr_w(uri), wine_dbgstr_w(value));
 
-    return E_NOTIMPL;
+    switch (This->state)
+    {
+    case XmlWriterState_Initial:
+        return E_UNEXPECTED;
+    case XmlWriterState_ElemStarted:
+        writer_close_starttag(This);
+        break;
+    default:
+        ;
+    }
+
+    write_encoding_bom(This);
+    write_output_buffer(This->output, ltW, 1);
+    write_output_qname(This->output, prefix, local_name);
+    write_output_buffer(This->output, gtW, 1);
+
+    if (value)
+        write_output_buffer(This->output, value, -1);
+
+    write_output_buffer(This->output, closeW, 2);
+    write_output_qname(This->output, prefix, local_name);
+    write_output_buffer(This->output, gtW, 1);
+    This->state = XmlWriterState_Content;
+
+    return S_OK;
 }
 
 static HRESULT WINAPI xmlwriter_WriteEndDocument(IXmlWriter *iface)
@@ -558,12 +647,21 @@ static HRESULT WINAPI xmlwriter_WriteProcessingInstruction(IXmlWriter *iface, LP
 
     TRACE("(%p)->(%s %s)\n", This, wine_dbgstr_w(name), wine_dbgstr_w(text));
 
-    if (This->state == XmlWriterState_Initial)
+    switch (This->state)
+    {
+    case XmlWriterState_Initial:
         return E_UNEXPECTED;
-
-    if (This->state == XmlWriterState_DocStarted && !strcmpW(name, xmlW))
+    case XmlWriterState_DocStarted:
+        if (!strcmpW(name, xmlW))
+            return WR_E_INVALIDACTION;
+        break;
+    case XmlWriterState_ElemStarted:
         return WR_E_INVALIDACTION;
+    default:
+        ;
+    }
 
+    write_encoding_bom(This);
     write_output_buffer(This->output, openpiW, sizeof(openpiW)/sizeof(WCHAR));
     write_output_buffer(This->output, name, -1);
     write_output_buffer(This->output, spaceW, 1);
@@ -620,10 +718,15 @@ static HRESULT WINAPI xmlwriter_WriteStartDocument(IXmlWriter *iface, XmlStandal
         This->state = XmlWriterState_DocStarted;
         return S_OK;
     case XmlWriterState_DocStarted:
+    case XmlWriterState_ElemStarted:
         return WR_E_INVALIDACTION;
     default:
         ;
     }
+
+    write_encoding_bom(This);
+    This->state = XmlWriterState_DocStarted;
+    if (This->omitxmldecl) return S_OK;
 
     /* version */
     write_output_buffer(This->output, versionW, sizeof(versionW)/sizeof(WCHAR));
@@ -647,19 +750,32 @@ static HRESULT WINAPI xmlwriter_WriteStartDocument(IXmlWriter *iface, XmlStandal
             write_output_buffer(This->output, noW, sizeof(noW)/sizeof(WCHAR));
     }
 
-    This->state = XmlWriterState_DocStarted;
     return S_OK;
 }
 
-static HRESULT WINAPI xmlwriter_WriteStartElement(IXmlWriter *iface, LPCWSTR pwszPrefix,
-                                    LPCWSTR pwszLocalName, LPCWSTR pwszNamespaceUri)
+static HRESULT WINAPI xmlwriter_WriteStartElement(IXmlWriter *iface, LPCWSTR prefix, LPCWSTR local_name, LPCWSTR uri)
 {
     xmlwriter *This = impl_from_IXmlWriter(iface);
 
-    FIXME("%p %s %s %s\n", This, wine_dbgstr_w(pwszPrefix), wine_dbgstr_w(pwszLocalName),
-                wine_dbgstr_w(pwszNamespaceUri));
+    TRACE("(%p)->(%s %s %s)\n", This, wine_dbgstr_w(prefix), wine_dbgstr_w(local_name), wine_dbgstr_w(uri));
 
-    return E_NOTIMPL;
+    if (This->state == XmlWriterState_Initial)
+        return E_UNEXPECTED;
+
+    if (!local_name)
+        return E_INVALIDARG;
+
+    if (This->state == XmlWriterState_ElemStarted)
+        return WR_E_INVALIDACTION;
+
+    write_encoding_bom(This);
+    This->state = XmlWriterState_ElemStarted;
+    This->starttagopen = TRUE;
+
+    write_output_buffer(This->output, ltW, 1);
+    write_output_qname(This->output, prefix, local_name);
+
+    return S_OK;
 }
 
 static HRESULT WINAPI xmlwriter_WriteString(IXmlWriter *iface, LPCWSTR pwszText)
@@ -821,6 +937,8 @@ HRESULT WINAPI CreateXmlWriter(REFIID riid, void **obj, IMalloc *imalloc)
     writer->omitxmldecl = FALSE;
     writer->conformance = XmlConformanceLevel_Document;
     writer->state = XmlWriterState_Initial;
+    writer->bomwritten = FALSE;
+    writer->starttagopen = FALSE;
 
     *obj = &writer->IXmlWriter_iface;
 

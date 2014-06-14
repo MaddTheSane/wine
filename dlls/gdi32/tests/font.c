@@ -960,7 +960,6 @@ static void test_bitmap_font_metrics(void)
             if(!TranslateCharsetInfo( fs, &csi, TCI_SRCFONTSIG )) continue;
 
             lf.lfCharSet = csi.ciCharset;
-            trace("looking for %s height %d charset %d\n", lf.lfFaceName, lf.lfHeight, lf.lfCharSet);
             ret = EnumFontFamiliesExA(hdc, &lf, find_font_proc, (LPARAM)&lf, 0);
             if (fd[i].height & FH_SCALE)
                 ok(ret, "scaled font height %d should not be enumerated\n", height);
@@ -988,7 +987,6 @@ static void test_bitmap_font_metrics(void)
             {
                 ok(ret != ANSI_CHARSET, "font charset should not be ANSI_CHARSET\n");
                 ok(ret != expected_cs, "font charset %d should not be %d\n", ret, expected_cs);
-                trace("Skipping replacement %s height %d charset %d\n", face_name, tm.tmHeight, tm.tmCharSet);
                 SelectObject(hdc, old_hfont);
                 DeleteObject(hfont);
                 continue;
@@ -1843,7 +1841,6 @@ static void test_height( HDC hdc, const struct font_data *fd )
         ok(ret, "GetTextMetrics error %d\n", GetLastError());
         if(fd[i].dpi == tm.tmDigitizedAspectX)
         {
-            trace("found font %s, height %d charset %x dpi %d\n", lf.lfFaceName, lf.lfHeight, lf.lfCharSet, fd[i].dpi);
             ok(tm.tmWeight == fd[i].weight, "%s(%d): tm.tmWeight %d != %d\n", fd[i].face_name, fd[i].requested_height, tm.tmWeight, fd[i].weight);
             ok(match_off_by_1(tm.tmHeight, fd[i].height, fd[i].exact), "%s(%d): tm.tmHeight %d != %d\n", fd[i].face_name, fd[i].requested_height, tm.tmHeight, fd[i].height);
             ok(match_off_by_1(tm.tmAscent, fd[i].ascent, fd[i].exact), "%s(%d): tm.tmAscent %d != %d\n", fd[i].face_name, fd[i].requested_height, tm.tmAscent, fd[i].ascent);
@@ -2215,8 +2212,6 @@ static void testJustification(HDC hdc, PCSTR str, RECT *clientArea)
             }
         }
 
-        trace( "%u %.*s\n", size.cx, (int)(pLastChar - pFirstChar), pFirstChar);
-
         y += size.cy;
         str = pLastChar;
     } while (*str && y < clientArea->bottom);
@@ -2570,6 +2565,22 @@ static void test_GdiGetCodePage(void)
 
         hfont = SelectObject(hdc, hfont);
         DeleteObject(hfont);
+
+        /* CLIP_DFA_DISABLE turns off the font association */
+        lf.lfClipPrecision = CLIP_DFA_DISABLE;
+        hfont = CreateFontIndirectA(&lf);
+        ok(hfont != 0, "CreateFontIndirectA error %u\n", GetLastError());
+
+        hfont = SelectObject(hdc, hfont);
+        charset = GetTextCharset(hdc);
+        codepage = pGdiGetCodePage(hdc);
+        trace("acp=%d, lfFaceName=%s, lfCharSet=%d, GetTextCharset=%d, GdiGetCodePage=%d\n",
+              acp, lf.lfFaceName, lf.lfCharSet, charset, codepage);
+        ok(codepage == 1252, "GdiGetCodePage returned %d\n", codepage);
+
+        hfont = SelectObject(hdc, hfont);
+        DeleteObject(hfont);
+
         ReleaseDC(NULL, hdc);
     }
 }
@@ -3255,42 +3266,20 @@ static BOOL get_first_last_from_cmap4(void *ptr, DWORD *first, DWORD *last, DWOR
     int i;
     cmap_format_4 *cmap = (cmap_format_4*)ptr;
     USHORT seg_count = GET_BE_WORD(cmap->seg_countx2) / 2;
-    USHORT const *glyph_ids = cmap->end_count + 4 * seg_count + 1;
 
     *first = 0x10000;
 
     for(i = 0; i < seg_count; i++)
     {
-        DWORD code, index;
         cmap_format_4_seg seg;
 
         get_seg4(cmap, i, &seg);
-        for(code = seg.start_count; code <= seg.end_count; code++)
-        {
-            if(seg.id_range_offset == 0)
-                index = (seg.id_delta + code) & 0xffff;
-            else
-            {
-                index = seg.id_range_offset / 2
-                    + code - seg.start_count
-                    + i - seg_count;
 
-                /* some fonts have broken last segment */
-                if ((char *)(glyph_ids + index + 1) < (char *)ptr + limit)
-                    index = GET_BE_WORD(glyph_ids[index]);
-                else
-                {
-                    trace("segment %04x/%04x index %04x points to nowhere\n",
-                          seg.start_count, seg.end_count, index);
-                    index = 0;
-                }
-                if(index) index += seg.id_delta;
-            }
-            if(*first == 0x10000)
-                *last = *first = code;
-            else if(index)
-                *last = code;
-        }
+        if(seg.start_count > 0xfffe) break;
+
+        if(*first == 0x10000) *first = seg.start_count;
+
+        *last = min(seg.end_count, 0xfffe);
     }
 
     if(*first == 0x10000) return FALSE;
@@ -3560,7 +3549,7 @@ static void test_text_metrics(const LOGFONTA *lf, const NEWTEXTMETRICA *ntm)
         else
         {
             expect_first_W    = cmap_first;
-            expect_last_W     = min(cmap_last, os2_last_char);
+            expect_last_W     = cmap_last;
             if(os2_first_char <= 1)
                 expect_break_W = os2_first_char + 2;
             else if(os2_first_char > 0xff)
@@ -4885,8 +4874,6 @@ static void test_fullname2_helper(const char *Family)
         FaceName = (char *)efnd.elf[i].elfFullName;
         StyleName = (char *)efnd.elf[i].elfStyle;
 
-        trace("Checking font %s:\nFamilyName: %s; FaceName: %s; StyleName: %s\n", Family, FamilyName, FaceName, StyleName);
-
         get_vertical = ( FamilyName[0] == '@' );
         ok(get_vertical == want_vertical, "Vertical flags don't match: %s %s\n", Family, FamilyName);
 
@@ -4912,12 +4899,8 @@ static void test_fullname2_helper(const char *Family)
         bufW[0] = 0;
         bufA[0] = 0;
         ret = get_ttf_nametable_entry(hdc, TT_NAME_ID_FONT_FAMILY, bufW, buf_size, GetSystemDefaultLangID());
-        if (!ret)
-        {
-            trace("no localized FONT_FAMILY found.\n");
-            ret = get_ttf_nametable_entry(hdc, TT_NAME_ID_FONT_FAMILY, bufW, buf_size, TT_MS_LANGID_ENGLISH_UNITED_STATES);
-        }
-        ok(ret, "FAMILY (family name) could not be read\n");
+        if (!ret) ret = get_ttf_nametable_entry(hdc, TT_NAME_ID_FONT_FAMILY, bufW, buf_size, TT_MS_LANGID_ENGLISH_UNITED_STATES);
+        ok(ret, "%s: FAMILY (family name) could not be read\n", FamilyName);
         if (want_vertical) bufW = prepend_at(bufW);
         WideCharToMultiByte(CP_ACP, 0, bufW, -1, bufA, buf_size, NULL, FALSE);
         ok(!lstrcmpA(FamilyName, bufA), "font family names don't match: returned %s, expect %s\n", FamilyName, bufA);
@@ -4927,44 +4910,32 @@ static void test_fullname2_helper(const char *Family)
         bufW[0] = 0;
         bufA[0] = 0;
         ret = get_ttf_nametable_entry(hdc, TT_NAME_ID_FULL_NAME, bufW, buf_size, GetSystemDefaultLangID());
-        if (!ret)
-        {
-            trace("no localized FULL_NAME found.\n");
-            ret = get_ttf_nametable_entry(hdc, TT_NAME_ID_FULL_NAME, bufW, buf_size, TT_MS_LANGID_ENGLISH_UNITED_STATES);
-        }
+        if (!ret) ret = get_ttf_nametable_entry(hdc, TT_NAME_ID_FULL_NAME, bufW, buf_size, TT_MS_LANGID_ENGLISH_UNITED_STATES);
         ok(ret, "FULL_NAME (face name) could not be read\n");
         if (want_vertical) bufW = prepend_at(bufW);
         WideCharToMultiByte(CP_ACP, 0, bufW, -1, bufA, buf_size, NULL, FALSE);
-        ok(!lstrcmpA(FaceName, bufA), "font face names don't match: returned %s, expect %s\n", FaceName, bufA);
+        ok(!lstrcmpA(FaceName, bufA), "%s: font face names don't match: returned %s, expect %s\n", FamilyName, FaceName, bufA);
         otmStr = (LPSTR)otm + (UINT_PTR)otm->otmpFaceName;
-        ok(!lstrcmpA(FaceName, otmStr), "FaceName %s doesn't match otmpFaceName %s\n", FaceName, otmStr);
+        ok(!lstrcmpA(FaceName, otmStr), "%s: FaceName %s doesn't match otmpFaceName %s\n", FamilyName, FaceName, otmStr);
 
         bufW[0] = 0;
         bufA[0] = 0;
         ret = get_ttf_nametable_entry(hdc, TT_NAME_ID_FONT_SUBFAMILY, bufW, buf_size, GetSystemDefaultLangID());
-        if (!ret)
-        {
-            trace("no localized FONT_SUBFAMILY found.\n");
-            ret = get_ttf_nametable_entry(hdc, TT_NAME_ID_FONT_SUBFAMILY, bufW, buf_size, TT_MS_LANGID_ENGLISH_UNITED_STATES);
-        }
-        ok(ret, "SUBFAMILY (style name) could not be read\n");
+        if (!ret) ret = get_ttf_nametable_entry(hdc, TT_NAME_ID_FONT_SUBFAMILY, bufW, buf_size, TT_MS_LANGID_ENGLISH_UNITED_STATES);
+        ok(ret, "%s: SUBFAMILY (style name) could not be read\n", FamilyName);
         WideCharToMultiByte(CP_ACP, 0, bufW, -1, bufA, buf_size, NULL, FALSE);
-        ok(!lstrcmpA(StyleName, bufA), "style names don't match: returned %s, expect %s\n", StyleName, bufA);
+        ok(!lstrcmpA(StyleName, bufA), "%s: style names don't match: returned %s, expect %s\n", FamilyName, StyleName, bufA);
         otmStr = (LPSTR)otm + (UINT_PTR)otm->otmpStyleName;
-        ok(!lstrcmpA(StyleName, otmStr), "StyleName %s doesn't match otmpStyleName %s\n", StyleName, otmStr);
+        ok(!lstrcmpA(StyleName, otmStr), "%s: StyleName %s doesn't match otmpStyleName %s\n", FamilyName, StyleName, otmStr);
 
         bufW[0] = 0;
         bufA[0] = 0;
         ret = get_ttf_nametable_entry(hdc, TT_NAME_ID_UNIQUE_ID, bufW, buf_size, GetSystemDefaultLangID());
-        if (!ret)
-        {
-            trace("no localized UNIQUE_ID found.\n");
-            ret = get_ttf_nametable_entry(hdc, TT_NAME_ID_UNIQUE_ID, bufW, buf_size, TT_MS_LANGID_ENGLISH_UNITED_STATES);
-        }
-        ok(ret, "UNIQUE_ID (full name) could not be read\n");
+        if (!ret) ret = get_ttf_nametable_entry(hdc, TT_NAME_ID_UNIQUE_ID, bufW, buf_size, TT_MS_LANGID_ENGLISH_UNITED_STATES);
+        ok(ret, "%s: UNIQUE_ID (full name) could not be read\n", FamilyName);
         WideCharToMultiByte(CP_ACP, 0, bufW, -1, bufA, buf_size, NULL, FALSE);
         otmStr = (LPSTR)otm + (UINT_PTR)otm->otmpFullName;
-        ok(!lstrcmpA(otmStr, bufA), "UNIQUE ID (full name) doesn't match: returned %s, expect %s\n", otmStr, bufA);
+        ok(!lstrcmpA(otmStr, bufA), "%s: UNIQUE ID (full name) doesn't match: returned %s, expect %s\n", FamilyName, otmStr, bufA);
 
         SelectObject(hdc, of);
         DeleteObject(hfont);
@@ -5064,6 +5035,7 @@ static void test_GetGlyphOutline_metric_clipping(void)
     HFONT hfont, hfont_prev;
     GLYPHMETRICS gm;
     TEXTMETRICA tm;
+    TEXTMETRICW tmW;
     DWORD ret;
 
     memset(&lf, 0, sizeof(lf));
@@ -5091,6 +5063,11 @@ static void test_GetGlyphOutline_metric_clipping(void)
     ok(gm.gmptGlyphOrigin.y - gm.gmBlackBoxY >= -tm.tmDescent,
         "Glyph bottom(%d) exceeds descent(%d)\n",
         gm.gmptGlyphOrigin.y - gm.gmBlackBoxY, -tm.tmDescent);
+
+    /* Test tmLastChar - wine_test has code points fffb-fffe mapped to glyph 0 */
+    GetTextMetricsW(hdc, &tmW);
+todo_wine
+    ok( tmW.tmLastChar == 0xfffe, "got %04x\n", tmW.tmLastChar);
 
     SelectObject(hdc, hfont_prev);
     DeleteObject(hfont);

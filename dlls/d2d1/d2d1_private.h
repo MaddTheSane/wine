@@ -14,23 +14,23 @@
  * You should have received a copy of the GNU Lesser General Public
  * License along with this library; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA
- *
  */
 
-#include "config.h"
-#include "wine/port.h"
+#ifndef __WINE_D2D1_PRIVATE_H
+#define __WINE_D2D1_PRIVATE_H
+
 #include "wine/debug.h"
 
 #define COBJMACROS
 #include "d2d1.h"
 
-WINE_DEFAULT_DEBUG_CHANNEL(d2d);
-
-HRESULT WINAPI D2D1CreateFactory(D2D1_FACTORY_TYPE factory_type, REFIID iid,
-        const D2D1_FACTORY_OPTIONS *factory_options, void **factory)
+struct d2d_d3d_render_target
 {
-    FIXME("factory_type %#x, iid %s, factory_options %p, factory %p stub!\n",
-            factory_type, debugstr_guid(iid), factory_options, factory);
+    ID2D1RenderTarget ID2D1RenderTarget_iface;
+    LONG refcount;
+};
 
-    return E_NOTIMPL;
-}
+void d2d_d3d_render_target_init(struct d2d_d3d_render_target *render_target, ID2D1Factory *factory,
+        IDXGISurface *surface, const D2D1_RENDER_TARGET_PROPERTIES *desc) DECLSPEC_HIDDEN;
+
+#endif /* __WINE_D2D1_PRIVATE_H */

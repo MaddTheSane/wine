@@ -2400,7 +2400,8 @@ BOOL WINAPI InternetReadFileExW(HINTERNET hFile, LPINTERNET_BUFFERSW lpBuffer,
 
 static BOOL get_proxy_autoconfig_url( char *buf, DWORD buflen )
 {
-#ifdef HAVE_CORESERVICES_CORESERVICES_H
+#if defined(MAC_OS_X_VERSION_10_6) && MAC_OS_X_VERSION_MAX_ALLOWED >= MAC_OS_X_VERSION_10_6
+
     CFDictionaryRef settings = CFNetworkCopySystemProxySettings();
     const void *ref;
     BOOL ret = FALSE;
@@ -3927,7 +3928,7 @@ LPSTR INTERNET_GetNextLine(INT nSocket, LPDWORD dwLen)
     {
         if (poll(&pfd,1, RESPONSE_TIMEOUT * 1000) > 0)
         {
-            if (recv(nSocket, &lpszBuffer[nRecv], 1, 0) <= 0)
+            if (sock_recv(nSocket, &lpszBuffer[nRecv], 1, 0) <= 0)
             {
                 INTERNET_SetLastError(ERROR_FTP_TRANSFER_IN_PROGRESS);
                 goto lend;

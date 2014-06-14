@@ -56,7 +56,7 @@ static const char elem_test_str[] =
     "<button id=\"btnid\"></button>"
     "<select id=\"s\"><option id=\"x\" value=\"val1\">opt1</option><option id=\"y\">opt2</option></select>"
     "<textarea id=\"X\">text text</textarea>"
-    "<table id=\"tbl\"><tbody><tr></tr><tr id=\"row2\"><td>td1 text</td><td>td2 text</td></tr></tbody></table>"
+    "<table id=\"tbl\"><tbody><tr></tr><tr id=\"row2\"><td id=\"td1\">td1 text</td><td id=\"td2\">td2 text</td></tr></tbody></table>"
     "<script id=\"sc\" type=\"text/javascript\"><!--\nfunction Testing() {}\n// -->\n</script>"
     "<test /><object id=\"objid\" name=\"objname\" vspace=100></object><embed />"
     "<img id=\"imgid\" name=\"WineImg\"/>"
@@ -3812,6 +3812,25 @@ static void _test_meta_httpequiv(unsigned line, IUnknown *unk, const char *exval
     IHTMLMetaElement_Release(meta);
 }
 
+#define test_link_media(a,b) _test_link_media(__LINE__,a,b)
+static void _test_link_media(unsigned line, IHTMLElement *elem, const char *exval)
+{
+    IHTMLLinkElement *link = _get_link_iface(line, (IUnknown*)elem);
+    HRESULT hres;
+    BSTR str;
+
+    str = a2bstr(exval);
+    hres = IHTMLLinkElement_put_media(link, str);
+    ok_(__FILE__,line)(hres == S_OK, "put_media(%s) failed: %08x\n", exval, hres);
+    SysFreeString(str);
+
+    hres = IHTMLLinkElement_get_media(link, &str);
+    ok_(__FILE__,line)(hres == S_OK, "get_media failed: %08x\n", hres);
+    ok_(__FILE__,line)(!strcmp_wa(str, exval), "got %s, expected %s\n", wine_dbgstr_w(str), exval);
+    SysFreeString(str);
+    IHTMLLinkElement_Release(link);
+}
+
 #define test_link_disabled(a,b) _test_link_disabled(__LINE__,a,b)
 static void _test_link_disabled(unsigned line, IHTMLElement *elem, VARIANT_BOOL v)
 {
@@ -5224,9 +5243,16 @@ static void test_doc_elem(IHTMLDocument2 *doc)
     IHTMLElement *elem;
     IHTMLDocument3 *doc3;
     HRESULT hres;
+    BSTR bstr;
 
     hres = IHTMLDocument2_QueryInterface(doc, &IID_IHTMLDocument3, (void**)&doc3);
     ok(hres == S_OK, "QueryInterface(IID_IHTMLDocument3) failed: %08x\n", hres);
+
+    hres = IHTMLDocument2_toString(doc, &bstr);
+    ok(hres == S_OK, "toString failed: %08x\n", hres);
+    ok(!strcmp_wa(bstr, "[object]"),
+            "toString returned %s, expected [object]\n", wine_dbgstr_w(bstr));
+    SysFreeString(bstr);
 
     hres = IHTMLDocument3_get_documentElement(doc3, &elem);
     IHTMLDocument3_Release(doc3);
@@ -5679,6 +5705,56 @@ static void test_button_elem(IHTMLElement *elem)
     set_button_name(elem, "button name");
 }
 
+#define test_tr_possess(e,r,l,i) _test_tr_possess(__LINE__,e,r,l,i)
+static void _test_tr_possess(unsigned line, IHTMLElement *elem,
+                            IHTMLTableRow *row, LONG len, const char *id)
+{
+    IHTMLElementCollection *col;
+    IDispatch *disp;
+    HRESULT hres;
+    LONG lval;
+    VARIANT var;
+
+    hres = IHTMLTableRow_get_cells(row, &col);
+    ok_(__FILE__, line)(hres == S_OK, "get_cells failed: %08x\n", hres);
+    ok_(__FILE__, line)(col != NULL, "get_cells returned NULL\n");
+
+    hres = IHTMLElementCollection_get_length(col, &lval);
+    ok_(__FILE__, line)(hres == S_OK, "get length failed: %08x\n", hres);
+    ok_(__FILE__, line)(lval == len, "expected len = %d, got %d\n", len, lval);
+
+    V_VT(&var) = VT_BSTR;
+    V_BSTR(&var) = a2bstr(id);
+    hres = IHTMLElementCollection_tags(col, var, &disp);
+    ok_(__FILE__, line)(hres == S_OK, "search by tags(%s) failed: %08x\n", id, hres);
+    ok_(__FILE__, line)(disp != NULL, "disp == NULL\n");
+
+    VariantClear(&var);
+    IDispatch_Release(disp);
+    IHTMLElementCollection_Release(col);
+}
+
+static void test_tr_modify(IHTMLElement *elem, IHTMLTableRow *row)
+{
+    HRESULT hres;
+    IDispatch *disp;
+    IUnknown *unk;
+
+    hres = IHTMLTableRow_deleteCell(row, 0);
+    ok(hres == S_OK, "deleteCell failed: %08x\n", hres);
+    test_tr_possess(elem, row, 1, "td2");
+
+    hres = IHTMLTableRow_insertCell(row, 0, &disp);
+    ok(hres == S_OK, "insertCell failed: %08x\n", hres);
+    ok(disp != NULL, "disp == NULL\n");
+    hres = IDispatch_QueryInterface(disp, &IID_IHTMLTableCell, (void **)&unk);
+    ok(hres == S_OK, "Could not get IID_IHTMLTableCell interface: %08x\n", hres);
+    if (SUCCEEDED(hres))
+        IUnknown_Release(unk);
+    test_tr_possess(elem, row, 2, "td2");
+    IDispatch_Release(disp);
+}
+
 static void test_tr_elem(IHTMLElement *elem)
 {
     IHTMLElementCollection *col;
@@ -5770,6 +5846,8 @@ static void test_tr_elem(IHTMLElement *elem)
     hres = IHTMLTableRow_put_bgColor(row, vDefaultbg);
     ok(hres == S_OK, "put_bgColor failed: %08x\n", hres);
     VariantClear(&vDefaultbg);
+
+    test_tr_modify(elem, row);
 
     IHTMLTableRow_Release(row);
 }
@@ -7142,6 +7220,7 @@ static void test_elems2(IHTMLDocument2 *doc)
         test_link_rel(elem, "stylesheet");
         test_link_type(elem, "text/css");
         test_link_href(elem, "about:blank");
+        test_link_media(elem, "all");
         link_put_disabled(elem, VARIANT_TRUE);
         link_put_rel(elem, "prev");
         link_put_type(elem, "text/plain");

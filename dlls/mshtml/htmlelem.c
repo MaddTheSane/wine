@@ -156,6 +156,42 @@ HRESULT replace_node_by_html(nsIDOMHTMLDocument *nsdoc, nsIDOMNode *nsnode, cons
     return hres;
 }
 
+nsresult get_elem_attr_value(nsIDOMHTMLElement *nselem, const WCHAR *name, nsAString *val_str, const PRUnichar **val)
+{
+    nsAString name_str;
+    nsresult nsres;
+
+    nsAString_InitDepend(&name_str, name);
+    nsAString_Init(val_str, NULL);
+    nsres = nsIDOMHTMLElement_GetAttribute(nselem, &name_str, val_str);
+    nsAString_Finish(&name_str);
+    if(NS_FAILED(nsres)) {
+        ERR("GetAttribute(%s) failed: %08x\n", debugstr_w(name), nsres);
+        nsAString_Finish(val_str);
+        return nsres;
+    }
+
+    nsAString_GetData(val_str, val);
+    return NS_OK;
+}
+
+HRESULT elem_string_attr_getter(HTMLElement *elem, const WCHAR *name, BSTR *p)
+{
+    const PRUnichar *val;
+    nsAString val_str;
+    nsresult nsres;
+
+    nsres = get_elem_attr_value(elem->nselem, name, &val_str, &val);
+    if(NS_FAILED(nsres))
+        return E_FAIL;
+
+    TRACE("%s: returning %s\n", debugstr_w(name), debugstr_w(val));
+
+    *p = SysAllocString(val);
+    nsAString_Finish(&val_str);
+    return *p ? S_OK : E_OUTOFMEMORY;
+}
+
 typedef struct
 {
     DispatchEx dispex;

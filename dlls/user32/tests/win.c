@@ -705,19 +705,12 @@ static LRESULT WINAPI main_window_procA(HWND hwnd, UINT msg, WPARAM wparam, LPAR
     {
 	case WM_GETMINMAXINFO:
 	{
-	    MINMAXINFO* minmax = (MINMAXINFO *)lparam;
-
-	    trace("WM_GETMINMAXINFO: hwnd %p, %08lx, %08lx\n", hwnd, wparam, lparam);
-            dump_minmax_info( minmax );
 	    SetWindowLongPtrA(hwnd, GWLP_USERDATA, 0x20031021);
 	    break;
 	}
 	case WM_WINDOWPOSCHANGING:
 	{
 	    WINDOWPOS *winpos = (WINDOWPOS *)lparam;
-	    trace("main: WM_WINDOWPOSCHANGING %p after %p, x %d, y %d, cx %d, cy %d flags %08x\n",
-		   winpos->hwnd, winpos->hwndInsertAfter,
-		   winpos->x, winpos->y, winpos->cx, winpos->cy, winpos->flags);
 	    if (!(winpos->flags & SWP_NOMOVE))
 	    {
 		ok(winpos->x >= -32768 && winpos->x <= 32767, "bad winpos->x %d\n", winpos->x);
@@ -739,9 +732,6 @@ static LRESULT WINAPI main_window_procA(HWND hwnd, UINT msg, WPARAM wparam, LPAR
 	{
             RECT rc1, rc2;
 	    WINDOWPOS *winpos = (WINDOWPOS *)lparam;
-	    trace("main: WM_WINDOWPOSCHANGED %p after %p, x %d, y %d, cx %d, cy %d flags %08x\n",
-		   winpos->hwnd, winpos->hwndInsertAfter,
-		   winpos->x, winpos->y, winpos->cx, winpos->cy, winpos->flags);
 	    ok(winpos->x >= -32768 && winpos->x <= 32767, "bad winpos->x %d\n", winpos->x);
 	    ok(winpos->y >= -32768 && winpos->y <= 32767, "bad winpos->y %d\n", winpos->y);
 
@@ -775,10 +765,6 @@ static LRESULT WINAPI main_window_procA(HWND hwnd, UINT msg, WPARAM wparam, LPAR
 	    BOOL got_getminmaxinfo = GetWindowLongPtrA(hwnd, GWLP_USERDATA) == 0x20031021;
 	    CREATESTRUCTA *cs = (CREATESTRUCTA *)lparam;
 
-            trace("WM_NCCREATE: hwnd %p, parent %p, style %08x\n", hwnd, cs->hwndParent, cs->style);
-	    if (got_getminmaxinfo)
-		trace("%p got WM_GETMINMAXINFO\n", hwnd);
-
 	    if ((cs->style & WS_THICKFRAME) || !(cs->style & (WS_POPUP | WS_CHILD)))
 		ok(got_getminmaxinfo, "main: WM_GETMINMAXINFO should have been received before WM_NCCREATE\n");
 	    else
@@ -803,10 +789,6 @@ static LRESULT WINAPI tool_window_procA(HWND hwnd, UINT msg, WPARAM wparam, LPAR
     {
 	case WM_GETMINMAXINFO:
 	{
-	    MINMAXINFO* minmax = (MINMAXINFO *)lparam;
-
-	    trace("hwnd %p, WM_GETMINMAXINFO, %08lx, %08lx\n", hwnd, wparam, lparam);
-            dump_minmax_info( minmax );
 	    SetWindowLongPtrA(hwnd, GWLP_USERDATA, 0x20031021);
 	    break;
 	}
@@ -814,10 +796,6 @@ static LRESULT WINAPI tool_window_procA(HWND hwnd, UINT msg, WPARAM wparam, LPAR
 	{
 	    BOOL got_getminmaxinfo = GetWindowLongPtrA(hwnd, GWLP_USERDATA) == 0x20031021;
 	    CREATESTRUCTA *cs = (CREATESTRUCTA *)lparam;
-
-            trace("WM_NCCREATE: hwnd %p, parent %p, style %08x\n", hwnd, cs->hwndParent, cs->style);
-	    if (got_getminmaxinfo)
-		trace("%p got WM_GETMINMAXINFO\n", hwnd);
 
 	    if ((cs->style & WS_THICKFRAME) || !(cs->style & (WS_POPUP | WS_CHILD)))
 		ok(got_getminmaxinfo, "tool: WM_GETMINMAXINFO should have been received before WM_NCCREATE\n");
@@ -3765,6 +3743,11 @@ static void test_SetParent(void)
     bret = SetForegroundWindow(popup);
     ok(bret, "SetForegroundWindow() failed\n");
     check_active_state(popup, popup, popup);
+
+    ShowWindow(parent, SW_SHOW);
+    SetActiveWindow(popup);
+    ok(DestroyWindow(popup), "DestroyWindow() failed\n");
+    check_active_state(parent, parent, parent);
 
     ok(DestroyWindow(parent), "DestroyWindow() failed\n");
 
@@ -7533,6 +7516,170 @@ static void test_window_without_child_style(void)
     DestroyWindow(hwnd);
 }
 
+
+struct smresult_thread_data
+{
+    HWND main_hwnd;
+    HWND thread_hwnd;
+    HANDLE thread_started;
+    HANDLE thread_got_wm_app;
+    HANDLE main_in_wm_app_1;
+    HANDLE thread_replied;
+};
+
+
+static LRESULT WINAPI smresult_wndproc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
+{
+    switch (msg)
+    {
+    case WM_APP:
+    {
+        struct smresult_thread_data *data = (struct smresult_thread_data*)lparam;
+
+        ok(hwnd == data->thread_hwnd, "unexpected hwnd %p\n", hwnd);
+
+        SendNotifyMessageA(data->main_hwnd, WM_APP+1, 0, lparam);
+
+        /* Don't return until the main thread is processing our sent message. */
+        ok(WaitForSingleObject(data->main_in_wm_app_1, INFINITE) == WAIT_OBJECT_0, "WaitForSingleObject failed\n");
+
+        /* Break the PeekMessage loop so we can notify the main thread after we return. */
+        SetEvent(data->thread_got_wm_app);
+
+        return 0x240408ea;
+    }
+    case WM_APP+1:
+    {
+        struct smresult_thread_data *data = (struct smresult_thread_data*)lparam;
+        LRESULT res;
+
+        ok(hwnd == data->main_hwnd, "unexpected hwnd %p\n", hwnd);
+
+        /* Ask the thread to reply to our WM_APP message. */
+        SetEvent(data->main_in_wm_app_1);
+
+        /* Wait until the thread has sent a reply. */
+        ok(WaitForSingleObject(data->thread_replied, INFINITE) == WAIT_OBJECT_0, "WaitForSingleObject failed\n");
+
+        /* Send another message while we have a reply queued for the current one. */
+        res = SendMessageA(data->thread_hwnd, WM_APP+2, 0, lparam);
+        ok(res == 0x449b0190, "unexpected result %lx\n", res);
+
+        return 0;
+    }
+    case WM_APP+2:
+    {
+        struct smresult_thread_data *data = (struct smresult_thread_data*)lparam;
+
+        ok(hwnd == data->thread_hwnd, "unexpected hwnd %p\n", hwnd);
+
+        /* Don't return until we know the main thread is processing sent messages. */
+        SendMessageA(data->main_hwnd, WM_NULL, 0, 0);
+
+        return 0x449b0190;
+    }
+    case WM_CLOSE:
+        PostQuitMessage(0);
+        break;
+    }
+    return DefWindowProcA(hwnd, msg, wparam, lparam);
+}
+
+static DWORD WINAPI smresult_thread_proc(void *param)
+{
+    MSG msg;
+    struct smresult_thread_data *data = param;
+
+    data->thread_hwnd = CreateWindowExA(0, "SmresultClass", "window caption text", WS_OVERLAPPEDWINDOW,
+                                      100, 100, 200, 200, 0, 0, 0, NULL);
+    ok(data->thread_hwnd != 0, "Failed to create overlapped window\n");
+
+    SetEvent(data->thread_started);
+
+    /* Loop until we've processed WM_APP. */
+    while (WaitForSingleObject(data->thread_got_wm_app, 0) != WAIT_OBJECT_0)
+    {
+        if (PeekMessageA(&msg, 0, 0, 0, PM_REMOVE))
+        {
+            TranslateMessage(&msg);
+            DispatchMessageA(&msg);
+        }
+        else
+        {
+            MsgWaitForMultipleObjects(1, &data->thread_got_wm_app, FALSE, INFINITE, QS_SENDMESSAGE);
+        }
+    }
+
+    /* Notify the main thread that we replied to its WM_APP message. */
+    SetEvent(data->thread_replied);
+
+    while (GetMessageA(&msg, 0, 0, 0))
+    {
+        TranslateMessage(&msg);
+        DispatchMessageA(&msg);
+    }
+
+    return 0;
+}
+
+static void test_smresult(void)
+{
+    WNDCLASSA cls;
+    HANDLE hThread;
+    DWORD tid;
+    struct smresult_thread_data data;
+    BOOL ret;
+    LRESULT res;
+
+    cls.style = CS_DBLCLKS;
+    cls.lpfnWndProc = smresult_wndproc;
+    cls.cbClsExtra = 0;
+    cls.cbWndExtra = 0;
+    cls.hInstance = GetModuleHandleA(0);
+    cls.hIcon = 0;
+    cls.hCursor = LoadCursorA(0, (LPCSTR)IDC_ARROW);
+    cls.hbrBackground = GetStockObject(WHITE_BRUSH);
+    cls.lpszMenuName = NULL;
+    cls.lpszClassName = "SmresultClass";
+
+    ret = RegisterClassA(&cls);
+    ok(ret, "RegisterClassA failed\n");
+
+    data.thread_started = CreateEventA(NULL, TRUE, FALSE, NULL);
+    ok(data.thread_started != NULL, "CreateEventA failed\n");
+
+    data.thread_got_wm_app = CreateEventA(NULL, TRUE, FALSE, NULL);
+    ok(data.thread_got_wm_app != NULL, "CreateEventA failed\n");
+
+    data.main_in_wm_app_1 = CreateEventA(NULL, TRUE, FALSE, NULL);
+    ok(data.main_in_wm_app_1 != NULL, "CreateEventA failed\n");
+
+    data.thread_replied = CreateEventA(NULL, TRUE, FALSE, NULL);
+    ok(data.thread_replied != NULL, "CreateEventA failed\n");
+
+    data.main_hwnd = CreateWindowExA(0, "SmresultClass", "window caption text", WS_OVERLAPPEDWINDOW,
+                                      100, 100, 200, 200, 0, 0, 0, NULL);
+
+    hThread = CreateThread(NULL, 0, smresult_thread_proc, &data, 0, &tid);
+    ok(hThread != NULL, "CreateThread failed, error %d\n", GetLastError());
+
+    ok(WaitForSingleObject(data.thread_started, INFINITE) == WAIT_OBJECT_0, "WaitForSingleObject failed\n");
+
+    res = SendMessageA(data.thread_hwnd, WM_APP, 0, (LPARAM)&data);
+    ok(res == 0x240408ea, "unexpected result %lx\n", res);
+
+    SendMessageA(data.thread_hwnd, WM_CLOSE, 0, 0);
+
+    DestroyWindow(data.main_hwnd);
+
+    ok(WaitForSingleObject(hThread, INFINITE) == WAIT_OBJECT_0, "WaitForSingleObject failed\n");
+
+    CloseHandle(data.thread_started);
+    CloseHandle(data.thread_got_wm_app);
+    CloseHandle(data.main_in_wm_app_1);
+    CloseHandle(data.thread_replied);
+}
+
 START_TEST(win)
 {
     HMODULE user32 = GetModuleHandleA( "user32.dll" );
@@ -7664,6 +7811,7 @@ START_TEST(win)
     test_map_points();
     test_update_region();
     test_window_without_child_style();
+    test_smresult();
 
     /* add the tests above this line */
     if (hhook) UnhookWindowsHookEx(hhook);

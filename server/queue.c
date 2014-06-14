@@ -25,6 +25,9 @@
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
+#ifdef HAVE_POLL_H
+# include <poll.h>
+#endif
 
 #include "ntstatus.h"
 #define WIN32_NO_STATUS
@@ -681,7 +684,11 @@ static struct message_result *alloc_message_result( struct msg_queue *send_queue
             result->callback_msg = callback_msg;
             list_add_head( &send_queue->callback_result, &result->sender_entry );
         }
-        else if (send_queue) list_add_head( &send_queue->send_result, &result->sender_entry );
+        else if (send_queue)
+        {
+            list_add_head( &send_queue->send_result, &result->sender_entry );
+            clear_queue_bits( send_queue, QS_SMRESULT );
+        }
 
         if (timeout != TIMEOUT_INFINITE)
             result->timeout = add_timeout_user( timeout, result_timeout, result );
@@ -2502,7 +2509,8 @@ DECL_HANDLER(get_message_reply)
             else
             {
                 result = LIST_ENTRY( entry, struct message_result, sender_entry );
-                if (!result->replied) clear_queue_bits( queue, QS_SMRESULT );
+                if (result->replied) set_queue_bits( queue, QS_SMRESULT );
+                else clear_queue_bits( queue, QS_SMRESULT );
             }
         }
     }
