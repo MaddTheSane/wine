@@ -1745,6 +1745,121 @@ todo_wine
     SysFreeString(nameW);
 }
 
+struct getdrivename_test {
+    const WCHAR path[10];
+    const WCHAR drive[5];
+};
+
+static const struct getdrivename_test getdrivenametestdata[] = {
+    { {'C',':','\\','1','.','t','s','t',0}, {'C',':',0} },
+    { {'O',':','\\','1','.','t','s','t',0}, {'O',':',0} },
+    { {'O',':',0}, {'O',':',0} },
+    { {'o',':',0}, {'o',':',0} },
+    { {'O','O',':',0} },
+    { {':',0} },
+    { {'O',0} },
+    { { 0 } }
+};
+
+static void test_GetDriveName(void)
+{
+    const struct getdrivename_test *ptr = getdrivenametestdata;
+    HRESULT hr;
+    BSTR name;
+
+    hr = IFileSystem3_GetDriveName(fs3, NULL, NULL);
+    ok(hr == E_POINTER, "got 0x%08x\n", hr);
+
+    name = (void*)0xdeadbeef;
+    hr = IFileSystem3_GetDriveName(fs3, NULL, &name);
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+    ok(name == NULL, "got %p\n", name);
+
+    while (*ptr->path) {
+        BSTR path = SysAllocString(ptr->path);
+        name = (void*)0xdeadbeef;
+        hr = IFileSystem3_GetDriveName(fs3, path, &name);
+        ok(hr == S_OK, "got 0x%08x\n", hr);
+        if (name)
+            ok(!lstrcmpW(ptr->drive, name), "got %s, expected %s\n", wine_dbgstr_w(name), wine_dbgstr_w(ptr->drive));
+        else
+            ok(!*ptr->drive, "got %s, expected %s\n", wine_dbgstr_w(name), wine_dbgstr_w(ptr->drive));
+        SysFreeString(path);
+        SysFreeString(name);
+        ptr++;
+    }
+}
+
+static void test_SerialNumber(void)
+{
+    IDriveCollection *drives;
+    IEnumVARIANT *iter;
+    IDrive *drive;
+    LONG serial;
+    HRESULT hr;
+    BSTR name;
+
+    hr = IFileSystem3_get_Drives(fs3, &drives);
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+
+    hr = IDriveCollection_get__NewEnum(drives, (IUnknown**)&iter);
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+    IDriveCollection_Release(drives);
+
+    while (1) {
+        DriveTypeConst type;
+        VARIANT var;
+
+        hr = IEnumVARIANT_Next(iter, 1, &var, NULL);
+        if (hr == S_FALSE) {
+            skip("No fixed drive found, skipping test.\n");
+            IEnumVARIANT_Release(iter);
+            return;
+        }
+        ok(hr == S_OK, "got 0x%08x\n", hr);
+
+        hr = IDispatch_QueryInterface(V_DISPATCH(&var), &IID_IDrive, (void**)&drive);
+        ok(hr == S_OK, "got 0x%08x\n", hr);
+        VariantClear(&var);
+
+        hr = IDrive_get_DriveType(drive, &type);
+        ok(hr == S_OK, "got 0x%08x\n", hr);
+        if (type == Fixed)
+            break;
+
+        IDrive_Release(drive);
+    }
+
+    hr = IDrive_get_SerialNumber(drive, NULL);
+    ok(hr == E_POINTER, "got 0x%08x\n", hr);
+
+    serial = 0xdeadbeef;
+    hr = IDrive_get_SerialNumber(drive, &serial);
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+    ok(serial != 0xdeadbeef, "got %x\n", serial);
+
+    hr = IDrive_get_FileSystem(drive, NULL);
+    ok(hr == E_POINTER, "got 0x%08x\n", hr);
+
+    name = NULL;
+    hr = IDrive_get_FileSystem(drive, &name);
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+    ok(name != NULL, "got %p\n", name);
+    SysFreeString(name);
+
+    hr = IDrive_get_VolumeName(drive, NULL);
+    ok(hr == E_POINTER, "got 0x%08x\n", hr);
+
+    name = NULL;
+    hr = IDrive_get_VolumeName(drive, &name);
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+    ok(name != NULL, "got %p\n", name);
+    SysFreeString(name);
+
+    IDrive_Release(drive);
+    IEnumVARIANT_Release(iter);
+}
+
 START_TEST(filesystem)
 {
     HRESULT hr;
@@ -1777,6 +1892,8 @@ START_TEST(filesystem)
     test_WriteLine();
     test_ReadAll();
     test_Read();
+    test_GetDriveName();
+    test_SerialNumber();
 
     IFileSystem3_Release(fs3);
 

@@ -2881,10 +2881,11 @@ static const data_stream_vtbl_t chunked_stream_vtbl = {
 static DWORD set_content_length(http_request_t *request)
 {
     static const WCHAR szChunked[] = {'c','h','u','n','k','e','d',0};
+    static const WCHAR headW[] = {'H','E','A','D',0};
     WCHAR encoding[20];
     DWORD size;
 
-    if(request->status_code == HTTP_STATUS_NO_CONTENT) {
+    if(request->status_code == HTTP_STATUS_NO_CONTENT || !strcmpW(request->verb, headW)) {
         request->contentLength = request->netconn_stream.content_length = 0;
         return ERROR_SUCCESS;
     }
@@ -3368,9 +3369,6 @@ static DWORD HTTP_HttpOpenRequestW(http_session_t *session,
 
     HTTP_ProcessHeader(request, hostW, request->server->canon_host_port, HTTP_ADDREQ_FLAG_ADD | HTTP_ADDHDR_FLAG_REQ);
 
-    if (session->hostPort == INTERNET_INVALID_PORT_NUMBER)
-        session->hostPort = INTERNET_DEFAULT_HTTP_PORT;
-
     if (hIC->proxy && hIC->proxy[0] && !HTTP_ShouldBypassProxy(hIC, session->hostName))
         HTTP_DealWithProxy( hIC, session, request );
 
@@ -3695,8 +3693,6 @@ static DWORD HTTP_HttpQueryInfoW(http_request_t *request, DWORD dwInfoLevel,
         return ERROR_HTTP_HEADER_NOT_FOUND;
     }
 
-    if (lpdwIndex) (*lpdwIndex)++;
-
     /* coalesce value to requested type */
     if (dwInfoLevel & HTTP_QUERY_FLAG_NUMBER && lpBuffer)
     {
@@ -3742,6 +3738,7 @@ static DWORD HTTP_HttpQueryInfoW(http_request_t *request, DWORD dwInfoLevel,
         }
         *lpdwBufferLength = len - sizeof(WCHAR);
     }
+    if (lpdwIndex) (*lpdwIndex)++;
     return ERROR_SUCCESS;
 }
 
@@ -3977,9 +3974,9 @@ static LPWSTR HTTP_GetRedirectURL(http_request_t *request, LPCWSTR lpszUrl)
     urlComponents.dwStructSize = sizeof(URL_COMPONENTSW);
     urlComponents.lpszScheme = (request->hdr.dwFlags & INTERNET_FLAG_SECURE) ? szHttps : szHttp;
     urlComponents.dwSchemeLength = 0;
-    urlComponents.lpszHostName = session->hostName;
+    urlComponents.lpszHostName = request->server->name;
     urlComponents.dwHostNameLength = 0;
-    urlComponents.nPort = session->hostPort;
+    urlComponents.nPort = request->server->port;
     urlComponents.lpszUserName = session->userName;
     urlComponents.dwUserNameLength = 0;
     urlComponents.lpszPassword = NULL;
@@ -4104,6 +4101,7 @@ static DWORD HTTP_HandleRedirect(http_request_t *request, LPCWSTR lpszUrl)
         }
         else
             session->hostName = heap_strdupW(hostName);
+        session->hostPort = urlComponents.nPort;
 
         HTTP_ProcessHeader(request, hostW, session->hostName, HTTP_ADDREQ_FLAG_ADD | HTTP_ADDREQ_FLAG_REPLACE | HTTP_ADDHDR_FLAG_REQ);
 

@@ -514,8 +514,23 @@ static HRESULT Global_CDbl(vbdisp_t *This, VARIANT *arg, unsigned args_cnt, VARI
 
 static HRESULT Global_CSng(vbdisp_t *This, VARIANT *arg, unsigned args_cnt, VARIANT *res)
 {
-    FIXME("\n");
-    return E_NOTIMPL;
+    VARIANT v;
+    HRESULT hres;
+
+    TRACE("%s\n", debugstr_variant(arg));
+
+    assert(args_cnt == 1);
+
+    V_VT(&v) = VT_EMPTY;
+    hres = VariantChangeType(&v, arg, 0, VT_R4);
+    if(FAILED(hres))
+        return hres;
+
+    if(!res)
+        return DISP_E_BADVARTYPE;
+
+   *res = v;
+   return S_OK;
 }
 
 static HRESULT Global_CStr(vbdisp_t *This, VARIANT *arg, unsigned args_cnt, VARIANT *res)
@@ -1487,8 +1502,52 @@ static HRESULT Global_DatePart(vbdisp_t *This, VARIANT *arg, unsigned args_cnt, 
 
 static HRESULT Global_TypeName(vbdisp_t *This, VARIANT *arg, unsigned args_cnt, VARIANT *res)
 {
-    FIXME("\n");
-    return E_NOTIMPL;
+    static const WCHAR ByteW[]     = {'B', 'y', 't', 'e', 0};
+    static const WCHAR IntegerW[]  = {'I', 'n', 't', 'e', 'g', 'e', 'r', 0};
+    static const WCHAR LongW[]     = {'L', 'o', 'n', 'g', 0};
+    static const WCHAR SingleW[]   = {'S', 'i', 'n', 'g', 'l', 'e', 0};
+    static const WCHAR DoubleW[]   = {'D', 'o', 'u', 'b', 'l', 'e', 0};
+    static const WCHAR CurrencyW[] = {'C', 'u', 'r', 'r', 'e', 'n', 'c', 'y', 0};
+    static const WCHAR DecimalW[]  = {'D', 'e', 'c', 'i', 'm', 'a', 'l', 0};
+    static const WCHAR DateW[]     = {'D', 'a', 't', 'e', 0};
+    static const WCHAR StringW[]   = {'S', 't', 'r', 'i', 'n', 'g', 0};
+    static const WCHAR BooleanW[]  = {'B', 'o', 'o', 'l', 'e', 'a', 'n', 0};
+    static const WCHAR EmptyW[]    = {'E', 'm', 'p', 't', 'y', 0};
+    static const WCHAR NullW[]     = {'N', 'u', 'l', 'l', 0};
+
+    TRACE("(%s)\n", debugstr_variant(arg));
+
+    assert(args_cnt == 1);
+
+    switch(V_VT(arg)) {
+        case VT_UI1:
+            return return_string(res, ByteW);
+        case VT_I2:
+            return return_string(res, IntegerW);
+        case VT_I4:
+            return return_string(res, LongW);
+        case VT_R4:
+            return return_string(res, SingleW);
+        case VT_R8:
+            return return_string(res, DoubleW);
+        case VT_CY:
+            return return_string(res, CurrencyW);
+        case VT_DECIMAL:
+            return return_string(res, DecimalW);
+        case VT_DATE:
+            return return_string(res, DateW);
+        case VT_BSTR:
+            return return_string(res, StringW);
+        case VT_BOOL:
+            return return_string(res, BooleanW);
+        case VT_EMPTY:
+            return return_string(res, EmptyW);
+        case VT_NULL:
+            return return_string(res, NullW);
+        default:
+            FIXME("arg %s not supported\n", debugstr_variant(arg));
+            return E_NOTIMPL;
+        }
 }
 
 static HRESULT Global_Array(vbdisp_t *This, VARIANT *arg, unsigned args_cnt, VARIANT *res)

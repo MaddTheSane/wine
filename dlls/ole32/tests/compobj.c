@@ -41,6 +41,7 @@ static HRESULT (WINAPI * pCoInitializeEx)(LPVOID lpReserved, DWORD dwCoInit);
 static HRESULT (WINAPI * pCoGetObjectContext)(REFIID riid, LPVOID *ppv);
 static HRESULT (WINAPI * pCoSwitchCallContext)(IUnknown *pObject, IUnknown **ppOldObject);
 static HRESULT (WINAPI * pCoGetTreatAsClass)(REFCLSID clsidOld, LPCLSID pClsidNew);
+static HRESULT (WINAPI * pCoTreatAsClass)(REFCLSID clsidOld, REFCLSID pClsidNew);
 static HRESULT (WINAPI * pCoGetContextToken)(ULONG_PTR *token);
 static LONG (WINAPI * pRegOverridePredefKey)(HKEY key, HKEY override);
 
@@ -1896,11 +1897,15 @@ static void test_CoGetContextToken(void)
     CoUninitialize();
 }
 
-static void test_CoGetTreatAsClass(void)
+static void test_TreatAsClass(void)
 {
     HRESULT hr;
     CLSID out;
     static GUID deadbeef = {0xdeadbeef,0xdead,0xbeef,{0xde,0xad,0xbe,0xef,0xde,0xad,0xbe,0xef}};
+    static const char deadbeefA[] = "{DEADBEEF-DEAD-BEEF-DEAD-BEEFDEADBEEF}";
+    IInternetProtocol *pIP = NULL;
+    HKEY clsidkey, deadbeefkey;
+    LONG lr;
 
     if (!pCoGetTreatAsClass)
     {
@@ -1910,6 +1915,63 @@ static void test_CoGetTreatAsClass(void)
     hr = pCoGetTreatAsClass(&deadbeef,&out);
     ok (hr == S_FALSE, "expected S_FALSE got %x\n",hr);
     ok (IsEqualGUID(&out,&deadbeef), "expected to get same clsid back\n");
+
+    lr = RegOpenKeyExA(HKEY_CLASSES_ROOT, "CLSID", 0, KEY_READ, &clsidkey);
+    ok(lr == ERROR_SUCCESS, "Couldn't open CLSID key\n");
+
+    lr = RegCreateKeyExA(clsidkey, deadbeefA, 0, NULL, 0, KEY_WRITE, NULL, &deadbeefkey, NULL);
+    ok(lr == ERROR_SUCCESS, "Couldn't create class key\n");
+
+    hr = pCoTreatAsClass(&deadbeef, &deadbeef);
+    ok(hr == REGDB_E_WRITEREGDB, "CoTreatAsClass gave wrong error: %08x\n", hr);
+
+    hr = pCoTreatAsClass(&deadbeef, &CLSID_FileProtocol);
+    if(hr == REGDB_E_WRITEREGDB){
+        win_skip("Insufficient privileges to use CoTreatAsClass\n");
+        goto exit;
+    }
+    ok(hr == S_OK, "CoTreatAsClass failed: %08x\n", hr);
+
+    hr = pCoGetTreatAsClass(&deadbeef, &out);
+    ok(hr == S_OK, "CoGetTreatAsClass failed: %08x\n",hr);
+    ok(IsEqualGUID(&out, &CLSID_FileProtocol), "expected to get substituted clsid\n");
+
+    OleInitialize(NULL);
+
+    hr = CoCreateInstance(&deadbeef, NULL, CLSCTX_INPROC_SERVER, &IID_IInternetProtocol, (void **)&pIP);
+    if(hr == REGDB_E_CLASSNOTREG)
+    {
+        win_skip("IE not installed so can't test CoCreateInstance\n");
+        goto exit;
+    }
+
+    ok(hr == S_OK, "CoCreateInstance failed: %08x\n", hr);
+    if(pIP){
+        IInternetProtocol_Release(pIP);
+        pIP = NULL;
+    }
+
+    hr = pCoTreatAsClass(&deadbeef, &CLSID_NULL);
+    ok(hr == S_OK, "CoTreatAsClass failed: %08x\n", hr);
+
+    hr = pCoGetTreatAsClass(&deadbeef, &out);
+    ok(hr == S_FALSE, "expected S_FALSE got %08x\n", hr);
+    ok(IsEqualGUID(&out, &deadbeef), "expected to get same clsid back\n");
+
+    /* bizarrely, native's CoTreatAsClass takes some time to take effect in CoCreateInstance */
+    Sleep(200);
+
+    hr = CoCreateInstance(&deadbeef, NULL, CLSCTX_INPROC_SERVER, &IID_IInternetProtocol, (void **)&pIP);
+    ok(hr == REGDB_E_CLASSNOTREG, "CoCreateInstance gave wrong error: %08x\n", hr);
+
+    if(pIP)
+        IInternetProtocol_Release(pIP);
+
+exit:
+    OleUninitialize();
+    RegCloseKey(deadbeefkey);
+    RegDeleteKeyA(clsidkey, deadbeefA);
+    RegCloseKey(clsidkey);
 }
 
 static void test_CoInitializeEx(void)
@@ -1994,6 +2056,7 @@ static void init_funcs(void)
     pCoGetObjectContext = (void*)GetProcAddress(hOle32, "CoGetObjectContext");
     pCoSwitchCallContext = (void*)GetProcAddress(hOle32, "CoSwitchCallContext");
     pCoGetTreatAsClass = (void*)GetProcAddress(hOle32,"CoGetTreatAsClass");
+    pCoTreatAsClass = (void*)GetProcAddress(hOle32,"CoTreatAsClass");
     pCoGetContextToken = (void*)GetProcAddress(hOle32, "CoGetContextToken");
     pRegOverridePredefKey = (void*)GetProcAddress(hAdvapi32, "RegOverridePredefKey");
     pCoInitializeEx = (void*)GetProcAddress(hOle32, "CoInitializeEx");
@@ -2038,7 +2101,7 @@ START_TEST(compobj)
     test_CoGetObjectContext();
     test_CoGetCallContext();
     test_CoGetContextToken();
-    test_CoGetTreatAsClass();
+    test_TreatAsClass();
     test_CoInitializeEx();
     test_OleRegGetMiscStatus();
     test_CoCreateGuid();

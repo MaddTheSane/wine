@@ -5,7 +5,7 @@ msgstr ""
 "Project-Id-Version: Wine\n"
 "Report-Msgid-Bugs-To: http://bugs.winehq.org\n"
 "POT-Creation-Date: N/A\n"
-"PO-Revision-Date: 2014-05-26 01:33+0200\n"
+"PO-Revision-Date: 2014-06-27 13:29+0200\n"
 "Last-Translator: Julian Rüger\n"
 "Language-Team: none\n"
 "Language: German\n"
@@ -5012,7 +5012,7 @@ msgstr "Vorgang durch Benutzer abgebrochen.\n"
 msgid "File has a user-mapped section.\n"
 msgstr "Datei hat von Benutzer abgebildeten Abschnitt.\n"
 
-#: winerror.mc:1756 winerror.mc:3746
+#: winerror.mc:1756 winerror.mc:3751
 msgid "Connection refused.\n"
 msgstr "Verbindung abgelehnt.\n"
 
@@ -6595,6 +6595,10 @@ msgstr "Der Benutzername konnte nicht gefunden werden.\n"
 #: winerror.mc:3741
 msgid "This network connection does not exist.\n"
 msgstr "Diese Netzwerkverbindung existiert nicht.\n"
+
+#: winerror.mc:3746
+msgid "Connection reset by peer.\n"
+msgstr "Verbindung von Gegenstelle zurückgesetzt.\n"
 
 #: localspl.rc:31 localui.rc:31 winspool.rc:30
 msgid "Local Port"

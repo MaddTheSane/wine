@@ -797,4 +797,64 @@ MyObject.myval = 1.5
 Call ok(CInt(MyObject) = 2, "CInt(MyObject) = " & CInt(MyObject))
 Call ok(getVT(CInt(MyObject)) = "VT_I2", "getVT(CInt(MyObject)) = " & getVT(CInt(MyObject)))
 
+Sub testCSngError(strings, error_num1, error_num2)
+    on error resume next
+    Dim x
+
+    Call Err.clear()
+    x = CSng(strings)
+    Call ok(Err.number = error_num1, "Err.number = " & Err.number)
+
+    Call Err.clear()
+    Call CSng(strings)
+    Call ok(Err.number = error_num2, "Err.number = " & Err.number)
+End Sub
+
+Call ok(CSng(Empty) = 0, "CSng(Empty) = " & CSng(Empty))
+Call ok(getVT(CSng(Empty)) = "VT_R4", "getVT(CSng(Empty)) = " & getVT(CSng(Empty)))
+Call ok(CSng(CByte(0)) = 0, "CSng(CByte(0)) = " & CSng(CByte(0)))
+Call ok(getVT(CSng(CCur(0))) = "VT_R4", "getVT(CSng(CCur(0))) = " & getVT(CSng(CCur(0))))
+Call ok(CSng(CCur(0)) = 0, "CSng(CCur(0)) = " & CSng(CCur(0)))
+Call ok(getVT(CSng(CCur(0))) = "VT_R4", "getVT(CSng(CCur(0))) = " & getVT(CSng(CCur(0))))
+Call ok(CSng(0) = 0, "CSng(0) = " & CSng(0))
+Call ok(getVT(CSng(0)) = "VT_R4", "getVT(CSng(0)) = " & getVT(CSng(0)))
+Call ok(CSng(32768) = 32768, "CSng(32768) = " & CSng(32768))
+Call ok(getVT(CSng(32768)) = "VT_R4", "getVT(CSng(32768)) = " & getVT(CSng(32768)))
+Call ok(CSng(0.001 * 0.001) = 0.000001, "CSng(0.001 * 0.001) = " & CSng(0.001 * 0.001))
+Call ok(getVT(CSng(0.001 * 0.001)) = "VT_R4", "getVT(CSng(0.001 * 0.001)) = " & getVT(CSng(0.001 * 0.001)))
+Call ok(CSng("-1") = -1, "CSng(""-1"") = " & CSng("-1"))
+Call ok(getVT(CSng("-1")) = "VT_R4", "getVT(CSng(""-1"")) = " & getVT(CSng("-1")))
+If isEnglishLang Then
+    Call ok(CSng("-0.5") = -0.5, "CSng(""-0.5"") = " & CSng("-0.5"))
+    Call ok(getVT(CSng("-0.5")) = "VT_R4", "getVT(CSng(""-0.5"")) = " & getVT(CSng("-0.5")))
+End If
+Call testCSngError("", 13, 13)
+Call testCSngError("TRUE", 13, 13)
+Call testCSngError("FALSE", 13, 13)
+Call testCSngError("#TRue#", 13, 13)
+Call testCSngError("#fAlSE#", 13, 13)
+Call testCSngError(1, 0, 458)
+Call ok(CSng(True) = -1, "CSng(True) = " & CSng(True))
+Call ok(getVT(CSng(True)) = "VT_R4", "getVT(CSng(True)) = " & getVT(CSng(True)))
+Call ok(CSng(False) = 0, "CSng(False) = " & CSng(False))
+Call ok(getVT(CSng(False)) = "VT_R4", "getVT(CSng(False)) = " & getVT(CSng(False)))
+MyObject.myval = 0.1
+Call ok(CSng(MyObject) = 0.1, "CSng(MyObject) = " & CSng(MyObject))
+Call ok(getVT(CSng(MyObject)) = "VT_R4", "getVT(CSng(MyObject)) = " & getVT(CSng(MyObject)))
+MyObject.myval = 0
+Call ok(CSng(MyObject) = 0, "CSng(MyObject) = " & CSng(MyObject))
+Call ok(getVT(CSng(MyObject)) = "VT_R4", "getVT(CSng(MyObject)) = " & getVT(CSng(MyObject)))
+
+Dim MyEmpty
+Call ok(TypeName(CByte(255)) = "Byte", "TypeName(CByte(255)) = " & TypeName(CByte(255)))
+Call ok(TypeName(255) = "Integer", "TypeName(255) = " & TypeName(255))
+Call ok(TypeName(32768) = "Long", "TypeName(32768) = " & TypeName(32768))
+Call ok(TypeName(CSng(0.5)) = "Single", "TypeName(CSng(0.5)) = " & TypeName(CSng(0.5)))
+Call ok(TypeName(-0.5) = "Double", "TypeName(-0.5) = " & TypeName(-0.5))
+Call ok(TypeName(CCur(0.5)) = "Currency", "TypeName(CCur(0.5)) = " & TypeName(CCur(0.5)))
+Call ok(TypeName(CStr(0.5)) = "String", "TypeName(CStr(0.5)) = " & TypeName(CStr(0.5)))
+Call ok(TypeName(True) = "Boolean", "TypeName(True) = " & TypeName(True))
+Call ok(TypeName(MyEmpty) = "Empty", "TypeName(MyEmpty) = " & TypeName(Empty))
+Call ok(TypeName(Null) = "Null", "TypeName(Null) = " & TypeName(Null))
+
 Call reportSuccess()

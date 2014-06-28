@@ -117,29 +117,59 @@ static HRESULT STDMETHODCALLTYPE d2d_d3d_render_target_CreateBitmapBrush(ID2D1Re
 static HRESULT STDMETHODCALLTYPE d2d_d3d_render_target_CreateSolidColorBrush(ID2D1RenderTarget *iface,
         const D2D1_COLOR_F *color, const D2D1_BRUSH_PROPERTIES *desc, ID2D1SolidColorBrush **brush)
 {
-    FIXME("iface %p, color %p, desc %p, brush %p stub!\n", iface, color, desc, brush);
+    struct d2d_brush *object;
 
-    return E_NOTIMPL;
+    TRACE("iface %p, color %p, desc %p, brush %p.\n", iface, color, desc, brush);
+
+    if (!(object = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(*object))))
+        return E_OUTOFMEMORY;
+
+    d2d_solid_color_brush_init(object, iface, color, desc);
+
+    TRACE("Created brush %p.\n", object);
+    *brush = (ID2D1SolidColorBrush *)&object->ID2D1Brush_iface;
+
+    return S_OK;
 }
 
 static HRESULT STDMETHODCALLTYPE d2d_d3d_render_target_CreateGradientStopCollection(ID2D1RenderTarget *iface,
         const D2D1_GRADIENT_STOP *stops, UINT32 stop_count, D2D1_GAMMA gamma, D2D1_EXTEND_MODE extend_mode,
         ID2D1GradientStopCollection **gradient)
 {
-    FIXME("iface %p, stops %p, stop_count %u, gamma %#x, extend_mode %#x, gradient %p stub!\n",
+    struct d2d_gradient *object;
+
+    TRACE("iface %p, stops %p, stop_count %u, gamma %#x, extend_mode %#x, gradient %p.\n",
             iface, stops, stop_count, gamma, extend_mode, gradient);
 
-    return E_NOTIMPL;
+    if (!(object = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(*object))))
+        return E_OUTOFMEMORY;
+
+    d2d_gradient_init(object, iface, stops, stop_count, gamma, extend_mode);
+
+    TRACE("Created gradient %p.\n", object);
+    *gradient = &object->ID2D1GradientStopCollection_iface;
+
+    return S_OK;
 }
 
 static HRESULT STDMETHODCALLTYPE d2d_d3d_render_target_CreateLinearGradientBrush(ID2D1RenderTarget *iface,
         const D2D1_LINEAR_GRADIENT_BRUSH_PROPERTIES *gradient_brush_desc, const D2D1_BRUSH_PROPERTIES *brush_desc,
         ID2D1GradientStopCollection *gradient, ID2D1LinearGradientBrush **brush)
 {
-    FIXME("iface %p, gradient_brush_desc %p, brush_desc %p, gradient %p, brush %p stub!\n",
+    struct d2d_brush *object;
+
+    TRACE("iface %p, gradient_brush_desc %p, brush_desc %p, gradient %p, brush %p.\n",
             iface, gradient_brush_desc, brush_desc, gradient, brush);
 
-    return E_NOTIMPL;
+    if (!(object = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(*object))))
+        return E_OUTOFMEMORY;
+
+    d2d_linear_gradient_brush_init(object, iface, gradient_brush_desc, brush_desc, gradient);
+
+    TRACE("Created brush %p.\n", object);
+    *brush = (ID2D1LinearGradientBrush *)&object->ID2D1Brush_iface;
+
+    return S_OK;
 }
 
 static HRESULT STDMETHODCALLTYPE d2d_d3d_render_target_CreateRadialGradientBrush(ID2D1RenderTarget *iface,

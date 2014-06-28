@@ -1890,7 +1890,7 @@ static HRESULT WINAPI ddraw1_GetVerticalBlankStatus(IDirectDraw *iface, BOOL *st
  *
  * Returns
  *  DD_OK on success
- *  DDERR_INVALIDPARAMS of free and total are NULL
+ *  DDERR_INVALIDPARAMS if free and total are NULL
  *
  *****************************************************************************/
 static HRESULT WINAPI ddraw7_GetAvailableVidMem(IDirectDraw7 *iface, DDSCAPS2 *Caps, DWORD *total,
@@ -4174,7 +4174,7 @@ static HRESULT WINAPI d3d2_CreateDevice(IDirect3D2 *iface, REFCLSID riid,
  *  D3D_OK on success
  *  DDERR_OUTOFMEMORY if memory allocation failed
  *  The return value of IWineD3DDevice::CreateVertexBuffer if this call fails
- *  DDERR_INVALIDPARAMS if desc or vertex_buffer are NULL
+ *  DDERR_INVALIDPARAMS if desc or vertex_buffer is NULL
  *
  *****************************************************************************/
 static HRESULT WINAPI d3d7_CreateVertexBuffer(IDirect3D7 *iface, D3DVERTEXBUFFERDESC *desc,
@@ -4722,6 +4722,11 @@ static void CDECL device_parent_mode_changed(struct wined3d_device_parent *devic
         ERR("Failed to resize window.\n");
 }
 
+static void CDECL device_parent_activate(struct wined3d_device_parent *device_parent, BOOL activate)
+{
+    TRACE("device_parent %p, activate %#x.\n", device_parent, activate);
+}
+
 static HRESULT CDECL device_parent_surface_created(struct wined3d_device_parent *device_parent,
         void *container_parent, struct wined3d_surface *surface,
         void **parent, const struct wined3d_parent_ops **parent_ops)
@@ -4846,6 +4851,7 @@ static const struct wined3d_device_parent_ops ddraw_wined3d_device_parent_ops =
 {
     device_parent_wined3d_device_created,
     device_parent_mode_changed,
+    device_parent_activate,
     device_parent_surface_created,
     device_parent_volume_created,
     device_parent_create_swapchain_surface,

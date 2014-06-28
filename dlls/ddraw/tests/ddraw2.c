@@ -1,5 +1,5 @@
 /*
- * Copyright 2011-2012 Henri Verbeet for CodeWeavers
+ * Copyright 2011-2014 Henri Verbeet for CodeWeavers
  * Copyright 2012-2014 Stefan Dösinger for CodeWeavers
  *
  * This library is free software; you can redistribute it and/or
@@ -236,7 +236,7 @@ static IDirect3DDevice2 *create_device(IDirectDraw2 *ddraw, HWND window, DWORD c
         U2(surface_desc).dwZBufferBitDepth = z_depths[i];
         surface_desc.dwWidth = 640;
         surface_desc.dwHeight = 480;
-        if (FAILED(hr = IDirectDraw2_CreateSurface(ddraw, &surface_desc, &ds, NULL)))
+        if (FAILED(IDirectDraw2_CreateSurface(ddraw, &surface_desc, &ds, NULL)))
             continue;
 
         hr = IDirectDrawSurface_AddAttachedSurface(surface, ds);
@@ -245,7 +245,7 @@ static IDirect3DDevice2 *create_device(IDirectDraw2 *ddraw, HWND window, DWORD c
         if (FAILED(hr))
             continue;
 
-        if (SUCCEEDED(hr = IDirect3D2_CreateDevice(d3d, &IID_IDirect3DHALDevice, surface, &device)))
+        if (SUCCEEDED(IDirect3D2_CreateDevice(d3d, &IID_IDirect3DHALDevice, surface, &device)))
             break;
 
         IDirectDrawSurface_DeleteAttachedSurface(surface, 0, ds);
@@ -392,7 +392,7 @@ static void fix_wndproc(HWND window, LONG_PTR proc)
 static HRESULT CALLBACK restore_callback(IDirectDrawSurface *surface, DDSURFACEDESC *desc, void *context)
 {
     HRESULT hr = IDirectDrawSurface_Restore(surface);
-    ok(SUCCEEDED(hr), "Failed to restore surface, hr %#x.\n", hr);
+    ok(SUCCEEDED(hr) || hr == DDERR_IMPLICITLYCREATED, "Failed to restore surface, hr %#x.\n", hr);
     IDirectDrawSurface_Release(surface);
 
     return DDENUMRET_OK;
@@ -835,7 +835,7 @@ static void test_surface_interface_mismatch(void)
         goto cleanup;
     }
 
-    if (FAILED(hr = IDirectDraw2_QueryInterface(ddraw, &IID_IDirect3D2, (void **)&d3d)))
+    if (FAILED(IDirectDraw2_QueryInterface(ddraw, &IID_IDirect3D2, (void **)&d3d)))
     {
         skip("D3D interface is not available, skipping test.\n");
         goto cleanup;
@@ -3940,7 +3940,7 @@ static void test_rt_caps(void)
     ok(!!z_depth, "Failed to get device z depth.\n");
     IDirect3DDevice2_Release(device);
 
-    if (FAILED(hr = IDirectDraw2_QueryInterface(ddraw, &IID_IDirect3D2, (void **)&d3d)))
+    if (FAILED(IDirectDraw2_QueryInterface(ddraw, &IID_IDirect3D2, (void **)&d3d)))
     {
         skip("D3D interface is not available, skipping test.\n");
         goto done;
@@ -5066,14 +5066,13 @@ static void test_primary_palette(void)
             0, 0, 640, 480, 0, 0, 0, 0);
     ddraw = create_ddraw();
     ok(!!ddraw, "Failed to create a ddraw object.\n");
-    if (FAILED(hr = IDirectDraw2_SetDisplayMode(ddraw, 640, 480, 8, 0, 0)))
+    if (FAILED(IDirectDraw2_SetDisplayMode(ddraw, 640, 480, 8, 0, 0)))
     {
         win_skip("Failed to set 8 bpp display mode, skipping test.\n");
         IDirectDraw2_Release(ddraw);
         DestroyWindow(window);
         return;
     }
-    ok(SUCCEEDED(hr), "Failed to set display mode, hr %#x.\n", hr);
     hr = IDirectDraw2_SetCooperativeLevel(ddraw, window, DDSCL_EXCLUSIVE | DDSCL_FULLSCREEN);
     ok(SUCCEEDED(hr), "Failed to set cooperative level, hr %#x.\n", hr);
 
@@ -6247,7 +6246,7 @@ static void test_palette_gdi(void)
     refcount = IDirectDrawSurface_Release(surface);
     ok(!refcount, "Got unexpected refcount %u.\n", refcount);
 
-    if (FAILED(hr = IDirectDraw2_SetDisplayMode(ddraw, 640, 480, 8, 0, 0)))
+    if (FAILED(IDirectDraw2_SetDisplayMode(ddraw, 640, 480, 8, 0, 0)))
     {
         win_skip("Failed to set 8 bpp display mode, skipping test.\n");
         IDirectDrawPalette_Release(palette);
@@ -6420,14 +6419,13 @@ static void test_palette_alpha(void)
             0, 0, 640, 480, 0, 0, 0, 0);
     ddraw = create_ddraw();
     ok(!!ddraw, "Failed to create a ddraw object.\n");
-    if (FAILED(hr = IDirectDraw2_SetDisplayMode(ddraw, 640, 480, 8, 0, 0)))
+    if (FAILED(IDirectDraw2_SetDisplayMode(ddraw, 640, 480, 8, 0, 0)))
     {
         win_skip("Failed to set 8 bpp display mode, skipping test.\n");
         IDirectDraw2_Release(ddraw);
         DestroyWindow(window);
         return;
     }
-    ok(SUCCEEDED(hr), "Failed to set display mode, hr %#x.\n", hr);
     hr = IDirectDraw2_SetCooperativeLevel(ddraw, window, DDSCL_EXCLUSIVE | DDSCL_FULLSCREEN);
     ok(SUCCEEDED(hr), "Failed to set cooperative level, hr %#x.\n", hr);
 
@@ -6556,6 +6554,103 @@ static void test_palette_alpha(void)
     DestroyWindow(window);
 }
 
+static void test_lost_device(void)
+{
+    IDirectDrawSurface *surface;
+    DDSURFACEDESC surface_desc;
+    IDirectDraw2 *ddraw;
+    ULONG refcount;
+    HWND window;
+    HRESULT hr;
+    BOOL ret;
+
+    window = CreateWindowA("static", "ddraw_test", WS_OVERLAPPEDWINDOW,
+            0, 0, 640, 480, 0, 0, 0, 0);
+    ddraw = create_ddraw();
+    ok(!!ddraw, "Failed to create a ddraw object.\n");
+    hr = IDirectDraw2_SetCooperativeLevel(ddraw, window, DDSCL_EXCLUSIVE | DDSCL_FULLSCREEN);
+    ok(SUCCEEDED(hr), "Failed to set cooperative level, hr %#x.\n", hr);
+
+    memset(&surface_desc, 0, sizeof(surface_desc));
+    surface_desc.dwSize = sizeof(surface_desc);
+    surface_desc.dwFlags = DDSD_CAPS | DDSD_BACKBUFFERCOUNT;
+    surface_desc.ddsCaps.dwCaps = DDSCAPS_PRIMARYSURFACE | DDSCAPS_COMPLEX | DDSCAPS_FLIP;
+    surface_desc.dwBackBufferCount = 1;
+    hr = IDirectDraw2_CreateSurface(ddraw, &surface_desc, &surface, NULL);
+    ok(SUCCEEDED(hr), "Failed to create surface, hr %#x.\n", hr);
+
+    hr = IDirectDrawSurface_IsLost(surface);
+    ok(hr == DD_OK, "Got unexpected hr %#x.\n", hr);
+    hr = IDirectDrawSurface_Flip(surface, NULL, DDFLIP_WAIT);
+    ok(hr == DD_OK, "Got unexpected hr %#x.\n", hr);
+
+    ret = SetForegroundWindow(GetDesktopWindow());
+    ok(ret, "Failed to set foreground window.\n");
+    hr = IDirectDrawSurface_IsLost(surface);
+    todo_wine ok(hr == DDERR_SURFACELOST, "Got unexpected hr %#x.\n", hr);
+    hr = IDirectDrawSurface_Flip(surface, NULL, DDFLIP_WAIT);
+    todo_wine ok(hr == DDERR_SURFACELOST, "Got unexpected hr %#x.\n", hr);
+
+    ret = SetForegroundWindow(window);
+    ok(ret, "Failed to set foreground window.\n");
+    hr = IDirectDrawSurface_IsLost(surface);
+    todo_wine ok(hr == DDERR_SURFACELOST, "Got unexpected hr %#x.\n", hr);
+    hr = IDirectDrawSurface_Flip(surface, NULL, DDFLIP_WAIT);
+    todo_wine ok(hr == DDERR_SURFACELOST, "Got unexpected hr %#x.\n", hr);
+
+    hr = restore_surfaces(ddraw);
+    ok(hr == DD_OK, "Got unexpected hr %#x.\n", hr);
+    hr = IDirectDrawSurface_IsLost(surface);
+    ok(hr == DD_OK, "Got unexpected hr %#x.\n", hr);
+    hr = IDirectDrawSurface_Flip(surface, NULL, DDFLIP_WAIT);
+    ok(hr == DD_OK, "Got unexpected hr %#x.\n", hr);
+
+    hr = IDirectDraw2_SetCooperativeLevel(ddraw, window, DDSCL_NORMAL);
+    ok(hr == DD_OK, "Got unexpected hr %#x.\n", hr);
+    hr = IDirectDrawSurface_IsLost(surface);
+    ok(hr == DDERR_SURFACELOST, "Got unexpected hr %#x.\n", hr);
+    hr = IDirectDrawSurface_Flip(surface, NULL, DDFLIP_WAIT);
+    todo_wine ok(hr == DDERR_SURFACELOST, "Got unexpected hr %#x.\n", hr);
+
+    /* Trying to restore the primary will crash, probably because flippable
+     * surfaces can't exist in DDSCL_NORMAL. */
+    IDirectDrawSurface_Release(surface);
+    memset(&surface_desc, 0, sizeof(surface_desc));
+    surface_desc.dwSize = sizeof(surface_desc);
+    surface_desc.dwFlags = DDSD_CAPS;
+    surface_desc.ddsCaps.dwCaps = DDSCAPS_PRIMARYSURFACE;
+    hr = IDirectDraw2_CreateSurface(ddraw, &surface_desc, &surface, NULL);
+    ok(SUCCEEDED(hr), "Failed to create surface, hr %#x.\n", hr);
+
+    hr = IDirectDrawSurface_IsLost(surface);
+    ok(hr == DD_OK, "Got unexpected hr %#x.\n", hr);
+
+    ret = SetForegroundWindow(GetDesktopWindow());
+    ok(ret, "Failed to set foreground window.\n");
+    hr = IDirectDrawSurface_IsLost(surface);
+    ok(hr == DD_OK, "Got unexpected hr %#x.\n", hr);
+
+    ret = SetForegroundWindow(window);
+    ok(ret, "Failed to set foreground window.\n");
+    hr = IDirectDrawSurface_IsLost(surface);
+    ok(hr == DD_OK, "Got unexpected hr %#x.\n", hr);
+
+    hr = IDirectDraw2_SetCooperativeLevel(ddraw, window, DDSCL_EXCLUSIVE | DDSCL_FULLSCREEN);
+    ok(hr == DD_OK, "Got unexpected hr %#x.\n", hr);
+    hr = IDirectDrawSurface_IsLost(surface);
+    ok(hr == DDERR_SURFACELOST, "Got unexpected hr %#x.\n", hr);
+
+    hr = restore_surfaces(ddraw);
+    ok(hr == DD_OK, "Got unexpected hr %#x.\n", hr);
+    hr = IDirectDrawSurface_IsLost(surface);
+    ok(hr == DD_OK, "Got unexpected hr %#x.\n", hr);
+
+    IDirectDrawSurface_Release(surface);
+    refcount = IDirectDraw2_Release(ddraw);
+    ok(!refcount, "Got unexpected refcount %u.\n", refcount);
+    DestroyWindow(window);
+}
+
 START_TEST(ddraw2)
 {
     IDirectDraw2 *ddraw;
@@ -6612,4 +6707,5 @@ START_TEST(ddraw2)
     test_material();
     test_palette_gdi();
     test_palette_alpha();
+    test_lost_device();
 }

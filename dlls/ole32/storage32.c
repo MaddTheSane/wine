@@ -2874,6 +2874,7 @@ static HRESULT StorageImpl_LockRegionSync(StorageImpl *This, ULARGE_INTEGER offs
     ULARGE_INTEGER cb, DWORD dwLockType)
 {
     HRESULT hr;
+    int delay = 0;
 
     /* if it's a FileLockBytesImpl use LockFileEx in blocking mode */
     if (SUCCEEDED(FileLockBytesImpl_LockRegionSync(This->lockBytes, offset, cb)))
@@ -2882,16 +2883,14 @@ static HRESULT StorageImpl_LockRegionSync(StorageImpl *This, ULARGE_INTEGER offs
     /* otherwise we have to fake it based on an async lock */
     do
     {
-        int delay=0;
-
         hr = ILockBytes_LockRegion(This->lockBytes, offset, cb, dwLockType);
 
-        if (hr == STG_E_ACCESSDENIED)
+        if (hr == STG_E_ACCESSDENIED || hr == STG_E_LOCKVIOLATION)
         {
             Sleep(delay);
             if (delay < 150) delay++;
         }
-    } while (hr == STG_E_ACCESSDENIED);
+    } while (hr == STG_E_ACCESSDENIED || hr == STG_E_LOCKVIOLATION);
 
     return hr;
 }
@@ -2908,7 +2907,7 @@ static HRESULT StorageImpl_CheckLockRange(StorageImpl *This, ULONG start,
     hr = ILockBytes_LockRegion(This->lockBytes, offset, cb, LOCK_ONLYONCE);
     if (SUCCEEDED(hr)) ILockBytes_UnlockRegion(This->lockBytes, offset, cb, LOCK_ONLYONCE);
 
-    if (hr == STG_E_ACCESSDENIED)
+    if (hr == STG_E_ACCESSDENIED || hr == STG_E_LOCKVIOLATION)
         return fail_hr;
     else
         return S_OK;
@@ -2926,7 +2925,7 @@ static HRESULT StorageImpl_LockOne(StorageImpl *This, ULONG start, ULONG end)
     {
         offset.QuadPart = i;
         hr = ILockBytes_LockRegion(This->lockBytes, offset, cb, LOCK_ONLYONCE);
-        if (hr != STG_E_ACCESSDENIED)
+        if (hr != STG_E_ACCESSDENIED && hr != STG_E_LOCKVIOLATION)
             break;
     }
 
