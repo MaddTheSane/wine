@@ -6281,18 +6281,18 @@ static void test_lost_device(void)
     ret = SetForegroundWindow(GetDesktopWindow());
     ok(ret, "Failed to set foreground window.\n");
     hr = IDirect3DDevice8_TestCooperativeLevel(device);
-    todo_wine ok(hr == D3DERR_DEVICELOST, "Got unexpected hr %#x.\n", hr);
+    ok(hr == D3DERR_DEVICELOST, "Got unexpected hr %#x.\n", hr);
     hr = IDirect3DDevice8_Present(device, NULL, NULL, NULL, NULL);
-    todo_wine ok(hr == D3DERR_DEVICELOST, "Got unexpected hr %#x.\n", hr);
+    ok(hr == D3DERR_DEVICELOST, "Got unexpected hr %#x.\n", hr);
 
     ret = ShowWindow(window, SW_RESTORE);
     ok(ret, "Failed to restore window.\n");
     ret = SetForegroundWindow(window);
     ok(ret, "Failed to set foreground window.\n");
     hr = IDirect3DDevice8_TestCooperativeLevel(device);
-    todo_wine ok(hr == D3DERR_DEVICENOTRESET, "Got unexpected hr %#x.\n", hr);
+    ok(hr == D3DERR_DEVICENOTRESET, "Got unexpected hr %#x.\n", hr);
     hr = IDirect3DDevice8_Present(device, NULL, NULL, NULL, NULL);
-    todo_wine ok(hr == D3DERR_DEVICELOST, "Got unexpected hr %#x.\n", hr);
+    ok(hr == D3DERR_DEVICELOST, "Got unexpected hr %#x.\n", hr);
 
     hr = reset_device(device, window, FALSE);
     ok(hr == D3D_OK, "Got unexpected hr %#x.\n", hr);
@@ -6332,6 +6332,95 @@ static void test_lost_device(void)
     refcount = IDirect3DDevice8_Release(device);
     ok(!refcount, "Device has %u references left.\n", refcount);
 done:
+    IDirect3D8_Release(d3d);
+    DestroyWindow(window);
+}
+
+static void test_resource_priority(void)
+{
+    IDirect3DDevice8 *device;
+    IDirect3DTexture8 *texture;
+    IDirect3DVertexBuffer8 *buffer;
+    IDirect3D8 *d3d;
+    ULONG refcount;
+    HWND window;
+    HRESULT hr;
+    static const struct
+    {
+        D3DPOOL pool;
+        const char *name;
+        BOOL can_set_priority;
+    }
+    test_data[] =
+    {
+        {D3DPOOL_DEFAULT, "D3DPOOL_DEFAULT", FALSE},
+        {D3DPOOL_SYSTEMMEM, "D3DPOOL_SYSTEMMEM", FALSE},
+        {D3DPOOL_MANAGED, "D3DPOOL_MANAGED", TRUE},
+        {D3DPOOL_SCRATCH, "D3DPOOL_SCRATCH", FALSE}
+    };
+    unsigned int i;
+    DWORD priority;
+
+    window = CreateWindowA("static", "d3d8_test", WS_OVERLAPPEDWINDOW,
+            0, 0, 640, 480, NULL, NULL, NULL, NULL);
+    d3d = Direct3DCreate8(D3D_SDK_VERSION);
+    ok(!!d3d, "Failed to create a D3D object.\n");
+    if (!(device = create_device(d3d, window, window, TRUE)))
+    {
+        skip("Failed to create a D3D device, skipping tests.\n");
+        IDirect3D8_Release(d3d);
+        DestroyWindow(window);
+        return;
+    }
+
+    for (i = 0; i < sizeof(test_data) / sizeof(*test_data); i++)
+    {
+        hr = IDirect3DDevice8_CreateTexture(device, 16, 16, 0, 0, D3DFMT_X8R8G8B8,
+                test_data[i].pool, &texture);
+        ok(SUCCEEDED(hr), "Failed to create texture, hr %#x, pool %s.\n", hr, test_data[i].name);
+
+        priority = IDirect3DTexture8_GetPriority(texture);
+        ok(priority == 0, "Got unexpected priority %u, pool %s.\n", priority, test_data[i].name);
+        priority = IDirect3DTexture8_SetPriority(texture, 1);
+        ok(priority == 0, "Got unexpected priority %u, pool %s.\n", priority, test_data[i].name);
+        priority = IDirect3DTexture8_GetPriority(texture);
+        if (test_data[i].can_set_priority)
+        {
+            ok(priority == 1, "Got unexpected priority %u, pool %s.\n", priority, test_data[i].name);
+            priority = IDirect3DTexture8_SetPriority(texture, 0);
+            ok(priority == 1, "Got unexpected priority %u, pool %s.\n", priority, test_data[i].name);
+        }
+        else
+            ok(priority == 0, "Got unexpected priority %u, pool %s.\n", priority, test_data[i].name);
+
+        IDirect3DTexture8_Release(texture);
+
+        if (test_data[i].pool != D3DPOOL_SCRATCH)
+        {
+            hr = IDirect3DDevice8_CreateVertexBuffer(device, 256, 0, 0,
+                    test_data[i].pool, &buffer);
+            ok(SUCCEEDED(hr), "Failed to create buffer, hr %#x, pool %s.\n", hr, test_data[i].name);
+
+            priority = IDirect3DVertexBuffer8_GetPriority(buffer);
+            ok(priority == 0, "Got unexpected priority %u, pool %s.\n", priority, test_data[i].name);
+            priority = IDirect3DVertexBuffer8_SetPriority(buffer, 1);
+            ok(priority == 0, "Got unexpected priority %u, pool %s.\n", priority, test_data[i].name);
+            priority = IDirect3DVertexBuffer8_GetPriority(buffer);
+            if (test_data[i].can_set_priority)
+            {
+                ok(priority == 1, "Got unexpected priority %u, pool %s.\n", priority, test_data[i].name);
+                priority = IDirect3DVertexBuffer8_SetPriority(buffer, 0);
+                ok(priority == 1, "Got unexpected priority %u, pool %s.\n", priority, test_data[i].name);
+            }
+            else
+                ok(priority == 0, "Got unexpected priority %u, pool %s.\n", priority, test_data[i].name);
+
+            IDirect3DVertexBuffer8_Release(buffer);
+        }
+    }
+
+    refcount = IDirect3DDevice8_Release(device);
+    ok(!refcount, "Device has %u references left.\n", refcount);
     IDirect3D8_Release(d3d);
     DestroyWindow(window);
 }
@@ -6422,6 +6511,7 @@ START_TEST(device)
     test_mipmap_lock();
     test_writeonly_resource();
     test_lost_device();
+    test_resource_priority();
 
     UnregisterClassA("d3d8_test_wc", GetModuleHandleA(NULL));
 }

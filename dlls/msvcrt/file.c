@@ -2185,6 +2185,9 @@ int CDECL MSVCRT__sopen_s( int *fd, const char *path, int oflags, int shflags, i
     MSVCRT_wchar_t *pathW;
     int ret;
 
+    if (!MSVCRT_CHECK_PMT(fd != NULL))
+        return MSVCRT_EINVAL;
+    *fd = -1;
     if(!MSVCRT_CHECK_PMT(path && (pathW = msvcrt_wstrdupa(path))))
         return MSVCRT_EINVAL;
 
@@ -4506,7 +4509,7 @@ int CDECL MSVCRT_setvbuf(MSVCRT_FILE* file, char *buf, int mode, MSVCRT_size_t s
         file->_flag |= MSVCRT__USERBUF;
         file->_bufsiz = size;
     }else {
-        file->_base = file->_ptr = malloc(size);
+        file->_base = file->_ptr = MSVCRT_malloc(size);
         if(!file->_base) {
             file->_bufsiz = 0;
             MSVCRT__unlock_file(file);

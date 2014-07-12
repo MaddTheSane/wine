@@ -767,7 +767,7 @@ static void HTTP_ProcessCookies( http_request_t *request )
             continue;
 
         data++;
-        set_cookie(host->lpszValue, request->path, name, data);
+        set_cookie(host->lpszValue, request->path, name, data, INTERNET_COOKIE_HTTPONLY);
         heap_free(name);
     }
 }
@@ -3589,12 +3589,12 @@ static DWORD HTTP_HttpQueryInfoW(http_request_t *request, DWORD dwInfoLevel,
 
                 TRACE("returning data: %s\n", debugstr_wn(headers, len / sizeof(WCHAR)));
 
-                for (i=0; i<len; i++)
+                for (i = 0; i < len / sizeof(WCHAR); i++)
                 {
                     if (headers[i] == '\n')
                         headers[i] = 0;
                 }
-                memcpy(lpBuffer, headers, len + sizeof(WCHAR));
+                memcpy(lpBuffer, headers, len);
             }
             *lpdwBufferLength = len - sizeof(WCHAR);
 
@@ -4186,7 +4186,7 @@ static void HTTP_InsertCookies(http_request_t *request)
     if(!host)
         return;
 
-    if(get_cookie(host->lpszValue, request->path, NULL, &cookie_size) != ERROR_SUCCESS)
+    if(get_cookie(host->lpszValue, request->path, NULL, &cookie_size, INTERNET_COOKIE_HTTPONLY) != ERROR_SUCCESS)
         return;
 
     size = sizeof(cookieW) + cookie_size * sizeof(WCHAR) + sizeof(szCrLf);
@@ -4194,7 +4194,7 @@ static void HTTP_InsertCookies(http_request_t *request)
         return;
 
     cnt += sprintfW(cookies, cookieW);
-    get_cookie(host->lpszValue, request->path, cookies+cnt, &cookie_size);
+    get_cookie(host->lpszValue, request->path, cookies+cnt, &cookie_size, INTERNET_COOKIE_HTTPONLY);
     strcatW(cookies, szCrLf);
 
     HTTP_HttpAddRequestHeadersW(request, cookies, strlenW(cookies), HTTP_ADDREQ_FLAG_REPLACE);

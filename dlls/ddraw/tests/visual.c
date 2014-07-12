@@ -23,6 +23,16 @@
 #include "ddraw.h"
 #include "d3d.h"
 
+struct vec3
+{
+    float x, y, z;
+};
+
+struct vec4
+{
+    float x, y, z, w;
+};
+
 static HWND window;
 static IDirectDraw7        *DirectDraw;
 static IDirectDrawSurface7 *Surface;
@@ -264,25 +274,6 @@ static void set_viewport_size(IDirect3DDevice7 *device)
     return;
 }
 
-struct vertex
-{
-    float x, y, z;
-    DWORD diffuse;
-};
-
-struct tvertex
-{
-    float x, y, z, w;
-    DWORD diffuse;
-};
-
-struct nvertex
-{
-    float x, y, z;
-    float nx, ny, nz;
-    DWORD diffuse;
-};
-
 static void lighting_test(IDirect3DDevice7 *device)
 {
     HRESULT hr;
@@ -297,33 +288,44 @@ static void lighting_test(IDirect3DDevice7 *device)
         0.0f, 0.0f, 1.0f, 0.0f,
         0.0f, 0.0f, 0.0f, 1.0f,
     };
-    struct vertex unlitquad[] =
+    struct
     {
-        {-1.0f, -1.0f,   0.1f,                          0xffff0000},
-        {-1.0f,  0.0f,   0.1f,                          0xffff0000},
-        { 0.0f,  0.0f,   0.1f,                          0xffff0000},
-        { 0.0f, -1.0f,   0.1f,                          0xffff0000},
+        struct vec3 position;
+        DWORD diffuse;
+    }
+    unlitquad[] =
+    {
+        {{-1.0f, -1.0f, 0.1f}, 0xffff0000},
+        {{-1.0f,  0.0f, 0.1f}, 0xffff0000},
+        {{ 0.0f,  0.0f, 0.1f}, 0xffff0000},
+        {{ 0.0f, -1.0f, 0.1f}, 0xffff0000},
+    },
+    litquad[] =
+    {
+        {{-1.0f,  0.0f, 0.1f}, 0xff00ff00},
+        {{-1.0f,  1.0f, 0.1f}, 0xff00ff00},
+        {{ 0.0f,  1.0f, 0.1f}, 0xff00ff00},
+        {{ 0.0f,  0.0f, 0.1f}, 0xff00ff00},
     };
-    struct vertex litquad[] =
+    struct
     {
-        {-1.0f,  0.0f,   0.1f,                          0xff00ff00},
-        {-1.0f,  1.0f,   0.1f,                          0xff00ff00},
-        { 0.0f,  1.0f,   0.1f,                          0xff00ff00},
-        { 0.0f,  0.0f,   0.1f,                          0xff00ff00},
-    };
-    struct nvertex unlitnquad[] =
+        struct vec3 position;
+        struct vec3 normal;
+        DWORD diffuse;
+    }
+    unlitnquad[] =
     {
-        { 0.0f, -1.0f,   0.1f,  1.0f,   1.0f,   1.0f,   0xff0000ff},
-        { 0.0f,  0.0f,   0.1f,  1.0f,   1.0f,   1.0f,   0xff0000ff},
-        { 1.0f,  0.0f,   0.1f,  1.0f,   1.0f,   1.0f,   0xff0000ff},
-        { 1.0f, -1.0f,   0.1f,  1.0f,   1.0f,   1.0f,   0xff0000ff},
-    };
-    struct nvertex litnquad[] =
+        {{0.0f, -1.0f, 0.1f}, {1.0f, 1.0f, 1.0f}, 0xff0000ff},
+        {{0.0f,  0.0f, 0.1f}, {1.0f, 1.0f, 1.0f}, 0xff0000ff},
+        {{1.0f,  0.0f, 0.1f}, {1.0f, 1.0f, 1.0f}, 0xff0000ff},
+        {{1.0f, -1.0f, 0.1f}, {1.0f, 1.0f, 1.0f}, 0xff0000ff},
+    },
+    litnquad[] =
     {
-        { 0.0f,  0.0f,   0.1f,  1.0f,   1.0f,   1.0f,   0xffffff00},
-        { 0.0f,  1.0f,   0.1f,  1.0f,   1.0f,   1.0f,   0xffffff00},
-        { 1.0f,  1.0f,   0.1f,  1.0f,   1.0f,   1.0f,   0xffffff00},
-        { 1.0f,  0.0f,   0.1f,  1.0f,   1.0f,   1.0f,   0xffffff00},
+        {{0.0f,  0.0f, 0.1f}, {1.0f, 1.0f, 1.0f}, 0xffffff00},
+        {{0.0f,  1.0f, 0.1f}, {1.0f, 1.0f, 1.0f}, 0xffffff00},
+        {{1.0f,  1.0f, 0.1f}, {1.0f, 1.0f, 1.0f}, 0xffffff00},
+        {{1.0f,  0.0f, 0.1f}, {1.0f, 1.0f, 1.0f}, 0xffffff00},
     };
     WORD Indices[] = {0, 1, 2, 2, 3, 0};
 
@@ -930,19 +932,24 @@ static void alpha_test(IDirect3DDevice7 *device)
     DWORD color, red, green, blue;
     DDSURFACEDESC2 ddsd;
 
-    struct vertex quad1[] =
+    struct
     {
-        {-1.0f, -1.0f,   0.1f,                          0x4000ff00},
-        {-1.0f,  0.0f,   0.1f,                          0x4000ff00},
-        { 1.0f, -1.0f,   0.1f,                          0x4000ff00},
-        { 1.0f,  0.0f,   0.1f,                          0x4000ff00},
-    };
-    struct vertex quad2[] =
+        struct vec3 position;
+        DWORD diffuse;
+    }
+    quad1[] =
     {
-        {-1.0f,  0.0f,   0.1f,                          0xc00000ff},
-        {-1.0f,  1.0f,   0.1f,                          0xc00000ff},
-        { 1.0f,  0.0f,   0.1f,                          0xc00000ff},
-        { 1.0f,  1.0f,   0.1f,                          0xc00000ff},
+        {{-1.0f, -1.0f, 0.1f}, 0x4000ff00},
+        {{-1.0f,  0.0f, 0.1f}, 0x4000ff00},
+        {{ 1.0f, -1.0f, 0.1f}, 0x4000ff00},
+        {{ 1.0f,  0.0f, 0.1f}, 0x4000ff00},
+    },
+    quad2[] =
+    {
+        {{-1.0f,  0.0f, 0.1f}, 0xc00000ff},
+        {{-1.0f,  1.0f, 0.1f}, 0xc00000ff},
+        {{ 1.0f,  0.0f, 0.1f}, 0xc00000ff},
+        {{ 1.0f,  1.0f, 0.1f}, 0xc00000ff},
     };
     static float composite_quad[][5] = {
         { 0.0f, -1.0f, 0.1f, 0.0f, 1.0f},
@@ -2237,12 +2244,17 @@ static void D3D3_ViewportClearTest(void)
         0.0f, 0.0f, 1.0f, 0.0f,
         0.0f, 0.0f, 0.0f, 1.0f,
     };
-    struct vertex quad[] =
+    struct
     {
-        {-1.0f, -1.0f,   0.1f,                          0xffffffff},
-        {-1.0f,  1.0f,   0.1f,                          0xffffffff},
-        { 1.0f,  1.0f,   0.1f,                          0xffffffff},
-        { 1.0f, -1.0f,   0.1f,                          0xffffffff},
+        struct vec3 position;
+        DWORD diffuse;
+    }
+    quad[] =
+    {
+        {{-1.0f, -1.0f, 0.1f}, 0xffffffff},
+        {{-1.0f,  1.0f, 0.1f}, 0xffffffff},
+        {{ 1.0f,  1.0f, 0.1f}, 0xffffffff},
+        {{ 1.0f, -1.0f, 0.1f}, 0xffffffff},
     };
 
     WORD Indices[] = {0, 1, 2, 2, 3, 0};
@@ -2967,47 +2979,57 @@ out:
  */
 static void depth_clamp_test(IDirect3DDevice7 *device)
 {
-    struct tvertex quad1[] =
+    struct
     {
-        {  0.0f,   0.0f,  5.0f, 1.0f, 0xff002b7f},
-        {640.0f,   0.0f,  5.0f, 1.0f, 0xff002b7f},
-        {  0.0f, 480.0f,  5.0f, 1.0f, 0xff002b7f},
-        {640.0f, 480.0f,  5.0f, 1.0f, 0xff002b7f},
+        struct vec4 position;
+        DWORD diffuse;
+    }
+    quad1[] =
+    {
+        {{  0.0f,   0.0f,  5.0f, 1.0f}, 0xff002b7f},
+        {{640.0f,   0.0f,  5.0f, 1.0f}, 0xff002b7f},
+        {{  0.0f, 480.0f,  5.0f, 1.0f}, 0xff002b7f},
+        {{640.0f, 480.0f,  5.0f, 1.0f}, 0xff002b7f},
+    },
+    quad2[] =
+    {
+        {{  0.0f, 300.0f, 10.0f, 1.0f}, 0xfff9e814},
+        {{640.0f, 300.0f, 10.0f, 1.0f}, 0xfff9e814},
+        {{  0.0f, 360.0f, 10.0f, 1.0f}, 0xfff9e814},
+        {{640.0f, 360.0f, 10.0f, 1.0f}, 0xfff9e814},
+    },
+    quad3[] =
+    {
+        {{112.0f, 108.0f,  5.0f, 1.0f}, 0xffffffff},
+        {{208.0f, 108.0f,  5.0f, 1.0f}, 0xffffffff},
+        {{112.0f, 204.0f,  5.0f, 1.0f}, 0xffffffff},
+        {{208.0f, 204.0f,  5.0f, 1.0f}, 0xffffffff},
+    },
+    quad4[] =
+    {
+        {{ 42.0f,  41.0f, 10.0f, 1.0f}, 0xffffffff},
+        {{112.0f,  41.0f, 10.0f, 1.0f}, 0xffffffff},
+        {{ 42.0f, 108.0f, 10.0f, 1.0f}, 0xffffffff},
+        {{112.0f, 108.0f, 10.0f, 1.0f}, 0xffffffff},
     };
-    struct tvertex quad2[] =
+    struct
     {
-        {  0.0f, 300.0f, 10.0f, 1.0f, 0xfff9e814},
-        {640.0f, 300.0f, 10.0f, 1.0f, 0xfff9e814},
-        {  0.0f, 360.0f, 10.0f, 1.0f, 0xfff9e814},
-        {640.0f, 360.0f, 10.0f, 1.0f, 0xfff9e814},
-    };
-    struct tvertex quad3[] =
+        struct vec3 position;
+        DWORD diffuse;
+    }
+    quad5[] =
     {
-        {112.0f, 108.0f,  5.0f, 1.0f, 0xffffffff},
-        {208.0f, 108.0f,  5.0f, 1.0f, 0xffffffff},
-        {112.0f, 204.0f,  5.0f, 1.0f, 0xffffffff},
-        {208.0f, 204.0f,  5.0f, 1.0f, 0xffffffff},
-    };
-    struct tvertex quad4[] =
+        {{-0.5f,  0.5f, 10.0f}, 0xff14f914},
+        {{ 0.5f,  0.5f, 10.0f}, 0xff14f914},
+        {{-0.5f, -0.5f, 10.0f}, 0xff14f914},
+        {{ 0.5f, -0.5f, 10.0f}, 0xff14f914},
+    },
+    quad6[] =
     {
-        { 42.0f,  41.0f, 10.0f, 1.0f, 0xffffffff},
-        {112.0f,  41.0f, 10.0f, 1.0f, 0xffffffff},
-        { 42.0f, 108.0f, 10.0f, 1.0f, 0xffffffff},
-        {112.0f, 108.0f, 10.0f, 1.0f, 0xffffffff},
-    };
-    struct vertex quad5[] =
-    {
-        { -0.5f,   0.5f, 10.0f,       0xff14f914},
-        {  0.5f,   0.5f, 10.0f,       0xff14f914},
-        { -0.5f,  -0.5f, 10.0f,       0xff14f914},
-        {  0.5f,  -0.5f, 10.0f,       0xff14f914},
-    };
-    struct vertex quad6[] =
-    {
-        { -1.0f,   0.5f, 10.0f,       0xfff91414},
-        {  1.0f,   0.5f, 10.0f,       0xfff91414},
-        { -1.0f,  0.25f, 10.0f,       0xfff91414},
-        {  1.0f,  0.25f, 10.0f,       0xfff91414},
+        {{-1.0f, 0.5f,  10.0f}, 0xfff91414},
+        {{ 1.0f, 0.5f,  10.0f}, 0xfff91414},
+        {{-1.0f, 0.25f, 10.0f}, 0xfff91414},
+        {{ 1.0f, 0.25f, 10.0f}, 0xfff91414},
     };
 
     D3DVIEWPORT7 vp;

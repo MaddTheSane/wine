@@ -2185,23 +2185,13 @@ static HRESULT WINAPI ddraw1_GetScanLine(IDirectDraw *iface, DWORD *line)
     return ddraw7_GetScanLine(&ddraw->IDirectDraw7_iface, line);
 }
 
-/*****************************************************************************
- * IDirectDraw7::TestCooperativeLevel
- *
- * Informs the application about the state of the video adapter, depending
- * on the cooperative level
- *
- * Returns:
- *  DD_OK if the device is in a sane state
- *  DDERR_NOEXCLUSIVEMODE or DDERR_EXCLUSIVEMODEALREADYSET
- *  if the state is not correct(See below)
- *
- *****************************************************************************/
 static HRESULT WINAPI ddraw7_TestCooperativeLevel(IDirectDraw7 *iface)
 {
+    struct ddraw *ddraw = impl_from_IDirectDraw7(iface);
+
     TRACE("iface %p.\n", iface);
 
-    return DD_OK;
+    return ddraw->device_state == DDRAW_DEVICE_STATE_OK ? DD_OK : DDERR_NOEXCLUSIVEMODE;
 }
 
 static HRESULT WINAPI ddraw4_TestCooperativeLevel(IDirectDraw4 *iface)
@@ -2685,27 +2675,20 @@ static HRESULT WINAPI ddraw4_GetSurfaceFromDC(IDirectDraw4 *iface, HDC dc,
     return hr;
 }
 
-/*****************************************************************************
- * IDirectDraw7::RestoreAllSurfaces
- *
- * Calls the restore method of all surfaces
- *
- * Params:
- *
- * Returns:
- *  Always returns DD_OK because it's a stub
- *
- *****************************************************************************/
+static HRESULT CALLBACK restore_callback(IDirectDrawSurface7 *surface, DDSURFACEDESC2 *desc, void *context)
+{
+    IDirectDrawSurface_Restore(surface);
+    IDirectDrawSurface_Release(surface);
+
+    return DDENUMRET_OK;
+}
+
 static HRESULT WINAPI ddraw7_RestoreAllSurfaces(IDirectDraw7 *iface)
 {
-    FIXME("iface %p stub!\n", iface);
+    TRACE("iface %p.\n", iface);
 
-    /* This isn't hard to implement: Enumerate all WineD3D surfaces,
-     * get their parent and call their restore method. Do not implement
-     * it in WineD3D, as restoring a surface means re-creating the
-     * WineD3DDSurface
-     */
-    return DD_OK;
+    return IDirectDraw7_EnumSurfaces(iface, DDENUMSURFACES_ALL | DDENUMSURFACES_DOESEXIST,
+            NULL, NULL, restore_callback);
 }
 
 static HRESULT WINAPI ddraw4_RestoreAllSurfaces(IDirectDraw4 *iface)
@@ -4724,7 +4707,14 @@ static void CDECL device_parent_mode_changed(struct wined3d_device_parent *devic
 
 static void CDECL device_parent_activate(struct wined3d_device_parent *device_parent, BOOL activate)
 {
+    struct ddraw *ddraw = ddraw_from_device_parent(device_parent);
+
     TRACE("device_parent %p, activate %#x.\n", device_parent, activate);
+
+    if (!activate)
+        InterlockedCompareExchange(&ddraw->device_state, DDRAW_DEVICE_STATE_LOST, DDRAW_DEVICE_STATE_OK);
+    else
+        InterlockedCompareExchange(&ddraw->device_state, DDRAW_DEVICE_STATE_OK, DDRAW_DEVICE_STATE_LOST);
 }
 
 static HRESULT CDECL device_parent_surface_created(struct wined3d_device_parent *device_parent,

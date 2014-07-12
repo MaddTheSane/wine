@@ -2744,6 +2744,7 @@ ME_TextEditor *ME_MakeEditor(ITextHost *texthost, BOOL bEmulateVersion10)
   ed->hwndParent = NULL;
   ed->sizeWindow.cx = ed->sizeWindow.cy = 0;
   ed->texthost = texthost;
+  ed->reOle = NULL;
   ed->bEmulateVersion10 = bEmulateVersion10;
   ed->styleFlags = 0;
   ITextHost_TxGetPropertyBits(texthost,
@@ -2886,6 +2887,11 @@ static void ME_DestroyEditor(ME_TextEditor *editor)
   if(editor->lpOleCallback)
     IRichEditOleCallback_Release(editor->lpOleCallback);
   ITextHost_Release(editor->texthost);
+  if (editor->reOle)
+  {
+    IRichEditOle_Release(editor->reOle);
+    editor->reOle = NULL;
+  }
   OleUninitialize();
 
   FREE_OBJ(editor->pBuffer);
@@ -3473,7 +3479,7 @@ LRESULT ME_HandleMessage(ME_TextEditor *editor, UINT msg, WPARAM wParam,
       editor->styleFlags |= ES_READONLY;
     else
       editor->styleFlags &= ~ES_READONLY;
-    return 0;
+    return 1;
   }
   case EM_SETEVENTMASK:
   {
@@ -4467,8 +4473,12 @@ LRESULT ME_HandleMessage(ME_TextEditor *editor, UINT msg, WPARAM wParam,
   }
   case EM_GETOLEINTERFACE:
   {
-    LPVOID *ppvObj = (LPVOID*) lParam;
-    return CreateIRichEditOle(editor, ppvObj);
+    if (!editor->reOle)
+      if (!CreateIRichEditOle(editor, (LPVOID *)&editor->reOle))
+        return 0;
+    *(LPVOID *)lParam = editor->reOle;
+    IRichEditOle_AddRef(editor->reOle);
+    return 1;
   }
   case EM_GETPASSWORDCHAR:
   {

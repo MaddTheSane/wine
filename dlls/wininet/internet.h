@@ -420,8 +420,8 @@ DWORD HTTP_Connect(appinfo_t*,LPCWSTR,
 BOOL GetAddress(LPCWSTR lpszServerName, INTERNET_PORT nServerPort,
 	struct sockaddr *psa, socklen_t *sa_len) DECLSPEC_HIDDEN;
 
-DWORD get_cookie(const WCHAR*,const WCHAR*,WCHAR*,DWORD*) DECLSPEC_HIDDEN;
-BOOL set_cookie(const WCHAR*,const WCHAR*,const WCHAR*,const WCHAR*) DECLSPEC_HIDDEN;
+DWORD get_cookie(const WCHAR*,const WCHAR*,WCHAR*,DWORD*,DWORD) DECLSPEC_HIDDEN;
+DWORD set_cookie(const WCHAR*,const WCHAR*,const WCHAR*,const WCHAR*,DWORD) DECLSPEC_HIDDEN;
 
 void INTERNET_SetLastError(DWORD dwError) DECLSPEC_HIDDEN;
 DWORD INTERNET_GetLastError(void) DECLSPEC_HIDDEN;

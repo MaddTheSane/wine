@@ -47,6 +47,8 @@ static BOOL (WINAPI *pIsWow64Process)(HANDLE,PBOOL);
 static NTSTATUS (WINAPI * pNtDeleteKey)(HANDLE);
 static NTSTATUS (WINAPI * pRtlFormatCurrentUserKeyPath)(UNICODE_STRING*);
 static NTSTATUS (WINAPI * pRtlFreeUnicodeString)(PUNICODE_STRING);
+static LONG (WINAPI *pRegDeleteKeyValueA)(HKEY,LPCSTR,LPCSTR);
+static LONG (WINAPI *pRegSetKeyValueW)(HKEY,LPCWSTR,LPCWSTR,DWORD,const void*,DWORD);
 
 static BOOL limited_user;
 
@@ -135,6 +137,8 @@ static void InitFunctionPtrs(void)
     ADVAPI32_GET_PROC(RegGetValueA);
     ADVAPI32_GET_PROC(RegDeleteTreeA);
     ADVAPI32_GET_PROC(RegDeleteKeyExA);
+    ADVAPI32_GET_PROC(RegDeleteKeyValueA);
+    ADVAPI32_GET_PROC(RegSetKeyValueW);
 
     pIsWow64Process = (void *)GetProcAddress( hkernel32, "IsWow64Process" );
     pRtlFormatCurrentUserKeyPath = (void *)GetProcAddress( hntdll, "RtlFormatCurrentUserKeyPath" );
@@ -431,6 +435,37 @@ static void test_set_value(void)
     ok(ret == ERROR_NOACCESS, "RegSetValueExW should have failed with ERROR_NOACCESS: %d, GLE=%d\n", ret, GetLastError());
     ret = RegSetValueExW(hkey_main, name2W, 0, REG_DWORD, (const BYTE *)1, 1);
     ok(ret == ERROR_NOACCESS, "RegSetValueExW should have failed with ERROR_NOACCESS: %d, GLE=%d\n", ret, GetLastError());
+
+    /* RegSetKeyValue */
+    if (!pRegSetKeyValueW)
+        win_skip("RegSetKeyValue() is not supported.\n");
+    else
+    {
+        static const WCHAR subkeyW[] = {'s','u','b','k','e','y',0};
+        DWORD len, type;
+        HKEY subkey;
+
+        ret = pRegSetKeyValueW(hkey_main, NULL, name1W, REG_SZ, (const BYTE*)string2W, sizeof(string2W));
+        ok(ret == ERROR_SUCCESS, "got %d\n", ret);
+        test_hkey_main_Value_A(name1A, string2A, sizeof(string2A));
+        test_hkey_main_Value_W(name1W, string2W, sizeof(string2W));
+
+        ret = pRegSetKeyValueW(hkey_main, subkeyW, name1W, REG_SZ, string1W, sizeof(string1W));
+        ok(ret == ERROR_SUCCESS, "got %d\n", ret);
+
+        ret = RegOpenKeyExW(hkey_main, subkeyW, 0, KEY_QUERY_VALUE, &subkey);
+        ok(ret == ERROR_SUCCESS, "got %d\n", ret);
+        type = len = 0;
+        ret = RegQueryValueExW(subkey, name1W, 0, &type, NULL, &len);
+        ok(ret == ERROR_SUCCESS, "got %d\n", ret);
+        ok(len == sizeof(string1W), "got %d\n", len);
+        ok(type == REG_SZ, "got type %d\n", type);
+
+        ret = pRegSetKeyValueW(hkey_main, subkeyW, name1W, REG_SZ, NULL, 0);
+        ok(ret == ERROR_SUCCESS, "got %d\n", ret);
+
+        RegCloseKey(subkey);
+    }
 }
 
 static void create_test_entries(void)
@@ -1068,14 +1103,15 @@ static void test_reg_open_key(void)
     }
     else
     {
-        /* The "sanctioned" methods of setting a registry ACL aren't implemented in Wine. */
-        bRet = SetKernelObjectSecurity(hkRoot64, DACL_SECURITY_INFORMATION, sd);
-        ok(bRet == TRUE,
-           "Expected SetKernelObjectSecurity to return TRUE, got %d, last error %u\n", bRet, GetLastError());
+        LONG error;
 
-        bRet = SetKernelObjectSecurity(hkRoot32, DACL_SECURITY_INFORMATION, sd);
-        ok(bRet == TRUE,
-           "Expected SetKernelObjectSecurity to return TRUE, got %d, last error %u\n", bRet, GetLastError());
+        error = RegSetKeySecurity(hkRoot64, DACL_SECURITY_INFORMATION, sd);
+        ok(error == ERROR_SUCCESS,
+           "Expected RegSetKeySecurity to return success, got error %u\n", error);
+
+        bRet = RegSetKeySecurity(hkRoot32, DACL_SECURITY_INFORMATION, sd);
+        ok(error == ERROR_SUCCESS,
+           "Expected RegSetKeySecurity to return success, got error %u\n", error);
 
         hkResult = NULL;
         ret = RegOpenKeyExA(HKEY_LOCAL_MACHINE, "Software\\Wine", 0, KEY_WOW64_64KEY | KEY_READ, &hkResult);
@@ -1229,14 +1265,13 @@ static void test_reg_create_key(void)
     }
     else
     {
-        /* The "sanctioned" methods of setting a registry ACL aren't implemented in Wine. */
-        bRet = SetKernelObjectSecurity(hkRoot64, DACL_SECURITY_INFORMATION, sd);
-        ok(bRet == TRUE,
-           "Expected SetKernelObjectSecurity to return TRUE, got %d, last error %u\n", bRet, GetLastError());
+        ret = RegSetKeySecurity(hkRoot64, DACL_SECURITY_INFORMATION, sd);
+        ok(ret == ERROR_SUCCESS,
+           "Expected RegSetKeySecurity to return success, got error %u\n", ret);
 
-        bRet = SetKernelObjectSecurity(hkRoot32, DACL_SECURITY_INFORMATION, sd);
-        ok(bRet == TRUE,
-           "Expected SetKernelObjectSecurity to return TRUE, got %d, last error %u\n", bRet, GetLastError());
+        ret = RegSetKeySecurity(hkRoot32, DACL_SECURITY_INFORMATION, sd);
+        ok(ret == ERROR_SUCCESS,
+           "Expected RegSetKeySecurity to return success, got error %u\n", ret);
 
         hkey1 = NULL;
         ret = RegCreateKeyExA(HKEY_LOCAL_MACHINE, "Software\\Wine", 0, NULL, 0,
@@ -2768,6 +2803,56 @@ static void test_delete_value(void)
        "expect ERROR_FILE_NOT_FOUND, got %i\n", res);
 }
 
+static void test_delete_key_value(void)
+{
+    HKEY subkey;
+    LONG ret;
+
+    if (!pRegDeleteKeyValueA)
+    {
+        win_skip("RegDeleteKeyValue is not available.\n");
+        return;
+    }
+
+    ret = pRegDeleteKeyValueA(NULL, NULL, NULL);
+    ok(ret == ERROR_INVALID_HANDLE, "got %d\n", ret);
+
+    ret = pRegDeleteKeyValueA(hkey_main, NULL, NULL);
+    ok(ret == ERROR_FILE_NOT_FOUND, "got %d\n", ret);
+
+    ret = RegSetValueExA(hkey_main, "test", 0, REG_SZ, (const BYTE*)"value", 6);
+    ok(ret == ERROR_SUCCESS, "got %d\n", ret);
+
+    ret = RegQueryValueExA(hkey_main, "test", NULL, NULL, NULL, NULL);
+    ok(ret == ERROR_SUCCESS, "got %d\n", ret);
+
+    /* NULL subkey name means delete from open key */
+    ret = pRegDeleteKeyValueA(hkey_main, NULL, "test");
+    ok(ret == ERROR_SUCCESS, "got %d\n", ret);
+
+    ret = RegQueryValueExA(hkey_main, "test", NULL, NULL, NULL, NULL);
+    ok(ret == ERROR_FILE_NOT_FOUND, "got %d\n", ret);
+
+    /* now with real subkey */
+    ret = RegCreateKeyExA(hkey_main, "Subkey1", 0, NULL, 0, KEY_WRITE|KEY_READ, NULL, &subkey, NULL);
+    ok(!ret, "failed with error %d\n", ret);
+
+    ret = RegSetValueExA(subkey, "test", 0, REG_SZ, (const BYTE*)"value", 6);
+    ok(ret == ERROR_SUCCESS, "got %d\n", ret);
+
+    ret = RegQueryValueExA(subkey, "test", NULL, NULL, NULL, NULL);
+    ok(ret == ERROR_SUCCESS, "got %d\n", ret);
+
+    ret = pRegDeleteKeyValueA(hkey_main, "Subkey1", "test");
+    ok(ret == ERROR_SUCCESS, "got %d\n", ret);
+
+    ret = RegQueryValueExA(subkey, "test", NULL, NULL, NULL, NULL);
+    ok(ret == ERROR_FILE_NOT_FOUND, "got %d\n", ret);
+
+    RegDeleteKeyA(subkey, "");
+    RegCloseKey(subkey);
+}
+
 START_TEST(registry)
 {
     /* Load pointers for functions that are not available in all Windows versions */
@@ -2808,6 +2893,7 @@ START_TEST(registry)
     test_rw_order();
     test_deleted_key();
     test_delete_value();
+    test_delete_key_value();
 
     /* cleanup */
     delete_key( hkey_main );

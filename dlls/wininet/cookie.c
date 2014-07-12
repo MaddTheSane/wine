@@ -531,7 +531,7 @@ static void COOKIE_deleteDomain(cookie_domain *deadDomain)
     heap_free(deadDomain);
 }
 
-DWORD get_cookie(const WCHAR *host, const WCHAR *path, WCHAR *cookie_data, DWORD *size)
+DWORD get_cookie(const WCHAR *host, const WCHAR *path, WCHAR *cookie_data, DWORD *size, DWORD flags)
 {
     static const WCHAR empty_path[] = { '/',0 };
 
@@ -589,6 +589,9 @@ DWORD get_cookie(const WCHAR *host, const WCHAR *path, WCHAR *cookie_data, DWORD
                 COOKIE_deleteCookie(cookie_iter, FALSE);
                 continue;
             }
+
+            if((cookie_iter->flags & INTERNET_COOKIE_HTTPONLY) && !(flags & INTERNET_COOKIE_HTTPONLY))
+                continue;
 
             if (cookie_count)
                 cnt += 2; /* '; ' */
@@ -649,7 +652,7 @@ DWORD get_cookie(const WCHAR *host, const WCHAR *path, WCHAR *cookie_data, DWORD
 }
 
 /***********************************************************************
- *           InternetGetCookieW (WININET.@)
+ *           InternetGetCookieExW (WININET.@)
  *
  * Retrieve cookie from the specified url
  *
@@ -661,14 +664,17 @@ DWORD get_cookie(const WCHAR *host, const WCHAR *path, WCHAR *cookie_data, DWORD
  *    FALSE on failure
  *
  */
-BOOL WINAPI InternetGetCookieW(LPCWSTR lpszUrl, LPCWSTR lpszCookieName,
-    LPWSTR lpCookieData, LPDWORD lpdwSize)
+BOOL WINAPI InternetGetCookieExW(LPCWSTR lpszUrl, LPCWSTR lpszCookieName,
+        LPWSTR lpCookieData, LPDWORD lpdwSize, DWORD flags, void *reserved)
 {
     WCHAR host[INTERNET_MAX_HOST_NAME_LENGTH], path[INTERNET_MAX_PATH_LENGTH];
     DWORD res;
     BOOL ret;
 
-    TRACE("(%s, %s, %p, %p)\n", debugstr_w(lpszUrl),debugstr_w(lpszCookieName), lpCookieData, lpdwSize);
+    TRACE("(%s, %s, %p, %p, %x, %p)\n", debugstr_w(lpszUrl),debugstr_w(lpszCookieName), lpCookieData, lpdwSize, flags, reserved);
+
+    if (flags)
+        FIXME("flags 0x%08x not supported\n", flags);
 
     if (!lpszUrl)
     {
@@ -683,15 +689,26 @@ BOOL WINAPI InternetGetCookieW(LPCWSTR lpszUrl, LPCWSTR lpszCookieName,
         return FALSE;
     }
 
-    res = get_cookie(host, path, lpCookieData, lpdwSize);
+    res = get_cookie(host, path, lpCookieData, lpdwSize, flags);
     if(res != ERROR_SUCCESS)
         SetLastError(res);
     return res == ERROR_SUCCESS;
 }
 
+/***********************************************************************
+ *           InternetGetCookieW (WININET.@)
+ *
+ * Retrieve cookie for the specified URL.
+ */
+BOOL WINAPI InternetGetCookieW(const WCHAR *url, const WCHAR *name, WCHAR *data, DWORD *size)
+{
+    TRACE("(%s, %s, %s, %p)\n", debugstr_w(url), debugstr_w(name), debugstr_w(data), size);
+
+    return InternetGetCookieExW(url, name, data, size, 0, NULL);
+}
 
 /***********************************************************************
- *           InternetGetCookieA (WININET.@)
+ *           InternetGetCookieExA (WININET.@)
  *
  * Retrieve cookie from the specified url
  *
@@ -700,20 +717,20 @@ BOOL WINAPI InternetGetCookieW(LPCWSTR lpszUrl, LPCWSTR lpszCookieName,
  *    FALSE on failure
  *
  */
-BOOL WINAPI InternetGetCookieA(LPCSTR lpszUrl, LPCSTR lpszCookieName,
-    LPSTR lpCookieData, LPDWORD lpdwSize)
+BOOL WINAPI InternetGetCookieExA(LPCSTR lpszUrl, LPCSTR lpszCookieName,
+        LPSTR lpCookieData, LPDWORD lpdwSize, DWORD flags, void *reserved)
 {
     WCHAR *url, *name;
     DWORD len, size;
     BOOL r;
 
-    TRACE("(%s %s %p %p(%u))\n", debugstr_a(lpszUrl), debugstr_a(lpszCookieName),
-          lpCookieData, lpdwSize, lpdwSize ? *lpdwSize : 0);
+    TRACE("(%s %s %p %p(%u) %x %p)\n", debugstr_a(lpszUrl), debugstr_a(lpszCookieName),
+          lpCookieData, lpdwSize, lpdwSize ? *lpdwSize : 0, flags, reserved);
 
     url = heap_strdupAtoW(lpszUrl);
     name = heap_strdupAtoW(lpszCookieName);
 
-    r = InternetGetCookieW( url, name, NULL, &len );
+    r = InternetGetCookieExW( url, name, NULL, &len, flags, reserved );
     if( r )
     {
         WCHAR *szCookieData;
@@ -725,7 +742,7 @@ BOOL WINAPI InternetGetCookieA(LPCSTR lpszUrl, LPCSTR lpszCookieName,
         }
         else
         {
-            r = InternetGetCookieW( url, name, szCookieData, &len );
+            r = InternetGetCookieExW( url, name, szCookieData, &len, flags, reserved );
 
             if(r) {
                 size = WideCharToMultiByte( CP_ACP, 0, szCookieData, len, NULL, 0, NULL, NULL);
@@ -748,6 +765,17 @@ BOOL WINAPI InternetGetCookieA(LPCSTR lpszUrl, LPCSTR lpszCookieName,
     return r;
 }
 
+/***********************************************************************
+ *           InternetGetCookieA (WININET.@)
+ *
+ * See InternetGetCookieW.
+ */
+BOOL WINAPI InternetGetCookieA(const char *url, const char *name, char *data, DWORD *size)
+{
+    TRACE("(%s, %s, %s, %p)\n", debugstr_a(url), debugstr_a(name), debugstr_a(data), size);
+
+    return InternetGetCookieExA(url, name, data, size, 0, NULL);
+}
 
 /***********************************************************************
  *           IsDomainLegalCookieDomainW (WININET.@)
@@ -785,7 +813,7 @@ BOOL WINAPI IsDomainLegalCookieDomainW( LPCWSTR s1, LPCWSTR s2 )
     return TRUE;
 }
 
-BOOL set_cookie(LPCWSTR domain, LPCWSTR path, LPCWSTR cookie_name, LPCWSTR cookie_data)
+DWORD set_cookie(const WCHAR *domain, const WCHAR *path, const WCHAR *cookie_name, const WCHAR *cookie_data, DWORD flags)
 {
     cookie_domain *thisCookieDomain = NULL;
     cookie *thisCookie;
@@ -794,13 +822,13 @@ BOOL set_cookie(LPCWSTR domain, LPCWSTR path, LPCWSTR cookie_name, LPCWSTR cooki
     WCHAR *ptr;
     FILETIME expiry, create;
     BOOL expired = FALSE, update_persistent = FALSE;
-    DWORD flags = 0;
+    DWORD cookie_flags = 0;
 
     value = data = heap_strdupW(cookie_data);
     if (!data)
     {
         ERR("could not allocate the cookie data buffer\n");
-        return FALSE;
+        return COOKIE_STATE_UNKNOWN;
     }
 
     memset(&expiry,0,sizeof(expiry));
@@ -826,7 +854,7 @@ BOOL set_cookie(LPCWSTR domain, LPCWSTR path, LPCWSTR cookie_name, LPCWSTR cooki
         {
             heap_free(data);
             ERR("could not allocate the cookie value buffer\n");
-            return FALSE;
+            return COOKIE_STATE_UNKNOWN;
         }
         strcpyW(value, data);
 
@@ -848,7 +876,7 @@ BOOL set_cookie(LPCWSTR domain, LPCWSTR path, LPCWSTR cookie_name, LPCWSTR cooki
                 if(value != data)
                     heap_free(value);
                 heap_free(data);
-                return FALSE;
+                return COOKIE_STATE_UNKNOWN;
             }
 
             if(end_ptr)
@@ -885,7 +913,15 @@ BOOL set_cookie(LPCWSTR domain, LPCWSTR path, LPCWSTR cookie_name, LPCWSTR cooki
         }
         else if (strncmpiW(ptr, szHttpOnly, 8) == 0)
         {
-            FIXME("httponly not handled (%s)\n",debugstr_w(ptr));
+            if(!(flags & INTERNET_COOKIE_HTTPONLY)) {
+                WARN("HTTP only cookie added without INTERNET_COOKIE_HTTPONLY flag\n");
+                heap_free(data);
+                if (value != data) heap_free(value);
+                SetLastError(ERROR_INVALID_OPERATION);
+                return COOKIE_STATE_REJECT;
+            }
+
+            cookie_flags |= INTERNET_COOKIE_HTTPONLY;
             ptr += strlenW(szHttpOnly);
         }
         else if (*ptr)
@@ -916,17 +952,25 @@ BOOL set_cookie(LPCWSTR domain, LPCWSTR path, LPCWSTR cookie_name, LPCWSTR cooki
             heap_free(data);
             if (value != data) heap_free(value);
             LeaveCriticalSection(&cookie_cs);
-            return TRUE;
+            return COOKIE_STATE_ACCEPT;
         }
     }
 
     if(!expiry.dwLowDateTime && !expiry.dwHighDateTime)
-        flags |= INTERNET_COOKIE_IS_SESSION;
+        cookie_flags |= INTERNET_COOKIE_IS_SESSION;
     else
         update_persistent = TRUE;
 
     if ((thisCookie = COOKIE_findCookie(thisCookieDomain, cookie_name)))
     {
+        if ((thisCookie->flags & INTERNET_COOKIE_HTTPONLY) && !(flags & INTERNET_COOKIE_HTTPONLY)) {
+            WARN("An attempt to override httponly cookie\n");
+            SetLastError(ERROR_INVALID_OPERATION);
+            heap_free(data);
+            if (value != data) heap_free(value);
+            return COOKIE_STATE_REJECT;
+        }
+
         if (!(thisCookie->flags & INTERNET_COOKIE_IS_SESSION))
             update_persistent = TRUE;
         COOKIE_deleteCookie(thisCookie, FALSE);
@@ -935,12 +979,12 @@ BOOL set_cookie(LPCWSTR domain, LPCWSTR path, LPCWSTR cookie_name, LPCWSTR cooki
     TRACE("setting cookie %s=%s for domain %s path %s\n", debugstr_w(cookie_name),
           debugstr_w(value), debugstr_w(thisCookieDomain->lpCookieDomain),debugstr_w(thisCookieDomain->lpCookiePath));
 
-    if (!expired && !COOKIE_addCookie(thisCookieDomain, cookie_name, value, expiry, create, flags))
+    if (!expired && !COOKIE_addCookie(thisCookieDomain, cookie_name, value, expiry, create, cookie_flags))
     {
         heap_free(data);
         if (value != data) heap_free(value);
         LeaveCriticalSection(&cookie_cs);
-        return FALSE;
+        return COOKIE_STATE_UNKNOWN;
     }
     heap_free(data);
     if (value != data) heap_free(value);
@@ -948,50 +992,49 @@ BOOL set_cookie(LPCWSTR domain, LPCWSTR path, LPCWSTR cookie_name, LPCWSTR cooki
     if (!update_persistent || save_persistent_cookie(thisCookieDomain))
     {
         LeaveCriticalSection(&cookie_cs);
-        return TRUE;
+        return COOKIE_STATE_ACCEPT;
     }
     LeaveCriticalSection(&cookie_cs);
-    return FALSE;
+    return COOKIE_STATE_UNKNOWN;
 }
 
 /***********************************************************************
- *           InternetSetCookieW (WININET.@)
+ *           InternetSetCookieExW (WININET.@)
  *
  * Sets cookie for the specified url
- *
- * RETURNS
- *    TRUE  on success
- *    FALSE on failure
- *
  */
-BOOL WINAPI InternetSetCookieW(LPCWSTR lpszUrl, LPCWSTR lpszCookieName,
-    LPCWSTR lpCookieData)
+DWORD WINAPI InternetSetCookieExW(LPCWSTR lpszUrl, LPCWSTR lpszCookieName,
+        LPCWSTR lpCookieData, DWORD flags, DWORD_PTR reserved)
 {
     BOOL ret;
     WCHAR hostName[INTERNET_MAX_HOST_NAME_LENGTH], path[INTERNET_MAX_PATH_LENGTH];
 
-    TRACE("(%s,%s,%s)\n", debugstr_w(lpszUrl),
-        debugstr_w(lpszCookieName), debugstr_w(lpCookieData));
+    TRACE("(%s, %s, %s, %x, %lx)\n", debugstr_w(lpszUrl), debugstr_w(lpszCookieName),
+          debugstr_w(lpCookieData), flags, reserved);
+
+    if (flags & ~INTERNET_COOKIE_HTTPONLY)
+        FIXME("flags %x not supported\n", flags);
 
     if (!lpszUrl || !lpCookieData)
     {
         SetLastError(ERROR_INVALID_PARAMETER);
-        return FALSE;
+        return COOKIE_STATE_UNKNOWN;
     }
 
     hostName[0] = 0;
     ret = COOKIE_crackUrlSimple(lpszUrl, hostName, sizeof(hostName)/sizeof(hostName[0]), path, sizeof(path)/sizeof(path[0]));
-    if (!ret || !hostName[0]) return FALSE;
+    if (!ret || !hostName[0]) return COOKIE_STATE_UNKNOWN;
 
     if (!lpszCookieName)
     {
         WCHAR *cookie, *data;
+        DWORD res;
 
         cookie = heap_strdupW(lpCookieData);
         if (!cookie)
         {
             SetLastError(ERROR_OUTOFMEMORY);
-            return FALSE;
+            return COOKIE_STATE_UNKNOWN;
         }
 
         /* some apps (or is it us??) try to add a cookie with no cookie name, but
@@ -1000,14 +1043,25 @@ BOOL WINAPI InternetSetCookieW(LPCWSTR lpszUrl, LPCWSTR lpszCookieName,
         if (!(data = strchrW(cookie, '='))) data = cookie + strlenW(cookie);
         else *data++ = 0;
 
-        ret = set_cookie(hostName, path, cookie, data);
+        res = set_cookie(hostName, path, cookie, data, flags);
 
         heap_free(cookie);
-        return ret;
+        return res;
     }
-    return set_cookie(hostName, path, lpszCookieName, lpCookieData);
+    return set_cookie(hostName, path, lpszCookieName, lpCookieData, flags);
 }
 
+/***********************************************************************
+ *           InternetSetCookieW (WININET.@)
+ *
+ * Sets a cookie for the specified URL.
+ */
+BOOL WINAPI InternetSetCookieW(const WCHAR *url, const WCHAR *name, const WCHAR *data)
+{
+    TRACE("(%s, %s, %s)\n", debugstr_w(url), debugstr_w(name), debugstr_w(data));
+
+    return InternetSetCookieExW(url, name, data, 0, 0) == COOKIE_STATE_ACCEPT;
+}
 
 /***********************************************************************
  *           InternetSetCookieA (WININET.@)
@@ -1048,70 +1102,22 @@ BOOL WINAPI InternetSetCookieA(LPCSTR lpszUrl, LPCSTR lpszCookieName,
 DWORD WINAPI InternetSetCookieExA( LPCSTR lpszURL, LPCSTR lpszCookieName, LPCSTR lpszCookieData,
                                    DWORD dwFlags, DWORD_PTR dwReserved)
 {
-    TRACE("(%s, %s, %s, 0x%08x, 0x%08lx)\n",
-          debugstr_a(lpszURL), debugstr_a(lpszCookieName), debugstr_a(lpszCookieData),
-          dwFlags, dwReserved);
+    WCHAR *data, *url, *name;
+    DWORD r;
 
-    if (dwFlags) FIXME("flags 0x%08x not supported\n", dwFlags);
-    return InternetSetCookieA(lpszURL, lpszCookieName, lpszCookieData);
-}
+    TRACE("(%s, %s, %s, %x, %lx)\n", debugstr_a(lpszURL), debugstr_a(lpszCookieName),
+          debugstr_a(lpszCookieData), dwFlags, dwReserved);
 
-/***********************************************************************
- *           InternetSetCookieExW (WININET.@)
- *
- * Sets a cookie for the specified URL.
- *
- * RETURNS
- *    TRUE  on success
- *    FALSE on failure
- *
- */
-DWORD WINAPI InternetSetCookieExW( LPCWSTR lpszURL, LPCWSTR lpszCookieName, LPCWSTR lpszCookieData,
-                                   DWORD dwFlags, DWORD_PTR dwReserved)
-{
-    TRACE("(%s, %s, %s, 0x%08x, 0x%08lx)\n",
-          debugstr_w(lpszURL), debugstr_w(lpszCookieName), debugstr_w(lpszCookieData),
-          dwFlags, dwReserved);
+    url = heap_strdupAtoW(lpszURL);
+    name = heap_strdupAtoW(lpszCookieName);
+    data = heap_strdupAtoW(lpszCookieData);
 
-    if (dwFlags) FIXME("flags 0x%08x not supported\n", dwFlags);
-    return InternetSetCookieW(lpszURL, lpszCookieName, lpszCookieData);
-}
+    r = InternetSetCookieExW(url, name, data, dwFlags, dwReserved);
 
-/***********************************************************************
- *           InternetGetCookieExA (WININET.@)
- *
- * See InternetGetCookieExW.
- */
-BOOL WINAPI InternetGetCookieExA( LPCSTR pchURL, LPCSTR pchCookieName, LPSTR pchCookieData,
-                                  LPDWORD pcchCookieData, DWORD dwFlags, LPVOID lpReserved)
-{
-    TRACE("(%s, %s, %s, %p, 0x%08x, %p)\n",
-          debugstr_a(pchURL), debugstr_a(pchCookieName), debugstr_a(pchCookieData),
-          pcchCookieData, dwFlags, lpReserved);
-
-    if (dwFlags) FIXME("flags 0x%08x not supported\n", dwFlags);
-    return InternetGetCookieA(pchURL, pchCookieName, pchCookieData, pcchCookieData);
-}
-
-/***********************************************************************
- *           InternetGetCookieExW (WININET.@)
- *
- * Retrieve cookie for the specified URL.
- *
- * RETURNS
- *    TRUE  on success
- *    FALSE on failure
- *
- */
-BOOL WINAPI InternetGetCookieExW( LPCWSTR pchURL, LPCWSTR pchCookieName, LPWSTR pchCookieData,
-                                  LPDWORD pcchCookieData, DWORD dwFlags, LPVOID lpReserved)
-{
-    TRACE("(%s, %s, %s, %p, 0x%08x, %p)\n",
-          debugstr_w(pchURL), debugstr_w(pchCookieName), debugstr_w(pchCookieData),
-          pcchCookieData, dwFlags, lpReserved);
-
-    if (dwFlags) FIXME("flags 0x%08x not supported\n", dwFlags);
-    return InternetGetCookieW(pchURL, pchCookieName, pchCookieData, pcchCookieData);
+    heap_free( data );
+    heap_free( name );
+    heap_free( url );
+    return r;
 }
 
 /***********************************************************************
