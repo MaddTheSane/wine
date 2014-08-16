@@ -566,13 +566,15 @@ static void X11DRV_XDND_SendDropFiles(HWND hwnd)
         if (dropHandle)
         {
             DROPFILES *lpDrop = GlobalLock(dropHandle);
+            memcpy(lpDrop, GlobalLock(current->contents), GlobalSize(current->contents));
+            GlobalUnlock(current->contents);
             lpDrop->pt.x = XDNDxy.x;
             lpDrop->pt.y = XDNDxy.y;
-            memcpy(lpDrop, GlobalLock(current->contents), GlobalSize(current->contents));
-            TRACE("Sending WM_DROPFILES: hWnd(0x%p) %p(%s)\n", hwnd,
-                ((char*)lpDrop) + lpDrop->pFiles, debugstr_w((WCHAR*)(((char*)lpDrop) + lpDrop->pFiles)));
+            lpDrop->fNC  = !ScreenToClient(hwnd, &lpDrop->pt);
+            TRACE("Sending WM_DROPFILES: hWnd=0x%p, fNC=%d, x=%d, y=%d, files=%p(%s)\n", hwnd,
+                    lpDrop->fNC, lpDrop->pt.x, lpDrop->pt.y, ((char*)lpDrop) + lpDrop->pFiles,
+                    debugstr_w((WCHAR*)(((char*)lpDrop) + lpDrop->pFiles)));
             GlobalUnlock(dropHandle);
-
             if (!PostMessageW(hwnd, WM_DROPFILES, (WPARAM)dropHandle, 0))
                 GlobalFree(dropHandle);
         }

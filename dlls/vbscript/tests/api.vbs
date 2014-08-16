@@ -1,4 +1,3 @@
-'
 ' Copyright 2011 Jacek Caban for CodeWeavers
 '
 ' This library is free software; you can redistribute it and/or
@@ -136,6 +135,7 @@ Call ok(Chr(120) = "x", "Chr(120) = " & Chr(120))
 Call ok(Chr(0) <> "", "Chr(0) = """"")
 Call ok(Chr(120.5) = "x", "Chr(120.5) = " & Chr(120.5))
 Call ok(Chr(119.5) = "x", "Chr(119.5) = " & Chr(119.5))
+Call ok(Chr("120") = "x", "Chr(""120"") = " & Chr("120"))
 
 sub testChrError
     on error resume next
@@ -193,6 +193,31 @@ Call ok(not isNull(true), "isNull(true) is true?")
 Call ok(not isNull(4), "isNull(4) is true?")
 Call ok(not isNull("x"), "isNull(""x"") is true?")
 Call ok(isNull(Null), "isNull(Null) is not true?")
+
+Call ok(isNumeric(Empty), "isNumeric(empty) is not true?")
+Call ok(not isNumeric(Null), "isNumeric(Null) is not true?")
+Call ok(isNumeric(32767), "isNumeric(32767) is true?")
+Call ok(isNumeric(32768), "isNumeric(32768) is true?")
+Call ok(isNumeric(CSng(3242.4)), "isNumeric(CSng(3242.4)) is true?")
+Call ok(isNumeric(32768.4), "isNumeric(32768.4) is true?")
+Call ok(isNumeric(CCur(32768.4)), "isNumeric(CCur(32768.4)) is true?")
+Call ok(isNumeric("44"), "isNumeric(""44"") is true?")
+Call ok(not isNumeric("rwrf"), "isNumeric(""rwrf"") is not true?")
+Call ok(not isNumeric(Nothing), "isNumeric(Nothing) is not true?")
+Call ok(not isNumeric(New EmptyClass), "isNumeric(New EmptyClass) is not true?")
+Call ok(isNumeric(true), "isNumeric(true) is true?")
+Call ok(isNumeric(CByte(32)), "isNumeric(CByte(32)) is true?")
+Dim arr(2)
+arr(0) = 2
+arr(1) = 3
+Call ok(not isNumeric(arr), "isNumeric(arr) is not true?")
+
+Dim newObject
+Set newObject = New ValClass
+newObject.myval = 1
+Call ok(isNumeric(newObject), "isNumeric(newObject) is true?")
+newObject.myval = "test"
+Call ok(not isNumeric(newObject), "isNumeric(newObject) is not true?")
 
 Call ok(getVT(err) = "VT_DISPATCH", "getVT(err) = " & getVT(err))
 
@@ -321,6 +346,7 @@ Call ok(Space(5.5) = "      ", "Space(5.5) = " & Space(5.5) & """")
 Call ok(Space(4.5) = "    ", "Space(4.5) = " & Space(4.5) & """")
 Call ok(Space(0.5) = "", "Space(0.5) = " & Space(0.5) & """")
 Call ok(Space(1.5) = "  ", "Space(1.5) = " & Space(1.5) & """")
+Call ok(Space("1") = " ", "Space(""1"") = " & Space("1") & """")
 
 Sub TestStrReverse(str, ex)
     Call ok(StrReverse(str) = ex, "StrReverse(" & str & ") = " & StrReverse(str))
@@ -341,6 +367,7 @@ TestLeft "test", 0, ""
 TestLeft 123, 2, "12"
 TestLeft "123456", 1.5, "12"
 TestLeft "123456", 2.5, "12"
+TestLeft "test", "2", "te"
 if isEnglishLang then TestLeft true, 2, "Tr"
 
 Sub TestRight(str, len, ex)
@@ -845,17 +872,26 @@ MyObject.myval = 0
 Call ok(CSng(MyObject) = 0, "CSng(MyObject) = " & CSng(MyObject))
 Call ok(getVT(CSng(MyObject)) = "VT_R4", "getVT(CSng(MyObject)) = " & getVT(CSng(MyObject)))
 
-Dim MyEmpty
-Call ok(TypeName(CByte(255)) = "Byte", "TypeName(CByte(255)) = " & TypeName(CByte(255)))
-Call ok(TypeName(255) = "Integer", "TypeName(255) = " & TypeName(255))
-Call ok(TypeName(32768) = "Long", "TypeName(32768) = " & TypeName(32768))
-Call ok(TypeName(CSng(0.5)) = "Single", "TypeName(CSng(0.5)) = " & TypeName(CSng(0.5)))
-Call ok(TypeName(-0.5) = "Double", "TypeName(-0.5) = " & TypeName(-0.5))
-Call ok(TypeName(CCur(0.5)) = "Currency", "TypeName(CCur(0.5)) = " & TypeName(CCur(0.5)))
-Call ok(TypeName(CStr(0.5)) = "String", "TypeName(CStr(0.5)) = " & TypeName(CStr(0.5)))
-Call ok(TypeName(True) = "Boolean", "TypeName(True) = " & TypeName(True))
-Call ok(TypeName(MyEmpty) = "Empty", "TypeName(MyEmpty) = " & TypeName(Empty))
+Call ok(TypeName(Empty) = "Empty", "TypeName(MyEmpty) = " & TypeName(Empty))
+Call ok(getVT(TypeName(Empty)) = "VT_BSTR", "getVT(TypeName(Empty)) = " & getVT(TypeName(Empty)))
 Call ok(TypeName(Null) = "Null", "TypeName(Null) = " & TypeName(Null))
+Call ok(getVT(TypeName(Null)) = "VT_BSTR", "getVT(TypeName(Null)) = " & getVT(TypeName(Null)))
+Call ok(TypeName(CByte(255)) = "Byte", "TypeName(CByte(255)) = " & TypeName(CByte(255)))
+Call ok(getVT(TypeName(CByte(255))) = "VT_BSTR", "getVT(TypeName(CByte(255))) = " & getVT(TypeName(CByte(255))))
+Call ok(TypeName(255) = "Integer", "TypeName(255) = " & TypeName(255))
+Call ok(getVT(TypeName(255)) = "VT_BSTR", "getVT(TypeName(255)) = " & getVT(TypeName(255)))
+Call ok(TypeName(32768) = "Long", "TypeName(32768) = " & TypeName(32768))
+Call ok(getVT(TypeName(32768)) = "VT_BSTR", "getVT(TypeName(32768)) = " & getVT(TypeName(32768)))
+Call ok(TypeName(CSng(0.5)) = "Single", "TypeName(CSng(0.5)) = " & TypeName(CSng(0.5)))
+Call ok(getVT(TypeName(CSng(0.5))) = "VT_BSTR", "getVT(TypeName(CSng(0.5))) = " & getVT(TypeName(CSng(0.5))))
+Call ok(TypeName(-0.5) = "Double", "TypeName(-0.5) = " & TypeName(-0.5))
+Call ok(getVT(TypeName(-0.5)) = "VT_BSTR", "getVT(TypeName(-0.5)) = " & getVT(TypeName(-0.5)))
+Call ok(TypeName(CCur(0.5)) = "Currency", "TypeName(CCur(0.5)) = " & TypeName(CCur(0.5)))
+Call ok(getVT(TypeName(CCur(0.5))) = "VT_BSTR", "getVT(TypeName(CCur(0.5))) = " & getVT(TypeName(CCur(0.5))))
+Call ok(TypeName(CStr(0.5)) = "String", "TypeName(CStr(0.5)) = " & TypeName(CStr(0.5)))
+Call ok(getVT(TypeName(CStr(0.5))) = "VT_BSTR", "getVT(TypeName(CStr(0.5))) = " & getVT(TypeName(CStr(0.5))))
+Call ok(TypeName(True) = "Boolean", "TypeName(True) = " & TypeName(True))
+Call ok(getVT(TypeName(True)) = "VT_BSTR", "getVT(TypeName(True)) = " & getVT(TypeName(True)))
 
 Call ok(VarType(Empty) = vbEmpty, "VarType(Empty) = " & VarType(Empty))
 Call ok(getVT(VarType(Empty)) = "VT_I2", "getVT(VarType(Empty)) = " & getVT(VarType(Empty)))
@@ -908,5 +944,103 @@ Sub testSgnError(strings, error_num)
 End Sub
 
 Call testSgnError(Null, 94)
+
+Call ok(Abs(Empty) = 0, "Abs(Empty) = " & Abs(Empty))
+Call ok(getVT(Abs(Empty)) = "VT_I2", "getVT(Abs(Empty)) = " & getVT(Abs(Empty)))
+Call ok(IsNull(Abs(Null)), "Is Abs(Null) not Null?")
+Call ok(getVT(Abs(Null)) = "VT_NULL", "getVT(Abs(Null)) = " & getVT(Abs(Null)))
+Call ok(Abs(0) = 0, "Abs(0) = " & Abs(0))
+Call ok(getVT(Abs(0)) = "VT_I2", "getVT(Abs(0)) = " & getVT(Abs(0)))
+Call ok(Abs(-32769) = 32769, "Abs(-32769) = " & Abs(-32769))
+Call ok(getVT(Abs(-32769)) = "VT_I4", "getVT(Abs(-32769)) = " & getVT(Abs(-32769)))
+Call ok(Abs(CSng(-0.5)) = 0.5, "Abs(CSng(-0.5)) = " & Abs(CSng(-0.5)))
+Call ok(getVT(Abs(CSng(-0.5))) = "VT_R4", "getVT(Abs(CSng(-0.5))) = " & getVT(Abs(CSng(-0.5))))
+Call ok(Abs(0.5) = 0.5, "Abs(0.5) = " & Abs(0.5))
+Call ok(getVT(Abs(0.5)) = "VT_R8", "getVT(Abs(0.5)) = " & getVT(Abs(0.5)))
+Call ok(Abs(CCur(-1)) = 1, "Abs(CCur(-1)) = " & Abs(CCur(-1)))
+Call ok(getVT(Abs(CCur(-1))) = "VT_CY", "getVT(Abs(CCur(-1))) = " & getVT(Abs(CCur(-1))))
+Call ok(Abs("-1") = 1, "Abs(""-1"") = " & Abs("-1"))
+Call ok(getVT(Abs("-1")) = "VT_R8", "getVT(Abs(""-1"")) = " & getVT(Abs("-1")))
+Call ok(Abs(False) = 0, "Abs(False) = " & Abs(False))
+Call ok(getVT(Abs(False)) = "VT_I2", "getVT(Abs(False)) = " & getVT(Abs(False)))
+Call ok(Abs(True) = 1, "Abs(True) = " & Abs(True))
+Call ok(getVT(Abs(True)) = "VT_I2", "getVT(Abs(True)) = " & getVT(Abs(True)))
+Call ok(Abs(CByte(1)) = 1, "Abs(CByte(1)) = " & Abs(CByte(1)))
+Call ok(getVT(Abs(CByte(1))) = "VT_UI1", "getVT(Abs(CByte(1))) = " & getVT(Abs(CByte(1))))
+
+Sub testAbsError(strings, error_num1, error_num2)
+    on error resume next
+    Dim x
+
+    Call Err.clear()
+    x = Abs(strings)
+    Call ok(Err.number = error_num1, "Err.number1 = " & Err.number)
+
+    Call Err.clear()
+    Call Abs(strings)
+    Call ok(Err.number = error_num2, "Err.number2 = " & Err.number)
+End Sub
+
+Call testAbsError("strings", 13, 13)
+Call testAbsError(-4, 0, 0)
+
+Call ok(ScriptEngine = "VBScript", "Is scriptengine not VBScript?")
+Call ok(getVT(ScriptEngine) = "VT_BSTR", "getVT(ScriptEngine) = " & getVT(ScriptEngine))
+
+Call ok(getVT(ScriptEngineBuildVersion) = "VT_I4", "getVT(ScriptEngineBuildVersion) = " & getVT(ScriptEngineBuildVersion))
+
+Call ok(getVT(ScriptEngineMajorVersion) = "VT_I4", "getVT(ScriptEngineMajorVersion) = " & getVT(ScriptEngineMajorVersion))
+
+Call ok(getVT(ScriptEngineMinorVersion) = "VT_I4", "getVT(ScriptEngineMinorVersion) = " & getVT(ScriptEngineMinorVersion))
+
+Call ok(Fix(Empty) = 0, "Fix(Empty) = " & Fix(Empty))
+Call ok(getVT(Fix(Empty)) = "VT_I2", "getVT(Fix(Empty)) = " & getVT(Fix(Empty)))
+Call ok(Fix(CCur(-0.99)) = 0, "Fix(CCur(-0.99)) = " & Fix(CCur(-0.99)))
+Call ok(getVT(Fix(CCur(-0.99))) = "VT_CY", "getVT(Fix(CCur(-0.99))) = " & getVT(Fix(CCur(-0.99))))
+Call ok(Fix(1.99) = 1, "Fix(1.99) = " & Fix(1.99))
+Call ok(getVT(Fix(1.99)) = "VT_R8", "getVT(Fix(1.99)) = " & getVT(Fix(1.99)))
+Call ok(Fix(-1.99) = -1, "Fix(-1.99) = " & Fix(-1.99))
+Call ok(getVT(Fix(-1.99)) = "VT_R8", "getVT(Fix(-1.99)) = " & getVT(Fix(-1.99)))
+If isEnglishLang Then
+    Call ok(Fix("1.99") = 1, "Fix(""1.99"") = " & Fix("1.99"))
+    Call ok(getVT(Fix("1.99")) = "VT_R8", "getVT(Fix(""1.99"")) = " & getVT(Fix("1.99")))
+    Call ok(Fix("-1.99") = -1, "Fix(""-1.99"") = " & Fix("-1.99"))
+    Call ok(getVT(Fix("-1.99")) = "VT_R8", "getVT(Fix(""-1.99"")) = " & getVT(Fix("-1.99")))
+End If
+Call ok(Fix(True) = -1, "Fix(True) = " & Fix(True))
+Call ok(getVT(Fix(True)) = "VT_I2", "getVT(Fix(True)) = " & getVT(Fix(True)))
+Call ok(Fix(False) = 0, "Fix(False) = " & Fix(False))
+Call ok(getVT(Fix(False)) = "VT_I2", "getVT(Fix(False)) = " & getVT(Fix(False)))
+MyObject.myval = 2.5
+Call ok(Fix(MyObject) = 2, "Fix(MyObject) = " & Fix(MyObject))
+Call ok(getVT(Fix(MyObject)) = "VT_R8", "getVT(Fix(MyObject)) = " & getVT(Fix(MyObject)))
+MyObject.myval = -2.5
+Call ok(Fix(MyObject) = -2, "Fix(MyObject) = " & Fix(MyObject))
+Call ok(getVT(Fix(MyObject)) = "VT_R8", "getVT(Fix(MyObject)) = " & getVT(Fix(MyObject)))
+
+Call ok(Int(Empty) = 0, "Int(Empty) = " & Int(Empty))
+Call ok(getVT(Int(Empty)) = "VT_I2", "getVT(Int(Empty)) = " & getVT(Int(Empty)))
+Call ok(Int(CCur(-0.99)) = -1, "Int(CCur(-0.99)) = " & Int(CCur(-0.99)))
+Call ok(getVT(Int(CCur(-0.99))) = "VT_CY", "getVT(Int(CCur(-0.99))) = " & getVT(Int(CCur(-0.99))))
+Call ok(Int(1.99) = 1, "Int(1.99) = " & Int(1.99))
+Call ok(getVT(Int(1.99)) = "VT_R8", "getVT(Int(1.99)) = " & getVT(Int(1.99)))
+Call ok(Int(-1.99) = -2, "Int(-1.99) = " & Int(-1.99))
+Call ok(getVT(Int(-1.99)) = "VT_R8", "getVT(Int(-1.99)) = " & getVT(Int(-1.99)))
+If isEnglishLang Then
+    Call ok(Int("1.99") = 1, "Int(""1.99"") = " & Int("1.99"))
+    Call ok(getVT(Int("1.99")) = "VT_R8", "getVT(Int(""1.99"")) = " & getVT(Int("1.99")))
+    Call ok(Int("-1.99") = -2, "Int(""-1.99"") = " & Int("-1.99"))
+    Call ok(getVT(Int("-1.99")) = "VT_R8", "getVT(Int(""-1.99"")) = " & getVT(Int("-1.99")))
+End If
+Call ok(Int(True) = -1, "Int(True) = " & Int(True))
+Call ok(getVT(Int(True)) = "VT_I2", "getVT(Int(True)) = " & getVT(Int(True)))
+Call ok(Int(False) = 0, "Int(False) = " & Int(False))
+Call ok(getVT(Int(False)) = "VT_I2", "getVT(Int(False)) = " & getVT(Int(False)))
+MyObject.myval = 2.5
+Call ok(Int(MyObject) = 2, "Int(MyObject) = " & Int(MyObject))
+Call ok(getVT(Int(MyObject)) = "VT_R8", "getVT(Int(MyObject)) = " & getVT(Int(MyObject)))
+MyObject.myval = -2.5
+Call ok(Int(MyObject) = -3, "Int(MyObject) = " & Int(MyObject))
+Call ok(getVT(Int(MyObject)) = "VT_R8", "getVT(Int(MyObject)) = " & getVT(Int(MyObject)))
 
 Call reportSuccess()

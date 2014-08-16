@@ -28,6 +28,8 @@ struct d2d_d3d_render_target
 {
     ID2D1RenderTarget ID2D1RenderTarget_iface;
     LONG refcount;
+
+    D2D1_MATRIX_3X2_F transform;
 };
 
 void d2d_d3d_render_target_init(struct d2d_d3d_render_target *render_target, ID2D1Factory *factory,
@@ -54,5 +56,14 @@ void d2d_solid_color_brush_init(struct d2d_brush *brush, ID2D1RenderTarget *rend
 void d2d_linear_gradient_brush_init(struct d2d_brush *brush, ID2D1RenderTarget *render_target,
         const D2D1_LINEAR_GRADIENT_BRUSH_PROPERTIES *gradient_brush_desc, const D2D1_BRUSH_PROPERTIES *brush_desc,
         ID2D1GradientStopCollection *gradient) DECLSPEC_HIDDEN;
+
+struct d2d_stroke_style
+{
+    ID2D1StrokeStyle ID2D1StrokeStyle_iface;
+    LONG refcount;
+};
+
+void d2d_stroke_style_init(struct d2d_stroke_style *style, ID2D1Factory *factory,
+        const D2D1_STROKE_STYLE_PROPERTIES *desc, const float *dashes, UINT32 dash_count) DECLSPEC_HIDDEN;
 
 #endif /* __WINE_D2D1_PRIVATE_H */

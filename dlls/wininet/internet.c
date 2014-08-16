@@ -341,6 +341,15 @@ BOOL WINAPI DllMain (HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpvReserved)
 }
 
 /***********************************************************************
+ *		DllInstall (WININET.@)
+ */
+HRESULT WINAPI DllInstall(BOOL bInstall, LPCWSTR cmdline)
+{
+    FIXME("(%x %s): stub\n", bInstall, debugstr_w(cmdline));
+    return S_OK;
+}
+
+/***********************************************************************
  *           INTERNET_SaveProxySettings
  *
  * Stores the proxy settings given by lpwai into the registry
@@ -1294,11 +1303,10 @@ BOOL WINAPI InternetGetConnectedStateExA(LPDWORD lpdwStatus, LPSTR lpszConnectio
     rc = InternetGetConnectedStateExW(lpdwStatus,lpwszConnectionName, dwNameLen,
                                       dwReserved);
     if (rc && lpwszConnectionName)
-    {
         WideCharToMultiByte(CP_ACP,0,lpwszConnectionName,-1,lpszConnectionName,
                             dwNameLen, NULL, NULL);
-        heap_free(lpwszConnectionName);
-    }
+
+    heap_free(lpwszConnectionName);
     return rc;
 }
 

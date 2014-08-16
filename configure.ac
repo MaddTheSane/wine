@@ -67,6 +67,8 @@ AC_ARG_WITH(opencl,    AS_HELP_STRING([--without-opencl],[do not use OpenCL]),
 AC_ARG_WITH(opengl,    AS_HELP_STRING([--without-opengl],[do not use OpenGL]))
 AC_ARG_WITH(osmesa,     AS_HELP_STRING([--without-osmesa],[do not use the OSMesa library]))
 AC_ARG_WITH(oss,       AS_HELP_STRING([--without-oss],[do not use the OSS sound support]))
+AC_ARG_WITH(pcap,      AS_HELP_STRING([--without-pcap],[do not use the Packet Capture library]),
+            [if test "x$withval" = "xno"; then ac_cv_header_pcap_pcap_h=no; fi])
 AC_ARG_WITH(png,       AS_HELP_STRING([--without-png],[do not use PNG]))
 AC_ARG_WITH(pthread,   AS_HELP_STRING([--without-pthread],[do not use the pthread library]),
             [if test "x$withval" = "xno"; then ac_cv_header_pthread_h=no; fi])
@@ -448,6 +450,7 @@ AC_CHECK_HEADERS(\
 	netinet/in_systm.h \
 	netinet/tcp.h \
 	netinet/tcp_fsm.h \
+	pcap/pcap.h \
 	poll.h \
 	port.h \
 	process.h \
@@ -631,12 +634,12 @@ AC_CHECK_HEADERS([resolv.h],,,
 
 AC_CHECK_HEADERS([ifaddrs.h],,,[#include <sys/types.h>])
 
-AC_CHECK_HEADERS(ucontext.h,,,[#include <signal.h>])
+AC_CHECK_HEADERS(sys/ucontext.h,,,[#include <signal.h>])
 
 AC_CHECK_HEADERS([sys/thr.h],,,
 [#include <sys/types.h>
-#ifdef HAVE_UCONTEXT_H
-#include <ucontext.h>
+#ifdef HAVE_SYS_UCONTEXT_H
+#include <sys/ucontext.h>
 #endif])
 
 AC_CHECK_HEADERS([pthread_np.h],,,
@@ -1268,6 +1271,15 @@ WINE_NOTICE_WITH(opencl,[test "x$ac_cv_lib_OpenCL_clGetPlatformInfo" != xyes],
                  [OpenCL ${notice_platform}development files not found, OpenCL won't be supported.])
 test "x$ac_cv_lib_OpenCL_clGetPlatformInfo" != xyes && enable_opencl=${enable_opencl:-no}
 
+dnl **** Check for libpcap ****
+if test "$ac_cv_header_pcap_pcap_h" = "yes"
+then
+    AC_CHECK_LIB(pcap,pcap_create,[AC_SUBST(LIBPCAP,["-lpcap"])])
+fi
+WINE_NOTICE_WITH(pcap,[test "x$ac_cv_lib_pcap_pcap_create" != xyes],
+                 [pcap ${notice_platform}development files not found, wpcap won't be supported.])
+test "x$ac_cv_lib_pcap_pcap_create" != xyes && enable_wpcap=${enable_wpcap:-no}
+
 dnl **** Check for libxml2 ****
 
 if test "x$with_xml" != "xno"
@@ -1419,21 +1431,28 @@ WINE_NOTICE_WITH(gphoto,[test "$ac_cv_lib_gphoto2_port_gp_port_info_list_new" !=
 dnl **** Check for resolver library ***
 if test "$ac_cv_header_resolv_h" = "yes"
 then
-    ac_save_LIBS="$LIBS"
-    for lib in '' -lresolv
-    do
-      LIBS="$lib $ac_save_LIBS"
-      AC_LINK_IFELSE([AC_LANG_PROGRAM([[#ifdef HAVE_NETINET_IN_H
+    AC_CACHE_CHECK([for resolver library], ac_cv_have_resolv,
+      [ac_save_LIBS="$LIBS"
+       for lib in '' -lresolv
+       do
+         LIBS="$lib $ac_save_LIBS"
+         AC_LINK_IFELSE([AC_LANG_PROGRAM([[#ifdef HAVE_NETINET_IN_H
 #include <netinet/in.h>
 #endif
-#include <resolv.h>]],[[res_query("foo",ns_c_in,0,0,0);]])],
-        [AC_DEFINE(HAVE_RESOLV, 1, [Define if you have the resolver library and header])
-         AC_SUBST(RESOLV_LIBS,"$lib")])
-      if test "${RESOLV_LIBS+set}" = set; then
-        break
-      fi
-    done
-    LIBS="$ac_save_LIBS"
+#include <resolv.h>]],[[if (!(_res.options & RES_INIT)) res_init(); res_query("foo",ns_c_in,0,0,0)]])],
+           [ac_cv_have_resolv=${lib:-"none required"}],[ac_cv_have_resolv="not found"])
+         test "x$ac_cv_have_resolv" = "xnot found" || break
+       done
+       LIBS="$ac_save_LIBS"])
+
+    case "$ac_cv_have_resolv" in
+      "not found") ;;
+      "none required")
+        AC_DEFINE(HAVE_RESOLV, 1, [Define if you have the resolver library and header]) ;;
+      *)
+        AC_DEFINE(HAVE_RESOLV, 1)
+        AC_SUBST(RESOLV_LIBS,$ac_cv_have_resolv) ;;
+    esac
 fi
 
 dnl **** Check for LittleCMS ***
@@ -3272,6 +3291,7 @@ WINE_CONFIG_TEST(dlls/wmp/tests)
 WINE_CONFIG_DLL(wmvcore)
 WINE_CONFIG_DLL(wnaspi32,,[implib])
 WINE_CONFIG_DLL(wow32,enable_win16,[implib])
+WINE_CONFIG_DLL(wpcap)
 WINE_CONFIG_DLL(ws2_32,,[implib])
 WINE_CONFIG_TEST(dlls/ws2_32/tests)
 WINE_CONFIG_DLL(wshom.ocx,,[clean])

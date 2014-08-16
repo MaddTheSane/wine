@@ -6791,7 +6791,7 @@ static void arbfp_free_blit_shader(struct wine_rb_entry *entry, void *context)
     HeapFree(GetProcessHeap(), 0, entry_arb);
 }
 
-const struct wine_rb_functions wined3d_arbfp_blit_rb_functions =
+static const struct wine_rb_functions wined3d_arbfp_blit_rb_functions =
 {
     wined3d_rb_alloc,
     wined3d_rb_realloc,
@@ -7679,8 +7679,8 @@ HRESULT arbfp_blit_surface(struct wined3d_device *device, DWORD filter,
 
     context_release(context);
 
-    surface_validate_location(dst_surface, dst_surface->draw_binding);
-    surface_invalidate_location(dst_surface, ~dst_surface->draw_binding);
+    surface_validate_location(dst_surface, dst_surface->resource.draw_binding);
+    surface_invalidate_location(dst_surface, ~dst_surface->resource.draw_binding);
 
     return WINED3D_OK;
 }

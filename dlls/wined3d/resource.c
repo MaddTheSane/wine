@@ -59,6 +59,12 @@ static void resource_check_usage(DWORD usage)
             | WINED3DUSAGE_OVERLAY
             | WINED3DUSAGE_TEXTURE;
 
+    /* WINED3DUSAGE_WRITEONLY is supposed to result in write-combined mappings
+     * being returned. OpenGL doesn't give us explicit control over that, but
+     * the hints and access flags we set for typical access patterns on
+     * dynamic resources should in theory have the same effect on the OpenGL
+     * driver. */
+
     if (usage & ~handled)
         FIXME("Unhandled usage flags %#x.\n", usage & ~handled);
     if ((usage & (WINED3DUSAGE_DYNAMIC | WINED3DUSAGE_WRITEONLY)) == WINED3DUSAGE_DYNAMIC)
@@ -161,7 +167,7 @@ void resource_unload(struct wined3d_resource *resource)
             resource, resource->type);
 }
 
-DWORD resource_set_priority(struct wined3d_resource *resource, DWORD priority)
+DWORD CDECL wined3d_resource_set_priority(struct wined3d_resource *resource, DWORD priority)
 {
     DWORD prev;
 
@@ -177,7 +183,7 @@ DWORD resource_set_priority(struct wined3d_resource *resource, DWORD priority)
     return prev;
 }
 
-DWORD resource_get_priority(const struct wined3d_resource *resource)
+DWORD CDECL wined3d_resource_get_priority(const struct wined3d_resource *resource)
 {
     TRACE("resource %p, returning %u.\n", resource, resource->priority);
     return resource->priority;

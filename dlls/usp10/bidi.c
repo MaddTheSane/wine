@@ -146,10 +146,15 @@ static const char debug_type[][4] =
 
 static inline void dump_types(const char* header, WORD *types, int start, int end)
 {
-    int i;
+    int i, len = 0;
     TRACE("%s:",header);
-    for (i = start; i< end; i++)
+    for (i = start; i < end && len < 200; i++)
+    {
         TRACE(" %s",debug_type[types[i]]);
+        len += strlen(debug_type[types[i]])+1;
+    }
+    if (i != end)
+        TRACE("...");
     TRACE("\n");
 }
 
@@ -508,11 +513,16 @@ static inline int iso_previousChar(IsolatedRun *iso_run, int index)
 
 static inline void iso_dump_types(const char* header, IsolatedRun *iso_run)
 {
-    int i;
+    int i, len = 0;
     TRACE("%s:",header);
     TRACE("[ ");
-    for (i = 0; i < iso_run->length; i++)
+    for (i = 0; i < iso_run->length && len < 200; i++)
+    {
         TRACE(" %s",debug_type[*iso_run->item[i].pcls]);
+        len += strlen(debug_type[*iso_run->item[i].pcls])+1;
+    }
+    if (i != iso_run->length)
+        TRACE("...");
     TRACE(" ]\n");
 }
 

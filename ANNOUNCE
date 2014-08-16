@@ -1,16 +1,15 @@
-The Wine development release 1.7.22 is now available.
+The Wine development release 1.7.24 is now available.
 
 What's new in this release (see below for details):
-  - Support for Unicode bracketing pairs.
-  - Improved Internet cookie support.
-  - OS X CoreAudio driver uses AUHAL instead of AudioQueue.
-  - Initial support for geographical information.
+  - Beginning of some DirectWrite classes implementation.
+  - Initial wrapper dll for the packet capture library.
+  - Some crypto improvements.
   - Various bug fixes.
 
 The source is available from the following locations:
 
-  http://prdownloads.sourceforge.net/wine/wine-1.7.22.tar.bz2
-  http://mirrors.ibiblio.org/wine/source/1.7/wine-1.7.22.tar.bz2
+  http://prdownloads.sourceforge.net/wine/wine-1.7.24.tar.bz2
+  http://mirrors.ibiblio.org/wine/source/1.7/wine-1.7.24.tar.bz2
 
 Binary packages for various distributions will be available from:
 
@@ -26,232 +25,201 @@ AUTHORS in the distribution for the complete list.
 
 ----------------------------------------------------------------
 
-Bugs fixed in 1.7.22 (total 68):
+Bugs fixed in 1.7.24 (total 44):
 
-   4122  Picasa 2.x/3.x: "Open File" from photo menu does nothing
-   7404  ShowWindow(SW_MINIMIZE) should not generate a WM_PAINT message
-   8284  Wild Earth: Photo Safari Demo: Freezes at a loading screen following main menu start game selection choices
-  10182  Hapedit doesn't launch web browser
-  10264  Multiple games wrapped with Tages Protection 5.x DRM scheme fail to start (Tages driver needs 'IoAllocateMdl' implementation)
-  10480  Safari refuses to load secure URLs
-  13075  Planetside crashes Character selection screen
-  15353  Safari 3.1.2: crash when clicking on tab
-  15520  DVD version of Riven fails to start.
-  16648  Defense Grid, the Awakening: Fails to load, X3DAudio1_4.dll, d3dx9_38.dll
-  19303  Sketchup 7 shows toolbars and menus, but work area is blank
-  19838  Treeview 'access violation' in ImgBurn v2.5.0.0's Disc Layout Editor window
-  21804  FPS Creator trial crashes on startup
-  22698  mshtml: iexplore crash after click "Install" at www.browserchoice.eu
-  22829  Sysinternals RAMMap crashes (shell32.CommandLineToArgvW needs to include terminating NULL element in returned array of pointers starting with WinVer >= Windows Vista)
-  23210  REDCINE v20.0.0 silently exits during startup
-  24286  Google SketchUp 8 crashes when using Phototextures feature
-  24904  No$Zoomer.exe 2.3.x crashes when run.
-  25110  PDF Password Cracker 3.2 Enterprise immediately page faults
-  25916  MediaGet v1.12.x crashes when starting downloading file
-  26166  Google Sketchup 8.0.4811 is not functional
-  26635  SketchUp 8 cannot use the components tool
-  27249  Edcast 3.1.21 fails on startup
-  27259  progeCAD 10.x installer causes spurious 'winemenubuilder' hangs
-  27487  Rift crashes on exit in winebrowser
-  27878  Picasa 3.8 in Fedora 15 just displays a black window
-  27880  Google Sketchup: moving tool windows: mouse button state not correct?
-  28465  shlwapi/path.c test crashes if CFLAGS="-fstack-protector-all" is used
-  28469  Lahore Trading Work Station crashes on startup
-  28490  IE 3.02 installer crashes with builtin shdocvw - unimplemented function shdocvw.dll.InstallReg_RunDLL
-  29159  Multiple apps and games fail due to 'HTTP_HttpOpenRequestW' being unable to escape some characters
-  29191  Google Sketchup 8 - no scrollbar on template selection screen
-  29408  Call to Power 1.2 crashes on startup
-  30258  NIPO Odin Developer crashes on unimplemented function rpcrt4.dll.RpcSsDontSerializeContext
-  30416  Live Baduk fails to start
-  30829  Fallout 3: Game of the Year Edition (Steam) crashes on startup
-  30865  Flash Player 11 "downloader" fails
-  31048  Dolphin XPS Viewer crashes on load
-  31224  Toribash 3.x/4.x crashes with hardware acceleration disabled in nouveau
-  31269  Multiple .NET apps and games crash with System.OverflowException (incorrect scaling for DECIMAL values in VarDecAdd)(Dungeons, Space Engineers)
-  31559  Planetside 2 (Beta), extremely low FPS
-  31577  Avast! antivirus protection driver crashes on unimplemented function ntoskrnl.exe.ExCreateCallback
-  31844  CitiesXL (all versions) needs native D3DXCreateSphere (purist)
-  31966  Babylon 9 installer crashes
-  32207  Planetside 2 (Beta) Crash when opening ingame Menus
-  32415  Distance 6.x randomly crashes on startup
-  32711  Multiple applications crash on unimplemented function ADVAPI32.dll.RegSetKeyValueA/W (Vista+ API)(BSAopt, Microsoft OneDrive)
-  32912  Wine Crash following champion select
-  33125  Tomb Raider (2013) freezes (bug in game engine, semaphore object handle value must be zero on all error paths)
-  33529  Planetside 2 0.608.21.21306 crashed ingame
-  34015  crash problem planetside 2
-  34069  "wine winemenubuilder" chokes on safari shortcut.
-  34456  Rift installer crashes
-  35395  Google SketchUp 8.2 draw pane freezes after save
-  35703  Lingea Lexicon 5 crashes on start up
-  36021  In the KDE Plasma desktop the mousepointer disappears in wine windows
-  36435  Adobe Flash Builder 4.6 uses potentially erroneous shell32.dll PathYetAnotherMakeUniqueName stub
-  36483  Multiple applications crash on unimplemented function ADVAPI32.dll.RegDeleteKeyValueA/W (Vista+ API)(Age of Mythology: Extended Edition)
-  36641  valgrind shows several invalid reads in wininet/tests/http.c
-  36651  shlwapi/tests/path.c: stack smashing detected (valgrind/gcc-4.9.0)
-  36810  valgrind shows a definite leak in winspool.drv/tests/info.c
-  36811  Avast! Free Antivirus 9.0.2013 'AvastSvc.exe' crashes on unimplemented function KERNEL32.dll.GetFirmwareEnvironmentVariableA
-  36817  valgrind shows a mismatched free in msvcrt/tests/file.c
-  36829  Can not recieve kindle delivery
-  36832  winetricks ie7 / riched20/tests/editor.c crash
-  36840  Tron 2.0 Demo crashes with "Out of memory" error
-  36858  Wine 1.7.16 does not work correctly with Pacestar LanFlow
-  36867  Localization bug in gdi32 font.c test
+   9121  Crash when launching winning eleven 8
+  14240  FC_Edit fails to initialize
+  14943  CoDeSys 3.2 (Patch2) development environment does not work
+  16365  Archlord Episode 3 Client crashes on startup (decrypting files with a RC4 session key derived from MD5 hash fails, only 40 bits are used, salt is dropped)
+  17441  Anarchy Online: First run has messed up graphics and pointer
+  17678  Anarchy Online fullscreen followes you when you switch desktops
+  22177  Standalone version of DivX fails to install
+  22896  Multiple applications and games need support for shell32 FOLDERID_LocalAppDataLow (.NET based Unity Engine games, Java JRE 6 in Vista mode)
+  24711  AV Voice Changer Software Diamond 7.0 (VcsCore.exe) crashes on startup
+  26346  Letters from Nowhere 2 demo: 'play trial' button does not work
+  26887  Magicka crashes a few seconds after title screen
+  26951  REALTEK 11n USB Wireless LAN Driver installer crashes
+  27969  wine explorer crashes on startup
+  28312  Assassin's Creed Brotherhood v1.03 needs "Saved Games" folder
+  30454  Unknown program crashes on start
+  30496  Serif WebPlus X2 and X5 crash on startup in mshtml
+  30803  CCleaner 3.19 won't start, err:seh:setup_exception stack overflow
+  30945  Jammer 6 demo fails to install without native ie7
+  31008  WinUAE "Browse for folder" works incorrectly
+  31408  anarchy online crash new zone
+  31566  Fallout 3: regression causes block at critical section when radio is enabled
+  31599  Serif Photoplus X6 installer fails, reporting 'Invalid command line.' (registry command association for msi package, 'msiexec.exe' must be a fully qualified path)
+  31687  DYMO Stamps can't connect to its server
+  31846  World of Warcraft: graphical glitches with particle weather effects using D3D9 engine
+  32318  Excel 2007 files password-protected in Wine cannot be opened in Windows, and vice versa
+  32480  Shogun: Total War Demo crashes at startup
+  32758  .NET 3.5 and 4.x apps using Microsoft Enhanced RSA and AES Cryptographic Provider with default WinVer = Windows XP report "PlatformNotSupportedException" (TurboTax 2012, Adicom PNV, GOG.com downloader)
+  33805  LEGO Digital Designer 4.3.6 crashes on start
+  33867  Uplay shop doesn't let you buy things
+  34141  Thunderbird 17.07 Crashes when clicking done in account configuration  window
+  34324  QQ2013 SP1 can't install
+  35342  Office 2013 full offline install setup crash at startup
+  35571  Questrade IQ Divide by Zero error
+  36629  .NET Framework 4.0 fails to install
+  36716  World Of Tanks black screen
+  36833  app aborted because call unimplemented function iphlpapi.dll._PfBindInterfaceToIPAddress@12
+  36835  Microsoft OneDrive/SkyDrive needs support for Shell32.dll.SHGetKnownFolderPath with 'KNOWNFOLDERID_Links'
+  36888  DDO Wine website not work any more
+  36927  SADX Mod Loader crashes due to missing msvcp100 function std::basic_istream::swap()
+  36995  Regression: crash in msxml3
+  36998  Cube World crashes on unimplemented function msvcp110.dll.?_Xbad_alloc@std@@YAXXZ
+  37001  APB Reloaded 1.x (MMORPG) launcher crashes on startup (some CIM data type to OLE variant (VT) mappings are incorrect)
+  37005  Serif WebPlus Starter Edition crashes on startup (IPropertyBag2::GetPropertyInfo returns more properties than the caller requested, leading to stack smashing)
+  37039  When copying data into memory, shows a dialog message then crashes (but info passes to memory)
 
 ----------------------------------------------------------------
 
-Changes since 1.7.21:
+Changes since 1.7.23:
 
 Akihiro Sagawa (1):
-      winmm: Fallback to SND_FILENAME if the alias isn't found in the profile.
+      po: Update Japanese translation.
 
-Alexandre Julliard (2):
-      configure: Always build wine.inf even if we don't install it.
-      tools: Don't include wine/unicode.h if not necessary.
+Andreas Mohr (1):
+      kernel32: Fix naming/spelling/typo of macro to HasOverlappedIoCompleted().
 
-Andrew Eikum (3):
-      mmdevapi: Standardize period sizes.
-      mmdevapi: Don't stop sending event signals after IAudioClient::Stop.
-      winecoreaudio.drv: Use AUHAL API instead of AudioQueue.
+Andrei Slăvoiu (5):
+      wined3d: Make the card selection for Nvidia binary driver use arrays only.
+      wined3d: Make the card selection for AMD binary driver use arrays only.
+      wined3d: Replace vendor specific callbacks with generic code that uses vendor specific renderer string tables.
+      wined3d: Make d3d_level_from_gl_info return an enum instead of a plain int.
+      wined3d: Use capabilities from the shader backend or the fragment pipeline to determine the D3D level.
+
+André Hentschel (2):
+      wpcap: Initial stub implementation.
+      wpcap: Implement pcap_lib_version.
 
 Aric Stewart (2):
-      tools: Generate the Unicode Bidi Bracketing table.
-      usp10: Implement N0: bracketing pairs.
+      dwrite: Make dwritefactory an allocated object.
+      dwrite: Basic implementation for FontCollectionLoader registration.
 
-Austin English (5):
-      kernel32: Add stubs for GetFirmwareEnvironmentVariableA/W.
-      loader: Add WBEM installation directory key.
-      rpcrt4: Add a stub for RpcSsDontSerializeContext.
-      kernel32: Initialize return value in CreateSemaphoreExW.
-      advapi32: Fix a memory leak in test_process_security.
+Aurimas Fišeras (1):
+      po: Update Lithuanian translation.
 
-Bruno Jesus (7):
-      dssenh/tests: Add tests for the default encryption chaining mode.
-      rsaenh/tests: Add tests for the default encryption chaining mode.
-      rsaenh/tests: Add more AES encrypt/decrypt tests.
-      ws2_32: Only declare IPX support if the required definitions are found.
-      ws2_32: Improve WSAStartup/WSACleanup tracing.
-      dnsapi: Do not fail if NETDB_INTERNAL is not present.
-      winspool: Fix a leak in DocumentPropertiesA (valgrind).
+Austin English (3):
+      wine.inf: Use full path to msiexec.
+      hid: Add HidD_GetProductString stub.
+      wine.inf: Fix quoting for msiexec commands.
 
-Erich Hoover (1):
-      advapi32: Implement RegSetKeySecurity on top of NtSetSecurityObject.
+Bernhard Reiter (1):
+      imagehlp/tests: Add test for BindImageEx.
 
-François Gouget (1):
-      shlwapi/tests: Make test_PathIsRelative[AW]() static.
+Bruno Jesus (11):
+      rsaenh: Detect AES prototype provider correctly.
+      dmime/tests: Fix a crash in Windows 2000.
+      winhttp/tests: Add a no-content header test.
+      rsaenh/tests: Run the tests in the Base and Strong providers too.
+      rsaenh: Use a helper to get the key container.
+      rsaenh: The RC2 algorithm from Base provider supports only 40 bit keys.
+      rsaenh/tests: Add SHA-256 tests.
+      rsaenh/tests: Update some tests.
+      rsaenh: Handle the failure to set Base provider effective key length properly.
+      rsaenh: Use the remaining hash data as salt if requested.
+      rsaenh: A 40 bit key on Enhanced provider will not have salt even if asked for.
 
-Frédéric Delanoy (3):
-      msvcrt: Avoid potential integer overflow when computing median position in bsearch.
-      Assorted spelling/grammar fixes.
-      ntdll: Avoid potential integer overflow when computing median position in bsearch.
+David Hedberg (8):
+      shell32/tests: Tests for IShellItemGetAttributes.
+      shell32: Mask out attributes we didn't ask for in ShellItem::GetAttributes.
+      shell32: Return S_OK only if the flags matches the result exactly.
+      shell32: Always initialize shellitem to NULL in SHCreateShellItem.
+      shell32: Implement SHCreateShellItemFromIDLists.
+      shell32: Implement IShellItemArray::GetAttributes.
+      comdlg32: Support browsing for folders.
+      shell32: Implement IEnumShellItems for IShellItemArray.
 
-Gediminas Jakutis (2):
-      d3dx9: Add adjacency generation for D3DXCreateSphere().
-      d3dx9: Implement D3DXCreateTorus() + tests.
+Erich Hoover (6):
+      strmbase: Fix race condition on InputPin_BeginFlush between csRenderLock and filter.csFilter.
+      strmbase: Fix race condition on InputPin_EndFlush between csRenderLock and filter.csFilter.
+      strmbase: Fix race condition on InputPin_EndOfStream between csRenderLock and filter.csFilter.
+      quartz: Fix race condition on EndOfStream between csRenderLock and filter.csFilter.
+      quartz: Fix race condition on EndFlush between csRenderLock and filter.csFilter.
+      quartz: Fix race condition between EndOfStream and Pause.
 
-Grazvydas Ignotas (1):
-      kernel32: Don't return uninitialized values on failures.
+Gerald Pfeifer (4):
+      winebuild: Remove unused empty_name_table.
+      winhttp: Remove unused constant proxymsg.
+      dbghelp: Do not try to ignore the return codes in PEV_ERROR and and PEV_ERROR1.
+      scrrun: Add a check for empty string in start_enumeration.
 
-Henri Verbeet (10):
-      d3d9: Improve d3d9_device_CheckDeviceState() a little.
-      d3d8: Improve d3d8_device_TestCooperativeLevel().
-      d3d8: Check the device status in present calls.
-      ddraw: Improve ddraw7_TestCooperativeLevel().
-      ddraw: Implement ddraw7_RestoreAllSurfaces().
-      ddraw: Check for a lost surface in ddraw_surface7_Flip().
-      wined3d: Print a winediag message if we failed to create a DXTn texture because of lack of driver support.
-      ddraw/tests: Get rid of struct vertex.
-      ddraw/tests: Get rid of struct tvertex.
-      ddraw/tests: Get rid of struct nvertex.
+Hao Peng (3):
+      iphlpapi: Add PfBindInterfaceToIPAddress function stub.
+      iphlpapi: Add PfDeleteInterface function stub.
+      iphlpapi: Add PfUnBindInterface function stub.
 
-Huw D. M. Davies (4):
-      comctl32: Don't use the RECT from the custom draw structure when referring to the button alone.
-      comctl32: The RECT in the custom draw structure should be the entire item's size. This includes any separated dropdown arrow.
-      comctl32: Propagate the return value of WM_ERASEBKGND.
-      tools: Only allow the absolute difference in bracket pairs to be less than 128, since we need the sign.
+Henri Verbeet (5):
+      wined3d: Add constant buffer support to the GLSL shader backend.
+      d3d10core: Implement d3d10_device_CopyResource().
+      wined3d: Make the "desc" parameter to wined3d_buffer_create() const.
+      wined3d: Get rid of the get_drawable_size() callback in struct wined3d_surface.
+      wined3d: Move the "draw_binding" field from struct wined3d_surface to struct wined3d_resource.
 
-Jacek Caban (13):
-      iphlpapi: Protect res_init call with critical section.
-      urlmon: Don't decode percent-encoded characters in file URLs with implicit scheme.
-      urlmon.idl: Added missing Uri_CREATE_* flags.
-      wininet: Forward InternetGetCookieA to InternetGetCookieExA, not the other way around.
-      wininet: Forward InternetGetCookieW to InternetGetCookieExW, not the other way around.
-      wininet.h: Added missing INTERNET_COOKIE_* flags.
-      wininet: Forward InternetSetCookieExA to InternetSetCookieExW instead of InternetSetCookieA.
-      wininet.h: Added InternetCookieState declaration.
-      wininet: Fixed InternetSetCookieExW return type and forward InternetSetCookieW to InternetSetCookieExW instead of the other way around.
-      wininet: Added support for INTERNET_COOKIE_HTTPONLY flag to InternetSetCookieEx.
-      wininet: Added support for INTERNET_COOKIE_HTTPONLY flag to InternetGetCookieEx.
-      wininet/tests: Added INTERNET_COOKIE_HTTPONLY tests.
-      wininet: Don't allow overriding httponly cookies with non-httponly ones.
+Indrek Altpere (1):
+      wbemprox: Fix a few OLE variant mappings.
 
-Jactry Zeng (3):
-      riched20: Don't create too many IRichEditOle interface for a RichEdit.
-      riched20: Initialize ed->reOle in ME_MakeEditor().
-      riched20: Return nonzero value instead of zero when EM_SETREADONLY succeeds.
+Jacek Caban (2):
+      mshtml: Added IHTMLWindow2::navigate implementation.
+      mshtml: Added IHTMLElement:scrollIntoView implementation.
 
-Joris van der Wel (4):
-      server: Any of the 4 SE_*_DEFAULTED controls should not be stored on objects, their usage is transient.
-      advapi32/tests: Changed an invalid comment.
-      advapi32/tests: Refactor the retrieval of a security descriptor into a separate function so that it can be used in other tests.
-      server: Setting a security descriptor should not replace an existing owner or group with a default, if only a DACL is being set.
+Jactry Zeng (1):
+      include: Fix wrong type in tom.idl.
 
-Ken Thomases (2):
-      dbghelp: If the caller didn't provide a module load address use the segment start address.
-      dbghelp: Ignore the __PAGEZERO segment.
+Ken Thomases (3):
+      ntdll: In find_file_in_dir(), don't test directory entries' short names if the target name isn't a short name.
+      winemac: Use new API when available to list all display modes available on Retina Macs.
+      winemac: When removing the status item for a systray icon, discard any associated events in the queue.
 
-Marcus Meissner (2):
-      windowscodecs: Fixed incorrect memset (Coverity).
-      packager: Fixed incorrect size (Coverity).
+Michael Müller (2):
+      shell32: Create profile directories available in Vista and above.
+      windowscodecs: Fix number of returned properties in PropertyBag_GetPropertyInfo.
 
-Nikolay Sivov (5):
-      shell32: Implement PathYetAnotherMakeUniqueName().
-      advapi32: Implement RegDeleteKeyValue().
-      kernel32: Added support for C3_HIGHSURROGATE/C3_LOWSURROGATE in GetStringTypeW().
-      advapi32: Implement RegSetKeyValue().
-      kernel32: Partially implement GetGeoInfo().
+Nikolay Sivov (8):
+      dwrite: Added some layout tests, simplify debug output for text ranges.
+      dwrite: Store maximum width/height for text layout.
+      dwrite/tests: Added some tests for inline object and ranges handling.
+      msxml3/saxreader: Fix attributes array growing size.
+      include: Added IDWriteLocalFontFileLoader.
+      dwrite: Implement Resize() for bitmap render target.
+      dwrite: Added GetCurrentTransform() for a render target.
+      dwrite/tests: Some tests for drawing sequence for a layout.
 
-Piotr Caban (4):
-      msvcrt: Fix buffer allocation in setvbuf.
-      ole32: Don't do any message processing when we're already done with dragdrop operation.
-      msvcrt: Always set fd to -1 in _sopen_s on failure.
-      urlmon: Recognize <body> tag in FindMimeFromData function.
+Piotr Caban (8):
+      msvcp100: Add ios_base::swap implementation.
+      msvcp100: Add basic_ios::swap implementation.
+      msvcp100: Add basic_istream::swap implementation.
+      msvcp100: Add basic_ostream::swap implementaiton.
+      msvcp100: Add basic_iostream::swap implementation.
+      msvcp100: Add basic_streambuf::swap implementation.
+      msvcrt: Only check for flag presence in isatty function.
+      msvcp110: Add _Xbad_alloc implementation.
 
-Qian Hong (3):
-      mshtml: Fixed typo.
-      gdi32/tests: Improve font name localization tests by not requiring a strict language match.
-      gdiplus: Set outer pointer to NULL when image loading functions fail.
+Shuai Meng (4):
+      vbscript: Implemented ScriptEngine.
+      vbscript: Inplemented ScriptEngineBuildVersion.
+      vbscript: Implemented ScriptEngineMajorVersion.
+      vbscript: Implemented ScriptEngineMinorVersion.
 
-Sebastian Lackner (4):
-      wininet: Fix invalid memory access in HTTP_QUERY_RAW_HEADERS (Valgrind).
-      oleaut32/tests: Add additional tests for VarDecAdd.
-      oleaut32: Decrease accuracy if scaling is not possible in VarDecAdd.
-      shell32: Return NULL-terminated list of arguments in CommandLineToArgvW.
+Stefan Dösinger (1):
+      user32: Make GetRegisteredRawInputDevices hotpatchable.
 
-Shuai Meng (2):
-      vbscript: Implemented VarType.
-      vbscript: Implemented Sgn.
+Thomas Faber (10):
+      amstream: Destroy BaseFilter after MediaStreamFilterImpl child class.
+      quartz: Avoid side-effects in asserts.
+      quartz/tests: Fix memory leaks.
+      dsound: Do not call CoUninitialize if CoInitialize failed.
+      qcap: Reference module only on successful object creation.
+      strmbase: Separate BasePin destructors from Release.
+      qcap: Destroy BaseOutputPin in VfwPin_Release.
+      quartz: Destroy BaseOutputPin in FileAsyncReaderPin_Release.
+      quartz: Fix IEnumFiltersImpl memory leak.
+      quartz: Destroy BaseRenderer in NullRendererInner_Release.
 
-Stefan Dösinger (8):
-      wined3d: Set palettes on the swapchain.
-      wined3d: Do not write a FIXME about WINED3DUSAGE_WRITEONLY.
-      ddraw: Refuse SetPalette and GetPalette on lost surfaces.
-      d3d9: Ignore SetPriority and GetPriority calls on surfaces.
-      wined3d: Ignore set_priority calls on non-managed resources.
-      d3d9/tests: Add a test for SetPriority and GetPriority.
-      d3d8/tests: Add a test for SetPriority and GetPriority.
-      d3d9/tests: Fix some ok() call style issues.
-
-Vincent Povirk (7):
-      ole32: Simplify the FileMonikerImpl_BindToStorage code.
-      winebrowser: Manually percent-encode file: paths for unix filenames.
-      winebrowser: Add traces for file uri conversion steps.
-      winebrowser: Don't use IUriBuilder with unix file: uri's.
-      urlmon: Add tests for implicit file uri's with percent encodings.
-      gdiplus: Account for transforms when calculating hdc bounds.
-      winex11: Leave fullscreen state alone when minimizing.
-
-Zhenbo Li (1):
-      shlwapi/tests: Add tests for PathIsRelativeA/W.
+Zhenbo Li (2):
+      mshtml/tests: Better output when an exception is caught.
+      mshtml: Added IHTMLStyle:: textTransform property implementation.
 
 --
 Alexandre Julliard

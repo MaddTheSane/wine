@@ -426,8 +426,6 @@ HRESULT map_hres(HRESULT) DECLSPEC_HIDDEN;
 HRESULT WINAPI VBScriptFactory_CreateInstance(IClassFactory*,IUnknown*,REFIID,void**) DECLSPEC_HIDDEN;
 HRESULT WINAPI VBScriptRegExpFactory_CreateInstance(IClassFactory*,IUnknown*,REFIID,void**) DECLSPEC_HIDDEN;
 
-const char *debugstr_variant(const VARIANT*) DECLSPEC_HIDDEN;
-
 static inline void *heap_alloc(size_t len)
 {
     return HeapAlloc(GetProcessHeap(), 0, len);
@@ -463,3 +461,7 @@ static inline LPWSTR heap_strdupW(LPCWSTR str)
 
     return ret;
 }
+
+#define VBSCRIPT_BUILD_VERSION 16978
+#define VBSCRIPT_MAJOR_VERSION 5
+#define VBSCRIPT_MINOR_VERSION 8
