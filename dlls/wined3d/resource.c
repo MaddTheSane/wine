@@ -299,3 +299,37 @@ GLenum wined3d_resource_gl_legacy_map_flags(DWORD d3d_flags)
         return GL_WRITE_ONLY_ARB;
     return GL_READ_WRITE_ARB;
 }
+
+BOOL wined3d_resource_is_offscreen(struct wined3d_resource *resource)
+{
+    struct wined3d_swapchain *swapchain;
+
+    if (resource->type == WINED3D_RTYPE_SURFACE)
+        resource = &surface_from_resource(resource)->container->resource;
+
+    /* Only texture resources can be onscreen. */
+    if (resource->type != WINED3D_RTYPE_TEXTURE)
+        return TRUE;
+
+    /* Not on a swapchain - must be offscreen */
+    if (!(swapchain = wined3d_texture_from_resource(resource)->swapchain))
+        return TRUE;
+
+    /* The front buffer is always onscreen */
+    if (resource == &swapchain->front_buffer->resource)
+        return FALSE;
+
+    /* If the swapchain is rendered to an FBO, the backbuffer is
+     * offscreen, otherwise onscreen */
+    return swapchain->render_to_fbo;
+}
+
+void wined3d_resource_update_draw_binding(struct wined3d_resource *resource)
+{
+    if (!wined3d_resource_is_offscreen(resource) || wined3d_settings.offscreen_rendering_mode != ORM_FBO)
+        resource->draw_binding = WINED3D_LOCATION_DRAWABLE;
+    else if (resource->multisample_type)
+        resource->draw_binding = WINED3D_LOCATION_RB_MULTISAMPLE;
+    else
+        resource->draw_binding = WINED3D_LOCATION_TEXTURE_RGB;
+}

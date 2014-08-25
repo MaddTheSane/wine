@@ -767,7 +767,7 @@ static HRESULT WINAPI ddraw1_RestoreDisplayMode(IDirectDraw *iface)
 static HRESULT ddraw_set_cooperative_level(struct ddraw *ddraw, HWND window,
         DWORD cooplevel, BOOL restore_mode_on_normal)
 {
-    struct wined3d_surface *rt = NULL, *ds = NULL;
+    struct wined3d_rendertarget_view *rtv = NULL, *dsv = NULL;
     struct wined3d_stateblock *stateblock;
     BOOL restore_state = FALSE;
     HRESULT hr;
@@ -918,14 +918,15 @@ static HRESULT ddraw_set_cooperative_level(struct ddraw *ddraw, HWND window,
             }
 
             wined3d_stateblock_capture(stateblock);
-            rt = wined3d_device_get_render_target(ddraw->wined3d_device, 0);
-            if (rt == ddraw->wined3d_frontbuffer)
-                rt = NULL;
-            else if (rt)
-                wined3d_surface_incref(rt);
+            rtv = wined3d_device_get_rendertarget_view(ddraw->wined3d_device, 0);
+            /* Rendering to ddraw->wined3d_frontbuffer. */
+            if (rtv && !wined3d_rendertarget_view_get_sub_resource_parent(rtv))
+                rtv = NULL;
+            else if (rtv)
+                wined3d_rendertarget_view_incref(rtv);
 
-            if ((ds = wined3d_device_get_depth_stencil(ddraw->wined3d_device)))
-                wined3d_surface_incref(ds);
+            if ((dsv = wined3d_device_get_depth_stencil_view(ddraw->wined3d_device)))
+                wined3d_rendertarget_view_incref(dsv);
         }
 
         ddraw_destroy_swapchain(ddraw);
@@ -936,16 +937,16 @@ static HRESULT ddraw_set_cooperative_level(struct ddraw *ddraw, HWND window,
 
     if (restore_state)
     {
-        if (ds)
+        if (dsv)
         {
-            wined3d_device_set_depth_stencil(ddraw->wined3d_device, ds);
-            wined3d_surface_decref(ds);
+            wined3d_device_set_depth_stencil_view(ddraw->wined3d_device, dsv);
+            wined3d_rendertarget_view_decref(dsv);
         }
 
-        if (rt)
+        if (rtv)
         {
-            wined3d_device_set_render_target(ddraw->wined3d_device, 0, rt, FALSE);
-            wined3d_surface_decref(rt);
+            wined3d_device_set_rendertarget_view(ddraw->wined3d_device, 0, rtv, FALSE);
+            wined3d_rendertarget_view_decref(rtv);
         }
 
         wined3d_stateblock_apply(stateblock);
@@ -1926,7 +1927,7 @@ static HRESULT WINAPI ddraw7_GetAvailableVidMem(IDirectDraw7 *iface, DDSCAPS2 *C
         struct wined3d_adapter_identifier desc = {0};
 
         hr = wined3d_get_adapter_identifier(ddraw->wined3d, WINED3DADAPTER_DEFAULT, 0, &desc);
-        *total = desc.video_memory;
+        *total = min(UINT_MAX, desc.video_memory);
     }
 
     wined3d_mutex_unlock();

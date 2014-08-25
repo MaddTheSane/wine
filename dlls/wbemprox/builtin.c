@@ -493,6 +493,11 @@ static const struct column col_stdregprov[] =
     { method_enumvaluesW,     CIM_FLAG_ARRAY|COL_FLAG_METHOD },
     { method_getstringvalueW, CIM_FLAG_ARRAY|COL_FLAG_METHOD }
 };
+static const struct column col_systemsecurity[] =
+{
+    { method_getsdW,                    CIM_FLAG_ARRAY|COL_FLAG_METHOD },
+    { method_setsdW,                    CIM_FLAG_ARRAY|COL_FLAG_METHOD },
+};
 static const struct column col_videocontroller[] =
 {
     { prop_adapterdactypeW,       CIM_STRING },
@@ -800,6 +805,11 @@ struct record_stdregprov
     class_method *enumvalues;
     class_method *getstringvalue;
 };
+struct record_systemsecurity
+{
+    class_method *getsd;
+    class_method *setsd;
+};
 struct record_videocontroller
 {
     const WCHAR *adapter_dactype;
@@ -846,7 +856,11 @@ static const struct record_param data_param[] =
     { class_stdregprovW, method_getstringvalueW, 1, param_subkeynameW, CIM_STRING },
     { class_stdregprovW, method_getstringvalueW, 1, param_valuenameW, CIM_STRING },
     { class_stdregprovW, method_getstringvalueW, -1, param_returnvalueW, CIM_UINT32, VT_I4 },
-    { class_stdregprovW, method_getstringvalueW, -1, param_valueW, CIM_STRING }
+    { class_stdregprovW, method_getstringvalueW, -1, param_valueW, CIM_STRING },
+    { class_systemsecurityW, method_getsdW, -1, param_returnvalueW, CIM_UINT32, VT_I4 },
+    { class_systemsecurityW, method_getsdW, -1, param_sdW, CIM_UINT8|CIM_FLAG_ARRAY },
+    { class_systemsecurityW, method_setsdW, 1, param_sdW, CIM_UINT8|CIM_FLAG_ARRAY },
+    { class_systemsecurityW, method_setsdW, -1, param_returnvalueW, CIM_UINT32, VT_I4 },
 };
 
 #define FLAVOR_ID (WBEM_FLAVOR_FLAG_PROPAGATE_TO_INSTANCE | WBEM_FLAVOR_NOT_OVERRIDABLE |\
@@ -868,6 +882,10 @@ static const struct record_sounddevice data_sounddevice[] =
 static const struct record_stdregprov data_stdregprov[] =
 {
     { reg_enum_key, reg_enum_values, reg_get_stringvalue }
+};
+static const struct record_systemsecurity data_systemsecurity[] =
+{
+    { security_get_sd, security_set_sd }
 };
 
 /* check if row matches condition and update status */
@@ -2416,6 +2434,7 @@ static struct table builtin_classes[] =
     { class_serviceW, SIZEOF(col_service), col_service, 0, 0, NULL, fill_service },
     { class_sounddeviceW, SIZEOF(col_sounddevice), col_sounddevice, SIZEOF(data_sounddevice), 0, (BYTE *)data_sounddevice },
     { class_stdregprovW, SIZEOF(col_stdregprov), col_stdregprov, SIZEOF(data_stdregprov), 0, (BYTE *)data_stdregprov },
+    { class_systemsecurityW, SIZEOF(col_systemsecurity), col_systemsecurity, SIZEOF(data_systemsecurity), 0, (BYTE *)data_systemsecurity },
     { class_videocontrollerW, SIZEOF(col_videocontroller), col_videocontroller, 0, 0, NULL, fill_videocontroller }
 };
 

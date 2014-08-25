@@ -1590,7 +1590,7 @@ struct wined3d_context *context_create(struct wined3d_swapchain *swapchain,
     ret->current_rt = target;
     ret->tid = GetCurrentThreadId();
 
-    ret->render_offscreen = surface_is_offscreen(target);
+    ret->render_offscreen = wined3d_resource_is_offscreen(&target->resource);
     ret->draw_buffers_mask = context_generate_rt_mask(GL_BACK);
     ret->valid = 1;
 
@@ -1826,7 +1826,7 @@ static void context_get_rt_size(const struct wined3d_context *context, SIZE *siz
 {
     const struct wined3d_surface *rt = context->current_rt;
 
-    if (rt->swapchain && rt->swapchain->front_buffer == rt)
+    if (rt->container->swapchain && rt->container->swapchain->front_buffer == rt->container)
     {
         RECT window_size;
 
@@ -2201,13 +2201,13 @@ static BOOL match_depth_stencil_format(const struct wined3d_format *existing,
 
 /* The caller provides a context */
 static void context_validate_onscreen_formats(struct wined3d_context *context,
-        const struct wined3d_surface *depth_stencil)
+        const struct wined3d_rendertarget_view *depth_stencil)
 {
     /* Onscreen surfaces are always in a swapchain */
-    struct wined3d_swapchain *swapchain = context->current_rt->swapchain;
+    struct wined3d_swapchain *swapchain = context->current_rt->container->swapchain;
 
     if (context->render_offscreen || !depth_stencil) return;
-    if (match_depth_stencil_format(swapchain->ds_format, depth_stencil->resource.format)) return;
+    if (match_depth_stencil_format(swapchain->ds_format, depth_stencil->format)) return;
 
     /* TODO: If the requested format would satisfy the needs of the existing one(reverse match),
      * or no onscreen depth buffer was created, the OpenGL drawable could be changed to the new
@@ -2225,7 +2225,7 @@ static DWORD context_generate_rt_mask_no_fbo(const struct wined3d_device *device
 {
     if (!rt || rt->resource.format->id == WINED3DFMT_NULL)
         return 0;
-    else if (rt->swapchain)
+    else if (rt->container->swapchain)
         return context_generate_rt_mask_from_surface(rt);
     else
         return context_generate_rt_mask(device->offscreenBuffer);
@@ -2245,7 +2245,7 @@ void context_apply_blit_state(struct wined3d_context *context, const struct wine
         {
             wined3d_texture_load(rt->container, context, FALSE);
 
-            context_apply_fbo_state_blit(context, GL_FRAMEBUFFER, rt, NULL, rt->resource.draw_binding);
+            context_apply_fbo_state_blit(context, GL_FRAMEBUFFER, rt, NULL, rt->container->resource.draw_binding);
             if (rt->resource.format->id != WINED3DFMT_NULL)
                 rt_mask = 1;
             else
@@ -2280,8 +2280,8 @@ void context_apply_blit_state(struct wined3d_context *context, const struct wine
     context_invalidate_state(context, STATE_FRAMEBUFFER);
 }
 
-static BOOL context_validate_rt_config(UINT rt_count,
-        struct wined3d_surface * const *rts, const struct wined3d_surface *ds)
+static BOOL context_validate_rt_config(UINT rt_count, struct wined3d_rendertarget_view * const *rts,
+        const struct wined3d_rendertarget_view *ds)
 {
     unsigned int i;
 
@@ -2289,7 +2289,7 @@ static BOOL context_validate_rt_config(UINT rt_count,
 
     for (i = 0; i < rt_count; ++i)
     {
-        if (rts[i] && rts[i]->resource.format->id != WINED3DFMT_NULL)
+        if (rts[i] && rts[i]->format->id != WINED3DFMT_NULL)
             return TRUE;
     }
 
@@ -2301,10 +2301,10 @@ static BOOL context_validate_rt_config(UINT rt_count,
 BOOL context_apply_clear_state(struct wined3d_context *context, const struct wined3d_device *device,
         UINT rt_count, const struct wined3d_fb_state *fb)
 {
+    struct wined3d_rendertarget_view **rts = fb->render_targets;
     const struct wined3d_gl_info *gl_info = context->gl_info;
     DWORD rt_mask = 0, *cur_mask;
     UINT i;
-    struct wined3d_surface **rts = fb->render_targets;
 
     if (isStateDirty(context, STATE_FRAMEBUFFER) || fb != &device->fb
             || rt_count != context->gl_info->limits.buffers)
@@ -2316,12 +2316,12 @@ BOOL context_apply_clear_state(struct wined3d_context *context, const struct win
         {
             context_validate_onscreen_formats(context, fb->depth_stencil);
 
-            if (!rt_count || surface_is_offscreen(rts[0]))
+            if (!rt_count || wined3d_resource_is_offscreen(rts[0]->resource))
             {
                 for (i = 0; i < rt_count; ++i)
                 {
-                    context->blit_targets[i] = rts[i];
-                    if (rts[i] && rts[i]->resource.format->id != WINED3DFMT_NULL)
+                    context->blit_targets[i] = wined3d_rendertarget_view_get_surface(rts[i]);
+                    if (rts[i] && rts[i]->format->id != WINED3DFMT_NULL)
                         rt_mask |= (1 << i);
                 }
                 while (i < context->gl_info->limits.buffers)
@@ -2329,13 +2329,14 @@ BOOL context_apply_clear_state(struct wined3d_context *context, const struct win
                     context->blit_targets[i] = NULL;
                     ++i;
                 }
-                context_apply_fbo_state(context, GL_FRAMEBUFFER, context->blit_targets, fb->depth_stencil,
-                        rt_count ? rts[0]->resource.draw_binding : WINED3D_LOCATION_TEXTURE_RGB);
+                context_apply_fbo_state(context, GL_FRAMEBUFFER, context->blit_targets,
+                        wined3d_rendertarget_view_get_surface(fb->depth_stencil),
+                        rt_count ? rts[0]->resource->draw_binding : WINED3D_LOCATION_TEXTURE_RGB);
             }
             else
             {
                 context_apply_fbo_state(context, GL_FRAMEBUFFER, NULL, NULL, WINED3D_LOCATION_DRAWABLE);
-                rt_mask = context_generate_rt_mask_from_surface(rts[0]);
+                rt_mask = context_generate_rt_mask_from_surface(wined3d_rendertarget_view_get_surface(rts[0]));
             }
 
             /* If the framebuffer is not the device's fb the device's fb has to be reapplied
@@ -2345,20 +2346,23 @@ BOOL context_apply_clear_state(struct wined3d_context *context, const struct win
         }
         else
         {
-            rt_mask = context_generate_rt_mask_no_fbo(device, rt_count ? rts[0] : NULL);
+            rt_mask = context_generate_rt_mask_no_fbo(device,
+                    rt_count ? wined3d_rendertarget_view_get_surface(rts[0]) : NULL);
         }
     }
     else if (wined3d_settings.offscreen_rendering_mode == ORM_FBO
-            && (!rt_count || surface_is_offscreen(rts[0])))
+            && (!rt_count || wined3d_resource_is_offscreen(rts[0]->resource)))
     {
         for (i = 0; i < rt_count; ++i)
         {
-            if (rts[i] && rts[i]->resource.format->id != WINED3DFMT_NULL) rt_mask |= (1 << i);
+            if (rts[i] && rts[i]->format->id != WINED3DFMT_NULL)
+                rt_mask |= (1 << i);
         }
     }
     else
     {
-        rt_mask = context_generate_rt_mask_no_fbo(device, rt_count ? rts[0] : NULL);
+        rt_mask = context_generate_rt_mask_no_fbo(device,
+                rt_count ? wined3d_rendertarget_view_get_surface(rts[0]) : NULL);
     }
 
     cur_mask = context->current_fbo ? &context->current_fbo->rt_mask : &context->draw_buffers_mask;
@@ -2395,13 +2399,15 @@ BOOL context_apply_clear_state(struct wined3d_context *context, const struct win
 static DWORD find_draw_buffers_mask(const struct wined3d_context *context, const struct wined3d_device *device)
 {
     const struct wined3d_state *state = &device->state;
-    struct wined3d_surface **rts = state->fb->render_targets;
+    struct wined3d_rendertarget_view **rts = state->fb->render_targets;
     struct wined3d_shader *ps = state->shader[WINED3D_SHADER_TYPE_PIXEL];
     DWORD rt_mask, rt_mask_bits;
     unsigned int i;
 
-    if (wined3d_settings.offscreen_rendering_mode != ORM_FBO) return context_generate_rt_mask_no_fbo(device, rts[0]);
-    else if (!context->render_offscreen) return context_generate_rt_mask_from_surface(rts[0]);
+    if (wined3d_settings.offscreen_rendering_mode != ORM_FBO)
+        return context_generate_rt_mask_no_fbo(device, wined3d_rendertarget_view_get_surface(rts[0]));
+    else if (!context->render_offscreen)
+        return context_generate_rt_mask_from_surface(wined3d_rendertarget_view_get_surface(rts[0]));
 
     rt_mask = ps ? ps->reg_maps.rt_mask : 1;
     rt_mask &= context->d3d_info->valid_rt_mask;
@@ -2410,7 +2416,7 @@ static DWORD find_draw_buffers_mask(const struct wined3d_context *context, const
     while (rt_mask_bits)
     {
         rt_mask_bits &= ~(1 << i);
-        if (!rts[i] || rts[i]->resource.format->id == WINED3DFMT_NULL)
+        if (!rts[i] || rts[i]->format->id == WINED3DFMT_NULL)
             rt_mask &= ~(1 << i);
 
         i++;
@@ -2435,8 +2441,15 @@ void context_state_fb(struct wined3d_context *context, const struct wined3d_stat
         }
         else
         {
-            context_apply_fbo_state(context, GL_FRAMEBUFFER, fb->render_targets, fb->depth_stencil,
-                    fb->render_targets[0]->resource.draw_binding);
+            unsigned int i;
+
+            for (i = 0; i < context->gl_info->limits.buffers; ++i)
+            {
+                context->blit_targets[i] = wined3d_rendertarget_view_get_surface(fb->render_targets[i]);
+            }
+            context_apply_fbo_state(context, GL_FRAMEBUFFER, context->blit_targets,
+                    wined3d_rendertarget_view_get_surface(fb->depth_stencil),
+                    fb->render_targets[0]->resource->draw_binding);
         }
     }
 
@@ -3030,7 +3043,7 @@ static void context_setup_target(struct wined3d_context *context, struct wined3d
 {
     BOOL old_render_offscreen = context->render_offscreen, render_offscreen;
 
-    render_offscreen = surface_is_offscreen(target);
+    render_offscreen = wined3d_resource_is_offscreen(&target->resource);
     if (context->current_rt == target && render_offscreen == old_render_offscreen) return;
 
     /* To compensate the lack of format switching with some offscreen rendering methods and on onscreen buffers
@@ -3102,9 +3115,9 @@ struct wined3d_context *context_acquire(const struct wined3d_device *device, str
         {
             struct wined3d_swapchain *swapchain = device->swapchains[0];
             if (swapchain->back_buffers)
-                target = swapchain->back_buffers[0];
+                target = surface_from_resource(wined3d_texture_get_sub_resource(swapchain->back_buffers[0], 0));
             else
-                target = swapchain->front_buffer;
+                target = surface_from_resource(wined3d_texture_get_sub_resource(swapchain->front_buffer, 0));
         }
     }
 
@@ -3112,11 +3125,11 @@ struct wined3d_context *context_acquire(const struct wined3d_device *device, str
     {
         context = current_context;
     }
-    else if (target->swapchain)
+    else if (target->container->swapchain)
     {
         TRACE("Rendering onscreen.\n");
 
-        context = swapchain_get_context(target->swapchain);
+        context = swapchain_get_context(target->container->swapchain);
     }
     else
     {

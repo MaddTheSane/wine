@@ -343,15 +343,15 @@ static HRESULT WINAPI d3d9_device_TestCooperativeLevel(IDirect3DDevice9Ex *iface
 static UINT WINAPI d3d9_device_GetAvailableTextureMem(IDirect3DDevice9Ex *iface)
 {
     struct d3d9_device *device = impl_from_IDirect3DDevice9Ex(iface);
-    HRESULT hr;
+    UINT ret;
 
     TRACE("iface %p.\n", iface);
 
     wined3d_mutex_lock();
-    hr = wined3d_device_get_available_texture_mem(device->wined3d_device);
+    ret = wined3d_device_get_available_texture_mem(device->wined3d_device);
     wined3d_mutex_unlock();
 
-    return hr;
+    return ret;
 }
 
 static HRESULT WINAPI d3d9_device_EvictManagedResources(IDirect3DDevice9Ex *iface)
@@ -1026,7 +1026,6 @@ static HRESULT d3d9_device_create_surface(struct d3d9_device *device, UINT width
 
     sub_resource = wined3d_texture_get_sub_resource(texture, 0);
     surface_impl = wined3d_resource_get_parent(sub_resource);
-    surface_impl->forwardReference = NULL;
     surface_impl->parent_device = &device->IDirect3DDevice9Ex_iface;
     *surface = &surface_impl->IDirect3DSurface9_iface;
     IDirect3DSurface9_AddRef(*surface);
@@ -1272,8 +1271,14 @@ static HRESULT WINAPI d3d9_device_ColorFill(IDirect3DDevice9Ex *iface,
         return D3DERR_INVALIDCALL;
     }
 
-    /* Colorfill can only be used on rendertarget surfaces, or offscreen plain surfaces in D3DPOOL_DEFAULT */
-    hr = wined3d_device_color_fill(device->wined3d_device, surface_impl->wined3d_surface, rect, &c);
+    if (desc.pool != WINED3D_POOL_DEFAULT && desc.pool != WINED3D_POOL_SYSTEM_MEM)
+    {
+        WARN("Color-fill not allowed on surfaces in pool %#x.\n", desc.pool);
+        return D3DERR_INVALIDCALL;
+    }
+
+    hr = wined3d_device_clear_rendertarget_view(device->wined3d_device,
+            d3d9_surface_get_rendertarget_view(surface_impl), rect, &c);
 
     wined3d_mutex_unlock();
 
@@ -1346,8 +1351,8 @@ static HRESULT WINAPI d3d9_device_SetRenderTarget(IDirect3DDevice9Ex *iface, DWO
     }
 
     wined3d_mutex_lock();
-    hr = wined3d_device_set_render_target(device->wined3d_device, idx,
-            surface_impl ? surface_impl->wined3d_surface : NULL, TRUE);
+    hr = wined3d_device_set_rendertarget_view(device->wined3d_device, idx,
+            surface_impl ? d3d9_surface_get_rendertarget_view(surface_impl) : NULL, TRUE);
     wined3d_mutex_unlock();
 
     return hr;
@@ -1356,7 +1361,7 @@ static HRESULT WINAPI d3d9_device_SetRenderTarget(IDirect3DDevice9Ex *iface, DWO
 static HRESULT WINAPI d3d9_device_GetRenderTarget(IDirect3DDevice9Ex *iface, DWORD idx, IDirect3DSurface9 **surface)
 {
     struct d3d9_device *device = impl_from_IDirect3DDevice9Ex(iface);
-    struct wined3d_surface *wined3d_surface;
+    struct wined3d_rendertarget_view *wined3d_rtv;
     struct d3d9_surface *surface_impl;
     HRESULT hr = D3D_OK;
 
@@ -1372,9 +1377,11 @@ static HRESULT WINAPI d3d9_device_GetRenderTarget(IDirect3DDevice9Ex *iface, DWO
     }
 
     wined3d_mutex_lock();
-    if ((wined3d_surface = wined3d_device_get_render_target(device->wined3d_device, idx)))
+    if ((wined3d_rtv = wined3d_device_get_rendertarget_view(device->wined3d_device, idx)))
     {
-        surface_impl = wined3d_surface_get_parent(wined3d_surface);
+        /* We want the sub resource parent here, since the view itself may be
+         * internal to wined3d and may not have a parent. */
+        surface_impl = wined3d_rendertarget_view_get_sub_resource_parent(wined3d_rtv);
         *surface = &surface_impl->IDirect3DSurface9_iface;
         IDirect3DSurface9_AddRef(*surface);
     }
@@ -1396,7 +1403,8 @@ static HRESULT WINAPI d3d9_device_SetDepthStencilSurface(IDirect3DDevice9Ex *ifa
     TRACE("iface %p, depth_stencil %p.\n", iface, depth_stencil);
 
     wined3d_mutex_lock();
-    wined3d_device_set_depth_stencil(device->wined3d_device, ds_impl ? ds_impl->wined3d_surface : NULL);
+    wined3d_device_set_depth_stencil_view(device->wined3d_device,
+            ds_impl ? d3d9_surface_get_rendertarget_view(ds_impl) : NULL);
     wined3d_mutex_unlock();
 
     return D3D_OK;
@@ -1405,7 +1413,7 @@ static HRESULT WINAPI d3d9_device_SetDepthStencilSurface(IDirect3DDevice9Ex *ifa
 static HRESULT WINAPI d3d9_device_GetDepthStencilSurface(IDirect3DDevice9Ex *iface, IDirect3DSurface9 **depth_stencil)
 {
     struct d3d9_device *device = impl_from_IDirect3DDevice9Ex(iface);
-    struct wined3d_surface *wined3d_surface;
+    struct wined3d_rendertarget_view *wined3d_dsv;
     struct d3d9_surface *surface_impl;
     HRESULT hr = D3D_OK;
 
@@ -1415,9 +1423,11 @@ static HRESULT WINAPI d3d9_device_GetDepthStencilSurface(IDirect3DDevice9Ex *ifa
         return D3DERR_INVALIDCALL;
 
     wined3d_mutex_lock();
-    if ((wined3d_surface = wined3d_device_get_depth_stencil(device->wined3d_device)))
+    if ((wined3d_dsv = wined3d_device_get_depth_stencil_view(device->wined3d_device)))
     {
-        surface_impl = wined3d_surface_get_parent(wined3d_surface);
+        /* We want the sub resource parent here, since the view itself may be
+         * internal to wined3d and may not have a parent. */
+        surface_impl = wined3d_rendertarget_view_get_sub_resource_parent(wined3d_dsv);
         *depth_stencil = &surface_impl->IDirect3DSurface9_iface;
         IDirect3DSurface9_AddRef(*depth_stencil);
     }
@@ -3461,7 +3471,6 @@ static HRESULT CDECL device_parent_surface_created(struct wined3d_device_parent 
         void *container_parent, struct wined3d_surface *surface, void **parent,
         const struct wined3d_parent_ops **parent_ops)
 {
-    struct d3d9_device *device = device_from_device_parent(device_parent);
     struct d3d9_surface *d3d_surface;
 
     TRACE("device_parent %p, container_parent %p, surface %p, parent %p, parent_ops %p.\n",
@@ -3470,16 +3479,9 @@ static HRESULT CDECL device_parent_surface_created(struct wined3d_device_parent 
     if (!(d3d_surface = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(*d3d_surface))))
         return E_OUTOFMEMORY;
 
-    surface_init(d3d_surface, surface, device, parent_ops);
+    surface_init(d3d_surface, container_parent, surface, parent_ops);
     *parent = d3d_surface;
     TRACE("Created surface %p.\n", d3d_surface);
-
-    d3d_surface->container = container_parent;
-    IDirect3DDevice9Ex_Release(d3d_surface->parent_device);
-    d3d_surface->parent_device = NULL;
-
-    IDirect3DSurface9_Release(&d3d_surface->IDirect3DSurface9_iface);
-    d3d_surface->forwardReference = container_parent;
 
     return D3D_OK;
 }
@@ -3532,7 +3534,6 @@ static HRESULT CDECL device_parent_create_swapchain_surface(struct wined3d_devic
     wined3d_texture_decref(texture);
 
     d3d_surface = wined3d_surface_get_parent(*surface);
-    d3d_surface->forwardReference = NULL;
     d3d_surface->parent_device = &device->IDirect3DDevice9Ex_iface;
 
     return hr;

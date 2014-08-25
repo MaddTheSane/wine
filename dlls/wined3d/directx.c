@@ -88,6 +88,7 @@ enum wined3d_d3d_level
     WINED3D_D3D_LEVEL_9_SM3,
     WINED3D_D3D_LEVEL_10,
     WINED3D_D3D_LEVEL_11,
+    WINED3D_D3D_LEVEL_COUNT
 };
 
 /* The d3d device ID */
@@ -409,11 +410,13 @@ fail:
 }
 
 /* Adjust the amount of used texture memory */
-unsigned int adapter_adjust_memory(struct wined3d_adapter *adapter, int amount)
+UINT64 adapter_adjust_memory(struct wined3d_adapter *adapter, INT64 amount)
 {
-    adapter->UsedTextureRam += amount;
-    TRACE("Adjusted adapter memory by %d to %d.\n", amount, adapter->UsedTextureRam);
-    return adapter->UsedTextureRam;
+    adapter->vram_bytes_used += amount;
+    TRACE("Adjusted used adapter memory by 0x%s to 0x%s.\n",
+            wine_dbgstr_longlong(amount),
+            wine_dbgstr_longlong(adapter->vram_bytes_used));
+    return adapter->vram_bytes_used;
 }
 
 static void wined3d_adapter_cleanup(struct wined3d_adapter *adapter)
@@ -1321,9 +1324,16 @@ static const struct gpu_description gpu_description_table[] =
     {HW_VENDOR_AMD,        CARD_AMD_RADEON_HD6700,         "AMD Radeon HD 6700 Series",        DRIVER_AMD_R600,         1024},
     {HW_VENDOR_AMD,        CARD_AMD_RADEON_HD6800,         "AMD Radeon HD 6800 Series",        DRIVER_AMD_R600,         1024},
     {HW_VENDOR_AMD,        CARD_AMD_RADEON_HD6900,         "AMD Radeon HD 6900 Series",        DRIVER_AMD_R600,         2048},
+    {HW_VENDOR_AMD,        CARD_AMD_RADEON_HD7660D,        "AMD Radeon HD 7660D",              DRIVER_AMD_R600,         2048},
     {HW_VENDOR_AMD,        CARD_AMD_RADEON_HD7700,         "AMD Radeon HD 7700 Series",        DRIVER_AMD_R600,         1024},
     {HW_VENDOR_AMD,        CARD_AMD_RADEON_HD7800,         "AMD Radeon HD 7800 Series",        DRIVER_AMD_R600,         2048},
     {HW_VENDOR_AMD,        CARD_AMD_RADEON_HD7900,         "AMD Radeon HD 7900 Series",        DRIVER_AMD_R600,         2048},
+    {HW_VENDOR_AMD,        CARD_AMD_RADEON_HD8600M,        "AMD Radeon HD 8600M Series",       DRIVER_AMD_R600,         1024},
+    {HW_VENDOR_AMD,        CARD_AMD_RADEON_HD8670,         "AMD Radeon HD 8670",               DRIVER_AMD_R600,         2048},
+    {HW_VENDOR_AMD,        CARD_AMD_RADEON_HD8770,         "AMD Radeon HD 8770",               DRIVER_AMD_R600,         2048},
+    {HW_VENDOR_AMD,        CARD_AMD_RADEON_R3,             "AMD Radeon HD 8400 / R3 Series",   DRIVER_AMD_R600,         2048},
+    {HW_VENDOR_AMD,        CARD_AMD_RADEON_R7,             "AMD Radeon(TM) R7 Graphics",       DRIVER_AMD_R600,         2048},
+    {HW_VENDOR_AMD,        CARD_AMD_RADEON_R9,             "AMD Radeon R9 290",                DRIVER_AMD_R600,         4096},
 
     /* VMware */
     {HW_VENDOR_VMWARE,     CARD_VMWARE_SVGA3D,             "VMware SVGA 3D (Microsoft Corporation - WDDM)",             DRIVER_VMWARE,        1024},
@@ -1498,21 +1508,21 @@ static void init_driver_info(struct wined3d_driver_info *driver_info,
     if ((gpu_desc = get_gpu_description(driver_info->vendor, driver_info->device)))
     {
         driver_info->description = gpu_desc->description;
-        driver_info->vidmem = gpu_desc->vidmem * 1024 * 1024;
+        driver_info->vram_bytes = (UINT64)gpu_desc->vidmem * 1024 * 1024;
         driver = gpu_desc->driver;
     }
     else
     {
         ERR("Card %04x:%04x not found in driver DB.\n", vendor, device);
         driver_info->description = "Direct3D HAL";
-        driver_info->vidmem = WINE_DEFAULT_VIDMEM;
+        driver_info->vram_bytes = WINE_DEFAULT_VIDMEM;
         driver = DRIVER_UNKNOWN;
     }
 
     if (wined3d_settings.emulated_textureram)
     {
         TRACE("Overriding amount of video memory with %u bytes.\n", wined3d_settings.emulated_textureram);
-        driver_info->vidmem = wined3d_settings.emulated_textureram;
+        driver_info->vram_bytes = wined3d_settings.emulated_textureram;
     }
 
     /* Try to obtain driver version information for the current Windows version. This fails in
@@ -1994,11 +2004,19 @@ cards_intel[] =
  * These are returned but not handled: RC410, RV380. */
 cards_amd_mesa[] =
 {
+    /* Sea Islands */
+    {"HAWAII",                      CARD_AMD_RADEON_R9    },
+    {"KAVERI",                      CARD_AMD_RADEON_R7    },
+    {"KABINI",                      CARD_AMD_RADEON_R3    },
+    {"BONAIRE",                     CARD_AMD_RADEON_HD8770},
     /* Southern Islands */
+    {"OLAND",                       CARD_AMD_RADEON_HD8670},
+    {"HAINAN",                      CARD_AMD_RADEON_HD8600M},
     {"TAHITI",                      CARD_AMD_RADEON_HD7900},
     {"PITCAIRN",                    CARD_AMD_RADEON_HD7800},
     {"CAPE VERDE",                  CARD_AMD_RADEON_HD7700},
     /* Northern Islands */
+    {"ARUBA",                       CARD_AMD_RADEON_HD7660D},
     {"CAYMAN",                      CARD_AMD_RADEON_HD6900},
     {"BARTS",                       CARD_AMD_RADEON_HD6800},
     {"TURKS",                       CARD_AMD_RADEON_HD6600},
@@ -2173,45 +2191,43 @@ intel_gl_vendor_table[] =
     {GL_VENDOR_MESA,    "Mesa Intel driver",                cards_intel,            ARRAY_SIZE(cards_intel)},
 };
 
-static enum wined3d_pci_device select_card_fallback_nvidia(const struct wined3d_gl_info *gl_info)
+static const enum wined3d_pci_device
+card_fallback_nvidia[] =
 {
-    enum wined3d_d3d_level d3d_level = d3d_level_from_gl_info(gl_info);
-    if (d3d_level >= WINED3D_D3D_LEVEL_10)
-        return CARD_NVIDIA_GEFORCE_8800GTX;
-    if (d3d_level >= WINED3D_D3D_LEVEL_9_SM3)
-        return CARD_NVIDIA_GEFORCE_6800;
-    if (d3d_level >= WINED3D_D3D_LEVEL_9_SM2)
-        return CARD_NVIDIA_GEFORCEFX_5800;
-    if (d3d_level >= WINED3D_D3D_LEVEL_8)
-        return CARD_NVIDIA_GEFORCE3;
-    if (d3d_level >= WINED3D_D3D_LEVEL_7)
-        return CARD_NVIDIA_GEFORCE;
-    if (d3d_level >= WINED3D_D3D_LEVEL_6)
-        return CARD_NVIDIA_RIVA_TNT;
-    return CARD_NVIDIA_RIVA_128;
-}
-
-static enum wined3d_pci_device select_card_fallback_amd(const struct wined3d_gl_info *gl_info)
+    CARD_NVIDIA_RIVA_128,           /* D3D5 */
+    CARD_NVIDIA_RIVA_TNT,           /* D3D6 */
+    CARD_NVIDIA_GEFORCE,            /* D3D7 */
+    CARD_NVIDIA_GEFORCE3,           /* D3D8 */
+    CARD_NVIDIA_GEFORCEFX_5800,     /* D3D9_SM2 */
+    CARD_NVIDIA_GEFORCE_6800,       /* D3D9_SM3 */
+    CARD_NVIDIA_GEFORCE_8800GTX,    /* D3D10 */
+    CARD_NVIDIA_GEFORCE_GTX470,     /* D3D11 */
+},
+card_fallback_amd[] =
 {
-    enum wined3d_d3d_level d3d_level = d3d_level_from_gl_info(gl_info);
-    if (d3d_level >= WINED3D_D3D_LEVEL_10)
-        return CARD_AMD_RADEON_HD2900;
-    if (d3d_level >= WINED3D_D3D_LEVEL_9_SM2)
-        return CARD_AMD_RADEON_9500;
-    if (d3d_level >= WINED3D_D3D_LEVEL_8)
-        return CARD_AMD_RADEON_8500;
-    if (d3d_level >= WINED3D_D3D_LEVEL_7)
-        return CARD_AMD_RADEON_7200;
-    return CARD_AMD_RAGE_128PRO;
-}
-
-static enum wined3d_pci_device select_card_fallback_intel(const struct wined3d_gl_info *gl_info)
+    CARD_AMD_RAGE_128PRO,           /* D3D5 */
+    CARD_AMD_RAGE_128PRO,           /* D3D6 */
+    CARD_AMD_RADEON_7200,           /* D3D7 */
+    CARD_AMD_RADEON_8500,           /* D3D8 */
+    CARD_AMD_RADEON_9500,           /* D3D9_SM2 */
+    CARD_AMD_RADEON_X1600,          /* D3D9_SM3 */
+    CARD_AMD_RADEON_HD2900,         /* D3D10 */
+    CARD_AMD_RADEON_HD5600,         /* D3D11 */
+},
+card_fallback_intel[] =
 {
-    enum wined3d_d3d_level d3d_level = d3d_level_from_gl_info(gl_info);
-    if (d3d_level >= WINED3D_D3D_LEVEL_10)
-        return CARD_INTEL_G45;
-    return CARD_INTEL_915G;
-}
+    CARD_INTEL_915G,                /* D3D5 */
+    CARD_INTEL_915G,                /* D3D6 */
+    CARD_INTEL_915G,                /* D3D7 */
+    CARD_INTEL_915G,                /* D3D8 */
+    CARD_INTEL_915G,                /* D3D9_SM2 */
+    CARD_INTEL_915G,                /* D3D9_SM3 */
+    CARD_INTEL_G45,                 /* D3D10 */
+    CARD_INTEL_IVBD,                /* D3D11 */
+};
+C_ASSERT(ARRAY_SIZE(card_fallback_nvidia)  == WINED3D_D3D_LEVEL_COUNT);
+C_ASSERT(ARRAY_SIZE(card_fallback_amd)     == WINED3D_D3D_LEVEL_COUNT);
+C_ASSERT(ARRAY_SIZE(card_fallback_intel)   == WINED3D_D3D_LEVEL_COUNT);
 
 static enum wined3d_pci_device select_card_handler(const struct gl_vendor_selection *table,
         unsigned int table_size, enum wined3d_gl_vendor gl_vendor, const char *gl_renderer)
@@ -2244,22 +2260,22 @@ static const struct
     const char *description;        /* Description of the card selector i.e. Apple OS/X Intel */
     const struct gl_vendor_selection *gl_vendor_selection;
     unsigned int gl_vendor_count;
-    enum wined3d_pci_device (*select_card_fallback)(const struct wined3d_gl_info *gl_info);
+    const enum wined3d_pci_device *card_fallback; /* An array with D3D_LEVEL_COUNT elements */
 }
 card_vendor_table[] =
 {
     {HW_VENDOR_AMD,         "AMD",      amd_gl_vendor_table,
             sizeof(amd_gl_vendor_table) / sizeof(*amd_gl_vendor_table),
-            select_card_fallback_amd},
+            card_fallback_amd},
     {HW_VENDOR_NVIDIA,      "Nvidia",   nvidia_gl_vendor_table,
             sizeof(nvidia_gl_vendor_table) / sizeof(*nvidia_gl_vendor_table),
-            select_card_fallback_nvidia},
+            card_fallback_nvidia},
     {HW_VENDOR_VMWARE,      "VMware",   vmware_gl_vendor_table,
             sizeof(vmware_gl_vendor_table) / sizeof(*vmware_gl_vendor_table),
-            select_card_fallback_amd},
+            card_fallback_amd},
     {HW_VENDOR_INTEL,       "Intel",    intel_gl_vendor_table,
             sizeof(intel_gl_vendor_table) / sizeof(*intel_gl_vendor_table),
-            select_card_fallback_intel},
+            card_fallback_intel},
 };
 
 
@@ -2317,6 +2333,7 @@ static enum wined3d_pci_device wined3d_guess_card(const struct wined3d_gl_info *
      * memory can be overruled using a registry setting. */
 
     unsigned int i;
+    enum wined3d_d3d_level d3d_level = d3d_level_from_gl_info(gl_info);
     enum wined3d_pci_device device;
 
     for (i = 0; i < (sizeof(card_vendor_table) / sizeof(*card_vendor_table)); ++i)
@@ -2331,7 +2348,7 @@ static enum wined3d_pci_device wined3d_guess_card(const struct wined3d_gl_info *
             return device;
 
         TRACE("Unrecognized renderer %s, falling back to default.\n", debugstr_a(gl_renderer));
-        return card_vendor_table[i].select_card_fallback(gl_info);
+        return card_vendor_table[i].card_fallback[d3d_level];
     }
 
     FIXME("No card selector available for card vendor %04x (using GL_RENDERER %s).\n",
@@ -2339,7 +2356,7 @@ static enum wined3d_pci_device wined3d_guess_card(const struct wined3d_gl_info *
 
     /* Default to generic Nvidia hardware based on the supported OpenGL extensions. */
     *card_vendor = HW_VENDOR_NVIDIA;
-    return select_card_fallback_nvidia(gl_info);
+    return card_fallback_nvidia[d3d_level];
 }
 
 static const struct wined3d_vertex_pipe_ops *select_vertex_implementation(const struct wined3d_gl_info *gl_info,
@@ -3401,7 +3418,7 @@ HRESULT CDECL wined3d_get_adapter_identifier(const struct wined3d *wined3d,
     memcpy(&identifier->device_identifier, &IID_D3DDEVICE_D3DUID, sizeof(identifier->device_identifier));
     identifier->whql_level = (flags & WINED3DENUM_NO_WHQL_LEVEL) ? 0 : 1;
     memcpy(&identifier->adapter_luid, &adapter->luid, sizeof(identifier->adapter_luid));
-    identifier->video_memory = adapter->TextureRam;
+    identifier->video_memory = min(~(SIZE_T)0, adapter->vram_bytes);
 
     return WINED3D_OK;
 }
@@ -5104,9 +5121,9 @@ static BOOL wined3d_adapter_init(struct wined3d_adapter *adapter, UINT ordinal)
         return FALSE;
     }
 
-    adapter->TextureRam = adapter->driver_info.vidmem;
-    adapter->UsedTextureRam = 0;
-    TRACE("Emulating %u MB of texture ram.\n", adapter->TextureRam / (1024 * 1024));
+    adapter->vram_bytes = adapter->driver_info.vram_bytes;
+    adapter->vram_bytes_used = 0;
+    TRACE("Emulating 0x%s bytes of video ram.\n", wine_dbgstr_longlong(adapter->vram_bytes));
 
     display_device.cb = sizeof(display_device);
     EnumDisplayDevicesW(NULL, ordinal, &display_device, 0);
@@ -5132,9 +5149,9 @@ static void wined3d_adapter_init_nogl(struct wined3d_adapter *adapter, UINT ordi
     adapter->driver_info.name = "Display";
     adapter->driver_info.description = "WineD3D DirectDraw Emulation";
     if (wined3d_settings.emulated_textureram)
-        adapter->TextureRam = wined3d_settings.emulated_textureram;
+        adapter->vram_bytes = wined3d_settings.emulated_textureram;
     else
-        adapter->TextureRam = 128 * 1024 * 1024;
+        adapter->vram_bytes = 128 * 1024 * 1024;
 
     initPixelFormatsNoGL(&adapter->gl_info);
 

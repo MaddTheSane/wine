@@ -400,15 +400,15 @@ static HRESULT WINAPI d3d8_device_TestCooperativeLevel(IDirect3DDevice8 *iface)
 static UINT WINAPI d3d8_device_GetAvailableTextureMem(IDirect3DDevice8 *iface)
 {
     struct d3d8_device *device = impl_from_IDirect3DDevice8(iface);
-    HRESULT hr;
+    UINT ret;
 
     TRACE("iface %p.\n", iface);
 
     wined3d_mutex_lock();
-    hr = wined3d_device_get_available_texture_mem(device->wined3d_device);
+    ret = wined3d_device_get_available_texture_mem(device->wined3d_device);
     wined3d_mutex_unlock();
 
-    return hr;
+    return ret;
 }
 
 static HRESULT WINAPI d3d8_device_ResourceManagerDiscardBytes(IDirect3DDevice8 *iface, DWORD byte_count)
@@ -1127,7 +1127,7 @@ static HRESULT WINAPI d3d8_device_SetRenderTarget(IDirect3DDevice8 *iface,
     struct d3d8_device *device = impl_from_IDirect3DDevice8(iface);
     struct d3d8_surface *rt_impl = unsafe_impl_from_IDirect3DSurface8(render_target);
     struct d3d8_surface *ds_impl = unsafe_impl_from_IDirect3DSurface8(depth_stencil);
-    struct wined3d_surface *original_ds = NULL;
+    struct wined3d_rendertarget_view *original_dsv;
     HRESULT hr = D3D_OK;
 
     TRACE("iface %p, render_target %p, depth_stencil %p.\n", iface, render_target, depth_stencil);
@@ -1136,19 +1136,22 @@ static HRESULT WINAPI d3d8_device_SetRenderTarget(IDirect3DDevice8 *iface,
 
     if (ds_impl)
     {
+        struct wined3d_rendertarget_view *original_rtv;
         struct wined3d_resource_desc ds_desc, rt_desc;
         struct wined3d_resource *wined3d_resource;
-        struct wined3d_surface *original_rt = NULL;
+        struct d3d8_surface *original_surface;
 
         /* If no render target is passed in check the size against the current RT */
         if (!render_target)
         {
-            if (!(original_rt = wined3d_device_get_render_target(device->wined3d_device, 0)))
+
+            if (!(original_rtv = wined3d_device_get_rendertarget_view(device->wined3d_device, 0)))
             {
                 wined3d_mutex_unlock();
                 return D3DERR_NOTFOUND;
             }
-            wined3d_resource = wined3d_surface_get_resource(original_rt);
+            original_surface = wined3d_rendertarget_view_get_sub_resource_parent(original_rtv);
+            wined3d_resource = wined3d_surface_get_resource(original_surface->wined3d_surface);
         }
         else
             wined3d_resource = wined3d_surface_get_resource(rt_impl->wined3d_surface);
@@ -1165,14 +1168,12 @@ static HRESULT WINAPI d3d8_device_SetRenderTarget(IDirect3DDevice8 *iface,
         }
     }
 
-    original_ds = wined3d_device_get_depth_stencil(device->wined3d_device);
-    wined3d_device_set_depth_stencil(device->wined3d_device, ds_impl ? ds_impl->wined3d_surface : NULL);
-    if (render_target)
-    {
-        hr = wined3d_device_set_render_target(device->wined3d_device, 0, rt_impl->wined3d_surface, TRUE);
-        if (FAILED(hr))
-            wined3d_device_set_depth_stencil(device->wined3d_device, original_ds);
-    }
+    original_dsv = wined3d_device_get_depth_stencil_view(device->wined3d_device);
+    wined3d_device_set_depth_stencil_view(device->wined3d_device,
+            ds_impl ? d3d8_surface_get_rendertarget_view(ds_impl) : NULL);
+    if (render_target && FAILED(hr = wined3d_device_set_rendertarget_view(device->wined3d_device, 0,
+            d3d8_surface_get_rendertarget_view(rt_impl), TRUE)))
+        wined3d_device_set_depth_stencil_view(device->wined3d_device, original_dsv);
 
     wined3d_mutex_unlock();
 
@@ -1182,7 +1183,7 @@ static HRESULT WINAPI d3d8_device_SetRenderTarget(IDirect3DDevice8 *iface,
 static HRESULT WINAPI d3d8_device_GetRenderTarget(IDirect3DDevice8 *iface, IDirect3DSurface8 **render_target)
 {
     struct d3d8_device *device = impl_from_IDirect3DDevice8(iface);
-    struct wined3d_surface *wined3d_surface;
+    struct wined3d_rendertarget_view *wined3d_rtv;
     struct d3d8_surface *surface_impl;
     HRESULT hr;
 
@@ -1192,9 +1193,11 @@ static HRESULT WINAPI d3d8_device_GetRenderTarget(IDirect3DDevice8 *iface, IDire
         return D3DERR_INVALIDCALL;
 
     wined3d_mutex_lock();
-    if ((wined3d_surface = wined3d_device_get_render_target(device->wined3d_device, 0)))
+    if ((wined3d_rtv = wined3d_device_get_rendertarget_view(device->wined3d_device, 0)))
     {
-        surface_impl = wined3d_surface_get_parent(wined3d_surface);
+        /* We want the sub resource parent here, since the view itself may be
+         * internal to wined3d and may not have a parent. */
+        surface_impl = wined3d_rendertarget_view_get_sub_resource_parent(wined3d_rtv);
         *render_target = &surface_impl->IDirect3DSurface8_iface;
         IDirect3DSurface8_AddRef(*render_target);
         hr = D3D_OK;
@@ -1213,7 +1216,7 @@ static HRESULT WINAPI d3d8_device_GetRenderTarget(IDirect3DDevice8 *iface, IDire
 static HRESULT WINAPI d3d8_device_GetDepthStencilSurface(IDirect3DDevice8 *iface, IDirect3DSurface8 **depth_stencil)
 {
     struct d3d8_device *device = impl_from_IDirect3DDevice8(iface);
-    struct wined3d_surface *wined3d_surface;
+    struct wined3d_rendertarget_view *wined3d_dsv;
     struct d3d8_surface *surface_impl;
     HRESULT hr = D3D_OK;
 
@@ -1223,9 +1226,11 @@ static HRESULT WINAPI d3d8_device_GetDepthStencilSurface(IDirect3DDevice8 *iface
         return D3DERR_INVALIDCALL;
 
     wined3d_mutex_lock();
-    if ((wined3d_surface = wined3d_device_get_depth_stencil(device->wined3d_device)))
+    if ((wined3d_dsv = wined3d_device_get_depth_stencil_view(device->wined3d_device)))
     {
-        surface_impl = wined3d_surface_get_parent(wined3d_surface);
+        /* We want the sub resource parent here, since the view itself may be
+         * internal to wined3d and may not have a parent. */
+        surface_impl = wined3d_rendertarget_view_get_sub_resource_parent(wined3d_dsv);
         *depth_stencil = &surface_impl->IDirect3DSurface8_iface;
         IDirect3DSurface8_AddRef(*depth_stencil);
     }

@@ -53,6 +53,8 @@ struct d3d10_shader_info
     struct wined3d_shader_signature *output_signature;
 };
 
+extern const struct wined3d_parent_ops d3d10_null_wined3d_parent_ops DECLSPEC_HIDDEN;
+
 /* TRACE helper functions */
 const char *debug_d3d10_primitive_topology(D3D10_PRIMITIVE_TOPOLOGY topology) DECLSPEC_HIDDEN;
 const char *debug_dxgi_format(DXGI_FORMAT format) DECLSPEC_HIDDEN;
@@ -123,6 +125,7 @@ struct d3d10_depthstencil_view
     ID3D10DepthStencilView ID3D10DepthStencilView_iface;
     LONG refcount;
 
+    struct wined3d_rendertarget_view *wined3d_view;
     D3D10_DEPTH_STENCIL_VIEW_DESC desc;
     ID3D10Resource *resource;
     ID3D10Device1 *device;
@@ -130,6 +133,7 @@ struct d3d10_depthstencil_view
 
 HRESULT d3d10_depthstencil_view_init(struct d3d10_depthstencil_view *view, struct d3d10_device *device,
         ID3D10Resource *resource, const D3D10_DEPTH_STENCIL_VIEW_DESC *desc) DECLSPEC_HIDDEN;
+struct d3d10_depthstencil_view *unsafe_impl_from_ID3D10DepthStencilView(ID3D10DepthStencilView *iface) DECLSPEC_HIDDEN;
 
 /* ID3D10RenderTargetView */
 struct d3d10_rendertarget_view
