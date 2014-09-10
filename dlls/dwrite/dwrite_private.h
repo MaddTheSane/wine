@@ -34,6 +34,11 @@ static inline void *heap_realloc(void *mem, size_t len)
     return HeapReAlloc(GetProcessHeap(), 0, mem, len);
 }
 
+static inline void *heap_realloc_zero(void *mem, size_t len)
+{
+    return HeapReAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, mem, len);
+}
+
 static inline BOOL heap_free(void *mem)
 {
     return HeapFree(GetProcessHeap(), 0, mem);
@@ -86,12 +91,15 @@ extern HRESULT create_trimmingsign(IDWriteInlineObject**) DECLSPEC_HIDDEN;
 extern HRESULT get_gdiinterop(IDWriteGdiInterop**) DECLSPEC_HIDDEN;
 extern HRESULT create_localizedstrings(IDWriteLocalizedStrings**) DECLSPEC_HIDDEN;
 extern HRESULT add_localizedstring(IDWriteLocalizedStrings*,const WCHAR*,const WCHAR*) DECLSPEC_HIDDEN;
+extern HRESULT clone_localizedstring(IDWriteLocalizedStrings *iface, IDWriteLocalizedStrings **strings) DECLSPEC_HIDDEN;
 extern HRESULT get_system_fontcollection(IDWriteFontCollection**) DECLSPEC_HIDDEN;
-extern void release_system_fontcollection(void) DECLSPEC_HIDDEN;
 extern HRESULT get_textanalyzer(IDWriteTextAnalyzer**) DECLSPEC_HIDDEN;
 extern HRESULT create_font_file(IDWriteFontFileLoader *loader, const void *reference_key, UINT32 key_size, IDWriteFontFile **font_file) DECLSPEC_HIDDEN;
+extern HRESULT create_localfontfileloader(IDWriteLocalFontFileLoader** iface) DECLSPEC_HIDDEN;
 extern HRESULT font_create_fontface(IDWriteFactory *iface, DWRITE_FONT_FACE_TYPE facetype, UINT32 files_number, IDWriteFontFile* const* font_files, UINT32 index, DWRITE_FONT_SIMULATIONS sim_flags, IDWriteFontFace **font_face) DECLSPEC_HIDDEN;
 
 /* Opentype font table functions */
 extern HRESULT analyze_opentype_font(const void* font_data, UINT32* font_count, DWRITE_FONT_FILE_TYPE *file_type, DWRITE_FONT_FACE_TYPE *face_type, BOOL *supported) DECLSPEC_HIDDEN;
 extern HRESULT find_font_table(IDWriteFontFileStream *stream, UINT32 font_index, UINT32 tag, const void** table_data, void** table_context, UINT32 *table_size, BOOL* found) DECLSPEC_HIDDEN;
+extern VOID OpenType_CMAP_GetGlyphIndex(LPVOID data, DWORD utf32c, LPWORD pgi, DWORD flags) DECLSPEC_HIDDEN;
+extern VOID get_font_properties(LPCVOID os2, LPCVOID head, LPCVOID post, DWRITE_FONT_METRICS *metrics, DWRITE_FONT_STRETCH *stretch, DWRITE_FONT_WEIGHT *weight, DWRITE_FONT_STYLE *style) DECLSPEC_HIDDEN;

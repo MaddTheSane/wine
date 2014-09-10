@@ -1708,7 +1708,7 @@
 @ cdecl _strnicoll(str str long) MSVCRT__strnicoll
 @ cdecl _strnicoll_l(str str long ptr) MSVCRT__strnicoll_l
 @ cdecl _strnset(str long long) MSVCRT__strnset
-@ stub _strnset_s
+@ cdecl _strnset_s(str long long long) MSVCRT__strnset_s
 @ cdecl _strrev(str) MSVCRT__strrev
 @ cdecl _strset(str long)
 @ stub _strset_s
@@ -2085,7 +2085,7 @@
 @ cdecl labs(long) MSVCRT_labs
 @ cdecl ldexp(double long) MSVCRT_ldexp
 @ cdecl ldiv(long long) MSVCRT_ldiv
-@ stub llabs
+@ cdecl -ret64 llabs(int64) MSVCRT_llabs
 @ stub lldiv
 @ cdecl localeconv() MSVCRT_localeconv
 @ cdecl log(double) MSVCRT_log

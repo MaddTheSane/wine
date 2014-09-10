@@ -257,7 +257,7 @@ struct wined3d_settings
     unsigned short pci_vendor_id;
     unsigned short pci_device_id;
     /* Memory tracking and object counting. */
-    unsigned int emulated_textureram;
+    UINT64 emulated_textureram;
     char *logo;
     int allow_multisampling;
     BOOL strict_draw_ordering;
@@ -2169,11 +2169,6 @@ void wined3d_texture_load(struct wined3d_texture *texture,
 void wined3d_texture_set_dirty(struct wined3d_texture *texture) DECLSPEC_HIDDEN;
 void wined3d_texture_set_swapchain(struct wined3d_texture *texture,
         struct wined3d_swapchain *swapchain) DECLSPEC_HIDDEN;
-
-#define WINED3D_VFLAG_ALLOCATED         0x00000001
-#define WINED3D_VFLAG_SRGB_ALLOCATED    0x00000002
-#define WINED3D_VFLAG_PBO               0x00000004
-#define WINED3D_VFLAG_CLIENT_STORAGE    0x00000008
 
 #define WINED3D_LOCATION_DISCARDED      0x00000001
 #define WINED3D_LOCATION_SYSMEM         0x00000002

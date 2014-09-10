@@ -67,6 +67,7 @@ typedef unsigned short MSVCRT__ino_t;
 typedef unsigned int   MSVCRT__fsize_t;
 typedef int            MSVCRT_long;
 typedef unsigned int   MSVCRT_ulong;
+typedef __int64        MSVCRT_longlong;
 #ifdef _WIN64
 typedef unsigned __int64 MSVCRT_size_t;
 typedef __int64 MSVCRT_intptr_t;
@@ -233,7 +234,10 @@ extern unsigned int MSVCRT___lc_codepage;
 extern int MSVCRT___lc_collate_cp;
 extern WORD MSVCRT__ctype [257];
 
-void   msvcrt_set_errno(int) DECLSPEC_HIDDEN;
+void msvcrt_set_errno(int) DECLSPEC_HIDDEN;
+#if _MSVCR_VER >= 80
+void throw_bad_alloc(const char*) DECLSPEC_HIDDEN;
+#endif
 
 void __cdecl _purecall(void);
 void __cdecl _amsg_exit(int errnum);
