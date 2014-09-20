@@ -20,6 +20,7 @@
 #include "wine/port.h"
 
 #include "d2d1_private.h"
+#include "wincodec.h"
 
 WINE_DEFAULT_DEBUG_CHANNEL(d2d);
 
@@ -63,18 +64,13 @@ static void d2d_rect_set(D2D1_RECT_F *dst, float left, float top, float right, f
     dst->bottom = bottom;
 }
 
-static BOOL d2d_clip_stack_init(struct d2d_clip_stack *stack, unsigned int w, unsigned int h)
+static BOOL d2d_clip_stack_init(struct d2d_clip_stack *stack)
 {
     if (!(stack->stack = HeapAlloc(GetProcessHeap(), 0, INITIAL_CLIP_STACK_SIZE * sizeof(*stack->stack))))
         return FALSE;
 
-    stack->stack_size = INITIAL_CLIP_STACK_SIZE;
-    stack->current = 0;
-
-    stack->clip_rect.left = 0.0f;
-    stack->clip_rect.top = 0.0f;
-    stack->clip_rect.right = w;
-    stack->clip_rect.bottom = h;
+    stack->size = INITIAL_CLIP_STACK_SIZE;
+    stack->count = 0;
 
     return TRUE;
 }
@@ -86,45 +82,37 @@ static void d2d_clip_stack_cleanup(struct d2d_clip_stack *stack)
 
 static BOOL d2d_clip_stack_push(struct d2d_clip_stack *stack, const D2D1_RECT_F *rect)
 {
-    if (stack->current == stack->stack_size - 1)
+    D2D1_RECT_F r;
+
+    if (stack->count == stack->size)
     {
         D2D1_RECT_F *new_stack;
         unsigned int new_size;
 
-        if (stack->stack_size > UINT_MAX / 2)
+        if (stack->size > UINT_MAX / 2)
             return FALSE;
 
-        new_size = stack->stack_size * 2;
+        new_size = stack->size * 2;
         if (!(new_stack = HeapReAlloc(GetProcessHeap(), 0, stack->stack, new_size * sizeof(*stack->stack))))
             return FALSE;
 
         stack->stack = new_stack;
-        stack->stack_size = new_size;
+        stack->size = new_size;
     }
 
-    stack->stack[stack->current++] = *rect;
-    d2d_rect_intersect(&stack->clip_rect, rect);
+    r = *rect;
+    if (stack->count)
+        d2d_rect_intersect(&r, &stack->stack[stack->count - 1]);
+    stack->stack[stack->count++] = r;
 
     return TRUE;
 }
 
-static void d2d_clip_stack_pop(struct d2d_clip_stack *stack, unsigned int w, unsigned int h)
+static void d2d_clip_stack_pop(struct d2d_clip_stack *stack)
 {
-    unsigned int i;
-
-    if (!stack->current)
+    if (!stack->count)
         return;
-
-    --stack->current;
-    stack->clip_rect.left = 0.0f;
-    stack->clip_rect.top = 0.0f;
-    stack->clip_rect.right = w;
-    stack->clip_rect.bottom = h;
-
-    for (i = 0; i < stack->current; ++i)
-    {
-        d2d_rect_intersect(&stack->clip_rect, &stack->stack[i]);
-    }
+    --stack->count;
 }
 
 static inline struct d2d_d3d_render_target *impl_from_ID2D1RenderTarget(ID2D1RenderTarget *iface)
@@ -195,19 +183,108 @@ static void STDMETHODCALLTYPE d2d_d3d_render_target_GetFactory(ID2D1RenderTarget
 static HRESULT STDMETHODCALLTYPE d2d_d3d_render_target_CreateBitmap(ID2D1RenderTarget *iface,
         D2D1_SIZE_U size, const void *src_data, UINT32 pitch, const D2D1_BITMAP_PROPERTIES *desc, ID2D1Bitmap **bitmap)
 {
-    FIXME("iface %p, size {%u, %u}, src_data %p, pitch %u, desc %p, bitmap %p stub!\n",
+    struct d2d_bitmap *object;
+
+    TRACE("iface %p, size {%u, %u}, src_data %p, pitch %u, desc %p, bitmap %p.\n",
             iface, size.width, size.height, src_data, pitch, desc, bitmap);
 
-    return E_NOTIMPL;
+    if (!(object = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(*object))))
+        return E_OUTOFMEMORY;
+
+    d2d_bitmap_init(object, size, src_data, pitch, desc);
+
+    TRACE("Created bitmap %p.\n", object);
+    *bitmap = &object->ID2D1Bitmap_iface;
+
+    return S_OK;
 }
 
 static HRESULT STDMETHODCALLTYPE d2d_d3d_render_target_CreateBitmapFromWicBitmap(ID2D1RenderTarget *iface,
         IWICBitmapSource *bitmap_source, const D2D1_BITMAP_PROPERTIES *desc, ID2D1Bitmap **bitmap)
 {
-    FIXME("iface %p, bitmap_source %p, desc %p, bitmap %p stub!\n",
+    D2D1_BITMAP_PROPERTIES bitmap_desc;
+    unsigned int bpp, data_size;
+    D2D1_SIZE_U size;
+    WICRect rect;
+    UINT32 pitch;
+    HRESULT hr;
+    void *data;
+
+    TRACE("iface %p, bitmap_source %p, desc %p, bitmap %p.\n",
             iface, bitmap_source, desc, bitmap);
 
-    return E_NOTIMPL;
+    if (FAILED(hr = IWICBitmapSource_GetSize(bitmap_source, &size.width, &size.height)))
+    {
+        WARN("Failed to get bitmap size, hr %#x.\n", hr);
+        return hr;
+    }
+
+    if (!desc)
+    {
+        bitmap_desc.pixelFormat.format = DXGI_FORMAT_UNKNOWN;
+        bitmap_desc.pixelFormat.alphaMode = D2D1_ALPHA_MODE_UNKNOWN;
+        bitmap_desc.dpiX = 0.0f;
+        bitmap_desc.dpiY = 0.0f;
+    }
+    else
+    {
+        bitmap_desc = *desc;
+    }
+
+    if (bitmap_desc.pixelFormat.format == DXGI_FORMAT_UNKNOWN)
+    {
+        WICPixelFormatGUID wic_format;
+
+        if (FAILED(hr = IWICBitmapSource_GetPixelFormat(bitmap_source, &wic_format)))
+        {
+            WARN("Failed to get bitmap format, hr %#x.\n", hr);
+            return hr;
+        }
+
+        if (IsEqualGUID(&wic_format, &GUID_WICPixelFormat32bppPBGRA)
+                || IsEqualGUID(&wic_format, &GUID_WICPixelFormat32bppBGR))
+        {
+            bitmap_desc.pixelFormat.format = DXGI_FORMAT_B8G8R8A8_UNORM;
+        }
+        else
+        {
+            WARN("Unsupported WIC bitmap format %s.\n", debugstr_guid(&wic_format));
+            return D2DERR_UNSUPPORTED_PIXEL_FORMAT;
+        }
+    }
+
+    switch (bitmap_desc.pixelFormat.format)
+    {
+        case DXGI_FORMAT_B8G8R8A8_UNORM:
+            bpp = 4;
+            break;
+
+        default:
+            FIXME("Unhandled format %#x.\n", bitmap_desc.pixelFormat.format);
+            return D2DERR_UNSUPPORTED_PIXEL_FORMAT;
+    }
+
+    pitch = ((bpp * size.width) + 15) & ~15;
+    data_size = pitch * size.height;
+    if (!(data = HeapAlloc(GetProcessHeap(), 0, data_size)))
+        return E_OUTOFMEMORY;
+
+    rect.X = 0;
+    rect.Y = 0;
+    rect.Width = size.width;
+    rect.Height = size.height;
+    if (FAILED(hr = IWICBitmapSource_CopyPixels(bitmap_source, &rect, pitch, data_size, data)))
+    {
+        WARN("Failed to copy bitmap pixels, hr %#x.\n", hr);
+        HeapFree(GetProcessHeap(), 0, data);
+        return hr;
+    }
+
+    hr = d2d_d3d_render_target_CreateBitmap(iface, size, data, pitch, &bitmap_desc, bitmap);
+
+    HeapFree(GetProcessHeap(), 0, data);
+
+    return hr;
 }
 
 static HRESULT STDMETHODCALLTYPE d2d_d3d_render_target_CreateSharedBitmap(ID2D1RenderTarget *iface,
@@ -317,9 +394,19 @@ static HRESULT STDMETHODCALLTYPE d2d_d3d_render_target_CreateLayer(ID2D1RenderTa
 
 static HRESULT STDMETHODCALLTYPE d2d_d3d_render_target_CreateMesh(ID2D1RenderTarget *iface, ID2D1Mesh **mesh)
 {
-    FIXME("iface %p, mesh %p stub!\n", iface, mesh);
+    struct d2d_mesh *object;
 
-    return E_NOTIMPL;
+    TRACE("iface %p, mesh %p.\n", iface, mesh);
+
+    if (!(object = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(*object))))
+        return E_OUTOFMEMORY;
+
+    d2d_mesh_init(object);
+
+    TRACE("Created mesh %p.\n", object);
+    *mesh = &object->ID2D1Mesh_iface;
+
+    return S_OK;
 }
 
 static void STDMETHODCALLTYPE d2d_d3d_render_target_DrawLine(ID2D1RenderTarget *iface,
@@ -565,7 +652,7 @@ static void STDMETHODCALLTYPE d2d_d3d_render_target_PopAxisAlignedClip(ID2D1Rend
 
     TRACE("iface %p.\n", iface);
 
-    d2d_clip_stack_pop(&render_target->clip_stack, render_target->pixel_size.width, render_target->pixel_size.height);
+    d2d_clip_stack_pop(&render_target->clip_stack);
 }
 
 static void STDMETHODCALLTYPE d2d_d3d_render_target_Clear(ID2D1RenderTarget *iface, const D2D1_COLOR_F *color)
@@ -573,7 +660,6 @@ static void STDMETHODCALLTYPE d2d_d3d_render_target_Clear(ID2D1RenderTarget *ifa
     struct d2d_d3d_render_target *render_target = impl_from_ID2D1RenderTarget(iface);
     D3D10_SUBRESOURCE_DATA buffer_data;
     D3D10_BUFFER_DESC buffer_desc;
-    D3D10_RECT scissor_rect;
     unsigned int offset;
     D3D10_VIEWPORT vp;
     ID3D10Buffer *cb;
@@ -604,11 +690,6 @@ static void STDMETHODCALLTYPE d2d_d3d_render_target_Clear(ID2D1RenderTarget *ifa
     vp.MinDepth = 0.0f;
     vp.MaxDepth = 1.0f;
 
-    scissor_rect.left = render_target->clip_stack.clip_rect.left + 0.5f;
-    scissor_rect.top = render_target->clip_stack.clip_rect.top + 0.5f;
-    scissor_rect.right = render_target->clip_stack.clip_rect.right + 0.5f;
-    scissor_rect.bottom = render_target->clip_stack.clip_rect.bottom + 0.5f;
-
     if (FAILED(hr = render_target->stateblock->lpVtbl->Capture(render_target->stateblock)))
     {
         WARN("Failed to capture stateblock, hr %#x.\n", hr);
@@ -627,8 +708,19 @@ static void STDMETHODCALLTYPE d2d_d3d_render_target_Clear(ID2D1RenderTarget *ifa
     ID3D10Device_PSSetConstantBuffers(render_target->device, 0, 1, &cb);
     ID3D10Device_PSSetShader(render_target->device, render_target->clear_ps);
     ID3D10Device_RSSetViewports(render_target->device, 1, &vp);
-    ID3D10Device_RSSetScissorRects(render_target->device, 1, &scissor_rect);
-    ID3D10Device_RSSetState(render_target->device, render_target->clear_rs);
+    if (render_target->clip_stack.count)
+    {
+        const D2D1_RECT_F *clip_rect;
+        D3D10_RECT scissor_rect;
+
+        clip_rect = &render_target->clip_stack.stack[render_target->clip_stack.count - 1];
+        scissor_rect.left = clip_rect->left + 0.5f;
+        scissor_rect.top = clip_rect->top + 0.5f;
+        scissor_rect.right = clip_rect->right + 0.5f;
+        scissor_rect.bottom = clip_rect->bottom + 0.5f;
+        ID3D10Device_RSSetScissorRects(render_target->device, 1, &scissor_rect);
+        ID3D10Device_RSSetState(render_target->device, render_target->clear_rs);
+    }
     ID3D10Device_OMSetRenderTargets(render_target->device, 1, &render_target->view, NULL);
 
     ID3D10Device_Draw(render_target->device, 4, 0);
@@ -975,7 +1067,7 @@ HRESULT d2d_d3d_render_target_init(struct d2d_d3d_render_target *render_target, 
     render_target->pixel_size.height = surface_desc.Height;
     render_target->transform = identity;
 
-    if (!d2d_clip_stack_init(&render_target->clip_stack, surface_desc.Width, surface_desc.Height))
+    if (!d2d_clip_stack_init(&render_target->clip_stack))
     {
         WARN("Failed to initialize clip stack.\n");
         hr = E_FAIL;

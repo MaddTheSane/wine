@@ -28,9 +28,8 @@
 struct d2d_clip_stack
 {
     D2D1_RECT_F *stack;
-    unsigned int stack_size;
-    unsigned int current;
-    D2D1_RECT_F clip_rect;
+    unsigned int size;
+    unsigned int count;
 };
 
 struct d2d_d3d_render_target
@@ -58,6 +57,24 @@ struct d2d_d3d_render_target
 
 HRESULT d2d_d3d_render_target_init(struct d2d_d3d_render_target *render_target, ID2D1Factory *factory,
         IDXGISurface *surface, const D2D1_RENDER_TARGET_PROPERTIES *desc) DECLSPEC_HIDDEN;
+
+struct d2d_wic_render_target
+{
+    ID2D1RenderTarget ID2D1RenderTarget_iface;
+    LONG refcount;
+
+    IDXGISurface *dxgi_surface;
+    ID2D1RenderTarget *dxgi_target;
+    ID3D10Texture2D *readback_texture;
+    IWICBitmap *bitmap;
+
+    unsigned int width;
+    unsigned int height;
+    unsigned int bpp;
+};
+
+HRESULT d2d_wic_render_target_init(struct d2d_wic_render_target *render_target, ID2D1Factory *factory,
+        IWICBitmap *bitmap, const D2D1_RENDER_TARGET_PROPERTIES *desc) DECLSPEC_HIDDEN;
 
 struct d2d_gradient
 {
@@ -89,5 +106,22 @@ struct d2d_stroke_style
 
 void d2d_stroke_style_init(struct d2d_stroke_style *style, ID2D1Factory *factory,
         const D2D1_STROKE_STYLE_PROPERTIES *desc, const float *dashes, UINT32 dash_count) DECLSPEC_HIDDEN;
+
+struct d2d_mesh
+{
+    ID2D1Mesh ID2D1Mesh_iface;
+    LONG refcount;
+};
+
+void d2d_mesh_init(struct d2d_mesh *mesh) DECLSPEC_HIDDEN;
+
+struct d2d_bitmap
+{
+    ID2D1Bitmap ID2D1Bitmap_iface;
+    LONG refcount;
+};
+
+void d2d_bitmap_init(struct d2d_bitmap *bitmap, D2D1_SIZE_U size, const void *src_data,
+        UINT32 pitch, const D2D1_BITMAP_PROPERTIES *desc) DECLSPEC_HIDDEN;
 
 #endif /* __WINE_D2D1_PRIVATE_H */

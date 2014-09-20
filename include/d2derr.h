@@ -1,5 +1,5 @@
 /*
- * Copyright 2008-2009 Henri Verbeet for CodeWeavers
+ * Copyright 2014 Henri Verbeet for CodeWeavers
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -16,34 +16,11 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA
  */
 
-import "dxgi.idl";
+#ifndef __WINE_D2DERR_H
+#define __WINE_D2DERR_H
 
-[
-    object,
-    local,
-    uuid(3e1ff30b-c951-48c3-b010-0fb49f3dca71)
-]
-interface IWineDXGIDevice : IDXGIDevice
-{
-    HRESULT create_surface(
-        [in] const DXGI_SURFACE_DESC *desc,
-        [in] DXGI_USAGE usage,
-        [in] const DXGI_SHARED_RESOURCE *shared_resource,
-        [in] IUnknown *outer,
-        [out] void **surface
-    );
-    HRESULT create_swapchain(
-        [in] struct wined3d_swapchain_desc *desc,
-        [out] struct wined3d_swapchain **wined3d_swapchain
-    );
-}
+#define D2DERR_FILE_NOT_FOUND           HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND)
+#define D2DERR_INSUFFICIENT_BUFFER      HRESULT_FROM_WIN32(ERROR_INSUFFICIENT_BUFFER)
+#define D2DERR_UNSUPPORTED_PIXEL_FORMAT WINCODEC_ERR_UNSUPPORTEDPIXELFORMAT
 
-[
-    object,
-    local,
-    uuid(f2b918f3-603f-430a-9ccd-55872b6e85df)
-]
-interface IWineDXGIDeviceParent : IUnknown
-{
-    struct wined3d_device_parent *get_wined3d_device_parent();
-}
+#endif /* __WINE_D2DERR_H */

@@ -157,6 +157,7 @@ struct d3d10_shader_resource_view
     ID3D10ShaderResourceView ID3D10ShaderResourceView_iface;
     LONG refcount;
 
+    struct wined3d_shader_resource_view *wined3d_view;
     D3D10_SHADER_RESOURCE_VIEW_DESC desc;
     ID3D10Resource *resource;
     ID3D10Device1 *device;
@@ -164,6 +165,8 @@ struct d3d10_shader_resource_view
 
 HRESULT d3d10_shader_resource_view_init(struct d3d10_shader_resource_view *view, struct d3d10_device *device,
         ID3D10Resource *resource, const D3D10_SHADER_RESOURCE_VIEW_DESC *desc) DECLSPEC_HIDDEN;
+struct d3d10_shader_resource_view *unsafe_impl_from_ID3D10ShaderResourceView(
+        ID3D10ShaderResourceView *iface) DECLSPEC_HIDDEN;
 
 /* ID3D10InputLayout */
 struct d3d10_input_layout
@@ -294,11 +297,14 @@ struct d3d10_query
     ID3D10Query ID3D10Query_iface;
     LONG refcount;
 
+    struct wined3d_query *wined3d_query;
     BOOL predicate;
     ID3D10Device1 *device;
 };
 
-HRESULT d3d10_query_init(struct d3d10_query *query, struct d3d10_device *device, BOOL predicate) DECLSPEC_HIDDEN;
+HRESULT d3d10_query_init(struct d3d10_query *query, struct d3d10_device *device,
+        const D3D10_QUERY_DESC *desc, BOOL predicate) DECLSPEC_HIDDEN;
+struct d3d10_query *unsafe_impl_from_ID3D10Query(ID3D10Query *iface) DECLSPEC_HIDDEN;
 
 /* IDirect3D10Device1 */
 struct d3d10_device

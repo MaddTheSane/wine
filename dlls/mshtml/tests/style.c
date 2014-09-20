@@ -2351,7 +2351,7 @@ static void test_body_style(IHTMLStyle *style)
     if (hres != E_INVALIDARG) {
         hres = IHTMLStyle_get_listStyle(style, &str);
         ok(hres == S_OK, "get_listStyle failed: %08x\n", hres);
-        ok(strstr_wa(str, "decimal-leading-zero") == str &&
+        ok(strstr_wa(str, "decimal-leading-zero") &&
            strstr_wa(str, "none") != NULL &&
            strstr_wa(str, "inside") != NULL,
             "listStyle = %s\n", wine_dbgstr_w(str));
@@ -2749,6 +2749,10 @@ static void test_current_style(IHTMLCurrentStyle *current_style)
     ok(hres == S_OK, "get_textIndent failed: %08x\n", hres);
     ok(V_VT(&v) == VT_BSTR, "V_VT(v) = %d\n", V_VT(&v));
     VariantClear(&v);
+
+    hres = IHTMLCurrentStyle_get_textTransform(current_style, &str);
+    ok(hres == S_OK, "get_textTransform failed: %08x\n", hres);
+    SysFreeString(str);
 
     current_style2 = get_current_style2_iface((IUnknown*)current_style);
 
