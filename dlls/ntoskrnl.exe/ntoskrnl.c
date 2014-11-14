@@ -44,6 +44,7 @@ WINE_DEFAULT_DEBUG_CHANNEL(ntoskrnl);
 WINE_DECLARE_DEBUG_CHANNEL(relay);
 
 BOOLEAN KdDebuggerEnabled = FALSE;
+ULONG InitSafeBootMode = 0;
 
 extern LONG CALLBACK vectored_handler( EXCEPTION_POINTERS *ptrs );
 
@@ -1925,4 +1926,24 @@ PKEVENT WINAPI IoCreateSynchronizationEvent(PUNICODE_STRING name, PHANDLE handle
 VOID WINAPI IoStartNextPacket(PDEVICE_OBJECT deviceobject, BOOLEAN cancelable)
 {
     FIXME("(%p %d) stub\n", deviceobject, cancelable);
+}
+
+/*****************************************************
+ *           ObQueryNameString  (NTOSKRNL.EXE.@)
+ */
+NTSTATUS WINAPI ObQueryNameString(PVOID object, POBJECT_NAME_INFORMATION name, ULONG maxlength, PULONG returnlength)
+{
+    FIXME("(%p %p %u %p) stub\n", object, name, maxlength, returnlength);
+    return STATUS_NOT_IMPLEMENTED;
+}
+
+/*****************************************************
+ *           IoRegisterPlugPlayNotification  (NTOSKRNL.EXE.@)
+ */
+NTSTATUS WINAPI IoRegisterPlugPlayNotification(IO_NOTIFICATION_EVENT_CATEGORY category, ULONG flags, PVOID data,
+                                               PDRIVER_OBJECT driver, PDRIVER_NOTIFICATION_CALLBACK_ROUTINE callback,
+                                               PVOID context, PVOID *notification)
+{
+    FIXME("(%u %u %p %p %p %p %p) stub\n", category, flags, data, driver, callback, context, notification);
+    return STATUS_SUCCESS;
 }

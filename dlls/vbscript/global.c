@@ -112,9 +112,6 @@ static HRESULT return_short(VARIANT *res, short val)
 
 static HRESULT return_int(VARIANT *res, int val)
 {
-    if((short)val == val)
-        return return_short(res, val);
-
     if(res) {
         V_VT(res) = VT_I4;
         V_I4(res) = val;
@@ -128,6 +125,16 @@ static inline HRESULT return_double(VARIANT *res, double val)
     if(res) {
         V_VT(res) = VT_R8;
         V_R8(res) = val;
+    }
+
+    return S_OK;
+}
+
+static inline HRESULT return_float(VARIANT *res, float val)
+{
+    if(res) {
+        V_VT(res) = VT_R4;
+        V_R4(res) = val;
     }
 
     return S_OK;
@@ -417,9 +424,7 @@ static HRESULT Global_CLng(vbdisp_t *This, VARIANT *arg, unsigned args_cnt, VARI
     if(!res)
         return DISP_E_BADVARTYPE;
 
-    V_VT(res) = VT_I4;
-    V_I4(res) = i;
-    return S_OK;
+    return return_int(res, i);
 }
 
 static HRESULT Global_CBool(vbdisp_t *This, VARIANT *arg, unsigned args_cnt, VARIANT *res)
@@ -765,8 +770,13 @@ static HRESULT Global_Rnd(vbdisp_t *This, VARIANT *arg, unsigned args_cnt, VARIA
 
 static HRESULT Global_Timer(vbdisp_t *This, VARIANT *arg, unsigned args_cnt, VARIANT *res)
 {
-    FIXME("\n");
-    return E_NOTIMPL;
+    SYSTEMTIME lt;
+    double sec;
+
+    GetLocalTime(&lt);
+    sec = lt.wHour * 3600 + lt.wMinute * 60 + lt.wSecond + lt.wMilliseconds / 1000.0;
+    return return_float(res, sec);
+
 }
 
 static HRESULT Global_LBound(vbdisp_t *This, VARIANT *arg, unsigned args_cnt, VARIANT *res)
@@ -783,8 +793,24 @@ static HRESULT Global_UBound(vbdisp_t *This, VARIANT *arg, unsigned args_cnt, VA
 
 static HRESULT Global_RGB(vbdisp_t *This, VARIANT *arg, unsigned args_cnt, VARIANT *res)
 {
-    FIXME("\n");
-    return E_NOTIMPL;
+    HRESULT hres;
+    int i, color[3];
+
+    TRACE("%s %s %s\n", debugstr_variant(arg), debugstr_variant(arg + 1), debugstr_variant(arg + 2));
+
+    assert(args_cnt == 3);
+
+    for(i = 0; i < 3; i++) {
+        hres = to_int(arg + i, color + i);
+        if(FAILED(hres))
+            return hres;
+        if(color[i] > 255)
+            color[i] = 255;
+        if(color[i] < 0)
+            return MAKE_VBSERROR(VBSE_ILLEGAL_FUNC_CALL);
+    }
+
+    return return_int(res, RGB(color[0], color[1], color[2]));
 }
 
 static HRESULT Global_Len(vbdisp_t *This, VARIANT *arg, unsigned args_cnt, VARIANT *res)
@@ -1778,12 +1804,7 @@ static HRESULT Global_ScriptEngineMajorVersion(vbdisp_t *This, VARIANT *arg, uns
 
     assert(args_cnt == 0);
 
-    if(res) {
-        V_VT(res) = VT_I4;
-        V_I4(res) = VBSCRIPT_MAJOR_VERSION;
-    }
-
-    return S_OK;
+    return return_int(res, VBSCRIPT_MAJOR_VERSION);
 }
 
 static HRESULT Global_ScriptEngineMinorVersion(vbdisp_t *This, VARIANT *arg, unsigned args_cnt, VARIANT *res)
@@ -1792,12 +1813,7 @@ static HRESULT Global_ScriptEngineMinorVersion(vbdisp_t *This, VARIANT *arg, uns
 
     assert(args_cnt == 0);
 
-    if(res) {
-        V_VT(res) = VT_I4;
-        V_I4(res) = VBSCRIPT_MINOR_VERSION;
-    }
-
-    return S_OK;
+    return return_int(res, VBSCRIPT_MINOR_VERSION);
 }
 
 static HRESULT Global_ScriptEngineBuildVersion(vbdisp_t *This, VARIANT *arg, unsigned args_cnt, VARIANT *res)
@@ -1806,12 +1822,7 @@ static HRESULT Global_ScriptEngineBuildVersion(vbdisp_t *This, VARIANT *arg, uns
 
     assert(args_cnt == 0);
 
-    if(res) {
-        V_VT(res) = VT_I4;
-        V_I4(res) = VBSCRIPT_BUILD_VERSION;
-    }
-
-    return S_OK;
+    return return_int(res, VBSCRIPT_BUILD_VERSION);
 }
 
 static HRESULT Global_FormatNumber(vbdisp_t *This, VARIANT *arg, unsigned args_cnt, VARIANT *res)

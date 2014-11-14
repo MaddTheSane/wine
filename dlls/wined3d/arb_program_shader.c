@@ -823,7 +823,7 @@ static void shader_generate_arb_declarations(const struct wined3d_shader *shader
             max_constantsF -= count_bits(reg_maps->integer_constants);
             max_constantsF -= gl_info->reserved_arb_constants;
 
-            for (i = 0; i < shader->limits.constant_float; ++i)
+            for (i = 0; i < shader->limits->constant_float; ++i)
             {
                 DWORD idx = i >> 5;
                 DWORD shift = i & 0x1f;
@@ -899,7 +899,7 @@ static void shader_generate_arb_declarations(const struct wined3d_shader *shader
     }
 
     /* Avoid declaring more constants than needed */
-    max_constantsF = min(max_constantsF, shader->limits.constant_float);
+    max_constantsF = min(max_constantsF, shader->limits->constant_float);
 
     /* we use the array-based constants array if the local constants are marked for loading,
      * because then we use indirect addressing, or when the local constant list is empty,
@@ -4257,7 +4257,7 @@ static GLuint shader_arb_generate_vshader(const struct wined3d_shader *shader,
         {
             int i;
             const char *one = arb_get_helper_value(WINED3D_SHADER_TYPE_VERTEX, ARB_ONE);
-            for(i = 0; i < min(8, MAX_REG_TEXCRD); i++)
+            for(i = 0; i < MAX_REG_TEXCRD; i++)
             {
                 if (reg_maps->texcoord_mask[i] && reg_maps->texcoord_mask[i] != WINED3DSP_WRITEMASK_ALL)
                     shader_addline(buffer, "MOV result.texcoord[%u].w, %s\n", i, one);
@@ -7469,7 +7469,7 @@ static HRESULT arbfp_blit_set(void *blit_priv, struct wined3d_context *context, 
     struct arbfp_blit_type type;
     struct arbfp_blit_desc *desc;
 
-    if (surface->flags & SFLAG_CONVERTED)
+    if (surface->container->flags & WINED3D_TEXTURE_CONVERTED)
     {
         gl_info->gl_ops.gl.p_glEnable(textype);
         checkGLcall("glEnable(textype)");

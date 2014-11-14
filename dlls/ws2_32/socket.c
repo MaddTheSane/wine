@@ -2293,7 +2293,7 @@ static int WS2_register_async_shutdown( SOCKET s, int type )
     struct ws2_async *wsa;
     NTSTATUS status;
 
-    TRACE("s %ld type %d\n", s, type);
+    TRACE("s %04lx type %d\n", s, type);
 
     wsa = HeapAlloc( GetProcessHeap(), 0, FIELD_OFFSET( struct ws2_async, iovec[1] ));
     if ( !wsa )
@@ -3744,7 +3744,7 @@ INT WINAPI WSAIoctl(SOCKET s, DWORD code, LPVOID in_buff, DWORD in_size, LPVOID 
     int fd;
     DWORD status = 0, total = 0;
 
-    TRACE("%ld, %s, %p, %d, %p, %d, %p, %p, %p\n",
+    TRACE("%04lx, %s, %p, %d, %p, %d, %p, %p, %p\n",
           s, debugstr_wsaioctl(code), in_buff, in_size, out_buff, out_size, ret_size, overlapped, completion);
 
     switch (code)
@@ -3937,9 +3937,20 @@ INT WINAPI WSAIoctl(SOCKET s, DWORD code, LPVOID in_buff, DWORD in_size, LPVOID 
             return SOCKET_ERROR;
         }
 
+        if (out_size && out_size < FIELD_OFFSET(SOCKET_ADDRESS_LIST, Address[0]))
+        {
+            *ret_size = 0;
+            WSASetLastError(WSAEINVAL);
+            return SOCKET_ERROR;
+        }
+
         if (GetAdaptersInfo(NULL, &size) == ERROR_BUFFER_OVERFLOW)
         {
             IP_ADAPTER_INFO *p, *table = HeapAlloc(GetProcessHeap(), 0, size);
+            SOCKET_ADDRESS_LIST *sa_list;
+            SOCKADDR_IN *sockaddr;
+            SOCKET_ADDRESS *sa;
+            unsigned int i;
             DWORD num;
 
             if (!table || GetAdaptersInfo(table, &size))
@@ -3952,39 +3963,31 @@ INT WINAPI WSAIoctl(SOCKET s, DWORD code, LPVOID in_buff, DWORD in_size, LPVOID 
             for (p = table, num = 0; p; p = p->Next)
                 if (p->IpAddressList.IpAddress.String[0]) num++;
 
-            total = sizeof(SOCKET_ADDRESS_LIST) + sizeof(SOCKET_ADDRESS) * (num - 1);
-            total += sizeof(SOCKADDR) * num;
-
-            if (total > out_size)
+            total = FIELD_OFFSET(SOCKET_ADDRESS_LIST, Address[num]) + num * sizeof(*sockaddr);
+            if (total > out_size || !out_buff)
             {
+                *ret_size = total;
                 HeapFree(GetProcessHeap(), 0, table);
                 status = WSAEFAULT;
                 break;
             }
 
-            if (out_buff)
+            sa_list = out_buff;
+            sa = sa_list->Address;
+            sockaddr = (SOCKADDR_IN *)&sa[num];
+            sa_list->iAddressCount = num;
+
+            for (p = table, i = 0; p; p = p->Next)
             {
-                unsigned int i;
-                SOCKET_ADDRESS *sa;
-                SOCKET_ADDRESS_LIST *sa_list = out_buff;
-                SOCKADDR_IN *sockaddr;
+                if (!p->IpAddressList.IpAddress.String[0]) continue;
 
-                sa = sa_list->Address;
-                sockaddr = (SOCKADDR_IN *)((char *)sa + num * sizeof(SOCKET_ADDRESS));
-                sa_list->iAddressCount = num;
+                sa[i].lpSockaddr = (SOCKADDR *)&sockaddr[i];
+                sa[i].iSockaddrLength = sizeof(SOCKADDR);
 
-                for (p = table, i = 0; p; p = p->Next)
-                {
-                    if (!p->IpAddressList.IpAddress.String[0]) continue;
-
-                    sa[i].lpSockaddr = (SOCKADDR *)&sockaddr[i];
-                    sa[i].iSockaddrLength = sizeof(SOCKADDR);
-
-                    sockaddr[i].sin_family = AF_INET;
-                    sockaddr[i].sin_port = 0;
-                    sockaddr[i].sin_addr.WS_s_addr = inet_addr(p->IpAddressList.IpAddress.String);
-                    i++;
-                }
+                sockaddr[i].sin_family = AF_INET;
+                sockaddr[i].sin_port = 0;
+                sockaddr[i].sin_addr.WS_s_addr = inet_addr(p->IpAddressList.IpAddress.String);
+                i++;
             }
 
             HeapFree(GetProcessHeap(), 0, table);
@@ -6906,6 +6909,40 @@ PCSTR WINAPI WS_inet_ntop( INT family, PVOID addr, PSTR buffer, SIZE_T len )
     return NULL;
 #endif
 }
+
+/***********************************************************************
+*              inet_pton                      (WS2_32.@)
+*/
+INT WINAPI WS_inet_pton( INT family, PCSTR addr, PVOID buffer)
+{
+#ifdef HAVE_INET_PTON
+    int unixaf, ret;
+
+    TRACE("family %d, addr '%s', buffer (%p)\n", family, addr ? addr : "(null)", buffer);
+
+    if (!addr || !buffer)
+    {
+        SetLastError(WSAEFAULT);
+        return SOCKET_ERROR;
+    }
+
+    unixaf = convert_af_w2u(family);
+    if (unixaf != AF_INET && unixaf != AF_INET6)
+    {
+        SetLastError(WSAEAFNOSUPPORT);
+        return SOCKET_ERROR;
+    }
+
+    ret = inet_pton(unixaf, addr, buffer);
+    if (ret == -1) SetLastError(wsaErrno());
+    return ret;
+#else
+    FIXME( "not supported on this platform\n" );
+    WSASetLastError( WSAEAFNOSUPPORT );
+    return SOCKET_ERROR;
+#endif
+}
+
 
 /***********************************************************************
  *              WSAStringToAddressA                      (WS2_32.80)

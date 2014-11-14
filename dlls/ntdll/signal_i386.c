@@ -1616,12 +1616,46 @@ static inline BOOL check_invalid_gs( CONTEXT *context )
 
 
 #include "pshpack1.h"
-struct atl_thunk
+union atl_thunk
 {
-    DWORD movl;  /* movl this,4(%esp) */
-    DWORD this;
-    BYTE  jmp;   /* jmp func */
-    int   func;
+    struct
+    {
+        DWORD movl;  /* movl this,4(%esp) */
+        DWORD this;
+        BYTE  jmp;   /* jmp func */
+        int   func;
+    } t1;
+    struct
+    {
+        BYTE  movl;  /* movl this,ecx */
+        DWORD this;
+        BYTE  jmp;   /* jmp func */
+        int   func;
+    } t2;
+    struct
+    {
+        BYTE  movl1; /* movl this,edx */
+        DWORD this;
+        BYTE  movl2; /* movl func,ecx */
+        DWORD func;
+        WORD  jmp;   /* jmp ecx */
+    } t3;
+    struct
+    {
+        BYTE  movl1; /* movl this,ecx */
+        DWORD this;
+        BYTE  movl2; /* movl func,eax */
+        DWORD func;
+        WORD  jmp;   /* jmp eax */
+    } t4;
+    struct
+    {
+        DWORD inst1; /* pop ecx
+                      * pop eax
+                      * push ecx
+                      * jmp 4(%eax) */
+        WORD  inst2;
+    } t5;
 };
 #include "poppack.h"
 
@@ -1632,28 +1666,78 @@ struct atl_thunk
  */
 static BOOL check_atl_thunk( EXCEPTION_RECORD *rec, CONTEXT *context )
 {
-    const struct atl_thunk *thunk = (const struct atl_thunk *)rec->ExceptionInformation[1];
-    BOOL ret = FALSE;
+    const union atl_thunk *thunk = (const union atl_thunk *)rec->ExceptionInformation[1];
+    union atl_thunk thunk_copy;
+    SIZE_T thunk_len;
 
-    if (!virtual_is_valid_code_address( thunk, sizeof(*thunk) )) return FALSE;
+    thunk_len = virtual_uninterrupted_read_memory( thunk, &thunk_copy, sizeof(*thunk) );
+    if (!thunk_len) return FALSE;
 
-    __TRY
+    if (thunk_len >= sizeof(thunk_copy.t1) && thunk_copy.t1.movl == 0x042444c7 &&
+                                              thunk_copy.t1.jmp == 0xe9)
     {
-        if (thunk->movl == 0x042444c7 && thunk->jmp == 0xe9)
+        if (virtual_uninterrupted_write_memory( (DWORD *)context->Esp + 1,
+            &thunk_copy.t1.this, sizeof(DWORD) ) == sizeof(DWORD))
         {
-            *((DWORD *)context->Esp + 1) = thunk->this;
-            context->Eip = (DWORD_PTR)(&thunk->func + 1) + thunk->func;
-            TRACE( "emulating ATL thunk at %p, func=%08x arg=%08x\n",
-                   thunk, context->Eip, *((DWORD *)context->Esp + 1) );
-            ret = TRUE;
+            context->Eip = (DWORD_PTR)(&thunk->t1.func + 1) + thunk_copy.t1.func;
+            TRACE( "emulating ATL thunk type 1 at %p, func=%08x arg=%08x\n",
+                   thunk, context->Eip, thunk_copy.t1.this );
+            return TRUE;
         }
     }
-    __EXCEPT_PAGE_FAULT
+    else if (thunk_len >= sizeof(thunk_copy.t2) && thunk_copy.t2.movl == 0xb9 &&
+                                                   thunk_copy.t2.jmp == 0xe9)
     {
-        return FALSE;
+        context->Ecx = thunk_copy.t2.this;
+        context->Eip = (DWORD_PTR)(&thunk->t2.func + 1) + thunk_copy.t2.func;
+        TRACE( "emulating ATL thunk type 2 at %p, func=%08x ecx=%08x\n",
+               thunk, context->Eip, context->Ecx );
+        return TRUE;
     }
-    __ENDTRY
-    return ret;
+    else if (thunk_len >= sizeof(thunk_copy.t3) && thunk_copy.t3.movl1 == 0xba &&
+                                                   thunk_copy.t3.movl2 == 0xb9 &&
+                                                   thunk_copy.t3.jmp == 0xe1ff)
+    {
+        context->Edx = thunk_copy.t3.this;
+        context->Ecx = thunk_copy.t3.func;
+        context->Eip = thunk_copy.t3.func;
+        TRACE( "emulating ATL thunk type 3 at %p, func=%08x ecx=%08x edx=%08x\n",
+               thunk, context->Eip, context->Ecx, context->Edx );
+        return TRUE;
+    }
+    else if (thunk_len >= sizeof(thunk_copy.t4) && thunk_copy.t4.movl1 == 0xb9 &&
+                                                   thunk_copy.t4.movl2 == 0xb8 &&
+                                                   thunk_copy.t4.jmp == 0xe0ff)
+    {
+        context->Ecx = thunk_copy.t4.this;
+        context->Eax = thunk_copy.t4.func;
+        context->Eip = thunk_copy.t4.func;
+        TRACE( "emulating ATL thunk type 4 at %p, func=%08x eax=%08x ecx=%08x\n",
+               thunk, context->Eip, context->Eax, context->Ecx );
+        return TRUE;
+    }
+    else if (thunk_len >= sizeof(thunk_copy.t5) && thunk_copy.t5.inst1 == 0xff515859 &&
+                                                   thunk_copy.t5.inst2 == 0x0460)
+    {
+        DWORD func, stack[2];
+        if (virtual_uninterrupted_read_memory( (DWORD *)context->Esp,
+            stack, sizeof(stack) ) == sizeof(stack) &&
+            virtual_uninterrupted_read_memory( (DWORD *)stack[1] + 1,
+            &func, sizeof(DWORD) ) == sizeof(DWORD) &&
+            virtual_uninterrupted_write_memory( (DWORD *)context->Esp + 1,
+            &stack[0], sizeof(stack[0]) ) == sizeof(stack[0]))
+        {
+            context->Ecx = stack[0];
+            context->Eax = stack[1];
+            context->Esp = context->Esp + sizeof(DWORD);
+            context->Eip = func;
+            TRACE( "emulating ATL thunk type 5 at %p, func=%08x eax=%08x ecx=%08x esp=%08x\n",
+                   thunk, context->Eip, context->Eax, context->Ecx, context->Esp );
+            return TRUE;
+        }
+    }
+
+    return FALSE;
 }
 
 
@@ -1821,19 +1905,22 @@ static void WINAPI raise_segv_exception( EXCEPTION_RECORD *rec, CONTEXT *context
     case EXCEPTION_ACCESS_VIOLATION:
         if (rec->NumberParameters == 2)
         {
-            if (rec->ExceptionInformation[0] == EXCEPTION_EXECUTE_FAULT && check_atl_thunk( rec, context ))
-                goto done;
             if (rec->ExceptionInformation[1] == 0xffffffff && check_invalid_gs( context ))
                 goto done;
             if (!(rec->ExceptionCode = virtual_handle_fault( (void *)rec->ExceptionInformation[1],
                                                              rec->ExceptionInformation[0] )))
                 goto done;
-            /* send EXCEPTION_EXECUTE_FAULT only if data execution prevention is enabled */
-            if (rec->ExceptionInformation[0] == EXCEPTION_EXECUTE_FAULT)
+            if (rec->ExceptionCode == EXCEPTION_ACCESS_VIOLATION &&
+                rec->ExceptionInformation[0] == EXCEPTION_EXECUTE_FAULT)
             {
                 ULONG flags;
                 NtQueryInformationProcess( GetCurrentProcess(), ProcessExecuteFlags,
                                            &flags, sizeof(flags), NULL );
+
+                if (!(flags & MEM_EXECUTE_OPTION_DISABLE_THUNK_EMULATION) && check_atl_thunk( rec, context ))
+                    goto done;
+
+                /* send EXCEPTION_EXECUTE_FAULT only if data execution prevention is enabled */
                 if (!(flags & MEM_EXECUTE_OPTION_DISABLE))
                     rec->ExceptionInformation[0] = EXCEPTION_READ_FAULT;
             }

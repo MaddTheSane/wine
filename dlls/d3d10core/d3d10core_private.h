@@ -50,6 +50,7 @@ struct d3d10_device;
 struct d3d10_shader_info
 {
     const DWORD *shader_code;
+    struct wined3d_shader_signature *input_signature;
     struct wined3d_shader_signature *output_signature;
 };
 
@@ -63,6 +64,7 @@ DXGI_FORMAT dxgi_format_from_wined3dformat(enum wined3d_format_id format) DECLSP
 enum wined3d_format_id wined3dformat_from_dxgi_format(DXGI_FORMAT format) DECLSPEC_HIDDEN;
 DWORD wined3d_usage_from_d3d10core(UINT bind_flags, enum D3D10_USAGE usage) DECLSPEC_HIDDEN;
 struct wined3d_resource *wined3d_resource_from_resource(ID3D10Resource *resource) DECLSPEC_HIDDEN;
+DWORD wined3d_map_flags_from_d3d10_map_type(D3D10_MAP map_type) DECLSPEC_HIDDEN;
 
 static inline void read_dword(const char **ptr, DWORD *d)
 {
@@ -189,7 +191,6 @@ struct d3d10_vertex_shader
     LONG refcount;
 
     struct wined3d_shader *wined3d_shader;
-    struct wined3d_shader_signature output_signature;
     ID3D10Device1 *device;
 };
 
@@ -204,7 +205,6 @@ struct d3d10_geometry_shader
     LONG refcount;
 
     struct wined3d_shader *wined3d_shader;
-    struct wined3d_shader_signature output_signature;
 };
 
 HRESULT d3d10_geometry_shader_init(struct d3d10_geometry_shader *shader, struct d3d10_device *device,
@@ -218,7 +218,6 @@ struct d3d10_pixel_shader
     LONG refcount;
 
     struct wined3d_shader *wined3d_shader;
-    struct wined3d_shader_signature output_signature;
     ID3D10Device1 *device;
 };
 
@@ -326,7 +325,6 @@ struct d3d10_device
 
     struct d3d10_blend_state *blend_state;
     float blend_factor[4];
-    UINT sample_mask;
     struct d3d10_depthstencil_state *depth_stencil_state;
     UINT stencil_ref;
     struct d3d10_rasterizer_state *rasterizer_state;

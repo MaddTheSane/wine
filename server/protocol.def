@@ -2156,7 +2156,6 @@ enum message_type
 @REQ(accept_hardware_message)
     unsigned int    hw_id;     /* id of the hardware message */
     int             remove;    /* should we remove the message? */
-    user_handle_t   new_win;   /* new destination window for current message */
 @END
 
 
@@ -2275,7 +2274,6 @@ enum message_type
 @REQ(create_named_pipe)
     unsigned int   access;
     unsigned int   attributes;   /* object attributes */
-    obj_handle_t   rootdir;      /* root directory */
     unsigned int   options;
     unsigned int   sharing;
     unsigned int   maxinstances;
@@ -2283,7 +2281,7 @@ enum message_type
     unsigned int   insize;
     timeout_t      timeout;
     unsigned int   flags;
-    VARARG(name,unicode_str);    /* pipe name */
+    VARARG(objattr,object_attributes); /* object attributes */
 @REPLY
     obj_handle_t   handle;       /* handle to the pipe */
 @END

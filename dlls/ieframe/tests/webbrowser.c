@@ -456,6 +456,8 @@ static HRESULT WINAPI OleCommandTarget_Exec(IOleCommandTarget *iface, const GUID
         case 144: /* TODO */
         case 178: /* IE11 */
         case 179: /* IE11 */
+        case 180: /* IE11 */
+        case 181: /* IE11 */
             return E_FAIL;
         default:
             ok(0, "unexpected nCmdID %d\n", nCmdID);
@@ -1995,6 +1997,30 @@ static void test_ClassInfo(IWebBrowser2 *unk)
     IProvideClassInfo2_Release(class_info);
 }
 
+#define expect_oleverb(a,b) _expect_oleverb(__LINE__,a,b)
+static void _expect_oleverb(unsigned line, const OLEVERB *verb, LONG exverb)
+{
+    ok_(__FILE__,line)(verb->lVerb == exverb, "verb->lVerb = %d, expected %d\n", verb->lVerb, exverb);
+    ok_(__FILE__,line)(!verb->lpszVerbName, "verb->lpszVerbName = %s\n", wine_dbgstr_w(verb->lpszVerbName));
+    ok_(__FILE__,line)(!verb->fuFlags, "verb->fuFlags = %x\n", verb->fuFlags);
+    ok_(__FILE__,line)(!verb->grfAttribs, "verb->grfAttribs = %x\n", verb->grfAttribs);
+}
+
+#define test_next_oleverb(a,b) _test_next_oleverb(__LINE__,a,b)
+static void _test_next_oleverb(unsigned line, IEnumOLEVERB *enum_verbs, LONG exverb)
+{
+    ULONG fetched = 0xdeadbeef;
+    OLEVERB verb;
+    HRESULT hres;
+
+    fetched = 0xdeadbeef;
+    memset(&verb, 0xa, sizeof(verb));
+    hres = IEnumOLEVERB_Next(enum_verbs, 1, &verb, &fetched);
+    ok_(__FILE__,line)(hres == S_OK, "Next failed: %08x\n", hres);
+    ok_(__FILE__,line)(!fetched, "fetched = %d\n", fetched);
+    _expect_oleverb(line, &verb, exverb);
+}
+
 static void test_EnumVerbs(IWebBrowser2 *wb)
 {
     IEnumOLEVERB *enum_verbs;
@@ -2012,13 +2038,32 @@ static void test_EnumVerbs(IWebBrowser2 *wb)
     ok(enum_verbs != NULL, "enum_verbs == NULL\n");
 
     fetched = 0xdeadbeef;
+    memset(verbs, 0xa, sizeof(verbs));
+    verbs[1].lVerb = 0xdeadbeef;
     hres = IEnumOLEVERB_Next(enum_verbs, sizeof(verbs)/sizeof(*verbs), verbs, &fetched);
     ok(hres == S_OK, "Next failed: %08x\n", hres);
     ok(!fetched, "fetched = %d\n", fetched);
+    /* Although fetched==0, an element is returned. */
+    expect_oleverb(verbs, OLEIVERB_PRIMARY);
+    /* The first argument is ignorred and always one element is returned. */
+    ok(verbs[1].lVerb == 0xdeadbeef, "verbs[1].lVerb = %x\n", verbs[1].lVerb);
 
+    test_next_oleverb(enum_verbs, OLEIVERB_INPLACEACTIVATE);
+    test_next_oleverb(enum_verbs, OLEIVERB_UIACTIVATE);
+    test_next_oleverb(enum_verbs, OLEIVERB_SHOW);
+    test_next_oleverb(enum_verbs, OLEIVERB_HIDE);
+
+    /* There is anouther verb, returned correctly. */
     fetched = 0xdeadbeef;
-    hres = IEnumOLEVERB_Next(enum_verbs, 1, verbs, &fetched);
-    ok(hres == S_OK, "Next failed: %08x\n", hres);
+    memset(verbs, 0xa, sizeof(verbs));
+    verbs[0].lVerb = 0xdeadbeef;
+    hres = IEnumOLEVERB_Next(enum_verbs, sizeof(verbs)/sizeof(*verbs), verbs, &fetched);
+    todo_wine ok(hres == S_OK, "Next failed: %08x\n", hres);
+    todo_wine ok(fetched == 1, "fetched = %d\n", fetched);
+    todo_wine ok(verbs[0].lVerb != 0xdeadbeef, "verbs[0].lVerb = %x\n", verbs[0].lVerb);
+
+    hres = IEnumOLEVERB_Next(enum_verbs, sizeof(verbs)/sizeof(*verbs), verbs, &fetched);
+    ok(hres == S_FALSE, "Next failed: %08x\n", hres);
     ok(!fetched, "fetched = %d\n", fetched);
 
     hres = IEnumOLEVERB_Reset(enum_verbs);
@@ -2039,6 +2084,8 @@ static void test_EnumVerbs(IWebBrowser2 *wb)
     hres = IEnumOLEVERB_Next(enum_verbs, 1, verbs, &fetched);
     ok(hres == S_OK, "Next failed: %08x\n", hres);
     ok(!fetched, "fetched = %d\n", fetched);
+
+    test_next_oleverb(enum_verbs, OLEIVERB_SHOW);
 
     IEnumOLEVERB_Release(enum_verbs);
 }
@@ -2273,6 +2320,10 @@ static void test_ie_funcs(IWebBrowser2 *wb)
     else /* Non-English cannot be blank. */
         ok(sName!=NULL, "get_Name return a NULL string.\n");
     SysFreeString(sName);
+
+    /* RegisterAsDropTarget */
+    hres = IWebBrowser2_get_RegisterAsDropTarget(wb, NULL);
+    ok(hres == E_INVALIDARG, "get_RegisterAsDropTarget returned: %08x\n", hres);
 
     /* Quit */
 
@@ -2835,15 +2886,27 @@ static void test_download(DWORD flags)
     CLEAR_CALLED(QueryStatus_STOP);
 }
 
-static void test_Refresh(IWebBrowser2 *webbrowser)
+static void test_Refresh(IWebBrowser2 *webbrowser, BOOL use_refresh2)
 {
     HRESULT hres;
 
     trace("Refresh...\n");
 
     SET_EXPECT(Exec_DocHostCommandHandler_2300);
-    hres = IWebBrowser2_Refresh(webbrowser);
-    ok(hres == S_OK, "Refresh failed: %08x\n", hres);
+
+    if(use_refresh2) {
+        VARIANT v;
+
+        V_VT(&v) = VT_I4;
+        V_I4(&v) = REFRESH_NORMAL;
+
+        hres = IWebBrowser2_Refresh2(webbrowser, &v);
+        ok(hres == S_OK, "Refresh failed: %08x\n", hres);
+    }else {
+        hres = IWebBrowser2_Refresh(webbrowser);
+        ok(hres == S_OK, "Refresh failed: %08x\n", hres);
+    }
+
     CHECK_CALLED(Exec_DocHostCommandHandler_2300);
 
     test_download(DWL_REFRESH);
@@ -3423,7 +3486,8 @@ static void test_WebBrowser(BOOL do_download, BOOL do_close)
             test_Navigate2(webbrowser, "http://test.winehq.org/tests/hello.html");
             test_download(DWL_EXPECT_BEFORE_NAVIGATE|DWL_HTTP);
 
-            test_Refresh(webbrowser);
+            test_Refresh(webbrowser, FALSE);
+            test_Refresh(webbrowser, TRUE);
 
             trace("put_href http URL...\n");
             test_put_href(webbrowser, "http://test.winehq.org/tests/winehq_snapshot/");

@@ -392,6 +392,37 @@ static IDWriteTextAnalysisSourceVtbl analysissourcevtbl = {
 
 static IDWriteTextAnalysisSource analysissource = { &analysissourcevtbl };
 
+static IDWriteFontFace *create_fontface(void)
+{
+    static const WCHAR tahomaW[] = {'T','a','h','o','m','a',0};
+    IDWriteGdiInterop *interop;
+    IDWriteFontFace *fontface;
+    IDWriteFont *font;
+    LOGFONTW logfont;
+    HRESULT hr;
+
+    hr = IDWriteFactory_GetGdiInterop(factory, &interop);
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+
+    memset(&logfont, 0, sizeof(logfont));
+    logfont.lfHeight = 12;
+    logfont.lfWidth  = 12;
+    logfont.lfWeight = FW_NORMAL;
+    logfont.lfItalic = 1;
+    lstrcpyW(logfont.lfFaceName, tahomaW);
+
+    hr = IDWriteGdiInterop_CreateFontFromLOGFONT(interop, &logfont, &font);
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+
+    hr = IDWriteFont_CreateFontFace(font, &fontface);
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+
+    IDWriteFont_Release(font);
+    IDWriteGdiInterop_Release(interop);
+
+    return fontface;
+}
+
 struct sa_test {
     const WCHAR string[50];
     int item_count;
@@ -908,6 +939,241 @@ static void test_AnalyzeLineBreakpoints(void)
     IDWriteTextAnalyzer_Release(analyzer);
 }
 
+static void test_GetScriptProperties(void)
+{
+    IDWriteTextAnalyzer1 *analyzer1;
+    IDWriteTextAnalyzer *analyzer;
+    DWRITE_SCRIPT_ANALYSIS sa;
+    DWRITE_SCRIPT_PROPERTIES props;
+    HRESULT hr;
+
+    hr = IDWriteFactory_CreateTextAnalyzer(factory, &analyzer);
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+
+    hr = IDWriteTextAnalyzer_QueryInterface(analyzer, &IID_IDWriteTextAnalyzer1, (void**)&analyzer1);
+    IDWriteTextAnalyzer_Release(analyzer);
+    if (hr != S_OK) {
+        win_skip("GetScriptProperties() is not supported.\n");
+        return;
+    }
+
+    sa.script = 1000;
+    hr = IDWriteTextAnalyzer1_GetScriptProperties(analyzer1, sa, &props);
+    ok(hr == E_INVALIDARG, "got 0x%08x\n", hr);
+
+if (0) /* crashes on native */
+    hr = IDWriteTextAnalyzer1_GetScriptProperties(analyzer1, sa, NULL);
+
+    sa.script = 0;
+    hr = IDWriteTextAnalyzer1_GetScriptProperties(analyzer1, sa, &props);
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+
+    IDWriteTextAnalyzer1_Release(analyzer1);
+}
+
+struct textcomplexity_test {
+    const WCHAR text[5];
+    UINT32 length;
+    BOOL simple;
+    UINT32 len_read;
+};
+
+static const struct textcomplexity_test textcomplexity_tests[] = {
+    { {0},                     1, FALSE, 1 },
+    { {0},                     0,  TRUE, 0 },
+    { {0x610,0},               0,  TRUE, 0 },
+    { {'A','B','C','D',0},     3,  TRUE, 3 },
+    { {'A','B','C','D',0},     5,  TRUE, 4 },
+    { {'A','B','C','D',0},    10,  TRUE, 4 },
+    { {'A',0x610,'C','D',0},   1,  TRUE, 1 },
+    { {'A',0x610,'C','D',0},   2, FALSE, 2 },
+    { {0x610,'A','C','D',0},   1, FALSE, 1 },
+    { {0x610,'A','C','D',0},   2, FALSE, 1 },
+    { {0x610,0x610,'C','D',0}, 2, FALSE, 2 },
+    { {0xd800,'A','B',0},      1, FALSE, 1 },
+    { {0xd800,'A','B',0},      2, FALSE, 1 },
+    { {0xdc00,'A','B',0},      2, FALSE, 1 }
+};
+
+static void test_GetTextComplexity(void)
+{
+    static const WCHAR textW[] = {'A','B','C',0};
+    IDWriteTextAnalyzer1 *analyzer1;
+    IDWriteTextAnalyzer *analyzer;
+    IDWriteFontFace *fontface;
+    UINT16 indices[10];
+    BOOL simple;
+    HRESULT hr;
+    UINT32 len;
+    int i;
+
+    hr = IDWriteFactory_CreateTextAnalyzer(factory, &analyzer);
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+
+    hr = IDWriteTextAnalyzer_QueryInterface(analyzer, &IID_IDWriteTextAnalyzer1, (void**)&analyzer1);
+    IDWriteTextAnalyzer_Release(analyzer);
+    if (hr != S_OK) {
+        win_skip("GetTextComplexity() is not supported.\n");
+        return;
+    }
+
+if (0) { /* crashes on native */
+    hr = IDWriteTextAnalyzer1_GetTextComplexity(analyzer1, NULL, 0, NULL, NULL, NULL, NULL);
+    hr = IDWriteTextAnalyzer1_GetTextComplexity(analyzer1, NULL, 0, NULL, NULL, &len, NULL);
+    hr = IDWriteTextAnalyzer1_GetTextComplexity(analyzer1, textW, 3, NULL, NULL, NULL, NULL);
+    hr = IDWriteTextAnalyzer1_GetTextComplexity(analyzer1, textW, 3, NULL, NULL, &len, NULL);
+    hr = IDWriteTextAnalyzer1_GetTextComplexity(analyzer1, textW, 3, NULL, &simple, NULL, NULL);
+}
+
+    len = 1;
+    simple = TRUE;
+    hr = IDWriteTextAnalyzer1_GetTextComplexity(analyzer1, NULL, 0, NULL, &simple, &len, NULL);
+    ok(hr == E_INVALIDARG, "got 0x%08x\n", hr);
+    ok(len == 0, "got %d\n", len);
+    ok(simple == FALSE, "got %d\n", simple);
+
+    len = 1;
+    simple = TRUE;
+    indices[0] = 1;
+    hr = IDWriteTextAnalyzer1_GetTextComplexity(analyzer1, textW, 3, NULL, &simple, &len, NULL);
+    ok(hr == E_INVALIDARG, "got 0x%08x\n", hr);
+    ok(len == 0, "got %d\n", len);
+    ok(simple == FALSE, "got %d\n", simple);
+    ok(indices[0] == 1, "got %d\n", indices[0]);
+
+    fontface = create_fontface();
+
+    for (i = 0; i < sizeof(textcomplexity_tests)/sizeof(struct textcomplexity_test); i++) {
+       const struct textcomplexity_test *ptr = &textcomplexity_tests[i];
+       len = 1;
+       simple = !ptr->simple;
+       indices[0] = 0;
+       hr = IDWriteTextAnalyzer1_GetTextComplexity(analyzer1, ptr->text, ptr->length, fontface, &simple, &len, indices);
+       ok(hr == S_OK, "%d: got 0x%08x\n", i, hr);
+       ok(len == ptr->len_read, "%d: read length: got %d, expected %d\n", i, len, ptr->len_read);
+       ok(simple == ptr->simple, "%d: simple: got %d, expected %d\n", i, simple, ptr->simple);
+       if (simple && ptr->length)
+           ok(indices[0] > 0, "%d: got %d\n", i, indices[0]);
+       else
+           ok(indices[0] == 0, "%d: got %d\n", i, indices[0]);
+    }
+
+    IDWriteFontFace_Release(fontface);
+    IDWriteTextAnalyzer1_Release(analyzer1);
+}
+
+static void test_numbersubstitution(void)
+{
+    static const WCHAR dummyW[] = {'d','u','m','m','y',0};
+    IDWriteNumberSubstitution *substitution;
+    HRESULT hr;
+
+    hr = IDWriteFactory_CreateNumberSubstitution(factory, DWRITE_NUMBER_SUBSTITUTION_METHOD_NONE, NULL, FALSE, &substitution);
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+    IDWriteNumberSubstitution_Release(substitution);
+
+    /* invalid method */
+    hr = IDWriteFactory_CreateNumberSubstitution(factory, DWRITE_NUMBER_SUBSTITUTION_METHOD_TRADITIONAL+1, NULL, FALSE, &substitution);
+    ok(hr == E_INVALIDARG, "got 0x%08x\n", hr);
+
+    /* invalid method */
+    hr = IDWriteFactory_CreateNumberSubstitution(factory, -1, NULL, FALSE, &substitution);
+    ok(hr == E_INVALIDARG, "got 0x%08x\n", hr);
+
+    /* invalid locale */
+    hr = IDWriteFactory_CreateNumberSubstitution(factory, DWRITE_NUMBER_SUBSTITUTION_METHOD_TRADITIONAL, dummyW, FALSE, &substitution);
+    ok(hr == E_INVALIDARG, "got 0x%08x\n", hr);
+
+    hr = IDWriteFactory_CreateNumberSubstitution(factory, DWRITE_NUMBER_SUBSTITUTION_METHOD_CONTEXTUAL, dummyW, FALSE, &substitution);
+    ok(hr == E_INVALIDARG, "got 0x%08x\n", hr);
+
+    hr = IDWriteFactory_CreateNumberSubstitution(factory, DWRITE_NUMBER_SUBSTITUTION_METHOD_NATIONAL, dummyW, FALSE, &substitution);
+    ok(hr == E_INVALIDARG, "got 0x%08x\n", hr);
+
+    /* invalid locale, but it's not needed for this method */
+    hr = IDWriteFactory_CreateNumberSubstitution(factory, DWRITE_NUMBER_SUBSTITUTION_METHOD_NONE, dummyW, FALSE, &substitution);
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+    IDWriteNumberSubstitution_Release(substitution);
+}
+
+static void test_GetGlyphs(void)
+{
+    static const WCHAR test1W[] = {'<','B',' ','C',0};
+    static const WCHAR test2W[] = {'<','B','\t','C',0};
+    DWRITE_SHAPING_GLYPH_PROPERTIES shapingprops[20];
+    DWRITE_SHAPING_TEXT_PROPERTIES props[20];
+    UINT32 maxglyphcount, actual_count;
+    IDWriteTextAnalyzer *analyzer;
+    IDWriteFontFace *fontface;
+    DWRITE_SCRIPT_ANALYSIS sa;
+    UINT16 clustermap[10];
+    UINT16 glyphs1[10];
+    UINT16 glyphs2[10];
+    HRESULT hr;
+
+    hr = IDWriteFactory_CreateTextAnalyzer(factory, &analyzer);
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+
+    fontface = create_fontface();
+
+    maxglyphcount = 1;
+    sa.script = 0;
+    sa.shapes = DWRITE_SCRIPT_SHAPES_DEFAULT;
+    hr = IDWriteTextAnalyzer_GetGlyphs(analyzer, test1W, lstrlenW(test1W), fontface, FALSE, FALSE, &sa, NULL,
+        NULL, NULL, NULL, 0, maxglyphcount, clustermap, props, glyphs1, shapingprops, &actual_count);
+    ok(hr == E_NOT_SUFFICIENT_BUFFER, "got 0x%08x\n", hr);
+
+if (0) {
+    /* NULL fontface - crashes on Windows */
+    hr = IDWriteTextAnalyzer_GetGlyphs(analyzer, test1W, lstrlenW(test1W), NULL, FALSE, FALSE, &sa, NULL,
+        NULL, NULL, NULL, 0, maxglyphcount, clustermap, props, glyphs1, shapingprops, &actual_count);
+}
+
+    /* invalid script id */
+    maxglyphcount = 10;
+    actual_count = 0;
+    sa.script = 999;
+    sa.shapes = DWRITE_SCRIPT_SHAPES_DEFAULT;
+    hr = IDWriteTextAnalyzer_GetGlyphs(analyzer, test1W, lstrlenW(test1W), fontface, FALSE, FALSE, &sa, NULL,
+        NULL, NULL, NULL, 0, maxglyphcount, clustermap, props, glyphs1, shapingprops, &actual_count);
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+    ok(actual_count == 4, "got %d\n", actual_count);
+    ok(sa.script == 999, "got %u\n", sa.script);
+
+    /* no '\t' -> ' ' replacement */
+    maxglyphcount = 10;
+    actual_count = 0;
+    hr = IDWriteTextAnalyzer_GetGlyphs(analyzer, test1W, lstrlenW(test1W), fontface, FALSE, FALSE, &sa, NULL,
+        NULL, NULL, NULL, 0, maxglyphcount, clustermap, props, glyphs1, shapingprops, &actual_count);
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+    ok(actual_count == 4, "got %d\n", actual_count);
+
+    actual_count = 0;
+    hr = IDWriteTextAnalyzer_GetGlyphs(analyzer, test2W, lstrlenW(test2W), fontface, FALSE, FALSE, &sa, NULL,
+        NULL, NULL, NULL, 0, maxglyphcount, clustermap, props, glyphs2, shapingprops, &actual_count);
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+    ok(actual_count == 4, "got %d\n", actual_count);
+    ok(glyphs1[2] != glyphs2[2], "got %d\n", glyphs1[2]);
+
+    /* check that mirroring works */
+    maxglyphcount = 10;
+    actual_count = 0;
+    hr = IDWriteTextAnalyzer_GetGlyphs(analyzer, test1W, lstrlenW(test1W), fontface, FALSE, FALSE, &sa, NULL,
+        NULL, NULL, NULL, 0, maxglyphcount, clustermap, props, glyphs1, shapingprops, &actual_count);
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+    ok(actual_count == 4, "got %d\n", actual_count);
+
+    actual_count = 0;
+    hr = IDWriteTextAnalyzer_GetGlyphs(analyzer, test1W, lstrlenW(test1W), fontface, FALSE, TRUE, &sa, NULL,
+        NULL, NULL, NULL, 0, maxglyphcount, clustermap, props, glyphs2, shapingprops, &actual_count);
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+    ok(actual_count == 4, "got %d\n", actual_count);
+    ok(glyphs1[0] != glyphs2[0], "got %d\n", glyphs1[0]);
+
+    IDWriteTextAnalyzer_Release(analyzer);
+    IDWriteFontFace_Release(fontface);
+}
+
 START_TEST(analyzer)
 {
     HRESULT hr;
@@ -925,6 +1191,10 @@ START_TEST(analyzer)
 
     test_AnalyzeScript();
     test_AnalyzeLineBreakpoints();
+    test_GetScriptProperties();
+    test_GetTextComplexity();
+    test_GetGlyphs();
+    test_numbersubstitution();
 
     IDWriteFactory_Release(factory);
 }

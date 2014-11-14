@@ -1,7 +1,7 @@
 /*
  *    Text layout/format tests
  *
- * Copyright 2012 Nikolay Sivov for CodeWeavers
+ * Copyright 2012, 2014 Nikolay Sivov for CodeWeavers
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -309,7 +309,9 @@ static IDWriteTextRenderer testrenderer = { &testrenderervtbl };
 static void test_CreateTextLayout(void)
 {
     static const WCHAR strW[] = {'s','t','r','i','n','g',0};
+    IDWriteTextLayout2 *layout2;
     IDWriteTextLayout *layout;
+    IDWriteTextFormat *format;
     HRESULT hr;
 
     hr = IDWriteFactory_CreateTextLayout(factory, NULL, 0, NULL, 0.0, 0.0, &layout);
@@ -326,6 +328,42 @@ static void test_CreateTextLayout(void)
 
     hr = IDWriteFactory_CreateTextLayout(factory, strW, 6, NULL, 1000.0, 1000.0, &layout);
     ok(hr == E_INVALIDARG, "got 0x%08x\n", hr);
+
+    hr = IDWriteFactory_CreateTextFormat(factory, tahomaW, NULL, DWRITE_FONT_WEIGHT_NORMAL, DWRITE_FONT_STYLE_NORMAL,
+        DWRITE_FONT_STRETCH_NORMAL, 10.0, enusW, &format);
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+
+    hr = IDWriteFactory_CreateTextLayout(factory, strW, 6, format, 1000.0, 1000.0, &layout);
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+
+    hr = IDWriteTextLayout_QueryInterface(layout, &IID_IDWriteTextLayout2, (void**)&layout2);
+    if (hr == S_OK) {
+        IDWriteTextLayout1 *layout1;
+        IDWriteTextFormat1 *format1;
+
+        hr = IDWriteTextLayout2_QueryInterface(layout2, &IID_IDWriteTextLayout1, (void**)&layout1);
+        ok(hr == S_OK, "got 0x%08x\n", hr);
+        IDWriteTextLayout1_Release(layout1);
+
+        hr = IDWriteTextLayout2_QueryInterface(layout2, &IID_IDWriteTextFormat1, (void**)&format1);
+todo_wine
+        ok(hr == S_OK, "got 0x%08x\n", hr);
+if (hr == S_OK)
+        IDWriteTextFormat1_Release(format1);
+
+        hr = IDWriteTextLayout_QueryInterface(layout, &IID_IDWriteTextFormat1, (void**)&format1);
+todo_wine
+        ok(hr == S_OK, "got 0x%08x\n", hr);
+if (hr == S_OK)
+        IDWriteTextFormat1_Release(format1);
+
+        IDWriteTextLayout2_Release(layout2);
+    }
+    else
+        win_skip("IDWriteTextLayout2 is not supported.\n");
+
+    IDWriteTextLayout_Release(layout);
+    IDWriteTextFormat_Release(format);
 }
 
 static void test_CreateGdiCompatibleTextLayout(void)
@@ -478,7 +516,7 @@ static void test_GetLocaleName(void)
     static const WCHAR strW[] = {'s','t','r','i','n','g',0};
     static const WCHAR ruW[] = {'r','u',0};
     IDWriteTextLayout *layout;
-    IDWriteTextFormat *format;
+    IDWriteTextFormat *format, *format2;
     WCHAR buff[10];
     UINT32 len;
     HRESULT hr;
@@ -489,13 +527,17 @@ static void test_GetLocaleName(void)
 
     hr = IDWriteFactory_CreateGdiCompatibleTextLayout(factory, strW, 0, format, 100.0, 100.0, 1.0, NULL, FALSE, &layout);
     ok(hr == S_OK, "got 0x%08x\n", hr);
-    len = IDWriteTextLayout_GetLocaleNameLength(layout);
+
+    hr = IDWriteTextLayout_QueryInterface(layout, &IID_IDWriteTextFormat, (void**)&format2);
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+
+    len = IDWriteTextFormat_GetLocaleNameLength(format2);
     ok(len == 2, "got %u\n", len);
     len = IDWriteTextFormat_GetLocaleNameLength(format);
     ok(len == 2, "got %u\n", len);
-    hr = IDWriteTextLayout_GetLocaleName(layout, buff, len);
+    hr = IDWriteTextFormat_GetLocaleName(format2, buff, len);
     ok(hr == E_NOT_SUFFICIENT_BUFFER, "got 0x%08x\n", hr);
-    hr = IDWriteTextLayout_GetLocaleName(layout, buff, len+1);
+    hr = IDWriteTextFormat_GetLocaleName(format2, buff, len+1);
     ok(hr == S_OK, "got 0x%08x\n", hr);
     ok(!lstrcmpW(buff, ruW), "got %s\n", wine_dbgstr_w(buff));
     hr = IDWriteTextFormat_GetLocaleName(format, buff, len);
@@ -506,6 +548,7 @@ static void test_GetLocaleName(void)
 
     IDWriteTextLayout_Release(layout);
     IDWriteTextFormat_Release(format);
+    IDWriteTextFormat_Release(format2);
 }
 
 static void test_CreateEllipsisTrimmingSign(void)
@@ -545,6 +588,7 @@ static void test_fontweight(void)
     IDWriteTextLayout *layout;
     DWRITE_FONT_WEIGHT weight;
     DWRITE_TEXT_RANGE range;
+    FLOAT size;
     HRESULT hr;
 
     hr = IDWriteFactory_CreateTextFormat(factory, tahomaW, NULL, DWRITE_FONT_WEIGHT_BOLD, DWRITE_FONT_STYLE_NORMAL,
@@ -571,10 +615,52 @@ static void test_fontweight(void)
 
     range.length = 0;
     weight = DWRITE_FONT_WEIGHT_BOLD;
-    hr = layout->lpVtbl->IDWriteTextLayout_GetFontWeight(layout, 0, &weight, &range);
+    hr = IDWriteTextLayout_GetFontWeight(layout, 0, &weight, &range);
     ok(hr == S_OK, "got 0x%08x\n", hr);
     ok(weight == DWRITE_FONT_WEIGHT_NORMAL, "got %d\n", weight);
     ok(range.length == 6, "got %d\n", range.length);
+
+    size = IDWriteTextLayout_GetMaxWidth(layout);
+    ok(size == 100.0, "got %.2f\n", size);
+
+    hr = IDWriteTextLayout_SetMaxWidth(layout, 0.0);
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+
+    size = IDWriteTextLayout_GetMaxWidth(layout);
+    ok(size == 0.0, "got %.2f\n", size);
+
+    hr = IDWriteTextLayout_SetMaxWidth(layout, -1.0);
+    ok(hr == E_INVALIDARG, "got 0x%08x\n", hr);
+
+    size = IDWriteTextLayout_GetMaxWidth(layout);
+    ok(size == 0.0, "got %.2f\n", size);
+
+    hr = IDWriteTextLayout_SetMaxWidth(layout, 100.0);
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+
+    size = IDWriteTextLayout_GetMaxWidth(layout);
+    ok(size == 100.0, "got %.2f\n", size);
+
+    size = IDWriteTextLayout_GetMaxHeight(layout);
+    ok(size == 100.0, "got %.2f\n", size);
+
+    hr = IDWriteTextLayout_SetMaxHeight(layout, 0.0);
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+
+    size = IDWriteTextLayout_GetMaxHeight(layout);
+    ok(size == 0.0, "got %.2f\n", size);
+
+    hr = IDWriteTextLayout_SetMaxHeight(layout, -1.0);
+    ok(hr == E_INVALIDARG, "got 0x%08x\n", hr);
+
+    size = IDWriteTextLayout_GetMaxHeight(layout);
+    ok(size == 0.0, "got %.2f\n", size);
+
+    hr = IDWriteTextLayout_SetMaxHeight(layout, 100.0);
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+
+    size = IDWriteTextLayout_GetMaxHeight(layout);
+    ok(size == 100.0, "got %.2f\n", size);
 
     IDWriteTextLayout_Release(layout);
     IDWriteTextFormat_Release(fmt2);

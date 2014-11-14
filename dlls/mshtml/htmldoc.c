@@ -592,27 +592,13 @@ static HRESULT WINAPI HTMLDocument_get_readyState(IHTMLDocument2 *iface, BSTR *p
 {
     HTMLDocument *This = impl_from_IHTMLDocument2(iface);
 
-    static const WCHAR wszUninitialized[] = {'u','n','i','n','i','t','i','a','l','i','z','e','d',0};
-    static const WCHAR wszLoading[] = {'l','o','a','d','i','n','g',0};
-    static const WCHAR wszLoaded[] = {'l','o','a','d','e','d',0};
-    static const WCHAR wszInteractive[] = {'i','n','t','e','r','a','c','t','i','v','e',0};
-    static const WCHAR wszComplete[] = {'c','o','m','p','l','e','t','e',0};
-
-    static const LPCWSTR readystate_str[] = {
-        wszUninitialized,
-        wszLoading,
-        wszLoaded,
-        wszInteractive,
-        wszComplete
-    };
 
     TRACE("(%p)->(%p)\n", iface, p);
 
     if(!p)
         return E_POINTER;
 
-    *p = SysAllocString(readystate_str[This->window->readystate]);
-    return S_OK;
+    return get_readystate_string(This->window->readystate, p);
 }
 
 static HRESULT WINAPI HTMLDocument_get_frames(IHTMLDocument2 *iface, IHTMLFramesCollection2 **p)
@@ -1625,10 +1611,14 @@ static HRESULT WINAPI HTMLDocument_createStyleSheet(IHTMLDocument2 *iface, BSTR 
 
     nsres = nsIDOMHTMLDocument_GetHead(This->doc_node->nsdoc, &head_elem);
     if(NS_SUCCEEDED(nsres)) {
-        nsIDOMNode *tmp_node;
+        nsIDOMNode *head_node, *tmp_node;
 
-        nsres = nsIDOMHTMLHeadElement_AppendChild(head_elem, (nsIDOMNode*)elem->nselem, &tmp_node);
+        nsres = nsIDOMHTMLHeadElement_QueryInterface(head_elem, &IID_nsIDOMNode, (void**)&head_node);
         nsIDOMHTMLHeadElement_Release(head_elem);
+        assert(nsres == NS_OK);
+
+        nsres = nsIDOMNode_AppendChild(head_node, elem->node.nsnode, &tmp_node);
+        nsIDOMNode_Release(head_node);
         if(NS_SUCCEEDED(nsres) && tmp_node)
             nsIDOMNode_Release(tmp_node);
     }
@@ -1830,8 +1820,11 @@ static HRESULT WINAPI HTMLDocument3_releaseCapture(IHTMLDocument3 *iface)
 static HRESULT WINAPI HTMLDocument3_recalc(IHTMLDocument3 *iface, VARIANT_BOOL fForce)
 {
     HTMLDocument *This = impl_from_IHTMLDocument3(iface);
-    FIXME("(%p)->(%x)\n", This, fForce);
-    return E_NOTIMPL;
+
+    WARN("(%p)->(%x)\n", This, fForce);
+
+    /* Doing nothing here should be fine for us. */
+    return S_OK;
 }
 
 static HRESULT WINAPI HTMLDocument3_createTextNode(IHTMLDocument3 *iface, BSTR text,
@@ -2218,7 +2211,7 @@ static HRESULT WINAPI HTMLDocument3_getElementsByName(IHTMLDocument3 *iface, BST
      * types and search should be case insensitive. Those are currently not supported properly.
      */
     nsAString_InitDepend(&selector_str, selector);
-    nsres = nsIDOMNodeSelector_QuerySelectorAll(This->doc_node->nsnode_selector, &selector_str, &node_list);
+    nsres = nsIDOMHTMLDocument_QuerySelectorAll(This->doc_node->nsdoc, &selector_str, &node_list);
     nsAString_Finish(&selector_str);
     heap_free(selector);
     if(NS_FAILED(nsres)) {
@@ -4347,11 +4340,6 @@ static void HTMLDocumentNode_destructor(HTMLDOMNode *iface)
     while(!list_empty(&This->plugin_hosts))
         detach_plugin_host(LIST_ENTRY(list_head(&This->plugin_hosts), PluginHost, entry));
 
-    if(This->nsnode_selector) {
-        nsIDOMNodeSelector_Release(This->nsnode_selector);
-        This->nsnode_selector = NULL;
-    }
-
     if(!This->nsdoc && This->window) {
         /* document fragments own reference to inner window */
         IHTMLWindow2_Release(&This->window->base.IHTMLWindow2_iface);
@@ -4373,8 +4361,6 @@ static void HTMLDocumentNode_traverse(HTMLDOMNode *iface, nsCycleCollectionTrave
 {
     HTMLDocumentNode *This = impl_from_HTMLDOMNode(iface);
 
-    if(This->nsnode_selector)
-        note_cc_edge((nsISupports*)This->nsnode_selector, "This->nsnode_selector", cb);
     if(This->nsdoc)
         note_cc_edge((nsISupports*)This->nsdoc, "This->nsdoc", cb);
 }
@@ -4382,11 +4368,6 @@ static void HTMLDocumentNode_traverse(HTMLDOMNode *iface, nsCycleCollectionTrave
 static void HTMLDocumentNode_unlink(HTMLDOMNode *iface)
 {
     HTMLDocumentNode *This = impl_from_HTMLDOMNode(iface);
-
-    if(This->nsnode_selector) {
-        nsIDOMNodeSelector_Release(This->nsnode_selector);
-        This->nsnode_selector = NULL;
-    }
 
     if(This->nsdoc) {
         nsIDOMHTMLDocument *nsdoc = This->nsdoc;
@@ -4541,7 +4522,6 @@ static HTMLDocumentNode *alloc_doc_node(HTMLDocumentObj *doc_obj, HTMLInnerWindo
 HRESULT create_doc_from_nsdoc(nsIDOMHTMLDocument *nsdoc, HTMLDocumentObj *doc_obj, HTMLInnerWindow *window, HTMLDocumentNode **ret)
 {
     HTMLDocumentNode *doc;
-    nsresult nsres;
 
     doc = alloc_doc_node(doc_obj, window);
     if(!doc)
@@ -4554,9 +4534,6 @@ HRESULT create_doc_from_nsdoc(nsIDOMHTMLDocument *nsdoc, HTMLDocumentObj *doc_ob
 
     nsIDOMHTMLDocument_AddRef(nsdoc);
     doc->nsdoc = nsdoc;
-
-    nsres = nsIDOMHTMLDocument_QueryInterface(nsdoc, &IID_nsIDOMNodeSelector, (void**)&doc->nsnode_selector);
-    assert(nsres == NS_OK);
 
     init_document_mutation(doc);
     doc_init_events(doc);

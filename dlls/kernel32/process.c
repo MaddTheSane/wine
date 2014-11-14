@@ -512,12 +512,19 @@ static void set_additional_environment(void)
                                          'P','r','o','f','i','l','e','L','i','s','t',0};
     static const WCHAR profiles_valueW[] = {'P','r','o','f','i','l','e','s','D','i','r','e','c','t','o','r','y',0};
     static const WCHAR all_users_valueW[] = {'A','l','l','U','s','e','r','s','P','r','o','f','i','l','e','\0'};
+    static const WCHAR computernameW[] = {'C','O','M','P','U','T','E','R','N','A','M','E',0};
     static const WCHAR allusersW[] = {'A','L','L','U','S','E','R','S','P','R','O','F','I','L','E',0};
     OBJECT_ATTRIBUTES attr;
     UNICODE_STRING nameW;
     WCHAR *profile_dir = NULL, *all_users_dir = NULL;
+    WCHAR buf[MAX_COMPUTERNAME_LENGTH];
     HANDLE hkey;
     DWORD len;
+
+    /* ComputerName */
+    len = sizeof(buf) / sizeof(WCHAR);
+    if (GetComputerNameW( buf, &len ))
+        SetEnvironmentVariableW( computernameW, buf );
 
     /* set the ALLUSERSPROFILE variables */
 
@@ -3942,9 +3949,31 @@ BOOL WINAPI GetNumaAvailableMemoryNode(UCHAR node, PULONGLONG available_bytes)
  */
 BOOL WINAPI GetProcessDEPPolicy(HANDLE process, LPDWORD flags, PBOOL permanent)
 {
-    FIXME("(%p %p %p): stub\n", process, flags, permanent);
-    SetLastError(ERROR_CALL_NOT_IMPLEMENTED);
-    return FALSE;
+    NTSTATUS status;
+    ULONG dep_flags;
+
+    TRACE("(%p %p %p)\n", process, flags, permanent);
+
+    status = NtQueryInformationProcess( GetCurrentProcess(), ProcessExecuteFlags,
+                                        &dep_flags, sizeof(dep_flags), NULL );
+    if (!status)
+    {
+
+        if (flags)
+        {
+            *flags = 0;
+            if (dep_flags & MEM_EXECUTE_OPTION_DISABLE)
+                *flags |= PROCESS_DEP_ENABLE;
+            if (dep_flags & MEM_EXECUTE_OPTION_DISABLE_THUNK_EMULATION)
+                *flags |= PROCESS_DEP_DISABLE_ATL_THUNK_EMULATION;
+        }
+
+        if (permanent)
+            *permanent = (dep_flags & MEM_EXECUTE_OPTION_PERMANENT) != 0;
+
+    }
+    if (status) SetLastError( RtlNtStatusToDosError(status) );
+    return !status;
 }
 
 /**********************************************************************

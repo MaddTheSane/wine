@@ -2715,6 +2715,16 @@ int __thiscall codecvt_char_do_length(const codecvt_char *this, const int *state
     return (from_end-from > max ? max : from_end-from);
 }
 
+/* ?length@?$codecvt@DDH@std@@QBEHABHPBD1I@Z */
+/* ?length@?$codecvt@DDH@std@@QEBAHAEBHPEBD1_K@Z */
+DEFINE_THISCALL_WRAPPER(codecvt_char_length, 20)
+int __thiscall codecvt_char_length(const codecvt_char *this, const int *state,
+        const char *from, const char *from_end, MSVCP_size_t max)
+{
+    TRACE("(%p %p %p %p %lu)\n", this, state, from, from_end, max);
+    return call_codecvt_char_do_length(this, state, from, from_end, max);
+}
+
 /* ?id@?$codecvt@_WDH@std@@2V0locale@2@A */
 static locale_id codecvt_wchar_id = {0};
 /* ?id@?$codecvt@GDH@std@@2V0locale@2@A */
@@ -8218,8 +8228,28 @@ locale* __thiscall locale_copy_ctor(locale *this, const locale *copy)
 DEFINE_THISCALL_WRAPPER(locale_ctor_locale_cstr, 16)
 locale* __thiscall locale_ctor_locale_cstr(locale *this, const locale *loc, const char *locname, category cat)
 {
-    FIXME("(%p %p %s %d) stub\n", this, loc, locname, cat);
-    return NULL;
+    _Locinfo locinfo;
+
+    TRACE("(%p %p %s %d)\n", this, loc, locname, cat);
+
+    _Locinfo_ctor_cat_cstr(&locinfo, cat, locname);
+    if(!memcmp(basic_string_char_c_str(&locinfo.newlocname), "*", 2)) {
+        _Locinfo_dtor(&locinfo);
+        MSVCRT_operator_delete(this->ptr);
+        throw_exception(EXCEPTION_RUNTIME_ERROR, "bad locale name");
+    }
+
+    this->ptr = MSVCRT_operator_new(sizeof(locale__Locimp));
+    if(!this->ptr) {
+        ERR("Out of memory\n");
+        _Locinfo_dtor(&locinfo);
+        throw_exception(EXCEPTION_BAD_ALLOC, NULL);
+    }
+    locale__Locimp_copy_ctor(this->ptr, loc->ptr);
+
+    locale__Locimp__Makeloc(&locinfo, cat, this->ptr, NULL);
+    _Locinfo_dtor(&locinfo);
+    return this;
 }
 
 /* ??0locale@std@@QAE@PBDH@Z */

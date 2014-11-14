@@ -422,6 +422,19 @@ typedef struct {
     int state;
 } fpos_int;
 
+/* class complex<float> */
+typedef struct {
+    float real;
+    float imag;
+} complex_float;
+
+/* class complex<double> */
+/* class complex<long double> */
+typedef struct {
+    double real;
+    double imag;
+} complex_double;
+
 /* stringstream */
 static basic_stringstream_char* (*__thiscall p_basic_stringstream_char_ctor)(basic_stringstream_char*);
 static basic_stringstream_char* (*__thiscall p_basic_stringstream_char_ctor_str)(basic_stringstream_char*, const basic_string_char*, int, MSVCP_bool);
@@ -442,6 +455,7 @@ static void (*__thiscall p_basic_fstream_wchar_vbase_dtor)(basic_fstream_wchar*)
 
 /* istream */
 static basic_istream_char* (*__thiscall p_basic_istream_char_read_uint64)(basic_istream_char*, unsigned __int64*);
+static basic_istream_char* (*__thiscall p_basic_istream_char_read_float)(basic_istream_char*, float*);
 static basic_istream_char* (*__thiscall p_basic_istream_char_read_double)(basic_istream_char*, double*);
 static int                 (*__thiscall p_basic_istream_char_get)(basic_istream_char*);
 static MSVCP_bool          (*__thiscall p_basic_istream_char_ipfx)(basic_istream_char*, MSVCP_bool);
@@ -464,9 +478,17 @@ static fpos_int*            (*__thiscall p_basic_istream_wchar_tellg)(basic_istr
 static basic_istream_wchar* (*__cdecl    p_basic_istream_wchar_getline_bstr_delim)(basic_istream_wchar*, basic_string_wchar*, wchar_t);
 
 /* ostream */
+static basic_ostream_char* (*__thiscall p_basic_ostream_char_print_float)(basic_ostream_char*, float);
+
 static basic_ostream_char* (*__thiscall p_basic_ostream_char_print_double)(basic_ostream_char*, double);
 
 static basic_ostream_wchar* (*__thiscall p_basic_ostream_wchar_print_double)(basic_ostream_wchar*, double);
+
+static basic_ostream_char* (*__cdecl p_basic_ostream_char_print_complex_float)(basic_ostream_char*, complex_float*);
+
+static basic_ostream_char* (*__cdecl p_basic_ostream_char_print_complex_double)(basic_ostream_char*, complex_double*);
+
+static basic_ostream_char* (*__cdecl p_basic_ostream_char_print_complex_ldouble)(basic_ostream_char*, complex_double*);
 
 static basic_ostream_wchar* (*__thiscall p_basic_ostream_short_print_ushort)(basic_ostream_wchar*, unsigned short);
 
@@ -544,6 +566,7 @@ static void * (WINAPI *call_thiscall_func5)( void *func, void *this, const void 
 
 /* to silence compiler errors */
 static void * (WINAPI *call_thiscall_func2_ptr_dbl)( void *func, void *this, double a );
+static void * (WINAPI *call_thiscall_func2_ptr_flt)( void *func, void *this, float a );
 static void * (WINAPI *call_thiscall_func2_ptr_fpos)( void *func, void *this, fpos_int a );
 
 static void init_thiscall_thunk(void)
@@ -562,6 +585,7 @@ static void init_thiscall_thunk(void)
     call_thiscall_func5 = (void *)thunk;
 
     call_thiscall_func2_ptr_dbl  = (void *)thunk;
+    call_thiscall_func2_ptr_flt  = (void *)thunk;
     call_thiscall_func2_ptr_fpos = (void *)thunk;
 }
 
@@ -574,6 +598,7 @@ static void init_thiscall_thunk(void)
         (const void*)(c), (const void *)(d))
 
 #define call_func2_ptr_dbl(func,_this,a)  call_thiscall_func2_ptr_dbl(func,_this,a)
+#define call_func2_ptr_flt(func,_this,a)  call_thiscall_func2_ptr_flt(func,_this,a)
 #define call_func2_ptr_fpos(func,_this,a) call_thiscall_func2_ptr_fpos(func,_this,a)
 
 #else
@@ -586,6 +611,7 @@ static void init_thiscall_thunk(void)
 #define call_func5(func,_this,a,b,c,d) func(_this,a,b,c,d)
 
 #define call_func2_ptr_dbl   call_func2
+#define call_func2_ptr_flt   call_func2
 #define call_func2_ptr_fpos  call_func2
 
 #endif /* __i386__ */
@@ -642,6 +668,8 @@ static BOOL init(void)
 
         SET(p_basic_istream_char_read_uint64,
             "??5?$basic_istream@DU?$char_traits@D@std@@@std@@QEAAAEAV01@AEA_K@Z");
+        SET(p_basic_istream_char_read_float,
+            "??5?$basic_istream@DU?$char_traits@D@std@@@std@@QEAAAEAV01@AEAM@Z");
         SET(p_basic_istream_char_read_double,
             "??5?$basic_istream@DU?$char_traits@D@std@@@std@@QEAAAEAV01@AEAN@Z");
         SET(p_basic_istream_char_get,
@@ -682,6 +710,9 @@ static BOOL init(void)
         SET(p_basic_istream_wchar_getline_bstr_delim,
             "??$getline@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@YAAEAV?$basic_istream@_WU?$char_traits@_W@std@@@0@AEAV10@AEAV?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@0@_W@Z");
 
+        SET(p_basic_ostream_char_print_float,
+            "??6?$basic_ostream@DU?$char_traits@D@std@@@std@@QEAAAEAV01@M@Z");
+
         SET(p_basic_ostream_char_print_double,
             "??6?$basic_ostream@DU?$char_traits@D@std@@@std@@QEAAAEAV01@N@Z");
 
@@ -690,6 +721,15 @@ static BOOL init(void)
 
         SET(p_basic_ostream_short_print_ushort,
             "??6?$basic_ostream@GU?$char_traits@G@std@@@std@@QEAAAEAV01@G@Z");
+
+        SET(p_basic_ostream_char_print_complex_float,
+            "??$?6MDU?$char_traits@D@std@@@std@@YAAEAV?$basic_ostream@DU?$char_traits@D@std@@@0@AEAV10@AEBV?$complex@M@0@@Z");
+
+        SET(p_basic_ostream_char_print_complex_double,
+            "??$?6NDU?$char_traits@D@std@@@std@@YAAEAV?$basic_ostream@DU?$char_traits@D@std@@@0@AEAV10@AEBV?$complex@N@0@@Z");
+
+        SET(p_basic_ostream_char_print_complex_ldouble,
+            "??$?6ODU?$char_traits@D@std@@@std@@YAAEAV?$basic_ostream@DU?$char_traits@D@std@@@0@AEAV10@AEBV?$complex@O@0@@Z");
 
         SET(p_ios_base_rdstate,
             "?rdstate@ios_base@std@@QEBAHXZ");
@@ -756,6 +796,8 @@ static BOOL init(void)
 
         SET(p_basic_istream_char_read_uint64,
             "??5?$basic_istream@DU?$char_traits@D@std@@@std@@QAAAAV01@AA_K@Z");
+        SET(p_basic_istream_char_read_float,
+            "??5?$basic_istream@DU?$char_traits@D@std@@@std@@QAAAAV01@AAM@Z");
         SET(p_basic_istream_char_read_double,
             "??5?$basic_istream@DU?$char_traits@D@std@@@std@@QAAAAV01@AAN@Z");
         SET(p_basic_istream_char_get,
@@ -796,6 +838,9 @@ static BOOL init(void)
         SET(p_basic_istream_wchar_getline_bstr_delim,
             "??$getline@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@YAAAV?$basic_istream@_WU?$char_traits@_W@std@@@0@AAV10@AAV?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@0@_W@Z");
 
+        SET(p_basic_ostream_char_print_float,
+            "??6?$basic_ostream@DU?$char_traits@D@std@@@std@@QAAAAV01@M@Z");
+
         SET(p_basic_ostream_char_print_double,
             "??6?$basic_ostream@DU?$char_traits@D@std@@@std@@QAAAAV01@N@Z");
 
@@ -804,6 +849,15 @@ static BOOL init(void)
 
         SET(p_basic_ostream_short_print_ushort,
             "??6?$basic_ostream@GU?$char_traits@G@std@@@std@@QAAAAV01@G@Z");
+
+        SET(p_basic_ostream_char_print_complex_float,
+            "??$?6MDU?$char_traits@D@std@@@std@@YAAAV?$basic_ostream@DU?$char_traits@D@std@@@0@AAV10@ABV?$complex@M@0@@Z");
+
+        SET(p_basic_ostream_char_print_complex_double,
+            "??$?6NDU?$char_traits@D@std@@@std@@YAAAV?$basic_ostream@DU?$char_traits@D@std@@@0@AAV10@ABV?$complex@N@0@@Z");
+
+        SET(p_basic_ostream_char_print_complex_ldouble,
+            "??$?6ODU?$char_traits@D@std@@@std@@YAAAV?$basic_ostream@DU?$char_traits@D@std@@@0@AAV10@ABV?$complex@O@0@@Z");
 
         SET(p_ios_base_rdstate,
             "?rdstate@ios_base@std@@QBAHXZ");
@@ -869,6 +923,8 @@ static BOOL init(void)
 
         SET(p_basic_istream_char_read_uint64,
             "??5?$basic_istream@DU?$char_traits@D@std@@@std@@QAEAAV01@AA_K@Z");
+        SET(p_basic_istream_char_read_float,
+            "??5?$basic_istream@DU?$char_traits@D@std@@@std@@QAEAAV01@AAM@Z");
         SET(p_basic_istream_char_read_double,
             "??5?$basic_istream@DU?$char_traits@D@std@@@std@@QAEAAV01@AAN@Z");
         SET(p_basic_istream_char_get,
@@ -909,6 +965,9 @@ static BOOL init(void)
         SET(p_basic_istream_wchar_getline_bstr_delim,
             "??$getline@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@YAAAV?$basic_istream@_WU?$char_traits@_W@std@@@0@AAV10@AAV?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@0@_W@Z");
 
+        SET(p_basic_ostream_char_print_float,
+            "??6?$basic_ostream@DU?$char_traits@D@std@@@std@@QAEAAV01@M@Z");
+
         SET(p_basic_ostream_char_print_double,
             "??6?$basic_ostream@DU?$char_traits@D@std@@@std@@QAEAAV01@N@Z");
 
@@ -917,6 +976,15 @@ static BOOL init(void)
 
         SET(p_basic_ostream_short_print_ushort,
             "??6?$basic_ostream@GU?$char_traits@G@std@@@std@@QAEAAV01@G@Z");
+
+        SET(p_basic_ostream_char_print_complex_float,
+            "??$?6MDU?$char_traits@D@std@@@std@@YAAAV?$basic_ostream@DU?$char_traits@D@std@@@0@AAV10@ABV?$complex@M@0@@Z");
+
+        SET(p_basic_ostream_char_print_complex_double,
+            "??$?6NDU?$char_traits@D@std@@@std@@YAAAV?$basic_ostream@DU?$char_traits@D@std@@@0@AAV10@ABV?$complex@N@0@@Z");
+
+        SET(p_basic_ostream_char_print_complex_ldouble,
+            "??$?6ODU?$char_traits@D@std@@@std@@YAAAV?$basic_ostream@DU?$char_traits@D@std@@@0@AAV10@ABV?$complex@O@0@@Z");
 
         SET(p_ios_base_rdstate,
             "?rdstate@ios_base@std@@QBEHXZ");
@@ -1951,6 +2019,166 @@ static void test_ostream_print_ushort(void)
     call_func1(p_basic_stringstream_wchar_vbase_dtor, &wss);
 }
 
+static void test_ostream_print_float(void)
+{
+    static const char float_str[] = "3.14159";
+
+    basic_stringstream_char ss;
+    basic_string_char pstr;
+    const char *str;
+    float val;
+    val = 3.14159;
+
+    call_func1(p_basic_stringstream_char_ctor, &ss);
+    call_func2_ptr_flt(p_basic_ostream_char_print_float, &ss.base.base2, val);
+    call_func2(p_basic_stringstream_char_str_get, &ss, &pstr);
+    str = call_func1(p_basic_string_char_cstr, &pstr);
+    ok(!strcmp(float_str, str), "str = %s\n", str);
+
+    call_func1(p_basic_string_char_dtor, &pstr);
+    call_func1(p_basic_stringstream_char_vbase_dtor, &ss);
+}
+
+static void test_ostream_print_double(void)
+{
+    static const char double_str[] = "3.14159";
+
+    basic_stringstream_char ss;
+    basic_string_char pstr;
+    const char *str;
+    double val;
+    val = 3.14159;
+
+    call_func1(p_basic_stringstream_char_ctor, &ss);
+    call_func2_ptr_dbl(p_basic_ostream_char_print_double, &ss.base.base2, val);
+    call_func2(p_basic_stringstream_char_str_get, &ss, &pstr);
+    str = call_func1(p_basic_string_char_cstr, &pstr);
+    ok(!strcmp(double_str, str), "str = %s\n", str);
+
+    call_func1(p_basic_string_char_dtor, &pstr);
+    call_func1(p_basic_stringstream_char_vbase_dtor, &ss);
+}
+
+static void test_ostream_wchar_print_double(void)
+{
+    static const wchar_t double_str[] = { '3', '.', '1', '4', '1', '5', '9', 0 };
+
+    basic_stringstream_wchar wss;
+    basic_string_wchar pwstr;
+    const wchar_t *wstr;
+    double val;
+    val = 3.14159;
+
+    call_func1(p_basic_stringstream_wchar_ctor, &wss);
+    call_func2_ptr_dbl(p_basic_ostream_wchar_print_double, &wss.base.base2, val);
+
+    call_func2(p_basic_stringstream_wchar_str_get, &wss, &pwstr);
+    wstr = call_func1(p_basic_string_wchar_cstr, &pwstr);
+
+    ok(!lstrcmpW(double_str, wstr), "wstr = %s\n", wine_dbgstr_w(wstr));
+    call_func1(p_basic_string_wchar_dtor, &pwstr);
+    call_func1(p_basic_stringstream_wchar_vbase_dtor, &wss);
+}
+
+static void test_istream_read_float(void)
+{
+    basic_stringstream_char ss;
+    basic_string_char str;
+    const char *test_str;
+    float val, correct_val;
+
+    test_str = "3.14159";
+    call_func2(p_basic_string_char_ctor_cstr, &str, test_str);
+    call_func4(p_basic_stringstream_char_ctor_str, &ss, &str, OPENMODE_in, TRUE);
+
+    val = 0;
+    call_func2(p_basic_istream_char_read_float, &ss.base.base1, &val);
+    correct_val = 3.14159;
+    ok(correct_val == val,   "wrong val, expected = %g found %g\n", correct_val, val);
+
+    call_func1(p_basic_stringstream_char_vbase_dtor, &ss);
+    call_func1(p_basic_string_char_dtor, &str);
+}
+
+static void test_istream_read_double(void)
+{
+    basic_stringstream_char ss;
+    basic_string_char str;
+    const char *test_str;
+    double val, correct_val;
+
+    test_str = "3.14159";
+    call_func2(p_basic_string_char_ctor_cstr, &str, test_str);
+    call_func4(p_basic_stringstream_char_ctor_str, &ss, &str, OPENMODE_in, TRUE);
+
+    val = 0;
+    call_func2(p_basic_istream_char_read_double, &ss.base.base1, &val);
+    correct_val = 3.14159;
+    ok(correct_val == val,   "wrong val, expected = %g found %g\n", correct_val, val);
+
+    call_func1(p_basic_stringstream_char_vbase_dtor, &ss);
+    call_func1(p_basic_string_char_dtor, &str);
+}
+
+static void test_ostream_print_complex_float(void)
+{
+    static const char complex_float_str[] = "(3.14,1.57)";
+
+    basic_stringstream_char ss;
+    basic_string_char pstr;
+    const char *str;
+    complex_float val = {3.14, 1.57};
+
+    call_func1(p_basic_stringstream_char_ctor, &ss);
+    p_basic_ostream_char_print_complex_float(&ss.base.base2, &val);
+
+    call_func2(p_basic_stringstream_char_str_get, &ss, &pstr);
+    str = call_func1(p_basic_string_char_cstr, &pstr);
+    ok(!strcmp(complex_float_str, str), "str = %s\n", str);
+
+    call_func1(p_basic_string_char_dtor, &pstr);
+    call_func1(p_basic_stringstream_char_vbase_dtor, &ss);
+}
+
+static void test_ostream_print_complex_double(void)
+{
+    static const char complex_double_str[] = "(3.14159,1.23459)";
+
+    basic_stringstream_char ss;
+    basic_string_char pstr;
+    const char *str;
+    complex_double val= {3.14159, 1.23459};
+
+    call_func1(p_basic_stringstream_char_ctor, &ss);
+    p_basic_ostream_char_print_complex_double(&ss.base.base2, &val);
+
+    call_func2(p_basic_stringstream_char_str_get, &ss, &pstr);
+    str = call_func1(p_basic_string_char_cstr, &pstr);
+    ok(!strcmp(complex_double_str, str), "str = %s\n", str);
+
+    call_func1(p_basic_string_char_dtor, &pstr);
+    call_func1(p_basic_stringstream_char_vbase_dtor, &ss);
+}
+
+static void test_ostream_print_complex_ldouble(void)
+{
+    static const char complex_double_str[] = "(3.14159,1.23459)";
+
+    basic_stringstream_char ss;
+    basic_string_char pstr;
+    const char *str;
+    complex_double val = {3.14159, 1.23459};
+
+    call_func1(p_basic_stringstream_char_ctor, &ss);
+    p_basic_ostream_char_print_complex_ldouble(&ss.base.base2, &val);
+
+    call_func2(p_basic_stringstream_char_str_get, &ss, &pstr);
+    str = call_func1(p_basic_string_char_cstr, &pstr);
+    ok(!strcmp(complex_double_str, str), "str = %s\n", str);
+
+    call_func1(p_basic_string_char_dtor, &pstr);
+    call_func1(p_basic_stringstream_char_vbase_dtor, &ss);
+}
 
 START_TEST(ios)
 {
@@ -1968,6 +2196,14 @@ START_TEST(ios)
     test_istream_tellg();
     test_istream_getline();
     test_ostream_print_ushort();
+    test_ostream_print_float();
+    test_ostream_print_double();
+    test_ostream_wchar_print_double();
+    test_istream_read_float();
+    test_istream_read_double();
+    test_ostream_print_complex_float();
+    test_ostream_print_complex_double();
+    test_ostream_print_complex_ldouble();
 
     ok(!invalid_parameter, "invalid_parameter_handler was invoked too many times\n");
 

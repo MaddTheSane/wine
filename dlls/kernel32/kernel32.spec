@@ -143,6 +143,7 @@
 # @ stub AddLocalAlternateComputerNameA
 # @ stub AddLocalAlternateComputerNameW
 @ stdcall AddRefActCtx(ptr)
+@ stdcall AddVectoredContinueHandler(long ptr) ntdll.RtlAddVectoredContinueHandler
 @ stdcall AddVectoredExceptionHandler(long ptr) ntdll.RtlAddVectoredExceptionHandler
 @ stdcall AllocConsole()
 @ stub -i386 AllocLSCallback
@@ -182,7 +183,7 @@
 @ stub CancelDeviceWakeupRequest
 @ stdcall CancelIo(long)
 @ stdcall CancelIoEx(long ptr)
-# @ stub CancelTimerQueueTimer
+@ stdcall CancelTimerQueueTimer(ptr ptr)
 @ stdcall CancelWaitableTimer(long)
 @ stdcall ChangeTimerQueueTimer(ptr ptr long long)
 # @ stub CheckNameLegalDOS8Dot3A
@@ -637,6 +638,7 @@
 @ stdcall GetStringTypeExA(long long str long ptr)
 @ stdcall GetStringTypeExW(long long wstr long ptr)
 @ stdcall GetStringTypeW(long wstr long ptr)
+@ stdcall GetSystemFileCacheSize(ptr ptr ptr)
 @ stdcall GetSystemDefaultLCID()
 @ stdcall GetSystemDefaultLangID()
 @ stdcall GetSystemDefaultLocaleName(ptr long)
@@ -1025,6 +1027,7 @@
 @ stdcall RemoveDirectoryW(wstr)
 # @ stub RemoveLocalAlternateComputerNameA
 # @ stub RemoveLocalAlternateComputerNameW
+@ stdcall RemoveVectoredContinueHandler(ptr) ntdll.RtlRemoveVectoredContinueHandler
 @ stdcall RemoveVectoredExceptionHandler(ptr) ntdll.RtlRemoveVectoredExceptionHandler
 @ stdcall ReplaceFile(wstr wstr wstr long ptr ptr) ReplaceFileW
 @ stdcall ReplaceFileA(str str str long ptr ptr)
@@ -1166,6 +1169,7 @@
 @ stdcall SetProcessShutdownParameters(long long)
 @ stdcall SetProcessWorkingSetSize(long long long)
 @ stdcall SetStdHandle(long long)
+@ stdcall SetSystemFileCacheSize(long long long)
 @ stdcall SetSystemPowerState(long long)
 @ stdcall SetSystemTime(ptr)
 @ stdcall SetSystemTimeAdjustment(long long)

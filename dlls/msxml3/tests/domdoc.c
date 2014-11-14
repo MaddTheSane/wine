@@ -8912,9 +8912,12 @@ static void test_appendChild(void)
 
 static void test_get_doctype(void)
 {
+    static const WCHAR emailW[] = {'e','m','a','i','l',0};
     IXMLDOMDocumentType *doctype;
     IXMLDOMDocument *doc;
+    VARIANT_BOOL b;
     HRESULT hr;
+    BSTR s;
 
     doc = create_document(&IID_IXMLDOMDocument);
 
@@ -8926,6 +8929,28 @@ static void test_get_doctype(void)
     ok(hr == S_FALSE, "got 0x%08x\n", hr);
     ok(doctype == NULL, "got %p\n", doctype);
 
+    hr = IXMLDOMDocument_loadXML(doc, _bstr_(szEmailXML), &b);
+    ok(b == VARIANT_TRUE, "failed to load XML string\n");
+
+    doctype = NULL;
+    hr = IXMLDOMDocument_get_doctype(doc, &doctype);
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+    ok(doctype != NULL, "got %p\n", doctype);
+
+    hr = IXMLDOMDocumentType_get_name(doctype, NULL);
+    ok(hr == E_INVALIDARG, "got 0x%08x\n", hr);
+
+    hr = IXMLDOMDocumentType_get_name(doctype, &s);
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+    ok(!lstrcmpW(emailW, s), "got name %s\n", wine_dbgstr_w(s));
+    SysFreeString(s);
+
+    hr = IXMLDOMDocumentType_get_nodeName(doctype, &s);
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+    ok(!lstrcmpW(emailW, s), "got name %s\n", wine_dbgstr_w(s));
+    SysFreeString(s);
+
+    IXMLDOMDocumentType_Release(doctype);
     IXMLDOMDocument_Release(doc);
 }
 
@@ -9126,6 +9151,11 @@ static void test_get_attributes(void)
 
     hr = IXMLDOMNode_get_attributes(node, &map);
     ok(hr == S_OK, "got %08x\n", hr);
+
+    node2 = (void*)0xdeadbeef;
+    hr = IXMLDOMNamedNodeMap_getNamedItem(map, _bstr_("attr"), &node2);
+    ok(hr == S_FALSE, "got %08x\n", hr);
+    ok(node2 == NULL, "got %p\n", node2);
 
     length = -1;
     hr = IXMLDOMNamedNodeMap_get_length(map, &length);

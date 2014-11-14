@@ -934,9 +934,10 @@ static WINE_MODREF *alloc_module( HMODULE hModule, LPCWSTR filename )
     else p = wm->ldr.FullDllName.Buffer;
     RtlInitUnicodeString( &wm->ldr.BaseDllName, p );
 
-    if ((nt->FileHeader.Characteristics & IMAGE_FILE_DLL) && !is_dll_native_subsystem( hModule, nt, p ))
+    if (!(nt->FileHeader.Characteristics & IMAGE_FILE_DLL) || !is_dll_native_subsystem( hModule, nt, p ))
     {
-        wm->ldr.Flags |= LDR_IMAGE_IS_DLL;
+        if (nt->FileHeader.Characteristics & IMAGE_FILE_DLL)
+            wm->ldr.Flags |= LDR_IMAGE_IS_DLL;
         if (nt->OptionalHeader.AddressOfEntryPoint)
             wm->ldr.EntryPoint = (char *)hModule + nt->OptionalHeader.AddressOfEntryPoint;
     }
@@ -1062,7 +1063,7 @@ static NTSTATUS MODULE_InitDLL( WINE_MODREF *wm, UINT reason, LPVOID lpReserved 
 
     if (wm->ldr.Flags & LDR_DONT_RESOLVE_REFS) return STATUS_SUCCESS;
     if (wm->ldr.TlsIndex != -1) call_tls_callbacks( wm->ldr.BaseAddress, reason );
-    if (!entry) return STATUS_SUCCESS;
+    if (!entry || !(wm->ldr.Flags & LDR_IMAGE_IS_DLL)) return STATUS_SUCCESS;
 
     if (TRACE_ON(relay))
     {
@@ -2641,8 +2642,8 @@ static void free_modref( WINE_MODREF *wm )
 
     free_tls_slot( &wm->ldr );
     RtlReleaseActivationContext( wm->ldr.ActivationContext );
-    NtUnmapViewOfSection( NtCurrentProcess(), wm->ldr.BaseAddress );
     if (wm->ldr.Flags & LDR_WINE_INTERNAL) wine_dll_unload( wm->ldr.SectionHandle );
+    NtUnmapViewOfSection( NtCurrentProcess(), wm->ldr.BaseAddress );
     if (cached_modref == wm) cached_modref = NULL;
     RtlFreeUnicodeString( &wm->ldr.FullDllName );
     RtlFreeHeap( GetProcessHeap(), 0, wm->deps );

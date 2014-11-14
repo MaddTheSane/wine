@@ -443,14 +443,15 @@
 @ cdecl _execvpe(str ptr ptr)
 @ cdecl _exit(long) MSVCRT__exit
 @ cdecl _expand(ptr long)
-@ stub _fclose_nolock
+@ cdecl _fclose_nolock(ptr) MSVCRT__fclose_nolock
 @ cdecl _fcloseall() MSVCRT__fcloseall
 @ cdecl _fcvt(double long ptr ptr) MSVCRT__fcvt
 @ cdecl _fcvt_s(ptr long double long ptr ptr) MSVCRT__fcvt_s
 @ cdecl _fdopen(long str) MSVCRT__fdopen
-@ stub _fflush_nolock
+@ cdecl _fflush_nolock(ptr) MSVCRT__fflush_nolock
+@ cdecl _fgetc_nolock(ptr) MSVCRT__fgetc_nolock
 @ cdecl _fgetchar() MSVCRT__fgetchar
-@ stub _fgetwc_nolock
+@ cdecl _fgetwc_nolock(ptr) MSVCRT__fgetwc_nolock
 @ cdecl _fgetwchar() MSVCRT__fgetwchar
 @ cdecl _filbuf(ptr) MSVCRT__filbuf
 @ cdecl _filelength(long) MSVCRT__filelength
@@ -478,28 +479,29 @@
 @ stub _fprintf_p
 @ stub _fprintf_p_l
 @ stub _fprintf_s_l
+@ cdecl _fputc_nolock(long ptr) MSVCRT__fputc_nolock
 @ cdecl _fputchar(long) MSVCRT__fputchar
-@ stub _fputwc_nolock
+@ cdecl _fputwc_nolock(long ptr) MSVCRT__fputwc_nolock
 @ cdecl _fputwchar(long) MSVCRT__fputwchar
-@ stub _fread_nolock
-@ stub _fread_nolock_s
+@ cdecl _fread_nolock(ptr long long ptr) MSVCRT__fread_nolock
+@ cdecl _fread_nolock_s(ptr long long long ptr) MSVCRT__fread_nolock_s
 @ cdecl _free_locale(ptr) MSVCRT__free_locale
 @ stub _freea
 @ stub _freea_s
 @ stub _freefls
 @ varargs _fscanf_l(ptr str ptr) MSVCRT__fscanf_l
 @ varargs _fscanf_s_l(ptr str ptr) MSVCRT__fscanf_s_l
-@ stub _fseek_nolock
+@ cdecl _fseek_nolock(ptr long long) MSVCRT__fseek_nolock
 @ cdecl _fseeki64(ptr int64 long) MSVCRT__fseeki64
-@ stub _fseeki64_nolock
+@ cdecl _fseeki64_nolock(ptr int64 long) MSVCRT__fseeki64_nolock
 @ cdecl _fsopen(str str long) MSVCRT__fsopen
 @ cdecl _fstat32(long ptr) MSVCRT__fstat32
 @ stub _fstat32i64
 @ cdecl _fstat64(long ptr) MSVCRT__fstat64
 @ cdecl _fstat64i32(long ptr) MSVCRT__fstat64i32
-@ stub _ftell_nolock
+@ cdecl _ftell_nolock(ptr) MSVCRT__ftell_nolock
 @ cdecl -ret64 _ftelli64(ptr) MSVCRT__ftelli64
-@ stub _ftelli64_nolock
+@ cdecl -ret64 _ftelli64_nolock(ptr) MSVCRT__ftelli64_nolock
 @ cdecl _ftime32(ptr) MSVCRT__ftime32
 @ cdecl _ftime32_s(ptr) MSVCRT__ftime32_s
 @ cdecl _ftime64(ptr) MSVCRT__ftime64
@@ -512,7 +514,7 @@
 @ stub _fwprintf_p
 @ stub _fwprintf_p_l
 @ stub _fwprintf_s_l
-@ stub _fwrite_nolock
+@ cdecl _fwrite_nolock(ptr long long ptr) MSVCRT__fwrite_nolock
 @ varargs _fwscanf_l(ptr wstr ptr) MSVCRT__fwscanf_l
 @ varargs _fwscanf_s_l(ptr wstr ptr) MSVCRT__fwscanf_s_l
 @ cdecl _gcvt(double long str) MSVCRT__gcvt
@@ -537,7 +539,7 @@
 @ cdecl _get_tzname(ptr str long long) MSVCRT__get_tzname
 @ cdecl _get_unexpected() MSVCRT__get_unexpected
 @ cdecl _get_wpgmptr(ptr)
-@ stub _getc_nolock
+@ cdecl _getc_nolock(ptr) MSVCRT__fgetc_nolock
 @ cdecl _getch()
 @ stub _getch_nolock
 @ cdecl _getche()
@@ -555,6 +557,7 @@
 @ cdecl _getptd()
 @ stub _getsystime(ptr)
 @ cdecl _getw(ptr) MSVCRT__getw
+@ cdecl _getwc_nolock(ptr) MSVCRT__fgetwc_nolock
 @ stub _getwch
 @ stub _getwch_nolock
 @ stub _getwche
@@ -879,11 +882,13 @@
 @ stub _printf_p_l
 @ stub _printf_s_l
 @ cdecl _purecall()
+@ cdecl _putc_nolock(long ptr) MSVCRT__fputc_nolock
 @ cdecl _putch(long)
 @ stub _putch_nolock
 @ cdecl _putenv(str)
 @ cdecl _putenv_s(str str)
 @ cdecl _putw(long ptr) MSVCRT__putw
+@ cdecl _putwc_nolock(long ptr) MSVCRT__fputwc_nolock
 @ cdecl _putwch(long) MSVCRT__putwch
 @ stub _putwch_nolock
 @ cdecl _putws(wstr) MSVCRT__putws
@@ -944,7 +949,7 @@
 @ varargs _snprintf(ptr long str) MSVCRT__snprintf
 @ stub _snprintf_c
 @ stub _snprintf_c_l
-@ stub _snprintf_l
+@ varargs _snprintf_l(ptr long str ptr) MSVCRT__snprintf_l
 @ varargs _snprintf_s(ptr long long str) MSVCRT__snprintf_s
 @ stub _snprintf_s_l
 @ varargs _snscanf(str long str) MSVCRT__snscanf
@@ -1017,7 +1022,7 @@
 @ stub _strtol_l
 @ cdecl -ret64 _strtoui64(str ptr long) MSVCRT_strtoui64
 @ cdecl -ret64 _strtoui64_l(str ptr long ptr) MSVCRT_strtoui64_l
-@ stub _strtoul_l
+@ cdecl _strtoul_l(str ptr long ptr) MSVCRT_strtoul_l
 @ cdecl _strupr(str) MSVCRT__strupr
 @ cdecl _strupr_l(str ptr) MSVCRT__strupr_l
 @ cdecl _strupr_s(str long) MSVCRT__strupr_s
@@ -1058,10 +1063,10 @@
 @ cdecl _ultow_s(long ptr long long) MSVCRT__ultow_s
 @ cdecl _umask(long) MSVCRT__umask
 @ stub _umask_s
-@ stub _ungetc_nolock
+@ cdecl _ungetc_nolock(long ptr) MSVCRT__ungetc_nolock
 @ cdecl _ungetch(long)
 @ stub _ungetch_nolock
-@ stub _ungetwc_nolock
+@ cdecl _ungetwc_nolock(long ptr) MSVCRT__ungetwc_nolock
 @ stub _ungetwch
 @ stub _ungetwch_nolock
 @ cdecl _unlink(str) MSVCRT__unlink
@@ -1152,7 +1157,7 @@
 @ cdecl _wcsncoll(wstr wstr long) MSVCRT__wcsncoll
 @ cdecl _wcsncoll_l(wstr wstr long ptr) MSVCRT__wcsncoll_l
 @ cdecl _wcsnicmp(wstr wstr long) MSVCRT__wcsnicmp
-@ stub _wcsnicmp_l
+@ cdecl _wcsnicmp_l(wstr wstr long ptr) MSVCRT__wcsnicmp_l
 @ cdecl _wcsnicoll(wstr wstr long) MSVCRT__wcsnicoll
 @ cdecl _wcsnicoll_l(wstr wstr long ptr) MSVCRT__wcsnicoll_l
 @ cdecl _wcsnset(wstr long long) MSVCRT__wcsnset

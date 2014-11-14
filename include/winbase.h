@@ -289,6 +289,9 @@ typedef enum _FINDEX_INFO_LEVELS
 	FindExInfoMaxInfoLevel
 } FINDEX_INFO_LEVELS;
 
+#define FIND_FIRST_EX_CASE_SENSITIVE 1
+#define FIND_FIRST_EX_LARGE_FETCH    2
+
 typedef enum _FINDEX_SEARCH_OPS
 {
 	FindExSearchNameMatch,
@@ -1445,6 +1448,9 @@ typedef enum _DEP_SYSTEM_POLICY_TYPE {
     OptIn = 2,
     OptOut = 3
 } DEP_SYSTEM_POLICY_TYPE;
+
+#define PROCESS_DEP_ENABLE 1
+#define PROCESS_DEP_DISABLE_ATL_THUNK_EMULATION 2
 
 /* Event Logging */
 

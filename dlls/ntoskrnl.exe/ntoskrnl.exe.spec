@@ -302,7 +302,7 @@
 @ stub InbvSetScrollRegion
 @ stub InbvSetTextColor
 @ stub InbvSolidColorFill
-@ stub InitSafeBootMode
+@ extern InitSafeBootMode
 @ stdcall IoAcquireCancelSpinLock(ptr)
 @ stdcall IoAcquireRemoveLockEx(ptr ptr ptr long long)
 @ stub IoAcquireVpbSpinLock
@@ -430,7 +430,7 @@
 @ stdcall IoRegisterFileSystem(ptr)
 @ stub IoRegisterFsRegistrationChange
 @ stub IoRegisterLastChanceShutdownNotification
-@ stub IoRegisterPlugPlayNotification
+@ stdcall IoRegisterPlugPlayNotification(long long ptr ptr ptr ptr ptr)
 @ stdcall IoRegisterShutdownNotification(ptr)
 @ stdcall IoReleaseCancelSpinLock(ptr)
 @ stub IoReleaseRemoveLockAndWaitEx
@@ -807,7 +807,7 @@
 @ stub ObMakeTemporaryObject
 @ stub ObOpenObjectByName
 @ stub ObOpenObjectByPointer
-@ stub ObQueryNameString
+@ stdcall ObQueryNameString(ptr ptr long ptr)
 @ stub ObQueryObjectAuditingByHandle
 @ stdcall ObReferenceObjectByHandle(long long ptr long ptr ptr)
 @ stdcall ObReferenceObjectByName(ptr long ptr long ptr long ptr ptr)

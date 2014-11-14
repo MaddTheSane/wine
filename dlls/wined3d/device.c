@@ -3481,7 +3481,8 @@ static HRESULT device_update_volume(struct wined3d_device *device,
 
     context = context_acquire(device, NULL);
 
-    wined3d_volume_load(dst_volume, context, FALSE);
+    /* Only a prepare, since we're uploading the entire volume. */
+    wined3d_texture_prepare_texture(dst_volume->container, context, FALSE);
 
     data.buffer_object = 0;
     data.addr = src.data;
@@ -4497,16 +4498,14 @@ HRESULT CDECL wined3d_device_reset(struct wined3d_device *device,
     {
         UINT i;
 
-        if (FAILED(hr = wined3d_surface_update_desc(surface_from_resource(
-                wined3d_texture_get_sub_resource(swapchain->front_buffer, 0)), swapchain->desc.backbuffer_width,
+        if (FAILED(hr = wined3d_texture_update_desc(swapchain->front_buffer, swapchain->desc.backbuffer_width,
                 swapchain->desc.backbuffer_height, swapchain->desc.backbuffer_format,
                 swapchain->desc.multisample_type, swapchain->desc.multisample_quality, NULL, 0)))
             return hr;
 
         for (i = 0; i < swapchain->desc.backbuffer_count; ++i)
         {
-            if (FAILED(hr = wined3d_surface_update_desc(surface_from_resource(
-                    wined3d_texture_get_sub_resource(swapchain->back_buffers[i], 0)), swapchain->desc.backbuffer_width,
+            if (FAILED(hr = wined3d_texture_update_desc(swapchain->back_buffers[i], swapchain->desc.backbuffer_width,
                     swapchain->desc.backbuffer_height, swapchain->desc.backbuffer_format,
                     swapchain->desc.multisample_type, swapchain->desc.multisample_quality, NULL, 0)))
                 return hr;

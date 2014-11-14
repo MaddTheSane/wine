@@ -3456,17 +3456,6 @@ static BOOL NLS_GetLanguageGroupName(LGRPID lgrpid, LPWSTR szName, ULONG nameSiz
     return bRet;
 }
 
-/* Registry keys for NLS related information */
-
-static const WCHAR szCountryListName[] = {
-    'M','a','c','h','i','n','e','\\','S','o','f','t','w','a','r','e','\\',
-    'M','i','c','r','o','s','o','f','t','\\','W','i','n','d','o','w','s','\\',
-    'C','u','r','r','e','n','t','V','e','r','s','i','o','n','\\',
-    'T','e','l','e','p','h','o','n','y','\\',
-    'C','o','u','n','t','r','y',' ','L','i','s','t','\0'
-};
-
-
 /* Callback function ptrs for EnumSystemLanguageGroupsA/W */
 typedef struct
 {
@@ -4324,7 +4313,7 @@ static const struct geoinfo_t *get_geoinfo_dataptr(GEOID geoid)
 
         ptr = &geoinfodata[n];
         if (geoid == ptr->id)
-            /* we don't need empty entry */
+            /* we don't need empty entries */
             return *ptr->iso2W ? ptr : NULL;
 
         if (ptr->id > geoid)

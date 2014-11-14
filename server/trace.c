@@ -127,6 +127,8 @@ static void dump_cpu_type( const char *prefix, const cpu_type_t *code )
         CASE(x86);
         CASE(x86_64);
         CASE(POWERPC);
+        CASE(ARM);
+        CASE(ARM64);
         default: fprintf( stderr, "%s%u", prefix, *code ); break;
 #undef CASE
     }
@@ -2626,7 +2628,6 @@ static void dump_accept_hardware_message_request( const struct accept_hardware_m
 {
     fprintf( stderr, " hw_id=%08x", req->hw_id );
     fprintf( stderr, ", remove=%d", req->remove );
-    fprintf( stderr, ", new_win=%08x", req->new_win );
 }
 
 static void dump_get_message_reply_request( const struct get_message_reply_request *req )
@@ -2745,7 +2746,6 @@ static void dump_create_named_pipe_request( const struct create_named_pipe_reque
 {
     fprintf( stderr, " access=%08x", req->access );
     fprintf( stderr, ", attributes=%08x", req->attributes );
-    fprintf( stderr, ", rootdir=%04x", req->rootdir );
     fprintf( stderr, ", options=%08x", req->options );
     fprintf( stderr, ", sharing=%08x", req->sharing );
     fprintf( stderr, ", maxinstances=%08x", req->maxinstances );
@@ -2753,7 +2753,7 @@ static void dump_create_named_pipe_request( const struct create_named_pipe_reque
     fprintf( stderr, ", insize=%08x", req->insize );
     dump_timeout( ", timeout=", &req->timeout );
     fprintf( stderr, ", flags=%08x", req->flags );
-    dump_varargs_unicode_str( ", name=", cur_size );
+    dump_varargs_object_attributes( ", objattr=", cur_size );
 }
 
 static void dump_create_named_pipe_reply( const struct create_named_pipe_reply *req )

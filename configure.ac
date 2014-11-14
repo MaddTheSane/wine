@@ -760,9 +760,8 @@ uninstall::
     AC_SUBST(CORESERVICES_LIBS,"-framework CoreServices")
     AC_SUBST(APPKIT_LIBS,"-framework AppKit")
     LDEXECFLAGS="-image_base 0x7bf00000 -Wl,-segaddr,WINE_DOS,0x00001000,-segaddr,WINE_SHAREDHEAP,0x7f000000,-sectcreate,__TEXT,__info_plist,wine_info.plist"
-    case $host_os in
-      darwin11*) LDEXECFLAGS="-Wl,-macosx_version_min,10.6 $LDEXECFLAGS" ;;
-    esac
+    WINE_TRY_CFLAGS([-Wl,-no_pie],
+                    [LDEXECFLAGS="-Wl,-no_pie $LDEXECFLAGS"])
     if test "$ac_cv_header_DiskArbitration_DiskArbitration_h" = "yes"
     then
         dnl DiskArbitration API is not public on Darwin < 8.0, use it only if header found
@@ -1162,7 +1161,7 @@ then
                          [libXxf86vm ${notice_platform}development files not found, XFree86 Vidmode won't be supported.])
 
         dnl *** Check for Transform functions in Xrender
-        if test "$ac_cv_header_X11_extensions_Xrender_h" = "yes" -a "x$ac_cv_lib_soname_X11" != "x" -a "x$ac_cv_lib_soname_Xext" != "x"
+        if test "$ac_cv_header_X11_extensions_Xrender_h" = "yes" -a "x$ac_cv_lib_soname_X11" != "x"
         then
             WINE_CHECK_SONAME(Xrender,XRenderQueryExtension,
               [AC_CHECK_LIB(Xrender,XRenderSetPictureTransform,
@@ -2861,6 +2860,7 @@ WINE_CONFIG_TEST(dlls/dpnet/tests)
 WINE_CONFIG_DLL(dpnhpast)
 WINE_CONFIG_DLL(dpnlobby)
 WINE_CONFIG_DLL(dpvoice,,[clean])
+WINE_CONFIG_TEST(dlls/dpvoice/tests)
 WINE_CONFIG_DLL(dpwsockx)
 WINE_CONFIG_DLL(drmclien)
 WINE_CONFIG_DLL(dsound,,[clean,implib])
@@ -2942,6 +2942,7 @@ WINE_CONFIG_DLL(kernel32,,[clean,implib,mc])
 WINE_CONFIG_TEST(dlls/kernel32/tests)
 WINE_CONFIG_DLL(keyboard.drv16,enable_win16)
 WINE_CONFIG_DLL(krnl386.exe16,enable_win16,[implib],[kernel])
+WINE_CONFIG_DLL(ksuser)
 WINE_CONFIG_DLL(ktmw32)
 WINE_CONFIG_DLL(loadperf,,[implib])
 WINE_CONFIG_DLL(localspl,,[po])
@@ -3019,6 +3020,7 @@ WINE_CONFIG_DLL(msvcm90)
 WINE_CONFIG_DLL(msvcp100)
 WINE_CONFIG_TEST(dlls/msvcp100/tests)
 WINE_CONFIG_DLL(msvcp110)
+WINE_CONFIG_DLL(msvcp120)
 WINE_CONFIG_DLL(msvcp60)
 WINE_CONFIG_TEST(dlls/msvcp60/tests)
 WINE_CONFIG_DLL(msvcp70)
@@ -3029,6 +3031,7 @@ WINE_CONFIG_TEST(dlls/msvcp90/tests)
 WINE_CONFIG_DLL(msvcr100,,[implib])
 WINE_CONFIG_TEST(dlls/msvcr100/tests)
 WINE_CONFIG_DLL(msvcr110,,[implib])
+WINE_CONFIG_DLL(msvcr120,,[implib])
 WINE_CONFIG_DLL(msvcr70,,[implib])
 WINE_CONFIG_DLL(msvcr71,,[implib])
 WINE_CONFIG_DLL(msvcr80,,[implib])
@@ -3052,6 +3055,7 @@ WINE_CONFIG_TEST(dlls/msxml3/tests,[clean])
 WINE_CONFIG_DLL(msxml4,,[clean])
 WINE_CONFIG_DLL(msxml6,,[clean])
 WINE_CONFIG_DLL(nddeapi,,[implib])
+WINE_CONFIG_DLL(ndis.sys)
 WINE_CONFIG_DLL(netapi32,,[implib])
 WINE_CONFIG_TEST(dlls/netapi32/tests)
 WINE_CONFIG_DLL(netcfgx,,[clean])
@@ -3107,6 +3111,7 @@ WINE_CONFIG_DLL(photometadatahandler)
 WINE_CONFIG_DLL(pidgen)
 WINE_CONFIG_DLL(powrprof,,[implib])
 WINE_CONFIG_DLL(printui)
+WINE_CONFIG_DLL(prntvpt)
 WINE_CONFIG_DLL(propsys,,[clean,implib])
 WINE_CONFIG_TEST(dlls/propsys/tests)
 WINE_CONFIG_DLL(psapi,,[implib])
@@ -3382,6 +3387,7 @@ WINE_CONFIG_TEST(programs/services/tests)
 WINE_CONFIG_PROGRAM(spoolsv,,[install])
 WINE_CONFIG_PROGRAM(start,,[install,po])
 WINE_CONFIG_PROGRAM(svchost,,[install])
+WINE_CONFIG_PROGRAM(systeminfo,,[install])
 WINE_CONFIG_PROGRAM(taskkill,,[install,po])
 WINE_CONFIG_PROGRAM(tasklist,,[install])
 WINE_CONFIG_PROGRAM(taskmgr,,[install,po])
