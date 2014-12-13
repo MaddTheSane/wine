@@ -150,6 +150,7 @@ static const char * const shader_opcode_names[] =
     /* WINED3DSIH_TEXREG2GB             */ "texreg2gb",
     /* WINED3DSIH_TEXREG2RGB            */ "texreg2rgb",
     /* WINED3DSIH_UDIV                  */ "udiv",
+    /* WINED3DSIH_UGE                   */ "uge",
     /* WINED3DSIH_USHR                  */ "ushr",
     /* WINED3DSIH_UTOF                  */ "utof",
     /* WINED3DSIH_XOR                   */ "xor",
@@ -633,26 +634,43 @@ static HRESULT shader_get_registers_used(struct wined3d_shader *shader, const st
         if (ins.handler_idx == WINED3DSIH_DCL)
         {
             struct wined3d_shader_semantic *semantic = &ins.declaration.semantic;
+            unsigned int reg_idx = semantic->reg.reg.idx[0].offset;
 
             switch (semantic->reg.reg.type)
             {
                 /* Mark input registers used. */
                 case WINED3DSPR_INPUT:
-                    reg_maps->input_registers |= 1 << semantic->reg.reg.idx[0].offset;
-                    shader_signature_from_semantic(&input_signature[semantic->reg.reg.idx[0].offset], semantic);
+                    if (reg_idx >= MAX_REG_INPUT)
+                    {
+                        ERR("Invalid input register index %u.\n", reg_idx);
+                        break;
+                    }
+                    reg_maps->input_registers |= 1 << reg_idx;
+                    shader_signature_from_semantic(&input_signature[reg_idx], semantic);
                     break;
 
                 /* Vertex shader: mark 3.0 output registers used, save token. */
                 case WINED3DSPR_OUTPUT:
-                    reg_maps->output_registers |= 1 << semantic->reg.reg.idx[0].offset;
-                    shader_signature_from_semantic(&output_signature[semantic->reg.reg.idx[0].offset], semantic);
+                    if (reg_idx >= MAX_REG_OUTPUT)
+                    {
+                        ERR("Invalid output register index %u.\n", reg_idx);
+                        break;
+                    }
+                    reg_maps->output_registers |= 1 << reg_idx;
+                    shader_signature_from_semantic(&output_signature[reg_idx], semantic);
                     if (semantic->usage == WINED3D_DECL_USAGE_FOG)
                         reg_maps->fog = 1;
                     break;
 
-                /* Save sampler usage token. */
                 case WINED3DSPR_SAMPLER:
-                    reg_maps->sampler_type[semantic->reg.reg.idx[0].offset] = semantic->sampler_type;
+                case WINED3DSPR_RESOURCE:
+                    if (reg_idx >= ARRAY_SIZE(reg_maps->resource_info))
+                    {
+                        ERR("Invalid resource index %u.\n", reg_idx);
+                        break;
+                    }
+                    reg_maps->resource_info[reg_idx].type = semantic->resource_type;
+                    reg_maps->resource_info[reg_idx].data_type = semantic->resource_data_type;
                     break;
 
                 default:
@@ -880,20 +898,20 @@ static HRESULT shader_get_registers_used(struct wined3d_shader *shader, const st
                             || ins.handler_idx == WINED3DSIH_TEXREG2GB
                             || ins.handler_idx == WINED3DSIH_TEXREG2RGB))
                 {
-                    /* Fake sampler usage, only set reserved bit and type. */
-                    DWORD sampler_code = ins.dst[i].reg.idx[0].offset;
+                    unsigned int reg_idx = ins.dst[i].reg.idx[0].offset;
 
-                    TRACE("Setting fake 2D sampler for 1.x pixelshader.\n");
-                    reg_maps->sampler_type[sampler_code] = WINED3DSTT_2D;
+                    TRACE("Setting fake 2D resource for 1.x pixelshader.\n");
+                    reg_maps->resource_info[reg_idx].type = WINED3D_SHADER_RESOURCE_TEXTURE_2D;
+                    reg_maps->resource_info[reg_idx].data_type = WINED3D_DATA_FLOAT;
 
                     /* texbem is only valid with < 1.4 pixel shaders */
                     if (ins.handler_idx == WINED3DSIH_TEXBEM
                             || ins.handler_idx == WINED3DSIH_TEXBEML)
                     {
-                        reg_maps->bumpmat |= 1 << ins.dst[i].reg.idx[0].offset;
+                        reg_maps->bumpmat |= 1 << reg_idx;
                         if (ins.handler_idx == WINED3DSIH_TEXBEML)
                         {
-                            reg_maps->luminanceparams |= 1 << ins.dst[i].reg.idx[0].offset;
+                            reg_maps->luminanceparams |= 1 << reg_idx;
                         }
                     }
                 }
@@ -985,12 +1003,95 @@ static void shader_dump_decl_usage(const struct wined3d_shader_semantic *semanti
 
     if (semantic->reg.reg.type == WINED3DSPR_SAMPLER)
     {
-        switch (semantic->sampler_type)
+        switch (semantic->resource_type)
         {
-            case WINED3DSTT_2D: TRACE("_2d"); break;
-            case WINED3DSTT_CUBE: TRACE("_cube"); break;
-            case WINED3DSTT_VOLUME: TRACE("_volume"); break;
-            default: TRACE("_unknown_ttype(0x%08x)", semantic->sampler_type);
+            case WINED3D_SHADER_RESOURCE_TEXTURE_2D:
+                TRACE("_2d");
+                break;
+
+            case WINED3D_SHADER_RESOURCE_TEXTURE_3D:
+                TRACE("_volume");
+                break;
+
+            case WINED3D_SHADER_RESOURCE_TEXTURE_CUBE:
+                TRACE("_cube");
+                break;
+
+            default:
+                TRACE("_unknown_ttype(0x%08x)", semantic->resource_type);
+                break;
+        }
+    }
+    else if (semantic->reg.reg.type == WINED3DSPR_RESOURCE)
+    {
+        TRACE("_resource_");
+        switch (semantic->resource_type)
+        {
+            case WINED3D_SHADER_RESOURCE_BUFFER:
+                TRACE("buffer");
+                break;
+
+            case WINED3D_SHADER_RESOURCE_TEXTURE_1D:
+                TRACE("texture1d");
+                break;
+
+            case WINED3D_SHADER_RESOURCE_TEXTURE_2D:
+                TRACE("texture2d");
+                break;
+
+            case WINED3D_SHADER_RESOURCE_TEXTURE_2DMS:
+                TRACE("texture2dms");
+                break;
+
+            case WINED3D_SHADER_RESOURCE_TEXTURE_3D:
+                TRACE("texture3d");
+                break;
+
+            case WINED3D_SHADER_RESOURCE_TEXTURE_CUBE:
+                TRACE("texturecube");
+                break;
+
+            case WINED3D_SHADER_RESOURCE_TEXTURE_1DARRAY:
+                TRACE("texture1darray");
+                break;
+
+            case WINED3D_SHADER_RESOURCE_TEXTURE_2DARRAY:
+                TRACE("texture2darray");
+                break;
+
+            case WINED3D_SHADER_RESOURCE_TEXTURE_2DMSARRAY:
+                TRACE("texture2dmsarray");
+                break;
+
+            default:
+                TRACE("unknown");
+                break;
+        }
+        switch (semantic->resource_data_type)
+        {
+            case WINED3D_DATA_FLOAT:
+                TRACE(" (float)");
+                break;
+
+            case WINED3D_DATA_INT:
+                TRACE(" (int)");
+                break;
+
+            case WINED3D_DATA_UINT:
+                TRACE(" (uint)");
+                break;
+
+            case WINED3D_DATA_UNORM:
+                TRACE(" (unorm)");
+                break;
+
+            case WINED3D_DATA_SNORM:
+                TRACE(" (snorm)");
+                break;
+
+            default:
+                TRACE(" (unknown)");
+                break;
         }
     }
     else
@@ -2108,10 +2209,10 @@ void find_ps_compile_args(const struct wined3d_state *state, const struct wined3
 
                 if (!state->shader[WINED3D_SHADER_TYPE_VERTEX])
                 {
+                    enum wined3d_shader_resource_type resource_type = shader->reg_maps.resource_info[i].type;
                     unsigned int j;
                     unsigned int index = state->texture_states[i][WINED3D_TSS_TEXCOORD_INDEX];
                     DWORD max_valid = WINED3D_TTFF_COUNT4;
-                    enum wined3d_sampler_texture_type sampler_type = shader->reg_maps.sampler_type[i];
 
                     for (j = 0; j < state->vertex_declaration->element_count; ++j)
                     {
@@ -2131,15 +2232,17 @@ void find_ps_compile_args(const struct wined3d_state *state, const struct wined3
                                 tex_transform, max_valid);
                         tex_transform = max_valid;
                     }
-                    if ((sampler_type == WINED3DSTT_1D && tex_transform > WINED3D_TTFF_COUNT1)
-                            || (sampler_type == WINED3DSTT_2D && tex_transform > WINED3D_TTFF_COUNT2)
-                            || (sampler_type == WINED3DSTT_VOLUME && tex_transform > WINED3D_TTFF_COUNT3))
+                    if ((resource_type == WINED3D_SHADER_RESOURCE_TEXTURE_1D && tex_transform > WINED3D_TTFF_COUNT1)
+                            || (resource_type == WINED3D_SHADER_RESOURCE_TEXTURE_2D
+                            && tex_transform > WINED3D_TTFF_COUNT2)
+                            || (resource_type == WINED3D_SHADER_RESOURCE_TEXTURE_3D
+                            && tex_transform > WINED3D_TTFF_COUNT3))
                         tex_transform |= WINED3D_PSARGS_PROJECTED;
                     else
                     {
                         WARN("Application requested projected texture with unsuitable texture coordinates.\n");
                         WARN("(texture unit %u, transform flags %#x, sampler type %u).\n",
-                                i, tex_transform, sampler_type);
+                                i, tex_transform, resource_type);
                     }
                 }
                 else
@@ -2156,7 +2259,7 @@ void find_ps_compile_args(const struct wined3d_state *state, const struct wined3
         {
             const struct wined3d_texture *texture = state->textures[i];
 
-            if (!shader->reg_maps.sampler_type[i])
+            if (!shader->reg_maps.resource_info[i].type)
                 continue;
 
             /* Treat unbound textures as 2D. The dummy texture will provide
@@ -2185,7 +2288,7 @@ void find_ps_compile_args(const struct wined3d_state *state, const struct wined3
 
     for (i = 0; i < MAX_FRAGMENT_SAMPLERS; ++i)
     {
-        if (!shader->reg_maps.sampler_type[i])
+        if (!shader->reg_maps.resource_info[i].type)
             continue;
 
         texture = state->textures[i];
@@ -2345,7 +2448,7 @@ static HRESULT pixelshader_init(struct wined3d_shader *shader, struct wined3d_de
 
             len = strlen(e->semantic_name);
             memcpy(ptr, e->semantic_name, len + 1);
-            shader->output_signature[e->register_idx].semantic_name = ptr;
+            shader->input_signature[e->register_idx].semantic_name = ptr;
             ptr += len + 1;
         }
     }
@@ -2353,10 +2456,10 @@ static HRESULT pixelshader_init(struct wined3d_shader *shader, struct wined3d_de
     return WINED3D_OK;
 }
 
-void pixelshader_update_samplers(struct wined3d_shader *shader, WORD tex_types)
+void pixelshader_update_resource_types(struct wined3d_shader *shader, WORD tex_types)
 {
     struct wined3d_shader_reg_maps *reg_maps = &shader->reg_maps;
-    enum wined3d_sampler_texture_type *sampler_type = reg_maps->sampler_type;
+    struct wined3d_shader_resource_info *resource_info = reg_maps->resource_info;
     unsigned int i;
 
     if (reg_maps->shader_version.major != 1) return;
@@ -2364,20 +2467,21 @@ void pixelshader_update_samplers(struct wined3d_shader *shader, WORD tex_types)
     for (i = 0; i < shader->limits->sampler; ++i)
     {
         /* We don't sample from this sampler. */
-        if (!sampler_type[i]) continue;
+        if (!resource_info[i].type)
+            continue;
 
         switch ((tex_types >> i * WINED3D_PSARGS_TEXTYPE_SHIFT) & WINED3D_PSARGS_TEXTYPE_MASK)
         {
             case WINED3D_SHADER_TEX_2D:
-                sampler_type[i] = WINED3DSTT_2D;
+                resource_info[i].type = WINED3D_SHADER_RESOURCE_TEXTURE_2D;
                 break;
 
             case WINED3D_SHADER_TEX_3D:
-                sampler_type[i] = WINED3DSTT_VOLUME;
+                resource_info[i].type = WINED3D_SHADER_RESOURCE_TEXTURE_3D;
                 break;
 
             case WINED3D_SHADER_TEX_CUBE:
-                sampler_type[i] = WINED3DSTT_CUBE;
+                resource_info[i].type = WINED3D_SHADER_RESOURCE_TEXTURE_CUBE;
                 break;
         }
     }

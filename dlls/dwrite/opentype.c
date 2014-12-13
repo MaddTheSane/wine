@@ -24,8 +24,12 @@
 
 WINE_DEFAULT_DEBUG_CHANNEL(dwrite);
 
-#define MS_TTCF_TAG DWRITE_MAKE_OPENTYPE_TAG('t','t','c','f')
+#define MS_HEAD_TAG DWRITE_MAKE_OPENTYPE_TAG('h','e','a','d')
+#define MS_HHEA_TAG DWRITE_MAKE_OPENTYPE_TAG('h','h','e','a')
 #define MS_OTTO_TAG DWRITE_MAKE_OPENTYPE_TAG('O','T','T','O')
+#define MS_OS2_TAG  DWRITE_MAKE_OPENTYPE_TAG('O','S','/','2')
+#define MS_POST_TAG DWRITE_MAKE_OPENTYPE_TAG('p','o','s','t')
+#define MS_TTCF_TAG DWRITE_MAKE_OPENTYPE_TAG('t','t','c','f')
 
 #ifdef WORDS_BIGENDIAN
 #define GET_BE_WORD(x) (x)
@@ -183,7 +187,38 @@ typedef struct
     USHORT usBreakChar;
     USHORT usMaxContext;
 } TT_OS2_V2;
+
+typedef struct {
+    ULONG  version;
+    SHORT  ascender;
+    SHORT  descender;
+    SHORT  linegap;
+    USHORT advanceWidthMax;
+    SHORT  minLeftSideBearing;
+    SHORT  minRightSideBearing;
+    SHORT  xMaxExtent;
+    SHORT  caretSlopeRise;
+    SHORT  caretSlopeRun;
+    SHORT  caretOffset;
+    SHORT  reserved[4];
+    SHORT  metricDataFormat;
+    USHORT numberOfHMetrics;
+} TT_HHEA;
+
 #include "poppack.h"
+
+enum OS2_FSSELECTION {
+    OS2_FSSELECTION_ITALIC           = 1 << 0,
+    OS2_FSSELECTION_UNDERSCORE       = 1 << 1,
+    OS2_FSSELECTION_NEGATIVE         = 1 << 2,
+    OS2_FSSELECTION_OUTLINED         = 1 << 3,
+    OS2_FSSELECTION_STRIKEOUT        = 1 << 4,
+    OS2_FSSELECTION_BOLD             = 1 << 5,
+    OS2_FSSELECTION_REGULAR          = 1 << 6,
+    OS2_FSSELECTION_USE_TYPO_METRICS = 1 << 7,
+    OS2_FSSELECTION_WWS              = 1 << 8,
+    OS2_FSSELECTION_OBLIQUE          = 1 << 9
+};
 
 typedef struct {
     WORD platformID;
@@ -556,9 +591,18 @@ static const UINT16 dwriteid_to_opentypeid[DWRITE_INFORMATIONAL_STRING_POSTSCRIP
     OPENTYPE_STRING_POSTSCRIPT_CID_NAME
 };
 
+BOOL is_face_type_supported(DWRITE_FONT_FACE_TYPE type)
+{
+    return (type == DWRITE_FONT_FACE_TYPE_CFF) ||
+           (type == DWRITE_FONT_FACE_TYPE_TRUETYPE) ||
+           (type == DWRITE_FONT_FACE_TYPE_TRUETYPE_COLLECTION) ||
+           (type == DWRITE_FONT_FACE_TYPE_RAW_CFF);
+}
+
 HRESULT opentype_analyze_font(IDWriteFontFileStream *stream, UINT32* font_count, DWRITE_FONT_FILE_TYPE *file_type, DWRITE_FONT_FACE_TYPE *face_type, BOOL *supported)
 {
     /* TODO: Do font validation */
+    DWRITE_FONT_FACE_TYPE face;
     const void *font_data;
     const char* tag;
     void *context;
@@ -569,10 +613,8 @@ HRESULT opentype_analyze_font(IDWriteFontFileStream *stream, UINT32* font_count,
         return hr;
 
     tag = font_data;
-    *supported = FALSE;
     *file_type = DWRITE_FONT_FILE_TYPE_UNKNOWN;
-    if (face_type)
-        *face_type = DWRITE_FONT_FACE_TYPE_UNKNOWN;
+    face = DWRITE_FONT_FACE_TYPE_UNKNOWN;
     *font_count = 0;
 
     if (DWRITE_MAKE_OPENTYPE_TAG(tag[0], tag[1], tag[2], tag[3]) == MS_TTCF_TAG)
@@ -580,22 +622,24 @@ HRESULT opentype_analyze_font(IDWriteFontFileStream *stream, UINT32* font_count,
         const TTC_Header_V1 *header = font_data;
         *font_count = GET_BE_DWORD(header->numFonts);
         *file_type = DWRITE_FONT_FILE_TYPE_TRUETYPE_COLLECTION;
-        if (face_type)
-            *face_type = DWRITE_FONT_FACE_TYPE_TRUETYPE_COLLECTION;
-        *supported = TRUE;
+        face = DWRITE_FONT_FACE_TYPE_TRUETYPE_COLLECTION;
     }
     else if (GET_BE_DWORD(*(DWORD*)font_data) == 0x10000)
     {
         *font_count = 1;
         *file_type = DWRITE_FONT_FILE_TYPE_TRUETYPE;
-        if (face_type)
-            *face_type = DWRITE_FONT_FACE_TYPE_TRUETYPE;
-        *supported = TRUE;
+        face = DWRITE_FONT_FACE_TYPE_TRUETYPE;
     }
     else if (DWRITE_MAKE_OPENTYPE_TAG(tag[0], tag[1], tag[2], tag[3]) == MS_OTTO_TAG)
     {
         *file_type = DWRITE_FONT_FILE_TYPE_CFF;
+        face = DWRITE_FONT_FACE_TYPE_CFF;
     }
+
+    if (face_type)
+        *face_type = face;
+
+    *supported = is_face_type_supported(face);
 
     IDWriteFontFileStream_ReleaseFileFragment(stream, context);
     return S_OK;
@@ -858,20 +902,46 @@ HRESULT opentype_cmap_get_unicode_ranges(void *data, UINT32 max_count, DWRITE_UN
     return *count > max_count ? E_NOT_SUFFICIENT_BUFFER : S_OK;
 }
 
-void opentype_get_font_metrics(const void *os2, const void *head, const void *post, DWRITE_FONT_METRICS1 *metrics)
+void opentype_get_font_metrics(IDWriteFontFileStream *stream, DWRITE_FONT_FACE_TYPE face_type, UINT32 face_index,
+    DWRITE_FONT_METRICS1 *metrics)
 {
-    TT_OS2_V2 *tt_os2 = (TT_OS2_V2*)os2;
-    TT_HEAD *tt_head = (TT_HEAD*)head;
-    TT_POST *tt_post = (TT_POST*)post;
+    void *os2_context, *head_context, *post_context, *hhea_context;
+    const TT_OS2_V2 *tt_os2;
+    const TT_HEAD *tt_head;
+    const TT_POST *tt_post;
+    const TT_HHEA *tt_hhea;
 
     memset(metrics, 0, sizeof(*metrics));
 
+    opentype_get_font_table(stream, face_type, face_index, MS_OS2_TAG,  (const void**)&tt_os2, &os2_context, NULL, NULL);
+    opentype_get_font_table(stream, face_type, face_index, MS_HEAD_TAG, (const void**)&tt_head, &head_context, NULL, NULL);
+    opentype_get_font_table(stream, face_type, face_index, MS_POST_TAG, (const void**)&tt_post, &post_context, NULL, NULL);
+    opentype_get_font_table(stream, face_type, face_index, MS_HHEA_TAG, (const void**)&tt_hhea, &hhea_context, NULL, NULL);
+
+    if (tt_head) {
+        metrics->designUnitsPerEm = GET_BE_WORD(tt_head->unitsPerEm);
+        metrics->glyphBoxLeft = GET_BE_WORD(tt_head->xMin);
+        metrics->glyphBoxTop = GET_BE_WORD(tt_head->yMax);
+        metrics->glyphBoxRight = GET_BE_WORD(tt_head->xMax);
+        metrics->glyphBoxBottom = GET_BE_WORD(tt_head->yMin);
+    }
+
     if (tt_os2) {
-        metrics->ascent    = GET_BE_WORD(tt_os2->sTypoAscender);
-        metrics->descent   = GET_BE_WORD(tt_os2->sTypoDescender);
-        metrics->lineGap   = GET_BE_WORD(tt_os2->sTypoLineGap);
-        metrics->capHeight = GET_BE_WORD(tt_os2->sCapHeight);
-        metrics->xHeight   = GET_BE_WORD(tt_os2->sxHeight);
+        USHORT version = GET_BE_WORD(tt_os2->version);
+
+        metrics->ascent  = GET_BE_WORD(tt_os2->usWinAscent);
+        metrics->descent = GET_BE_WORD(tt_os2->usWinDescent);
+
+        /* line gap is estimated using two sets of ascender/descender values and 'hhea' line gap */
+        if (tt_hhea) {
+            SHORT descender = (SHORT)GET_BE_WORD(tt_hhea->descender);
+            INT32 linegap;
+
+            linegap = GET_BE_WORD(tt_hhea->ascender) + abs(descender) + GET_BE_WORD(tt_hhea->linegap) -
+                metrics->ascent - metrics->descent;
+            metrics->lineGap = linegap > 0 ? linegap : 0;
+        }
+
         metrics->strikethroughPosition  = GET_BE_WORD(tt_os2->yStrikeoutPosition);
         metrics->strikethroughThickness = GET_BE_WORD(tt_os2->yStrikeoutSize);
         metrics->subscriptPositionX = GET_BE_WORD(tt_os2->ySubscriptXOffset);
@@ -883,20 +953,44 @@ void opentype_get_font_metrics(const void *os2, const void *head, const void *po
         metrics->superscriptPositionY = GET_BE_WORD(tt_os2->ySuperscriptYOffset);
         metrics->superscriptSizeX = GET_BE_WORD(tt_os2->ySuperscriptXSize);
         metrics->superscriptSizeY = GET_BE_WORD(tt_os2->ySuperscriptYSize);
-    }
 
-    if (tt_head) {
-        metrics->designUnitsPerEm = GET_BE_WORD(tt_head->unitsPerEm);
-        metrics->glyphBoxLeft = GET_BE_WORD(tt_head->xMin);
-        metrics->glyphBoxTop = GET_BE_WORD(tt_head->yMax);
-        metrics->glyphBoxRight = GET_BE_WORD(tt_head->xMax);
-        metrics->glyphBoxBottom = GET_BE_WORD(tt_head->yMin);
+        /* version 2 fields */
+        if (version >= 2) {
+            metrics->capHeight = GET_BE_WORD(tt_os2->sCapHeight);
+            metrics->xHeight   = GET_BE_WORD(tt_os2->sxHeight);
+        }
+
+        /* version 4 fields */
+        if (version >= 4) {
+            if (GET_BE_WORD(tt_os2->fsSelection) & OS2_FSSELECTION_USE_TYPO_METRICS) {
+                SHORT descent = GET_BE_WORD(tt_os2->sTypoDescender);
+                metrics->ascent = GET_BE_WORD(tt_os2->sTypoAscender);
+                metrics->descent = descent < 0 ? -descent : 0;
+                metrics->lineGap = GET_BE_WORD(tt_os2->sTypoLineGap);
+                metrics->hasTypographicMetrics = TRUE;
+            }
+        }
     }
 
     if (tt_post) {
         metrics->underlinePosition = GET_BE_WORD(tt_post->underlinePosition);
         metrics->underlineThickness = GET_BE_WORD(tt_post->underlineThickness);
     }
+
+    /* estimate missing metrics */
+    if (metrics->xHeight == 0)
+        metrics->xHeight = metrics->designUnitsPerEm / 2;
+    if (metrics->capHeight == 0)
+        metrics->capHeight = metrics->designUnitsPerEm * 7 / 10;
+
+    if (tt_os2)
+        IDWriteFontFileStream_ReleaseFileFragment(stream, os2_context);
+    if (tt_head)
+        IDWriteFontFileStream_ReleaseFileFragment(stream, head_context);
+    if (tt_post)
+        IDWriteFontFileStream_ReleaseFileFragment(stream, post_context);
+    if (tt_hhea)
+        IDWriteFontFileStream_ReleaseFileFragment(stream, hhea_context);
 }
 
 void opentype_get_font_properties(const void *os2, const void *head, DWRITE_FONT_STRETCH *stretch, DWRITE_FONT_WEIGHT *weight, DWRITE_FONT_STYLE *style)
@@ -930,6 +1024,8 @@ static UINT get_name_record_codepage(enum OPENTYPE_PLATFORM_ID platform, USHORT 
     UINT codepage = 0;
 
     switch (platform) {
+    case OPENTYPE_PLATFORM_UNICODE:
+        break;
     case OPENTYPE_PLATFORM_MAC:
         switch (encoding)
         {
@@ -1109,7 +1205,7 @@ HRESULT opentype_get_font_strings_from_id(const void *table_data, DWRITE_INFORMA
             heap_free(name_string);
         }
         else {
-            FIXME("handle NAME format 1");
+            FIXME("handle NAME format 1\n");
             continue;
         }
     }

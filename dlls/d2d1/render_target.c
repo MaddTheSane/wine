@@ -364,10 +364,20 @@ static HRESULT STDMETHODCALLTYPE d2d_d3d_render_target_CreateBitmapBrush(ID2D1Re
         ID2D1Bitmap *bitmap, const D2D1_BITMAP_BRUSH_PROPERTIES *bitmap_brush_desc,
         const D2D1_BRUSH_PROPERTIES *brush_desc, ID2D1BitmapBrush **brush)
 {
-    FIXME("iface %p, bitmap %p, bitmap_brush_desc %p, brush_desc %p, brush %p stub!\n",
+    struct d2d_brush *object;
+
+    TRACE("iface %p, bitmap %p, bitmap_brush_desc %p, brush_desc %p, brush %p.\n",
             iface, bitmap, bitmap_brush_desc, brush_desc, brush);
 
-    return E_NOTIMPL;
+    if (!(object = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(*object))))
+        return E_OUTOFMEMORY;
+
+    d2d_bitmap_brush_init(object, iface, bitmap, bitmap_brush_desc, brush_desc);
+
+    TRACE("Created brush %p.\n", object);
+    *brush = (ID2D1BitmapBrush *)&object->ID2D1Brush_iface;
+
+    return S_OK;
 }
 
 static HRESULT STDMETHODCALLTYPE d2d_d3d_render_target_CreateSolidColorBrush(ID2D1RenderTarget *iface,
@@ -826,7 +836,7 @@ static void STDMETHODCALLTYPE d2d_d3d_render_target_Clear(ID2D1RenderTarget *ifa
     ID3D10Buffer *vs_cb, *ps_cb;
     HRESULT hr;
 
-    static float transform[] =
+    static const float transform[] =
     {
         1.0f,  0.0f, 0.0f, 0.0f,
         0.0f, -1.0f, 0.0f, 0.0f,

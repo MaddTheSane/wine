@@ -1081,29 +1081,38 @@ int CDECL MSVCRT__dup(int od)
  */
 int CDECL MSVCRT__eof(int fd)
 {
+  ioinfo *info = get_ioinfo(fd);
   DWORD curpos,endpos;
   LONG hcurpos,hendpos;
-  HANDLE hand = msvcrt_fdtoh(fd);
 
-  TRACE(":fd (%d) handle (%p)\n",fd,hand);
+  TRACE(":fd (%d) handle (%p)\n", fd, info->handle);
 
-  if (hand == INVALID_HANDLE_VALUE)
+  if (info->handle == INVALID_HANDLE_VALUE)
+  {
+    release_ioinfo(info);
     return -1;
+  }
 
-  if (get_ioinfo_nolock(fd)->wxflag & WX_ATEOF) return TRUE;
+  if (info->wxflag & WX_ATEOF)
+  {
+      release_ioinfo(info);
+      return TRUE;
+  }
 
   /* Otherwise we do it the hard way */
   hcurpos = hendpos = 0;
-  curpos = SetFilePointer(hand, 0, &hcurpos, FILE_CURRENT);
-  endpos = SetFilePointer(hand, 0, &hendpos, FILE_END);
+  curpos = SetFilePointer(info->handle, 0, &hcurpos, FILE_CURRENT);
+  endpos = SetFilePointer(info->handle, 0, &hendpos, FILE_END);
 
   if (curpos == endpos && hcurpos == hendpos)
   {
     /* FIXME: shouldn't WX_ATEOF be set here? */
+    release_ioinfo(info);
     return TRUE;
   }
 
-  SetFilePointer(hand, curpos, &hcurpos, FILE_BEGIN);
+  SetFilePointer(info->handle, curpos, &hcurpos, FILE_BEGIN);
+  release_ioinfo(info);
   return FALSE;
 }
 
@@ -1171,15 +1180,20 @@ void msvcrt_free_io(void)
  */
 __int64 CDECL MSVCRT__lseeki64(int fd, __int64 offset, int whence)
 {
-  HANDLE hand = msvcrt_fdtoh(fd);
+  ioinfo *info = get_ioinfo(fd);
   LARGE_INTEGER ofs;
 
-  TRACE(":fd (%d) handle (%p)\n",fd,hand);
-  if (hand == INVALID_HANDLE_VALUE)
+  TRACE(":fd (%d) handle (%p)\n", fd, info->handle);
+
+  if (info->handle == INVALID_HANDLE_VALUE)
+  {
+    release_ioinfo(info);
     return -1;
+  }
 
   if (whence < 0 || whence > 2)
   {
+    release_ioinfo(info);
     *MSVCRT__errno() = MSVCRT_EINVAL;
     return -1;
   }
@@ -1193,14 +1207,16 @@ __int64 CDECL MSVCRT__lseeki64(int fd, __int64 offset, int whence)
   /* The MoleBox protection scheme expects msvcrt to use SetFilePointer only,
    * so a LARGE_INTEGER offset cannot be passed directly via SetFilePointerEx. */
   ofs.QuadPart = offset;
-  if ((ofs.u.LowPart = SetFilePointer(hand, ofs.u.LowPart, &ofs.u.HighPart, whence)) != INVALID_SET_FILE_POINTER ||
+  if ((ofs.u.LowPart = SetFilePointer(info->handle, ofs.u.LowPart, &ofs.u.HighPart, whence)) != INVALID_SET_FILE_POINTER ||
       GetLastError() == ERROR_SUCCESS)
   {
-    get_ioinfo_nolock(fd)->wxflag &= ~WX_ATEOF;
+    info->wxflag &= ~WX_ATEOF;
     /* FIXME: What if we seek _to_ EOF - is EOF set? */
 
+    release_ioinfo(info);
     return ofs.QuadPart;
   }
+  release_ioinfo(info);
   TRACE(":error-last error (%d)\n",GetLastError());
   msvcrt_set_errno(GetLastError());
   return -1;
@@ -1243,16 +1259,20 @@ void CDECL MSVCRT__unlock_file(MSVCRT_FILE *file)
  */
 int CDECL MSVCRT__locking(int fd, int mode, LONG nbytes)
 {
+  ioinfo *info = get_ioinfo(fd);
   BOOL ret;
   DWORD cur_locn;
-  HANDLE hand = msvcrt_fdtoh(fd);
 
-  TRACE(":fd (%d) handle (%p)\n",fd,hand);
-  if (hand == INVALID_HANDLE_VALUE)
+  TRACE(":fd (%d) handle (%p)\n", fd, info->handle);
+  if (info->handle == INVALID_HANDLE_VALUE)
+  {
+    release_ioinfo(info);
     return -1;
+  }
 
   if (mode < 0 || mode > 4)
   {
+    release_ioinfo(info);
     *MSVCRT__errno() = MSVCRT_EINVAL;
     return -1;
   }
@@ -1265,8 +1285,9 @@ int CDECL MSVCRT__locking(int fd, int mode, LONG nbytes)
         (mode==MSVCRT__LK_NBRLCK)?"_LK_NBRLCK":
                           "UNKNOWN");
 
-  if ((cur_locn = SetFilePointer(hand, 0L, NULL, SEEK_CUR)) == INVALID_SET_FILE_POINTER)
+  if ((cur_locn = SetFilePointer(info->handle, 0L, NULL, SEEK_CUR)) == INVALID_SET_FILE_POINTER)
   {
+    release_ioinfo(info);
     FIXME ("Seek failed\n");
     *MSVCRT__errno() = MSVCRT_EINVAL; /* FIXME */
     return -1;
@@ -1277,16 +1298,17 @@ int CDECL MSVCRT__locking(int fd, int mode, LONG nbytes)
     ret = 1; /* just to satisfy gcc */
     while (nretry--)
     {
-      ret = LockFile(hand, cur_locn, 0L, nbytes, 0L);
+      ret = LockFile(info->handle, cur_locn, 0L, nbytes, 0L);
       if (ret) break;
       Sleep(1);
     }
   }
   else if (mode == MSVCRT__LK_UNLCK)
-    ret = UnlockFile(hand, cur_locn, 0L, nbytes, 0L);
+    ret = UnlockFile(info->handle, cur_locn, 0L, nbytes, 0L);
   else
-    ret = LockFile(hand, cur_locn, 0L, nbytes, 0L);
+    ret = LockFile(info->handle, cur_locn, 0L, nbytes, 0L);
   /* FIXME - what about error settings? */
+  release_ioinfo(info);
   return ret ? 0 : -1;
 }
 
@@ -1355,18 +1377,17 @@ int CDECL MSVCRT__fseek_nolock(MSVCRT_FILE* file, MSVCRT_long offset, int whence
  */
 int CDECL MSVCRT__chsize_s(int fd, __int64 size)
 {
+    ioinfo *info;
     __int64 cur, pos;
-    HANDLE handle;
     BOOL ret = FALSE;
 
     TRACE("(fd=%d, size=%s)\n", fd, wine_dbgstr_longlong(size));
 
     if (!MSVCRT_CHECK_PMT(size >= 0)) return MSVCRT_EINVAL;
 
-    LOCK_FILES();
 
-    handle = msvcrt_fdtoh(fd);
-    if (handle != INVALID_HANDLE_VALUE)
+    info = get_ioinfo(fd);
+    if (info->handle != INVALID_HANDLE_VALUE)
     {
         /* save the current file pointer */
         cur = MSVCRT__lseeki64(fd, 0, SEEK_CUR);
@@ -1375,7 +1396,7 @@ int CDECL MSVCRT__chsize_s(int fd, __int64 size)
             pos = MSVCRT__lseeki64(fd, size, SEEK_SET);
             if (pos >= 0)
             {
-                ret = SetEndOfFile(handle);
+                ret = SetEndOfFile(info->handle);
                 if (!ret) msvcrt_set_errno(GetLastError());
             }
 
@@ -1384,7 +1405,7 @@ int CDECL MSVCRT__chsize_s(int fd, __int64 size)
         }
     }
 
-    UNLOCK_FILES();
+    release_ioinfo(info);
     return ret ? 0 : *MSVCRT__errno();
 }
 
@@ -1417,7 +1438,7 @@ void CDECL MSVCRT_rewind(MSVCRT_FILE* file)
   TRACE(":file (%p) fd (%d)\n",file,file->_file);
 
   MSVCRT__lock_file(file);
-  MSVCRT_fseek(file, 0L, SEEK_SET);
+  MSVCRT__fseek_nolock(file, 0L, SEEK_SET);
   MSVCRT_clearerr(file);
   MSVCRT__unlock_file(file);
 }
@@ -1630,25 +1651,29 @@ int CDECL MSVCRT__fileno(MSVCRT_FILE* file)
  */
 int CDECL MSVCRT__fstat64(int fd, struct MSVCRT__stat64* buf)
 {
+  ioinfo *info = get_ioinfo(fd);
   DWORD dw;
   DWORD type;
   BY_HANDLE_FILE_INFORMATION hfi;
-  HANDLE hand = msvcrt_fdtoh(fd);
 
-  TRACE(":fd (%d) stat (%p)\n",fd,buf);
-  if (hand == INVALID_HANDLE_VALUE)
+  TRACE(":fd (%d) stat (%p)\n", fd, buf);
+  if (info->handle == INVALID_HANDLE_VALUE)
+  {
+    release_ioinfo(info);
     return -1;
+  }
 
   if (!buf)
   {
     WARN(":failed-NULL buf\n");
     msvcrt_set_errno(ERROR_INVALID_PARAMETER);
+    release_ioinfo(info);
     return -1;
   }
 
   memset(&hfi, 0, sizeof(hfi));
   memset(buf, 0, sizeof(struct MSVCRT__stat64));
-  type = GetFileType(hand);
+  type = GetFileType(info->handle);
   if (type == FILE_TYPE_PIPE)
   {
     buf->st_dev = buf->st_rdev = fd;
@@ -1663,10 +1688,11 @@ int CDECL MSVCRT__fstat64(int fd, struct MSVCRT__stat64* buf)
   }
   else /* FILE_TYPE_DISK etc. */
   {
-    if (!GetFileInformationByHandle(hand, &hfi))
+    if (!GetFileInformationByHandle(info->handle, &hfi))
     {
       WARN(":failed-last error (%d)\n",GetLastError());
       msvcrt_set_errno(ERROR_INVALID_PARAMETER);
+      release_ioinfo(info);
       return -1;
     }
     buf->st_mode = S_IFREG | 0444;
@@ -1681,6 +1707,7 @@ int CDECL MSVCRT__fstat64(int fd, struct MSVCRT__stat64* buf)
   }
   TRACE(":dwFileAttributes = 0x%x, mode set to 0x%x\n",hfi.dwFileAttributes,
    buf->st_mode);
+  release_ioinfo(info);
   return 0;
 }
 
@@ -3586,7 +3613,7 @@ char * CDECL MSVCRT_fgets(char *s, int size, MSVCRT_FILE* file)
 
   MSVCRT__lock_file(file);
 
-  while ((size >1) && (cc = MSVCRT_fgetc(file)) != MSVCRT_EOF && cc != '\n')
+  while ((size >1) && (cc = MSVCRT__fgetc_nolock(file)) != MSVCRT_EOF && cc != '\n')
     {
       *s++ = (char)cc;
       size --;
@@ -3676,7 +3703,7 @@ int CDECL MSVCRT__getw(MSVCRT_FILE* file)
 
   MSVCRT__lock_file(file);
   for (j=0; j<sizeof(int); j++) {
-    k = MSVCRT_fgetc(file);
+    k = MSVCRT__fgetc_nolock(file);
     if (k == MSVCRT_EOF) {
       file->_flag |= MSVCRT__IOEOF;
       MSVCRT__unlock_file(file);
@@ -3726,7 +3753,7 @@ MSVCRT_wchar_t * CDECL MSVCRT_fgetws(MSVCRT_wchar_t *s, int size, MSVCRT_FILE* f
 
   MSVCRT__lock_file(file);
 
-  while ((size >1) && (cc = MSVCRT_fgetwc(file)) != MSVCRT_WEOF && cc != '\n')
+  while ((size >1) && (cc = MSVCRT__fgetwc_nolock(file)) != MSVCRT_WEOF && cc != '\n')
     {
       *s++ = cc;
       size --;
@@ -4452,7 +4479,7 @@ int CDECL MSVCRT_fputs(const char *s, MSVCRT_FILE* file)
     int ret;
 
     MSVCRT__lock_file(file);
-    ret = MSVCRT_fwrite(s, sizeof(*s), len, file) == len ? 0 : MSVCRT_EOF;
+    ret = MSVCRT__fwrite_nolock(s, sizeof(*s), len, file) == len ? 0 : MSVCRT_EOF;
     MSVCRT__unlock_file(file);
     return ret;
 }
@@ -4468,14 +4495,14 @@ int CDECL MSVCRT_fputws(const MSVCRT_wchar_t *s, MSVCRT_FILE* file)
 
     MSVCRT__lock_file(file);
     if (!(get_ioinfo_nolock(file->_file)->wxflag & WX_TEXT)) {
-        ret = MSVCRT_fwrite(s,sizeof(*s),len,file) == len ? 0 : MSVCRT_EOF;
+        ret = MSVCRT__fwrite_nolock(s,sizeof(*s),len,file) == len ? 0 : MSVCRT_EOF;
         MSVCRT__unlock_file(file);
         return ret;
     }
 
     tmp_buf = add_std_buffer(file);
     for (i=0; i<len; i++) {
-        if(MSVCRT_fputwc(s[i], file) == MSVCRT_WEOF) {
+        if(MSVCRT__fputwc_nolock(s[i], file) == MSVCRT_WEOF) {
             if(tmp_buf) remove_std_buffer(file);
             MSVCRT__unlock_file(file);
             return MSVCRT_WEOF;
@@ -4512,8 +4539,8 @@ char * CDECL MSVCRT_gets(char *buf)
   char * buf_start = buf;
 
   MSVCRT__lock_file(MSVCRT_stdin);
-  for(cc = MSVCRT_fgetc(MSVCRT_stdin); cc != MSVCRT_EOF && cc != '\n';
-      cc = MSVCRT_fgetc(MSVCRT_stdin))
+  for(cc = MSVCRT__fgetc_nolock(MSVCRT_stdin); cc != MSVCRT_EOF && cc != '\n';
+      cc = MSVCRT__fgetc_nolock(MSVCRT_stdin))
   if(cc != '\r') *buf++ = (char)cc;
 
   *buf = '\0';
@@ -4532,8 +4559,8 @@ MSVCRT_wchar_t* CDECL MSVCRT__getws(MSVCRT_wchar_t* buf)
     MSVCRT_wchar_t* ws = buf;
 
     MSVCRT__lock_file(MSVCRT_stdin);
-    for (cc = MSVCRT_fgetwc(MSVCRT_stdin); cc != MSVCRT_WEOF && cc != '\n';
-         cc = MSVCRT_fgetwc(MSVCRT_stdin))
+    for (cc = MSVCRT__fgetwc_nolock(MSVCRT_stdin); cc != MSVCRT_WEOF && cc != '\n';
+         cc = MSVCRT__fgetwc_nolock(MSVCRT_stdin))
     {
         if (cc != '\r')
             *buf++ = (MSVCRT_wchar_t)cc;
@@ -4578,12 +4605,12 @@ int CDECL MSVCRT_puts(const char *s)
     int ret;
 
     MSVCRT__lock_file(MSVCRT_stdout);
-    if(MSVCRT_fwrite(s, sizeof(*s), len, MSVCRT_stdout) != len) {
+    if(MSVCRT__fwrite_nolock(s, sizeof(*s), len, MSVCRT_stdout) != len) {
         MSVCRT__unlock_file(MSVCRT_stdout);
         return MSVCRT_EOF;
     }
 
-    ret = MSVCRT_fwrite("\n",1,1,MSVCRT_stdout) == 1 ? 0 : MSVCRT_EOF;
+    ret = MSVCRT__fwrite_nolock("\n",1,1,MSVCRT_stdout) == 1 ? 0 : MSVCRT_EOF;
     MSVCRT__unlock_file(MSVCRT_stdout);
     return ret;
 }
@@ -4598,12 +4625,12 @@ int CDECL MSVCRT__putws(const MSVCRT_wchar_t *s)
     int ret;
 
     MSVCRT__lock_file(MSVCRT_stdout);
-    if(MSVCRT_fwrite(s, sizeof(*s), len, MSVCRT_stdout) != len) {
+    if(MSVCRT__fwrite_nolock(s, sizeof(*s), len, MSVCRT_stdout) != len) {
         MSVCRT__unlock_file(MSVCRT_stdout);
         return MSVCRT_EOF;
     }
 
-    ret = MSVCRT_fwrite(&nl,sizeof(nl),1,MSVCRT_stdout) == 1 ? 0 : MSVCRT_EOF;
+    ret = MSVCRT__fwrite_nolock(&nl,sizeof(nl),1,MSVCRT_stdout) == 1 ? 0 : MSVCRT_EOF;
     MSVCRT__unlock_file(MSVCRT_stdout);
     return ret;
 }
@@ -4671,7 +4698,7 @@ int CDECL MSVCRT_setvbuf(MSVCRT_FILE* file, char *buf, int mode, MSVCRT_size_t s
 
     MSVCRT__lock_file(file);
 
-    MSVCRT_fflush(file);
+    MSVCRT__fflush_nolock(file);
     if(file->_flag & MSVCRT__IOMYBUF)
         MSVCRT_free(file->_base);
     file->_flag &= ~(MSVCRT__IONBF | MSVCRT__IOMYBUF | MSVCRT__USERBUF);
@@ -4823,13 +4850,13 @@ static int puts_clbk_file_w(void *file, int len, const MSVCRT_wchar_t *str)
     MSVCRT__lock_file(file);
 
     if(!(get_ioinfo_nolock(((MSVCRT_FILE*)file)->_file)->wxflag & WX_TEXT)) {
-        ret = MSVCRT_fwrite(str, sizeof(MSVCRT_wchar_t), len, file);
+        ret = MSVCRT__fwrite_nolock(str, sizeof(MSVCRT_wchar_t), len, file);
         MSVCRT__unlock_file(file);
         return ret;
     }
 
     for(i=0; i<len; i++) {
-        if(MSVCRT_fputwc(str[i], file) == MSVCRT_WEOF) {
+        if(MSVCRT__fputwc_nolock(str[i], file) == MSVCRT_WEOF) {
             MSVCRT__unlock_file(file);
             return -1;
         }

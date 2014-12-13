@@ -4427,9 +4427,21 @@ HRESULT WINAPI CoWaitForMultipleHandles(DWORD dwFlags, DWORD dwTimeout,
     DWORD start_time = GetTickCount();
     APARTMENT *apt = COM_CurrentApt();
     BOOL message_loop = apt && !apt->multi_threaded;
+    BOOL check_apc = (dwFlags & COWAIT_ALERTABLE) != 0;
 
     TRACE("(0x%08x, 0x%08x, %d, %p, %p)\n", dwFlags, dwTimeout, cHandles,
         pHandles, lpdwindex);
+
+    if (!lpdwindex)
+        return E_INVALIDARG;
+
+    *lpdwindex = 0;
+
+    if (!pHandles)
+        return E_INVALIDARG;
+
+    if (!cHandles)
+        return RPC_E_NO_SYNC;
 
     while (TRUE)
     {
@@ -4449,9 +4461,19 @@ HRESULT WINAPI CoWaitForMultipleHandles(DWORD dwFlags, DWORD dwTimeout,
 
             TRACE("waiting for rpc completion or window message\n");
 
-            res = MsgWaitForMultipleObjectsEx(cHandles, pHandles,
-                (dwTimeout == INFINITE) ? INFINITE : start_time + dwTimeout - now,
-                QS_SENDMESSAGE | QS_ALLPOSTMESSAGE | QS_PAINT, wait_flags);
+            res = WAIT_TIMEOUT;
+
+            if (check_apc)
+            {
+                res = WaitForMultipleObjectsEx(cHandles, pHandles,
+                    (dwFlags & COWAIT_WAITALL) != 0, 0, TRUE);
+                check_apc = FALSE;
+            }
+
+            if (res == WAIT_TIMEOUT)
+                res = MsgWaitForMultipleObjectsEx(cHandles, pHandles,
+                    (dwTimeout == INFINITE) ? INFINITE : start_time + dwTimeout - now,
+                    QS_SENDMESSAGE | QS_ALLPOSTMESSAGE | QS_PAINT, wait_flags);
 
             if (res == WAIT_OBJECT_0 + cHandles)  /* messages available */
             {

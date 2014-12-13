@@ -1802,14 +1802,15 @@ static BOOL handle_authorization( request_t *request, DWORD status )
 }
 
 /* set the request content length based on the headers */
-static DWORD set_content_length( request_t *request )
+static DWORD set_content_length( request_t *request, DWORD status )
 {
     WCHAR encoding[20];
-    DWORD buflen;
+    DWORD buflen = sizeof(request->content_length);
 
-    buflen = sizeof(request->content_length);
-    if (!query_headers( request, WINHTTP_QUERY_CONTENT_LENGTH|WINHTTP_QUERY_FLAG_NUMBER,
-                        NULL, &request->content_length, &buflen, NULL ))
+    if (status == HTTP_STATUS_NO_CONTENT || status == HTTP_STATUS_NOT_MODIFIED)
+        request->content_length = 0;
+    else if (!query_headers( request, WINHTTP_QUERY_CONTENT_LENGTH|WINHTTP_QUERY_FLAG_NUMBER,
+                             NULL, &request->content_length, &buflen, NULL ))
         request->content_length = ~0u;
 
     buflen = sizeof(encoding);
@@ -2148,6 +2149,7 @@ static void drain_content( request_t *request )
     DWORD bytes_read;
     char buffer[2048];
 
+    refill_buffer( request, FALSE );
     for (;;)
     {
         if (!read_data( request, buffer, sizeof(buffer), &bytes_read, FALSE ) || !bytes_read) return;
@@ -2301,7 +2303,7 @@ static BOOL receive_response( request_t *request, BOOL async )
         query = WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER;
         if (!(ret = query_headers( request, query, NULL, &status, &size, NULL ))) break;
 
-        set_content_length( request );
+        set_content_length( request, status );
 
         if (!(request->hdr.disable_flags & WINHTTP_DISABLE_COOKIES)) record_cookies( request );
 
@@ -2313,27 +2315,22 @@ static BOOL receive_response( request_t *request, BOOL async )
             if (!(ret = handle_redirect( request, status ))) break;
 
             /* recurse synchronously */
-            send_request( request, NULL, 0, request->optional, request->optional_len, 0, 0, FALSE );
-            continue;
+            if ((ret = send_request( request, NULL, 0, request->optional, request->optional_len, 0, 0, FALSE ))) continue;
         }
         else if (status == HTTP_STATUS_DENIED || status == HTTP_STATUS_PROXY_AUTH_REQ)
         {
             if (request->hdr.disable_flags & WINHTTP_DISABLE_AUTHENTICATION) break;
 
             drain_content( request );
-            if (!handle_authorization( request, status ))
-            {
-                ret = TRUE;
-                break;
-            }
+            if (!handle_authorization( request, status )) break;
+
             /* recurse synchronously */
-            send_request( request, NULL, 0, request->optional, request->optional_len, 0, 0, FALSE );
-            continue;
+            if ((ret = send_request( request, NULL, 0, request->optional, request->optional_len, 0, 0, FALSE ))) continue;
         }
         break;
     }
 
-    if (ret) refill_buffer( request, FALSE );
+    if (request->content_length) refill_buffer( request, FALSE );
 
     if (async)
     {
@@ -2932,7 +2929,7 @@ static void initialize_request( struct winhttp_request *request )
     request->bytes_read = 0;
     request->error = ERROR_SUCCESS;
     request->logon_policy = WINHTTP_AUTOLOGON_SECURITY_LEVEL_MEDIUM;
-    request->disable_feature = WINHTTP_DISABLE_AUTHENTICATION;
+    request->disable_feature = 0;
     request->proxy.dwAccessType = WINHTTP_ACCESS_TYPE_DEFAULT_PROXY;
     request->proxy.lpszProxy = NULL;
     request->proxy.lpszProxyBypass = NULL;
@@ -2992,7 +2989,7 @@ static HRESULT WINAPI winhttp_request_Open(
     path[uc.dwUrlPathLength + uc.dwExtraInfoLength] = 0;
 
     if (!(verb = strdupW( method ))) goto error;
-    if (V_VT( &async ) == VT_BOOL && V_BOOL( &async )) flags |= WINHTTP_FLAG_ASYNC;
+    if (SUCCEEDED( VariantChangeType( &async, &async, 0, VT_BOOL )) && V_BOOL( &async )) flags |= WINHTTP_FLAG_ASYNC;
     if (!(hsession = WinHttpOpen( user_agentW, WINHTTP_ACCESS_TYPE_DEFAULT_PROXY, NULL, NULL, flags )))
     {
         err = get_last_error();

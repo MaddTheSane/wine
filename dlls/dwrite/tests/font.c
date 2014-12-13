@@ -66,6 +66,23 @@ static IDWriteFactory *create_factory(void)
     return factory;
 }
 
+static void create_testfontfile(const WCHAR *filename)
+{
+    DWORD written;
+    HANDLE file;
+    HRSRC res;
+    void *ptr;
+    file = CreateFileW(filename, GENERIC_READ|GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, 0, 0 );
+    ok( file != INVALID_HANDLE_VALUE, "file creation failed\n" );
+
+    res = FindResourceA(GetModuleHandleA(NULL), (LPCSTR)MAKEINTRESOURCE(1), (LPCSTR)RT_RCDATA);
+    ok( res != 0, "couldn't find resource\n" );
+    ptr = LockResource( LoadResource( GetModuleHandleA(NULL), res ));
+    WriteFile( file, ptr, SizeofResource( GetModuleHandleA(NULL), res ), &written, NULL );
+    ok( written == SizeofResource( GetModuleHandleA(NULL), res ), "couldn't write resource\n" );
+    CloseHandle( file );
+}
+
 struct test_fontenumerator
 {
     IDWriteFontFileEnumerator IDWriteFontFileEnumerator_iface;
@@ -441,10 +458,10 @@ if (0)
     ok(weight == DWRITE_FONT_WEIGHT_NORMAL, "got %d\n", weight);
 
     style = IDWriteFont_GetStyle(font);
-todo_wine {
     ok(style == DWRITE_FONT_STYLE_OBLIQUE, "got %d\n", style);
+todo_wine
     ok(otm.otmfsSelection == 1, "got 0x%08x\n", otm.otmfsSelection);
-}
+
     ret = IDWriteFont_IsSymbolFont(font);
     ok(!ret, "got %d\n", ret);
 
@@ -527,6 +544,7 @@ todo_wine {
 static void test_CreateBitmapRenderTarget(void)
 {
     IDWriteBitmapRenderTarget *target, *target2;
+    IDWriteBitmapRenderTarget1 *target1;
     IDWriteGdiInterop *interop;
     IDWriteFactory *factory;
     HBITMAP hbm, hbm2;
@@ -666,6 +684,25 @@ if (0) /* crashes on native */
     ok(m.m11 == 1.0 && m.m22 == 1.0 && m.m12 == 0.0 && m.m21 == 0.0, "got %.1f,%.1f,%.1f,%.1f\n", m.m11, m.m22, m.m12, m.m21);
     ok(m.dx == 0.0 && m.dy == 0.0, "got %.1f,%.1f\n", m.dx, m.dy);
 
+    memset(&m, 0, sizeof(m));
+    hr = IDWriteBitmapRenderTarget_SetCurrentTransform(target, &m);
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+
+    memset(&m, 0xcc, sizeof(m));
+    hr = IDWriteBitmapRenderTarget_GetCurrentTransform(target, &m);
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+    ok(m.m11 == 0.0 && m.m22 == 0.0 && m.m12 == 0.0 && m.m21 == 0.0, "got %.1f,%.1f,%.1f,%.1f\n", m.m11, m.m22, m.m12, m.m21);
+    ok(m.dx == 0.0 && m.dy == 0.0, "got %.1f,%.1f\n", m.dx, m.dy);
+
+    hr = IDWriteBitmapRenderTarget_SetCurrentTransform(target, NULL);
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+
+    memset(&m, 0xcc, sizeof(m));
+    hr = IDWriteBitmapRenderTarget_GetCurrentTransform(target, &m);
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+    ok(m.m11 == 1.0 && m.m22 == 1.0 && m.m12 == 0.0 && m.m21 == 0.0, "got %.1f,%.1f,%.1f,%.1f\n", m.m11, m.m22, m.m12, m.m21);
+    ok(m.dx == 0.0 && m.dy == 0.0, "got %.1f,%.1f\n", m.dx, m.dy);
+
     /* pixels per dip */
     pdip = IDWriteBitmapRenderTarget_GetPixelsPerDip(target);
     ok(pdip == 1.0, "got %.2f\n", pdip);
@@ -681,6 +718,30 @@ if (0) /* crashes on native */
 
     pdip = IDWriteBitmapRenderTarget_GetPixelsPerDip(target);
     ok(pdip == 2.0, "got %.2f\n", pdip);
+
+    hr = IDWriteBitmapRenderTarget_QueryInterface(target, &IID_IDWriteBitmapRenderTarget1, (void**)&target1);
+    if (hr == S_OK) {
+        DWRITE_TEXT_ANTIALIAS_MODE mode;
+
+        mode = IDWriteBitmapRenderTarget1_GetTextAntialiasMode(target1);
+        ok(mode == DWRITE_TEXT_ANTIALIAS_MODE_CLEARTYPE, "got %d\n", mode);
+
+        hr = IDWriteBitmapRenderTarget1_SetTextAntialiasMode(target1, DWRITE_TEXT_ANTIALIAS_MODE_GRAYSCALE+1);
+        ok(hr == E_INVALIDARG, "got 0x%08x\n", hr);
+
+        mode = IDWriteBitmapRenderTarget1_GetTextAntialiasMode(target1);
+        ok(mode == DWRITE_TEXT_ANTIALIAS_MODE_CLEARTYPE, "got %d\n", mode);
+
+        hr = IDWriteBitmapRenderTarget1_SetTextAntialiasMode(target1, DWRITE_TEXT_ANTIALIAS_MODE_GRAYSCALE);
+        ok(hr == S_OK, "got 0x%08x\n", hr);
+
+        mode = IDWriteBitmapRenderTarget1_GetTextAntialiasMode(target1);
+        ok(mode == DWRITE_TEXT_ANTIALIAS_MODE_GRAYSCALE, "got %d\n", mode);
+
+        IDWriteBitmapRenderTarget1_Release(target1);
+    }
+    else
+        win_skip("IDWriteBitmapRenderTarget1 is not supported.\n");
 
     IDWriteBitmapRenderTarget_Release(target);
     IDWriteGdiInterop_Release(interop);
@@ -865,11 +926,16 @@ static void test_CreateFontFace(void)
 {
     IDWriteFontFace *fontface, *fontface2;
     IDWriteFontCollection *collection;
+    DWRITE_FONT_FILE_TYPE file_type;
+    DWRITE_FONT_FACE_TYPE face_type;
     IDWriteGdiInterop *interop;
     IDWriteFont *font, *font2;
     IDWriteFontFamily *family;
     IDWriteFactory *factory;
+    IDWriteFontFile *file;
     LOGFONTW logfont;
+    BOOL supported;
+    UINT32 count;
     HRESULT hr;
 
     factory = create_factory();
@@ -957,7 +1023,53 @@ if (0) /* crashes on native */
     IDWriteFont_Release(font);
     IDWriteFontFamily_Release(family);
     IDWriteFontCollection_Release(collection);
+
+    /* IDWriteFactory::CreateFontFace() */
+    create_testfontfile(test_fontfile);
+    factory = create_factory();
+
+    hr = IDWriteFactory_CreateFontFileReference(factory, test_fontfile, NULL, &file);
+    ok(hr == S_OK, "got 0x%08x\n",hr);
+
+    supported = FALSE;
+    file_type = DWRITE_FONT_FILE_TYPE_UNKNOWN;
+    face_type = DWRITE_FONT_FACE_TYPE_CFF;
+    count = 0;
+    hr = IDWriteFontFile_Analyze(file, &supported, &file_type, &face_type, &count);
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+    ok(supported == TRUE, "got %i\n", supported);
+    ok(file_type == DWRITE_FONT_FILE_TYPE_TRUETYPE, "got %i\n", file_type);
+    ok(face_type == DWRITE_FONT_FACE_TYPE_TRUETYPE, "got %i\n", face_type);
+    ok(count == 1, "got %i\n", count);
+
+    /* try mismatching face type, the one that's not supported */
+    hr = IDWriteFactory_CreateFontFace(factory, DWRITE_FONT_FACE_TYPE_CFF, 1, &file, 0, DWRITE_FONT_SIMULATIONS_NONE, &fontface);
+todo_wine
+    ok(hr == DWRITE_E_FILEFORMAT, "got 0x%08x\n", hr);
+
+    hr = IDWriteFactory_CreateFontFace(factory, DWRITE_FONT_FACE_TYPE_TRUETYPE_COLLECTION, 1, &file, 0,
+        DWRITE_FONT_SIMULATIONS_NONE, &fontface);
+    ok(hr == E_FAIL, "got 0x%08x\n", hr);
+
+    hr = IDWriteFactory_CreateFontFace(factory, DWRITE_FONT_FACE_TYPE_RAW_CFF, 1, &file, 0, DWRITE_FONT_SIMULATIONS_NONE, &fontface);
+todo_wine
+    ok(hr == DWRITE_E_UNSUPPORTEDOPERATION || broken(hr == E_INVALIDARG) /* older versions */, "got 0x%08x\n", hr);
+
+    hr = IDWriteFactory_CreateFontFace(factory, DWRITE_FONT_FACE_TYPE_TYPE1, 1, &file, 0, DWRITE_FONT_SIMULATIONS_NONE, &fontface);
+    ok(hr == E_INVALIDARG, "got 0x%08x\n", hr);
+
+    hr = IDWriteFactory_CreateFontFace(factory, DWRITE_FONT_FACE_TYPE_VECTOR, 1, &file, 0, DWRITE_FONT_SIMULATIONS_NONE, &fontface);
+    ok(hr == E_INVALIDARG, "got 0x%08x\n", hr);
+
+    hr = IDWriteFactory_CreateFontFace(factory, DWRITE_FONT_FACE_TYPE_BITMAP, 1, &file, 0, DWRITE_FONT_SIMULATIONS_NONE, &fontface);
+    ok(hr == E_INVALIDARG, "got 0x%08x\n", hr);
+
+    hr = IDWriteFactory_CreateFontFace(factory, DWRITE_FONT_FACE_TYPE_UNKNOWN, 1, &file, 0, DWRITE_FONT_SIMULATIONS_NONE, &fontface);
+    ok(hr == E_INVALIDARG, "got 0x%08x\n", hr);
+
+    IDWriteFontFile_Release(file);
     IDWriteFactory_Release(factory);
+    DeleteFileW(test_fontfile);
 }
 
 static void test_GetMetrics(void)
@@ -1009,7 +1121,6 @@ if (0) /* crashes on native */
     ok(metrics.designUnitsPerEm != 0, "designUnitsPerEm %u\n", metrics.designUnitsPerEm);
     ok(metrics.ascent != 0, "ascent %u\n", metrics.ascent);
     ok(metrics.descent != 0, "descent %u\n", metrics.descent);
-todo_wine
     ok(metrics.lineGap == 0, "lineGap %d\n", metrics.lineGap);
     ok(metrics.capHeight, "capHeight %u\n", metrics.capHeight);
     ok(metrics.xHeight != 0, "xHeight %u\n", metrics.xHeight);
@@ -1027,7 +1138,6 @@ todo_wine
     ok(metrics.designUnitsPerEm != 0, "designUnitsPerEm %u\n", metrics.designUnitsPerEm);
     ok(metrics.ascent != 0, "ascent %u\n", metrics.ascent);
     ok(metrics.descent != 0, "descent %u\n", metrics.descent);
-todo_wine
     ok(metrics.lineGap == 0, "lineGap %d\n", metrics.lineGap);
     ok(metrics.capHeight, "capHeight %u\n", metrics.capHeight);
     ok(metrics.xHeight != 0, "xHeight %u\n", metrics.xHeight);
@@ -1047,7 +1157,6 @@ todo_wine
         ok(metrics1.designUnitsPerEm != 0, "designUnitsPerEm %u\n", metrics1.designUnitsPerEm);
         ok(metrics1.ascent != 0, "ascent %u\n", metrics1.ascent);
         ok(metrics1.descent != 0, "descent %u\n", metrics1.descent);
-    todo_wine
         ok(metrics1.lineGap == 0, "lineGap %d\n", metrics1.lineGap);
         ok(metrics1.capHeight, "capHeight %u\n", metrics1.capHeight);
         ok(metrics1.xHeight != 0, "xHeight %u\n", metrics1.xHeight);
@@ -1076,7 +1185,6 @@ todo_wine
         ok(metrics1.designUnitsPerEm != 0, "designUnitsPerEm %u\n", metrics1.designUnitsPerEm);
         ok(metrics1.ascent != 0, "ascent %u\n", metrics1.ascent);
         ok(metrics1.descent != 0, "descent %u\n", metrics1.descent);
-    todo_wine
         ok(metrics1.lineGap == 0, "lineGap %d\n", metrics1.lineGap);
         ok(metrics1.capHeight, "capHeight %u\n", metrics1.capHeight);
         ok(metrics1.xHeight != 0, "xHeight %u\n", metrics1.xHeight);
@@ -1473,7 +1581,7 @@ static void test_CustomFontCollection(void)
     ok(hr == S_OK, "got 0x%08x\n", hr);
     EXPECT_REF(idfont2, 1);
     EXPECT_REF(idfont, 1);
-    ok(idfont2 != idfont, "Font instances shoudl not match\n");
+    ok(idfont2 != idfont, "Font instances should not match\n");
 
     idfontface2 = NULL;
     hr = IDWriteFont_CreateFontFace(idfont2, &idfontface2);
@@ -1608,6 +1716,7 @@ static void test_CreateCustomFontFileReference(void)
     ok(count == 0, "got %i\n", count);
 
     hr = IDWriteFactory_CreateFontFace(factory, DWRITE_FONT_FACE_TYPE_CFF, 1, &file, 0, 0, &face);
+todo_wine
     ok(hr == 0x8faecafe, "got 0x%08x\n", hr);
     IDWriteFontFile_Release(file);
 
@@ -1678,23 +1787,6 @@ if (face2)
 
     IDWriteFactory_Release(factory2);
     IDWriteFactory_Release(factory);
-}
-
-static void create_testfontfile(const WCHAR *filename)
-{
-    DWORD written;
-    HANDLE file;
-    HRSRC res;
-    void *ptr;
-    file = CreateFileW(filename, GENERIC_READ|GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, 0, 0 );
-    ok( file != INVALID_HANDLE_VALUE, "file creation failed\n" );
-
-    res = FindResourceA(GetModuleHandleA(NULL), (LPCSTR)MAKEINTRESOURCE(1), (LPCSTR)RT_RCDATA);
-    ok( res != 0, "couldn't find resource\n" );
-    ptr = LockResource( LoadResource( GetModuleHandleA(NULL), res ));
-    WriteFile( file, ptr, SizeofResource( GetModuleHandleA(NULL), res ), &written, NULL );
-    ok( written == SizeofResource( GetModuleHandleA(NULL), res ), "couldn't write resource\n" );
-    CloseHandle( file );
 }
 
 static void test_CreateFontFileReference(void)
@@ -2218,15 +2310,26 @@ static void test_GetFaceNames(void)
     IDWriteFactory_Release(factory);
 }
 
+struct local_refkey
+{
+    FILETIME writetime;
+    WCHAR name[1];
+};
+
 static void test_TryGetFontTable(void)
 {
+    IDWriteLocalFontFileLoader *localloader;
+    WIN32_FILE_ATTRIBUTE_DATA info;
+    const struct local_refkey *key;
+    IDWriteFontFileLoader *loader;
     const void *table, *table2;
     IDWriteFontFace *fontface;
     void *context, *context2;
     IDWriteFactory *factory;
     IDWriteFontFile *file;
-    BOOL exists;
-    UINT32 size;
+    WCHAR buffW[MAX_PATH];
+    BOOL exists, ret;
+    UINT32 size, len;
     HRESULT hr;
 
     create_testfontfile(test_fontfile);
@@ -2235,6 +2338,30 @@ static void test_TryGetFontTable(void)
 
     hr = IDWriteFactory_CreateFontFileReference(factory, test_fontfile, NULL, &file);
     ok(hr == S_OK, "got 0x%08x\n",hr);
+
+    key = NULL;
+    size = 0;
+    hr = IDWriteFontFile_GetReferenceKey(file, (const void**)&key, &size);
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+    ok(size != 0, "got %u\n", size);
+
+    ret = GetFileAttributesExW(test_fontfile, GetFileExInfoStandard, &info);
+    ok(ret, "got %d\n", ret);
+    ok(!memcmp(&info.ftLastWriteTime, &key->writetime, sizeof(key->writetime)), "got wrong write time\n");
+
+    hr = IDWriteFontFile_GetLoader(file, &loader);
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+    IDWriteFontFileLoader_QueryInterface(loader, &IID_IDWriteLocalFontFileLoader, (void**)&localloader);
+    IDWriteFontFileLoader_Release(loader);
+
+    hr = IDWriteLocalFontFileLoader_GetFilePathLengthFromKey(localloader, key, size, &len);
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+    ok(lstrlenW(key->name) == len, "path length %d\n", len);
+
+    hr = IDWriteLocalFontFileLoader_GetFilePathFromKey(localloader, key, size, buffW, sizeof(buffW)/sizeof(WCHAR));
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+    ok(!lstrcmpW(buffW, key->name), "got %s, expected %s\n", wine_dbgstr_w(buffW), wine_dbgstr_w(key->name));
+    IDWriteLocalFontFileLoader_Release(localloader);
 
     hr = IDWriteFactory_CreateFontFace(factory, DWRITE_FONT_FACE_TYPE_TRUETYPE, 1, &file, 0, 0, &fontface);
     ok(hr == S_OK, "got 0x%08x\n",hr);
@@ -2245,7 +2372,6 @@ static void test_TryGetFontTable(void)
     hr = IDWriteFontFace_TryGetFontTable(fontface, MS_CMAP_TAG, &table, &size, &context, &exists);
     ok(hr == S_OK, "got 0x%08x\n",hr);
     ok(exists == TRUE, "got %d\n", exists);
-todo_wine
     ok(context == NULL && table != NULL, "cmap: context %p, table %p\n", context, table);
 
     exists = FALSE;
@@ -2254,7 +2380,6 @@ todo_wine
     hr = IDWriteFontFace_TryGetFontTable(fontface, MS_CMAP_TAG, &table2, &size, &context2, &exists);
     ok(hr == S_OK, "got 0x%08x\n",hr);
     ok(exists == TRUE, "got %d\n", exists);
-todo_wine
     ok(context2 == context && table2 == table, "cmap: context2 %p, table2 %p\n", context2, table2);
 
     IDWriteFontFace_ReleaseFontTable(fontface, context2);
@@ -2320,6 +2445,301 @@ if (0) { /* crashes on native */
     IDWriteFactory_Release(factory);
 }
 
+static void test_CreateStreamFromKey(void)
+{
+    IDWriteLocalFontFileLoader *localloader;
+    IDWriteFontFileStream *stream, *stream2;
+    IDWriteFontFileLoader *loader;
+    IDWriteFactory *factory;
+    IDWriteFontFile *file;
+    UINT64 writetime;
+    void *key;
+    UINT32 size;
+    HRESULT hr;
+
+    factory = create_factory();
+
+    create_testfontfile(test_fontfile);
+
+    hr = IDWriteFactory_CreateFontFileReference(factory, test_fontfile, NULL, &file);
+    ok(hr == S_OK, "got 0x%08x\n",hr);
+
+    key = NULL;
+    size = 0;
+    hr = IDWriteFontFile_GetReferenceKey(file, (const void**)&key, &size);
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+    ok(size != 0, "got %u\n", size);
+
+    hr = IDWriteFontFile_GetLoader(file, &loader);
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+    IDWriteFontFileLoader_QueryInterface(loader, &IID_IDWriteLocalFontFileLoader, (void**)&localloader);
+    IDWriteFontFileLoader_Release(loader);
+
+    hr = IDWriteLocalFontFileLoader_CreateStreamFromKey(localloader, key, size, &stream);
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+    EXPECT_REF(stream, 1);
+
+    hr = IDWriteLocalFontFileLoader_CreateStreamFromKey(localloader, key, size, &stream2);
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+    ok(stream == stream2 || broken(stream != stream2) /* Win7 SP0 */, "got %p, %p\n", stream, stream2);
+    if (stream == stream2)
+        EXPECT_REF(stream, 2);
+    IDWriteFontFileStream_Release(stream);
+    IDWriteFontFileStream_Release(stream2);
+
+    hr = IDWriteLocalFontFileLoader_CreateStreamFromKey(localloader, key, size, &stream);
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+    EXPECT_REF(stream, 1);
+
+    writetime = 0;
+    hr = IDWriteFontFileStream_GetLastWriteTime(stream, &writetime);
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+    ok(writetime != 0, "got %08x%08x\n", (UINT)(writetime >> 32), (UINT)writetime);
+
+    IDWriteFontFileStream_Release(stream);
+
+    IDWriteLocalFontFileLoader_Release(localloader);
+    IDWriteFactory_Release(factory);
+    DeleteFileW(test_fontfile);
+}
+
+static void test_ReadFileFragment(void)
+{
+    IDWriteLocalFontFileLoader *localloader;
+    IDWriteFontFileStream *stream;
+    IDWriteFontFileLoader *loader;
+    IDWriteFactory *factory;
+    IDWriteFontFile *file;
+    const void *fragment, *fragment2;
+    void *key, *context, *context2;
+    UINT64 filesize;
+    UINT32 size;
+    HRESULT hr;
+
+    factory = create_factory();
+
+    create_testfontfile(test_fontfile);
+
+    hr = IDWriteFactory_CreateFontFileReference(factory, test_fontfile, NULL, &file);
+    ok(hr == S_OK, "got 0x%08x\n",hr);
+
+    key = NULL;
+    size = 0;
+    hr = IDWriteFontFile_GetReferenceKey(file, (const void**)&key, &size);
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+    ok(size != 0, "got %u\n", size);
+
+    hr = IDWriteFontFile_GetLoader(file, &loader);
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+    IDWriteFontFileLoader_QueryInterface(loader, &IID_IDWriteLocalFontFileLoader, (void**)&localloader);
+    IDWriteFontFileLoader_Release(loader);
+
+    hr = IDWriteLocalFontFileLoader_CreateStreamFromKey(localloader, key, size, &stream);
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+
+    hr = IDWriteFontFileStream_GetFileSize(stream, &filesize);
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+
+    /* reading past the end of the stream */
+    fragment = (void*)0xdeadbeef;
+    context = (void*)0xdeadbeef;
+    hr = IDWriteFontFileStream_ReadFileFragment(stream, &fragment, 0, filesize+1, &context);
+    ok(hr == E_FAIL, "got 0x%08x\n", hr);
+    ok(context == NULL, "got %p\n", context);
+    ok(fragment == NULL, "got %p\n", fragment);
+
+    fragment = (void*)0xdeadbeef;
+    context = (void*)0xdeadbeef;
+    hr = IDWriteFontFileStream_ReadFileFragment(stream, &fragment, 0, filesize, &context);
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+    ok(context == NULL, "got %p\n", context);
+    ok(fragment != NULL, "got %p\n", fragment);
+
+    fragment2 = (void*)0xdeadbeef;
+    context2 = (void*)0xdeadbeef;
+    hr = IDWriteFontFileStream_ReadFileFragment(stream, &fragment2, 0, filesize, &context2);
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+    ok(context2 == NULL, "got %p\n", context2);
+    ok(fragment == fragment2, "got %p, %p\n", fragment, fragment2);
+
+    IDWriteFontFileStream_ReleaseFileFragment(stream, context);
+    IDWriteFontFileStream_ReleaseFileFragment(stream, context2);
+
+    /* fragment is released, try again */
+    fragment = (void*)0xdeadbeef;
+    context = (void*)0xdeadbeef;
+    hr = IDWriteFontFileStream_ReadFileFragment(stream, &fragment, 0, filesize, &context);
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+    ok(context == NULL, "got %p\n", context);
+    ok(fragment == fragment2, "got %p, %p\n", fragment, fragment2);
+    IDWriteFontFileStream_ReleaseFileFragment(stream, context);
+
+    IDWriteFontFileStream_Release(stream);
+    IDWriteLocalFontFileLoader_Release(localloader);
+    IDWriteFactory_Release(factory);
+    DeleteFileW(test_fontfile);
+}
+
+static void test_GetDesignGlyphMetrics(void)
+{
+    DWRITE_GLYPH_METRICS metrics[2];
+    IDWriteFontFace *fontface;
+    IDWriteFactory *factory;
+    IDWriteFontFile *file;
+    UINT16 indices[2];
+    UINT32 codepoint;
+    HRESULT hr;
+
+    factory = create_factory();
+
+    create_testfontfile(test_fontfile);
+
+    hr = IDWriteFactory_CreateFontFileReference(factory, test_fontfile, NULL, &file);
+    ok(hr == S_OK, "got 0x%08x\n",hr);
+
+    hr = IDWriteFactory_CreateFontFace(factory, DWRITE_FONT_FACE_TYPE_TRUETYPE, 1, &file,
+        0, DWRITE_FONT_SIMULATIONS_NONE, &fontface);
+    ok(hr == S_OK, "got 0x%08x\n",hr);
+    IDWriteFontFile_Release(file);
+
+    codepoint = 'A';
+    indices[0] = 0;
+    hr = IDWriteFontFace_GetGlyphIndices(fontface, &codepoint, 1, &indices[0]);
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+    ok(indices[0] > 0, "got %u\n", indices[0]);
+
+    hr = IDWriteFontFace_GetDesignGlyphMetrics(fontface, NULL, 0, metrics, FALSE);
+    ok(hr == E_INVALIDARG, "got 0x%08x\n",hr);
+
+    hr = IDWriteFontFace_GetDesignGlyphMetrics(fontface, NULL, 1, metrics, FALSE);
+    ok(hr == E_INVALIDARG, "got 0x%08x\n",hr);
+
+    hr = IDWriteFontFace_GetDesignGlyphMetrics(fontface, indices, 0, metrics, FALSE);
+    ok(hr == S_OK, "got 0x%08x\n",hr);
+
+    /* missing glyphs are ignored */
+    indices[1] = 1;
+    memset(metrics, 0xcc, sizeof(metrics));
+    hr = IDWriteFontFace_GetDesignGlyphMetrics(fontface, indices, 2, metrics, FALSE);
+    ok(hr == S_OK, "got 0x%08x\n",hr);
+    ok(metrics[0].advanceWidth == 1000, "got %d\n", metrics[0].advanceWidth);
+    ok(metrics[1].advanceWidth == 0, "got %d\n", metrics[1].advanceWidth);
+
+    IDWriteFontFace_Release(fontface);
+    IDWriteFactory_Release(factory);
+    DeleteFileW(test_fontfile);
+}
+
+static void test_IsMonospacedFont(void)
+{
+    static const WCHAR courierW[] = {'C','o','u','r','i','e','r',' ','N','e','w',0};
+    IDWriteFontCollection *collection;
+    IDWriteFactory *factory;
+    UINT32 index;
+    BOOL exists;
+    HRESULT hr;
+
+    factory = create_factory();
+    hr = IDWriteFactory_GetSystemFontCollection(factory, &collection, FALSE);
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+
+    exists = FALSE;
+    hr = IDWriteFontCollection_FindFamilyName(collection, courierW, &index, &exists);
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+    if (exists) {
+        IDWriteFontFamily *family;
+        IDWriteFont1 *font1;
+        IDWriteFont *font;
+
+        hr = IDWriteFontCollection_GetFontFamily(collection, index, &family);
+        ok(hr == S_OK, "got 0x%08x\n", hr);
+
+        hr = IDWriteFontFamily_GetFirstMatchingFont(family, DWRITE_FONT_WEIGHT_NORMAL,
+            DWRITE_FONT_STRETCH_NORMAL, DWRITE_FONT_STYLE_NORMAL, &font);
+        ok(hr == S_OK, "got 0x%08x\n", hr);
+        IDWriteFontFamily_Release(family);
+
+        hr = IDWriteFont_QueryInterface(font, &IID_IDWriteFont1, (void**)&font1);
+        if (hr == S_OK) {
+            IDWriteFontFace1 *fontface1;
+            IDWriteFontFace *fontface;
+            BOOL is_monospaced;
+
+            is_monospaced = IDWriteFont1_IsMonospacedFont(font1);
+            ok(is_monospaced, "got %d\n", is_monospaced);
+
+            hr = IDWriteFont1_CreateFontFace(font1, &fontface);
+            ok(hr == S_OK, "got 0x%08x\n", hr);
+            hr = IDWriteFontFace_QueryInterface(fontface, &IID_IDWriteFontFace1, (void**)&fontface1);
+            ok(hr == S_OK, "got 0x%08x\n", hr);
+            is_monospaced = IDWriteFontFace1_IsMonospacedFont(fontface1);
+            ok(is_monospaced, "got %d\n", is_monospaced);
+            IDWriteFontFace1_Release(fontface1);
+
+            IDWriteFontFace_Release(fontface);
+            IDWriteFont1_Release(font1);
+        }
+        else
+            win_skip("IsMonospacedFont() is not supported.\n");
+    }
+    else
+        skip("Courier New font not found.\n");
+
+    IDWriteFontCollection_Release(collection);
+}
+
+static void test_GetDesignGlyphAdvances(void)
+{
+    IDWriteFontFace1 *fontface1;
+    IDWriteFontFace *fontface;
+    IDWriteFactory *factory;
+    IDWriteFontFile *file;
+    HRESULT hr;
+
+    factory = create_factory();
+
+    create_testfontfile(test_fontfile);
+
+    hr = IDWriteFactory_CreateFontFileReference(factory, test_fontfile, NULL, &file);
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+
+    hr = IDWriteFactory_CreateFontFace(factory, DWRITE_FONT_FACE_TYPE_TRUETYPE, 1, &file,
+        0, DWRITE_FONT_SIMULATIONS_NONE, &fontface);
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+    IDWriteFontFile_Release(file);
+
+    hr = IDWriteFontFace_QueryInterface(fontface, &IID_IDWriteFontFace1, (void**)&fontface1);
+    if (hr == S_OK) {
+        UINT32 codepoint;
+        UINT16 index;
+        INT32 advance;
+
+        codepoint = 'A';
+        index = 0;
+        hr = IDWriteFontFace1_GetGlyphIndices(fontface1, &codepoint, 1, &index);
+        ok(hr == S_OK, "got 0x%08x\n", hr);
+        ok(index > 0, "got %u\n", index);
+
+        advance = 0;
+        hr = IDWriteFontFace1_GetDesignGlyphAdvances(fontface1, 1, &index, &advance, FALSE);
+        ok(hr == S_OK, "got 0x%08x\n", hr);
+        ok(advance == 1000, "got %i\n", advance);
+
+        advance = 0;
+        hr = IDWriteFontFace1_GetDesignGlyphAdvances(fontface1, 1, &index, &advance, TRUE);
+        ok(hr == S_OK, "got 0x%08x\n", hr);
+        ok(advance == 2048, "got %i\n", advance);
+
+        IDWriteFontFace1_Release(fontface1);
+    }
+    else
+        win_skip("GetDesignGlyphAdvances() is not supported.\n");
+
+    IDWriteFontFace_Release(fontface);
+    IDWriteFactory_Release(factory);
+    DeleteFileW(test_fontfile);
+}
+
 START_TEST(font)
 {
     IDWriteFactory *factory;
@@ -2351,6 +2771,11 @@ START_TEST(font)
     test_GetFaceNames();
     test_TryGetFontTable();
     test_ConvertFontToLOGFONT();
+    test_CreateStreamFromKey();
+    test_ReadFileFragment();
+    test_GetDesignGlyphMetrics();
+    test_GetDesignGlyphAdvances();
+    test_IsMonospacedFont();
 
     IDWriteFactory_Release(factory);
 }

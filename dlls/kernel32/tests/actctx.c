@@ -304,8 +304,6 @@ static const WCHAR wndClass2W[] =
     {'w','n','d','C','l','a','s','s','2',0};
 static const WCHAR wndClass3W[] =
     {'w','n','d','C','l','a','s','s','3',0};
-static const WCHAR acr_manifest[] =
-    {'a','c','r','.','m','a','n','i','f','e','s','t',0};
 
 static WCHAR app_dir[MAX_PATH], exe_path[MAX_PATH], work_dir[MAX_PATH], work_dir_subdir[MAX_PATH];
 static WCHAR app_manifest_path[MAX_PATH], manifest_path[MAX_PATH], depmanifest_path[MAX_PATH];
@@ -2166,6 +2164,65 @@ todo_wine
     handle = pCreateActCtxA(&actctx);
     ok(handle == INVALID_HANDLE_VALUE, "got handle %p\n", handle);
     ok(GetLastError() == ERROR_RESOURCE_TYPE_NOT_FOUND, "got error %d\n", GetLastError());
+
+    /* load manifest from lpAssemblyDirectory directory */
+    write_manifest("testdir.manifest", manifest1);
+    GetTempPathA(sizeof(path)/sizeof(path[0]), path);
+    SetCurrentDirectoryA(path);
+    strcat(path, "assembly_dir");
+    strcpy(dir, path);
+    strcat(path, "\\testdir.manifest");
+
+    memset(&actctx, 0, sizeof(actctx));
+    actctx.cbSize = sizeof(actctx);
+    actctx.dwFlags = ACTCTX_FLAG_ASSEMBLY_DIRECTORY_VALID;
+    actctx.lpSource = "testdir.manifest";
+    actctx.lpAssemblyDirectory = dir;
+
+    SetLastError(0xdeadbeef);
+    handle = pCreateActCtxA(&actctx);
+    ok(handle == INVALID_HANDLE_VALUE, "got handle %p\n", handle);
+    ok(GetLastError()==ERROR_PATH_NOT_FOUND ||
+            broken(GetLastError()==ERROR_FILE_NOT_FOUND) /* WinXP */,
+            "got error %d\n", GetLastError());
+
+    CreateDirectoryA(dir, NULL);
+    memset(&actctx, 0, sizeof(actctx));
+    actctx.cbSize = sizeof(actctx);
+    actctx.dwFlags = ACTCTX_FLAG_ASSEMBLY_DIRECTORY_VALID;
+    actctx.lpSource = "testdir.manifest";
+    actctx.lpAssemblyDirectory = dir;
+
+    SetLastError(0xdeadbeef);
+    handle = pCreateActCtxA(&actctx);
+    ok(handle == INVALID_HANDLE_VALUE, "got handle %p\n", handle);
+    ok(GetLastError() == ERROR_FILE_NOT_FOUND, "got error %d\n", GetLastError());
+    SetCurrentDirectoryW(work_dir);
+
+    write_manifest("assembly_dir\\testdir.manifest", manifest1);
+    memset(&actctx, 0, sizeof(actctx));
+    actctx.cbSize = sizeof(actctx);
+    actctx.dwFlags = ACTCTX_FLAG_ASSEMBLY_DIRECTORY_VALID;
+    actctx.lpSource = "testdir.manifest";
+    actctx.lpAssemblyDirectory = dir;
+
+    handle = pCreateActCtxA(&actctx);
+    ok(handle != INVALID_HANDLE_VALUE, "got handle %p\n", handle);
+    pReleaseActCtx(handle);
+
+    memset(&actctx, 0, sizeof(actctx));
+    actctx.cbSize = sizeof(actctx);
+    actctx.dwFlags = ACTCTX_FLAG_ASSEMBLY_DIRECTORY_VALID;
+    actctx.lpSource = path;
+    actctx.lpAssemblyDirectory = dir;
+
+    handle = pCreateActCtxA(&actctx);
+    ok(handle != INVALID_HANDLE_VALUE, "got handle %p\n", handle);
+    pReleaseActCtx(handle);
+
+    delete_manifest_file("testdir.manifest");
+    delete_manifest_file("assembly_dir\\testdir.manifest");
+    RemoveDirectoryA(dir);
 }
 
 static BOOL init_funcs(void)

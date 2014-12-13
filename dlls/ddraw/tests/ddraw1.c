@@ -428,12 +428,26 @@ static void destroy_material(IDirect3DMaterial *material)
     IDirect3DMaterial_Release(material);
 }
 
-static const UINT *expect_messages;
+struct message
+{
+    UINT message;
+    BOOL check_wparam;
+    WPARAM expect_wparam;
+};
+
+static const struct message *expect_messages;
 
 static LRESULT CALLBACK test_proc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam)
 {
-    if (expect_messages && message == *expect_messages)
+    if (expect_messages && message == expect_messages->message)
+    {
+        if (expect_messages->check_wparam)
+            ok (wparam == expect_messages->expect_wparam,
+                    "Got unexpected wparam %lx for message %x, expected %lx.\n",
+                    wparam, message, expect_messages->expect_wparam);
+
         ++expect_messages;
+    }
 
     return DefWindowProcA(hwnd, message, wparam, lparam);
 }
@@ -1878,15 +1892,15 @@ static void test_wndproc(void)
     HRESULT hr;
     ULONG ref;
 
-    static const UINT messages[] =
+    static struct message messages[] =
     {
-        WM_WINDOWPOSCHANGING,
-        WM_MOVE,
-        WM_SIZE,
-        WM_WINDOWPOSCHANGING,
-        WM_ACTIVATE,
-        WM_SETFOCUS,
-        0,
+        {WM_WINDOWPOSCHANGING,  FALSE,  0},
+        {WM_MOVE,               FALSE,  0},
+        {WM_SIZE,               FALSE,  0},
+        {WM_WINDOWPOSCHANGING,  FALSE,  0},
+        {WM_ACTIVATE,           FALSE,  0},
+        {WM_SETFOCUS,           FALSE,  0},
+        {0,                     FALSE,  0},
     };
 
     /* DDSCL_EXCLUSIVE replaces the window's window proc. */
@@ -1906,7 +1920,7 @@ static void test_wndproc(void)
     expect_messages = messages;
     hr = IDirectDraw_SetCooperativeLevel(ddraw, window, DDSCL_EXCLUSIVE | DDSCL_FULLSCREEN);
     ok(SUCCEEDED(hr), "SetCooperativeLevel failed, hr %#x.\n", hr);
-    ok(!*expect_messages, "Expected message %#x, but didn't receive it.\n", *expect_messages);
+    ok(!expect_messages->message, "Expected message %#x, but didn't receive it.\n", expect_messages->message);
     expect_messages = NULL;
     proc = GetWindowLongPtrA(window, GWLP_WNDPROC);
     ok(proc != (LONG_PTR)test_proc, "Expected wndproc != %#lx, got %#lx.\n",
@@ -1995,12 +2009,13 @@ static void test_wndproc(void)
 
 static void test_window_style(void)
 {
-    LONG style, exstyle, tmp;
+    LONG style, exstyle, tmp, expected_style;
     RECT fullscreen_rect, r;
     IDirectDraw *ddraw;
     HWND window;
     HRESULT hr;
     ULONG ref;
+    BOOL ret;
 
     window = CreateWindowA("static", "ddraw_test", WS_OVERLAPPEDWINDOW,
             0, 0, 100, 100, 0, 0, 0, 0);
@@ -2026,6 +2041,20 @@ static void test_window_style(void)
     GetClientRect(window, &r);
     todo_wine ok(!EqualRect(&r, &fullscreen_rect), "Client rect and window rect are equal.\n");
 
+    ret = SetForegroundWindow(GetDesktopWindow());
+    ok(ret, "Failed to set foreground window.\n");
+
+    tmp = GetWindowLongA(window, GWL_STYLE);
+    todo_wine ok(tmp == style, "Expected window style %#x, got %#x.\n", style, tmp);
+    tmp = GetWindowLongA(window, GWL_EXSTYLE);
+    todo_wine ok(tmp == exstyle, "Expected window extended style %#x, got %#x.\n", exstyle, tmp);
+
+    ret = SetForegroundWindow(window);
+    ok(ret, "Failed to set foreground window.\n");
+    /* Windows 7 (but not Vista and XP) show the window when it receives focus. Hide it again,
+     * the next tests expect this. */
+    ShowWindow(window, SW_HIDE);
+
     hr = IDirectDraw_SetCooperativeLevel(ddraw, window, DDSCL_NORMAL);
     ok(SUCCEEDED(hr), "SetCooperativeLevel failed, hr %#x.\n", hr);
 
@@ -2033,6 +2062,26 @@ static void test_window_style(void)
     todo_wine ok(tmp == style, "Expected window style %#x, got %#x.\n", style, tmp);
     tmp = GetWindowLongA(window, GWL_EXSTYLE);
     todo_wine ok(tmp == exstyle, "Expected window extended style %#x, got %#x.\n", exstyle, tmp);
+
+    ShowWindow(window, SW_SHOW);
+    hr = IDirectDraw_SetCooperativeLevel(ddraw, window, DDSCL_EXCLUSIVE | DDSCL_FULLSCREEN);
+    ok(SUCCEEDED(hr), "SetCooperativeLevel failed, hr %#x.\n", hr);
+
+    tmp = GetWindowLongA(window, GWL_STYLE);
+    expected_style = style | WS_VISIBLE;
+    todo_wine ok(tmp == expected_style, "Expected window style %#x, got %#x.\n", expected_style, tmp);
+    tmp = GetWindowLongA(window, GWL_EXSTYLE);
+    expected_style = exstyle | WS_EX_TOPMOST;
+    todo_wine ok(tmp == expected_style, "Expected window extended style %#x, got %#x.\n", expected_style, tmp);
+
+    ret = SetForegroundWindow(GetDesktopWindow());
+    ok(ret, "Failed to set foreground window.\n");
+    tmp = GetWindowLongA(window, GWL_STYLE);
+    expected_style = style | WS_VISIBLE | WS_MINIMIZE;
+    todo_wine ok(tmp == expected_style, "Expected window style %#x, got %#x.\n", expected_style, tmp);
+    tmp = GetWindowLongA(window, GWL_EXSTYLE);
+    expected_style = exstyle | WS_EX_TOPMOST;
+    todo_wine ok(tmp == expected_style, "Expected window extended style %#x, got %#x.\n", expected_style, tmp);
 
     ref = IDirectDraw_Release(ddraw);
     ok(ref == 0, "The ddraw object was not properly freed: refcount %u.\n", ref);
@@ -2147,19 +2196,72 @@ static void test_coop_level_mode_set(void)
     BOOL ret;
     LONG change_ret;
 
-    static const UINT exclusive_messages[] =
+    static const struct message exclusive_messages[] =
     {
-        WM_WINDOWPOSCHANGING,
-        WM_WINDOWPOSCHANGED,
-        WM_SIZE,
-        WM_DISPLAYCHANGE,
-        0,
+        {WM_WINDOWPOSCHANGING,  FALSE,  0},
+        {WM_WINDOWPOSCHANGED,   FALSE,  0},
+        {WM_SIZE,               FALSE,  0},
+        {WM_DISPLAYCHANGE,      FALSE,  0},
+        {0,                     FALSE,  0},
+    };
+    static const struct message exclusive_focus_loss_messages[] =
+    {
+        {WM_ACTIVATE,           TRUE,   WA_INACTIVE},
+        {WM_DISPLAYCHANGE,      FALSE,  0},
+        {WM_WINDOWPOSCHANGING,  FALSE,  0},
+        /* Like d3d8 and d3d9 ddraw seems to use SW_SHOWMINIMIZED instead of
+         * SW_MINIMIZED, causing a recursive window activation that does not
+         * produe the same result in Wine yet. Ignore the difference for now.
+         * {WM_ACTIVATE,           TRUE,   0x200000 | WA_ACTIVE}, */
+        {WM_WINDOWPOSCHANGED,   FALSE,  0},
+        {WM_MOVE,               FALSE,  0},
+        {WM_SIZE,               TRUE,   SIZE_MINIMIZED},
+        {WM_ACTIVATEAPP,        TRUE,   FALSE},
+        {0,                     FALSE,  0},
+    };
+    static const struct message exclusive_focus_restore_messages[] =
+    {
+        {WM_WINDOWPOSCHANGING,  FALSE,  0}, /* From the ShowWindow(SW_RESTORE). */
+        {WM_WINDOWPOSCHANGING,  FALSE,  0}, /* Generated by ddraw, matches d3d9 behavior. */
+        {WM_WINDOWPOSCHANGED,   FALSE,  0}, /* Matching previous message. */
+        {WM_SIZE,               FALSE,  0}, /* DefWindowProc. */
+        {WM_DISPLAYCHANGE,      FALSE,  0}, /* Ddraw restores mode. */
+        /* Native redundantly sets the window size here. */
+        {WM_ACTIVATEAPP,        TRUE,   TRUE}, /* End of ddraw's hooks. */
+        {WM_WINDOWPOSCHANGED,   FALSE,  0}, /* Matching the one from ShowWindow. */
+        {WM_MOVE,               FALSE,  0}, /* DefWindowProc. */
+        {WM_SIZE,               TRUE,   SIZE_RESTORED}, /* DefWindowProc. */
+        {0,                     FALSE,  0},
+    };
+    static const struct message sc_restore_messages[] =
+    {
+        {WM_SYSCOMMAND,         TRUE,   SC_RESTORE},
+        {WM_WINDOWPOSCHANGING,  FALSE,  0},
+        {WM_WINDOWPOSCHANGED,   FALSE,  0},
+        {WM_SIZE,               TRUE,   SIZE_RESTORED},
+        {0,                     FALSE,  0},
+    };
+    static const struct message sc_minimize_messages[] =
+    {
+        {WM_SYSCOMMAND,         TRUE,   SC_MINIMIZE},
+        {WM_WINDOWPOSCHANGING,  FALSE,  0},
+        {WM_WINDOWPOSCHANGED,   FALSE,  0},
+        {WM_SIZE,               TRUE,   SIZE_MINIMIZED},
+        {0,                     FALSE,  0},
+    };
+    static const struct message sc_maximize_messages[] =
+    {
+        {WM_SYSCOMMAND,         TRUE,   SC_MAXIMIZE},
+        {WM_WINDOWPOSCHANGING,  FALSE,  0},
+        {WM_WINDOWPOSCHANGED,   FALSE,  0},
+        {WM_SIZE,               TRUE,   SIZE_MAXIMIZED},
+        {0,                     FALSE,  0},
     };
 
-    static const UINT normal_messages[] =
+    static const struct message normal_messages[] =
     {
-        WM_DISPLAYCHANGE,
-        0,
+        {WM_DISPLAYCHANGE,      FALSE,  0},
+        {0,                     FALSE,  0},
     };
 
     ddraw = create_ddraw();
@@ -2234,7 +2336,7 @@ static void test_coop_level_mode_set(void)
     hr = set_display_mode(ddraw, param.ddraw_width, param.ddraw_height);
     ok(SUCCEEDED(hr), "Failed to set display mode, hr %#x.\n", hr);
 
-    ok(!*expect_messages, "Expected message %#x, but didn't receive it.\n", *expect_messages);
+    ok(!expect_messages->message, "Expected message %#x, but didn't receive it.\n", expect_messages->message);
     expect_messages = NULL;
     ok(screen_size.cx == param.ddraw_width && screen_size.cy == param.ddraw_height,
             "Expected screen size %ux%u, got %ux%u.\n",
@@ -2280,7 +2382,7 @@ static void test_coop_level_mode_set(void)
     change_ret = ChangeDisplaySettingsW(&devmode, CDS_FULLSCREEN);
     ok(change_ret == DISP_CHANGE_SUCCESSFUL, "Failed to change display mode, ret %#x.\n", change_ret);
 
-    ok(!*expect_messages, "Expected message %#x, but didn't receive it.\n", *expect_messages);
+    ok(!expect_messages->message, "Expected message %#x, but didn't receive it.\n", expect_messages->message);
     expect_messages = NULL;
     ok(screen_size.cx == param.user32_width && screen_size.cy == param.user32_height,
             "Expected screen size %ux%u, got %ux%u.\n",
@@ -2291,6 +2393,55 @@ static void test_coop_level_mode_set(void)
             user32_rect.left, user32_rect.top, user32_rect.right, user32_rect.bottom,
             r.left, r.top, r.right, r.bottom);
 
+    expect_messages = exclusive_focus_loss_messages;
+    ret = SetForegroundWindow(GetDesktopWindow());
+    ok(ret, "Failed to set foreground window.\n");
+    ok(!expect_messages->message, "Expected message %#x, but didn't receive it.\n", expect_messages->message);
+    ret = EnumDisplaySettingsW(NULL, ENUM_CURRENT_SETTINGS, &devmode);
+    ok(ret, "Failed to get display mode.\n");
+    ok(devmode.dmPelsWidth == registry_mode.dmPelsWidth
+            && devmode.dmPelsHeight == registry_mode.dmPelsHeight, "Got unexpect screen size %ux%u.\n",
+            devmode.dmPelsWidth, devmode.dmPelsHeight);
+
+    expect_messages = exclusive_focus_restore_messages;
+    ShowWindow(window, SW_RESTORE);
+    ok(!expect_messages->message, "Expected message %#x, but didn't receive it.\n", expect_messages->message);
+
+    GetWindowRect(window, &r);
+    ok(EqualRect(&r, &ddraw_rect), "Expected {%d, %d, %d, %d}, got {%d, %d, %d, %d}.\n",
+            ddraw_rect.left, ddraw_rect.top, ddraw_rect.right, ddraw_rect.bottom,
+            r.left, r.top, r.right, r.bottom);
+    ret = EnumDisplaySettingsW(NULL, ENUM_CURRENT_SETTINGS, &devmode);
+    ok(ret, "Failed to get display mode.\n");
+    ok(devmode.dmPelsWidth == param.ddraw_width
+            && devmode.dmPelsHeight == param.ddraw_height, "Got unexpect screen size %ux%u.\n",
+            devmode.dmPelsWidth, devmode.dmPelsHeight);
+
+    hr = IDirectDraw_SetCooperativeLevel(ddraw, window, DDSCL_EXCLUSIVE | DDSCL_FULLSCREEN);
+    ok(SUCCEEDED(hr), "SetCooperativeLevel failed, hr %#x.\n", hr);
+    /* Normally the primary should be restored here. Unfortunately this causes the
+     * GetSurfaceDesc call after the next display mode change to crash on the Windows 8
+     * testbot. Another Restore call would presumably avoid the crash, but it also moots
+     * the point of the GetSurfaceDesc call. */
+
+    expect_messages = sc_minimize_messages;
+    SendMessageA(window, WM_SYSCOMMAND, SC_MINIMIZE, 0);
+    ok(!expect_messages->message, "Expected message %#x, but didn't receive it.\n", expect_messages->message);
+    expect_messages = NULL;
+
+    expect_messages = sc_restore_messages;
+    SendMessageA(window, WM_SYSCOMMAND, SC_RESTORE, 0);
+    ok(!expect_messages->message, "Expected message %#x, but didn't receive it.\n", expect_messages->message);
+    expect_messages = NULL;
+
+    expect_messages = sc_maximize_messages;
+    SendMessageA(window, WM_SYSCOMMAND, SC_MAXIMIZE, 0);
+    ok(!expect_messages->message, "Expected message %#x, but didn't receive it.\n", expect_messages->message);
+    expect_messages = NULL;
+
+    hr = IDirectDraw_SetCooperativeLevel(ddraw, window, DDSCL_EXCLUSIVE | DDSCL_FULLSCREEN);
+    ok(SUCCEEDED(hr), "SetCooperativeLevel failed, hr %#x.\n", hr);
+
     PeekMessageA(&msg, 0, 0, 0, PM_NOREMOVE);
     expect_messages = exclusive_messages;
     screen_size.cx = 0;
@@ -2299,15 +2450,15 @@ static void test_coop_level_mode_set(void)
     hr = IDirectDraw_RestoreDisplayMode(ddraw);
     ok(SUCCEEDED(hr), "RestoreDisplayMode failed, hr %#x.\n", hr);
 
-    todo_wine ok(!*expect_messages, "Expected message %#x, but didn't receive it.\n", *expect_messages);
+    ok(!expect_messages->message, "Expected message %#x, but didn't receive it.\n", expect_messages->message);
     expect_messages = NULL;
-    todo_wine ok(screen_size.cx == registry_mode.dmPelsWidth
+    ok(screen_size.cx == registry_mode.dmPelsWidth
             && screen_size.cy == registry_mode.dmPelsHeight,
             "Expected screen size %ux%u, got %ux%u.\n",
             registry_mode.dmPelsWidth, registry_mode.dmPelsHeight, screen_size.cx, screen_size.cy);
 
     GetWindowRect(window, &r);
-    todo_wine ok(EqualRect(&r, &registry_rect), "Expected {%d, %d, %d, %d}, got {%d, %d, %d, %d}.\n",
+    ok(EqualRect(&r, &registry_rect), "Expected {%d, %d, %d, %d}, got {%d, %d, %d, %d}.\n",
             registry_rect.left, registry_rect.top, registry_rect.right, registry_rect.bottom,
             r.left, r.top, r.right, r.bottom);
 
@@ -2382,10 +2533,13 @@ static void test_coop_level_mode_set(void)
     screen_size.cx = 0;
     screen_size.cy = 0;
 
+    devmode.dmFields = DM_PELSWIDTH | DM_PELSHEIGHT;
+    devmode.dmPelsWidth = param.user32_width;
+    devmode.dmPelsHeight = param.user32_height;
     change_ret = ChangeDisplaySettingsW(&devmode, CDS_FULLSCREEN);
     ok(change_ret == DISP_CHANGE_SUCCESSFUL, "Failed to change display mode, ret %#x.\n", change_ret);
 
-    ok(!*expect_messages, "Expected message %#x, but didn't receive it.\n", *expect_messages);
+    ok(!expect_messages->message, "Expected message %#x, but didn't receive it.\n", expect_messages->message);
     expect_messages = NULL;
     ok(!screen_size.cx && !screen_size.cy, "Got unexpected screen size %ux%u.\n", screen_size.cx, screen_size.cy);
 
@@ -2409,7 +2563,7 @@ static void test_coop_level_mode_set(void)
     }
     ok(SUCCEEDED(hr), "Failed to set display mode, hr %#x.\n", hr);
 
-    ok(!*expect_messages, "Expected message %#x, but didn't receive it.\n", *expect_messages);
+    ok(!expect_messages->message, "Expected message %#x, but didn't receive it.\n", expect_messages->message);
     expect_messages = NULL;
     ok(!screen_size.cx && !screen_size.cy, "Got unexpected screen size %ux%u.\n", screen_size.cx, screen_size.cy);
 
@@ -2453,7 +2607,7 @@ static void test_coop_level_mode_set(void)
     hr = IDirectDraw_RestoreDisplayMode(ddraw);
     ok(SUCCEEDED(hr), "RestoreDisplayMode failed, hr %#x.\n", hr);
 
-    ok(!*expect_messages, "Expected message %#x, but didn't receive it.\n", *expect_messages);
+    ok(!expect_messages->message, "Expected message %#x, but didn't receive it.\n", expect_messages->message);
     expect_messages = NULL;
     ok(!screen_size.cx && !screen_size.cy, "Got unexpected screen size %ux%u.\n", screen_size.cx, screen_size.cy);
 
@@ -2472,7 +2626,7 @@ static void test_coop_level_mode_set(void)
 
     ret = EnumDisplaySettingsW(NULL, ENUM_CURRENT_SETTINGS, &devmode);
     ok(ret, "Failed to get display mode.\n");
-    todo_wine ok(devmode.dmPelsWidth == registry_mode.dmPelsWidth
+    ok(devmode.dmPelsWidth == registry_mode.dmPelsWidth
             && devmode.dmPelsHeight == registry_mode.dmPelsHeight,
             "Expected resolution %ux%u, got %ux%u.\n",
             registry_mode.dmPelsWidth, registry_mode.dmPelsHeight,
@@ -2548,7 +2702,7 @@ static void test_coop_level_mode_set(void)
     change_ret = ChangeDisplaySettingsW(&devmode, CDS_FULLSCREEN);
     ok(change_ret == DISP_CHANGE_SUCCESSFUL, "Failed to change display mode, ret %#x.\n", change_ret);
 
-    ok(!*expect_messages, "Expected message %#x, but didn't receive it.\n", *expect_messages);
+    ok(!expect_messages->message, "Expected message %#x, but didn't receive it.\n", expect_messages->message);
     expect_messages = NULL;
     ok(!screen_size.cx && !screen_size.cy, "Got unexpected screen size %ux%u.\n", screen_size.cx, screen_size.cy);
 
@@ -2565,7 +2719,7 @@ static void test_coop_level_mode_set(void)
     hr = set_display_mode(ddraw, param.ddraw_width, param.ddraw_height);
     ok(SUCCEEDED(hr), "Failed to set display mode, hr %#x.\n", hr);
 
-    ok(!*expect_messages, "Expected message %#x, but didn't receive it.\n", *expect_messages);
+    ok(!expect_messages->message, "Expected message %#x, but didn't receive it.\n", expect_messages->message);
     expect_messages = NULL;
     ok(!screen_size.cx && !screen_size.cy, "Got unexpected screen size %ux%u.\n", screen_size.cx, screen_size.cy);
 
@@ -2609,7 +2763,7 @@ static void test_coop_level_mode_set(void)
     hr = IDirectDraw_RestoreDisplayMode(ddraw);
     ok(SUCCEEDED(hr), "RestoreDisplayMode failed, hr %#x.\n", hr);
 
-    ok(!*expect_messages, "Expected message %#x, but didn't receive it.\n", *expect_messages);
+    ok(!expect_messages->message, "Expected message %#x, but didn't receive it.\n", expect_messages->message);
     expect_messages = NULL;
     ok(!screen_size.cx && !screen_size.cy, "Got unexpected screen size %ux%u.\n", screen_size.cx, screen_size.cy);
 
@@ -2628,7 +2782,7 @@ static void test_coop_level_mode_set(void)
 
     ret = EnumDisplaySettingsW(NULL, ENUM_CURRENT_SETTINGS, &devmode);
     ok(ret, "Failed to get display mode.\n");
-    todo_wine ok(devmode.dmPelsWidth == registry_mode.dmPelsWidth
+    ok(devmode.dmPelsWidth == registry_mode.dmPelsWidth
             && devmode.dmPelsHeight == registry_mode.dmPelsHeight,
             "Expected resolution %ux%u, got %ux%u.\n",
             registry_mode.dmPelsWidth, registry_mode.dmPelsHeight,
@@ -3081,7 +3235,7 @@ static void test_coop_level_activateapp(void)
             WS_MAXIMIZE | WS_CAPTION , 0, 0, 640, 480, 0, 0, 0, 0);
 
     /* Exclusive with window already active. */
-    SetActiveWindow(window);
+    SetForegroundWindow(window);
     activateapp_testdata.received = FALSE;
     hr = IDirectDraw_SetCooperativeLevel(ddraw, window, DDSCL_EXCLUSIVE | DDSCL_FULLSCREEN);
     ok(SUCCEEDED(hr), "Failed to set cooperative level, hr %#x.\n", hr);
@@ -3090,7 +3244,7 @@ static void test_coop_level_activateapp(void)
     ok(SUCCEEDED(hr), "Failed to set cooperative level, hr %#x.\n", hr);
 
     /* Exclusive with window not active. */
-    SetActiveWindow(NULL);
+    SetForegroundWindow(GetDesktopWindow());
     activateapp_testdata.received = FALSE;
     hr = IDirectDraw_SetCooperativeLevel(ddraw, window, DDSCL_EXCLUSIVE | DDSCL_FULLSCREEN);
     ok(SUCCEEDED(hr), "Failed to set cooperative level, hr %#x.\n", hr);
@@ -3099,30 +3253,26 @@ static void test_coop_level_activateapp(void)
     ok(SUCCEEDED(hr), "Failed to set cooperative level, hr %#x.\n", hr);
 
     /* Normal with window not active, then exclusive with the same window. */
-    SetActiveWindow(NULL);
+    SetForegroundWindow(GetDesktopWindow());
     activateapp_testdata.received = FALSE;
     hr = IDirectDraw_SetCooperativeLevel(ddraw, window, DDSCL_NORMAL);
     ok(SUCCEEDED(hr), "Failed to set cooperative level, hr %#x.\n", hr);
     ok(!activateapp_testdata.received, "Received WM_ACTIVATEAPP when setting DDSCL_NORMAL.\n");
     hr = IDirectDraw_SetCooperativeLevel(ddraw, window, DDSCL_EXCLUSIVE | DDSCL_FULLSCREEN);
     ok(SUCCEEDED(hr), "Failed to set cooperative level, hr %#x.\n", hr);
-    /* Except in the first SetCooperativeLevel call, Windows XP randomly does not send
-     * WM_ACTIVATEAPP. Windows 7 sends the message reliably. Mark the XP behavior broken. */
-    ok(activateapp_testdata.received || broken(!activateapp_testdata.received),
-            "Expected WM_ACTIVATEAPP, but did not receive it.\n");
+    ok(activateapp_testdata.received, "Expected WM_ACTIVATEAPP, but did not receive it.\n");
     hr = IDirectDraw_SetCooperativeLevel(ddraw, NULL, DDSCL_NORMAL);
     ok(SUCCEEDED(hr), "Failed to set cooperative level, hr %#x.\n", hr);
 
     /* Recursive set of DDSCL_EXCLUSIVE | DDSCL_FULLSCREEN. */
-    SetActiveWindow(NULL);
+    SetForegroundWindow(GetDesktopWindow());
     activateapp_testdata.received = FALSE;
     activateapp_testdata.ddraw = ddraw;
     activateapp_testdata.window = window;
     activateapp_testdata.coop_level = DDSCL_EXCLUSIVE | DDSCL_FULLSCREEN;
     hr = IDirectDraw_SetCooperativeLevel(ddraw, window, DDSCL_EXCLUSIVE | DDSCL_FULLSCREEN);
     ok(SUCCEEDED(hr), "Failed to set cooperative level, hr %#x.\n", hr);
-    ok(activateapp_testdata.received || broken(!activateapp_testdata.received),
-            "Expected WM_ACTIVATEAPP, but did not receive it.\n");
+    ok(activateapp_testdata.received, "Expected WM_ACTIVATEAPP, but did not receive it.\n");
     hr = IDirectDraw_SetCooperativeLevel(ddraw, NULL, DDSCL_NORMAL);
     ok(SUCCEEDED(hr), "Failed to set cooperative level, hr %#x.\n", hr);
 
@@ -3137,15 +3287,14 @@ static void test_coop_level_activateapp(void)
     ok(SUCCEEDED(hr), "Failed to set cooperative level, hr %#x.\n", hr);
 
     /* Setting DDSCL_NORMAL with recursive invocation. */
-    SetActiveWindow(NULL);
+    SetForegroundWindow(GetDesktopWindow());
     activateapp_testdata.received = FALSE;
     activateapp_testdata.ddraw = ddraw;
     activateapp_testdata.window = window;
     activateapp_testdata.coop_level = DDSCL_NORMAL;
     hr = IDirectDraw_SetCooperativeLevel(ddraw, window, DDSCL_EXCLUSIVE | DDSCL_FULLSCREEN);
     ok(SUCCEEDED(hr), "Failed to set cooperative level, hr %#x.\n", hr);
-    ok(activateapp_testdata.received || broken(!activateapp_testdata.received),
-            "Expected WM_ACTIVATEAPP, but did not receive it.\n");
+    ok(activateapp_testdata.received, "Expected WM_ACTIVATEAPP, but did not receive it.\n");
 
     /* DDraw is in exlusive mode now. */
     memset(&ddsd, 0, sizeof(ddsd));

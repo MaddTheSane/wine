@@ -1824,6 +1824,43 @@ static nsresult NSAPI nsHttpChannelInternal_SetLoadUnblocked(nsIHttpChannelInter
     return NS_ERROR_NOT_IMPLEMENTED;
 }
 
+static nsresult NSAPI nsHttpChannelInternal_GetResponseTimeoutEnabled(nsIHttpChannelInternal *iface,
+        cpp_bool *aResponseTimeoutEnabled)
+{
+    nsChannel *This = impl_from_nsIHttpChannelInternal(iface);
+    FIXME("(%p)->(%p)\n", This, aResponseTimeoutEnabled);
+    return NS_ERROR_NOT_IMPLEMENTED;
+}
+
+static nsresult NSAPI nsHttpChannelInternal_SetResponseTimeoutEnabled(nsIHttpChannelInternal *iface,
+        cpp_bool aResponseTimeoutEnabled)
+{
+    nsChannel *This = impl_from_nsIHttpChannelInternal(iface);
+    FIXME("(%p)->(%x)\n", This, aResponseTimeoutEnabled);
+    return NS_ERROR_NOT_IMPLEMENTED;
+}
+
+static nsresult NSAPI nsHttpChannelInternal_GetApiRedirectToURI(nsIHttpChannelInternal *iface, nsIURI **aApiRedirectToURI)
+{
+    nsChannel *This = impl_from_nsIHttpChannelInternal(iface);
+    FIXME("(%p)->(%p)\n", This, aApiRedirectToURI);
+    return NS_ERROR_NOT_IMPLEMENTED;
+}
+
+static nsresult NSAPI nsHttpChannelInternal_AddRedirect(nsIHttpChannelInternal *iface, nsIPrincipal *aPrincipal)
+{
+    nsChannel *This = impl_from_nsIHttpChannelInternal(iface);
+    FIXME("(%p)->(%p)\n", This, aPrincipal);
+    return NS_ERROR_NOT_IMPLEMENTED;
+}
+
+static nsresult NSAPI nsHttpChannelInternal_GetLastModifiedTime(nsIHttpChannelInternal *iface, PRTime *aLastModifiedTime)
+{
+    nsChannel *This = impl_from_nsIHttpChannelInternal(iface);
+    FIXME("(%p)->(%p)\n", This, aLastModifiedTime);
+    return NS_ERROR_NOT_IMPLEMENTED;
+}
+
 static const nsIHttpChannelInternalVtbl nsHttpChannelInternalVtbl = {
     nsHttpChannelInternal_QueryInterface,
     nsHttpChannelInternal_AddRef,
@@ -1851,7 +1888,12 @@ static const nsIHttpChannelInternalVtbl nsHttpChannelInternalVtbl = {
     nsHttpChannelInternal_GetLoadAsBlocking,
     nsHttpChannelInternal_SetLoadAsBlocking,
     nsHttpChannelInternal_GetLoadUnblocked,
-    nsHttpChannelInternal_SetLoadUnblocked
+    nsHttpChannelInternal_SetLoadUnblocked,
+    nsHttpChannelInternal_GetResponseTimeoutEnabled,
+    nsHttpChannelInternal_SetResponseTimeoutEnabled,
+    nsHttpChannelInternal_GetApiRedirectToURI,
+    nsHttpChannelInternal_AddRedirect,
+    nsHttpChannelInternal_GetLastModifiedTime
 };
 
 
@@ -2034,8 +2076,42 @@ static nsresult NSAPI nsURI_SetSpec(nsIFileURL *iface, const nsACString *aSpec)
 static nsresult NSAPI nsURI_GetPrePath(nsIFileURL *iface, nsACString *aPrePath)
 {
     nsWineURI *This = impl_from_nsIFileURL(iface);
-    FIXME("(%p)->(%p)\n", This, aPrePath);
-    return NS_ERROR_NOT_IMPLEMENTED;
+    IUriBuilder *uri_builder;
+    BSTR display_uri;
+    IUri *uri;
+    int len;
+    nsresult nsres;
+    HRESULT hres;
+
+    TRACE("(%p)->(%p)\n", This, aPrePath);
+
+    if(!ensure_uri(This))
+        return NS_ERROR_UNEXPECTED;
+
+    hres = CreateIUriBuilder(This->uri, 0, 0, &uri_builder);
+    if(FAILED(hres))
+        return NS_ERROR_FAILURE;
+
+    hres = IUriBuilder_RemoveProperties(uri_builder, Uri_HAS_PATH|Uri_HAS_QUERY|Uri_HAS_FRAGMENT);
+    if(SUCCEEDED(hres))
+        hres = IUriBuilder_CreateUriSimple(uri_builder, 0, 0, &uri);
+    IUriBuilder_Release(uri_builder);
+    if(FAILED(hres))
+        return NS_ERROR_FAILURE;
+
+    hres = IUri_GetDisplayUri(uri, &display_uri);
+    IUri_Release(uri);
+    if(FAILED(hres))
+        return NS_ERROR_FAILURE;
+
+    /* Remove trailing slash that may be appended as default path. */
+    len = SysStringLen(display_uri);
+    if(len && display_uri[len-1] == '/')
+        display_uri[len-1] = 0;
+
+    nsres = return_wstr_nsacstr(aPrePath, display_uri, -1);
+    SysFreeString(display_uri);
+    return nsres;
 }
 
 static nsresult NSAPI nsURI_GetScheme(nsIFileURL *iface, nsACString *aScheme)

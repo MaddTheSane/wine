@@ -96,18 +96,21 @@ extern HRESULT create_textformat(const WCHAR*,IDWriteFontCollection*,DWRITE_FONT
 extern HRESULT create_textlayout(const WCHAR*,UINT32,IDWriteTextFormat*,FLOAT,FLOAT,IDWriteTextLayout**) DECLSPEC_HIDDEN;
 extern HRESULT create_trimmingsign(IDWriteInlineObject**) DECLSPEC_HIDDEN;
 extern HRESULT create_typography(IDWriteTypography**) DECLSPEC_HIDDEN;
-extern HRESULT create_gdiinterop(IDWriteFactory*,IDWriteGdiInterop**) DECLSPEC_HIDDEN;
+extern HRESULT create_gdiinterop(IDWriteFactory2*,IDWriteGdiInterop**) DECLSPEC_HIDDEN;
 extern void    release_gdiinterop(IDWriteGdiInterop*) DECLSPEC_HIDDEN;
 extern HRESULT create_localizedstrings(IDWriteLocalizedStrings**) DECLSPEC_HIDDEN;
 extern HRESULT add_localizedstring(IDWriteLocalizedStrings*,const WCHAR*,const WCHAR*) DECLSPEC_HIDDEN;
 extern HRESULT clone_localizedstring(IDWriteLocalizedStrings *iface, IDWriteLocalizedStrings **strings) DECLSPEC_HIDDEN;
-extern HRESULT get_system_fontcollection(IDWriteFactory*,IDWriteFontCollection**) DECLSPEC_HIDDEN;
+extern HRESULT get_system_fontcollection(IDWriteFactory2*,IDWriteFontCollection**) DECLSPEC_HIDDEN;
 extern HRESULT get_textanalyzer(IDWriteTextAnalyzer**) DECLSPEC_HIDDEN;
 extern HRESULT create_font_file(IDWriteFontFileLoader *loader, const void *reference_key, UINT32 key_size, IDWriteFontFile **font_file) DECLSPEC_HIDDEN;
 extern HRESULT create_localfontfileloader(IDWriteLocalFontFileLoader** iface) DECLSPEC_HIDDEN;
 extern HRESULT create_fontface(DWRITE_FONT_FACE_TYPE,UINT32,IDWriteFontFile* const*,UINT32,DWRITE_FONT_SIMULATIONS,IDWriteFontFace2**) DECLSPEC_HIDDEN;
-extern HRESULT create_font_collection(IDWriteFactory*,IDWriteFontFileEnumerator*,BOOL,IDWriteFontCollection**) DECLSPEC_HIDDEN;
+extern HRESULT create_font_collection(IDWriteFactory2*,IDWriteFontFileEnumerator*,BOOL,IDWriteFontCollection**) DECLSPEC_HIDDEN;
 extern BOOL    is_system_collection(IDWriteFontCollection*) DECLSPEC_HIDDEN;
+extern HRESULT get_local_refkey(const WCHAR*,const FILETIME*,void**,UINT32*) DECLSPEC_HIDDEN;
+extern HRESULT get_filestream_from_file(IDWriteFontFile*,IDWriteFontFileStream**) DECLSPEC_HIDDEN;
+extern BOOL    is_face_type_supported(DWRITE_FONT_FACE_TYPE) DECLSPEC_HIDDEN;
 
 /* Opentype font table functions */
 extern HRESULT opentype_analyze_font(IDWriteFontFileStream*,UINT32*,DWRITE_FONT_FILE_TYPE*,DWRITE_FONT_FACE_TYPE*,BOOL*) DECLSPEC_HIDDEN;
@@ -115,11 +118,19 @@ extern HRESULT opentype_get_font_table(IDWriteFontFileStream*,DWRITE_FONT_FACE_T
 extern void opentype_cmap_get_glyphindex(void*,UINT32,UINT16*) DECLSPEC_HIDDEN;
 extern HRESULT opentype_cmap_get_unicode_ranges(void*,UINT32,DWRITE_UNICODE_RANGE*,UINT32*) DECLSPEC_HIDDEN;
 extern void opentype_get_font_properties(const void*,const void*,DWRITE_FONT_STRETCH*,DWRITE_FONT_WEIGHT*,DWRITE_FONT_STYLE*) DECLSPEC_HIDDEN;
-extern void opentype_get_font_metrics(const void*,const void*,const void*,DWRITE_FONT_METRICS1*) DECLSPEC_HIDDEN;
+extern void opentype_get_font_metrics(IDWriteFontFileStream*,DWRITE_FONT_FACE_TYPE,UINT32,DWRITE_FONT_METRICS1*) DECLSPEC_HIDDEN;
 extern HRESULT opentype_get_font_strings_from_id(const void*,DWRITE_INFORMATIONAL_STRING_ID,IDWriteLocalizedStrings**) DECLSPEC_HIDDEN;
 
+/* BiDi helpers */
 extern HRESULT bidi_computelevels(const WCHAR*,UINT32,UINT8,UINT8*,UINT8*) DECLSPEC_HIDDEN;
 extern WCHAR bidi_get_mirrored_char(WCHAR) DECLSPEC_HIDDEN;
+
+/* FreeType integration */
+extern BOOL init_freetype(void) DECLSPEC_HIDDEN;
+extern void release_freetype(void) DECLSPEC_HIDDEN;
+extern HRESULT freetype_get_design_glyph_metrics(IDWriteFontFace2*,UINT16,UINT16,DWRITE_GLYPH_METRICS*) DECLSPEC_HIDDEN;
+extern void freetype_notify_cacheremove(IDWriteFontFace2*) DECLSPEC_HIDDEN;
+extern BOOL freetype_is_monospaced(IDWriteFontFace2*) DECLSPEC_HIDDEN;
 
 /* Glyph shaping */
 enum SCRIPT_JUSTIFY

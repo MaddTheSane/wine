@@ -1390,8 +1390,8 @@ static const char *shader_arb_get_modifier(const struct wined3d_shader_instructi
 static void shader_hw_sample(const struct wined3d_shader_instruction *ins, DWORD sampler_idx,
         const char *dst_str, const char *coord_reg, WORD flags, const char *dsx, const char *dsy)
 {
+    enum wined3d_shader_resource_type resource_type = ins->ctx->reg_maps->resource_info[sampler_idx].type;
     struct wined3d_shader_buffer *buffer = ins->ctx->buffer;
-    DWORD sampler_type = ins->ctx->reg_maps->sampler_type[sampler_idx];
     const char *tex_type;
     BOOL np2_fixup = FALSE;
     struct shader_arb_ctx_priv *priv = ins->ctx->backend_data;
@@ -1404,12 +1404,13 @@ static void shader_hw_sample(const struct wined3d_shader_instruction *ins, DWORD
     /* D3D vertex shader sampler IDs are vertex samplers(0-3), not global d3d samplers */
     if(!pshader) sampler_idx += MAX_FRAGMENT_SAMPLERS;
 
-    switch(sampler_type) {
-        case WINED3DSTT_1D:
+    switch (resource_type)
+    {
+        case WINED3D_SHADER_RESOURCE_TEXTURE_1D:
             tex_type = "1D";
             break;
 
-        case WINED3DSTT_2D:
+        case WINED3D_SHADER_RESOURCE_TEXTURE_2D:
             shader = ins->ctx->shader;
             device = shader->device;
             gl_info = &device->adapter->gl_info;
@@ -1429,16 +1430,16 @@ static void shader_hw_sample(const struct wined3d_shader_instruction *ins, DWORD
             }
             break;
 
-        case WINED3DSTT_VOLUME:
+        case WINED3D_SHADER_RESOURCE_TEXTURE_3D:
             tex_type = "3D";
             break;
 
-        case WINED3DSTT_CUBE:
+        case WINED3D_SHADER_RESOURCE_TEXTURE_CUBE:
             tex_type = "CUBE";
             break;
 
         default:
-            ERR("Unexpected texture type %d\n", sampler_type);
+            ERR("Unexpected resource type %#x.\n", resource_type);
             tex_type = "";
     }
 
@@ -4376,7 +4377,7 @@ static struct arb_ps_compiled_shader *find_arb_pshader(struct wined3d_shader *sh
 
     shader_data->gl_shaders[shader_data->num_gl_shaders].args = *args;
 
-    pixelshader_update_samplers(shader, args->super.tex_types);
+    pixelshader_update_resource_types(shader, args->super.tex_types);
 
     if (!shader_buffer_init(&buffer))
     {
@@ -5279,6 +5280,7 @@ static const SHADER_HANDLER shader_arb_instruction_handler_table[WINED3DSIH_TABL
     /* WINED3DSIH_TEXREG2GB             */ pshader_hw_texreg2gb,
     /* WINED3DSIH_TEXREG2RGB            */ pshader_hw_texreg2rgb,
     /* WINED3DSIH_UDIV                  */ NULL,
+    /* WINED3DSIH_UGE                   */ NULL,
     /* WINED3DSIH_USHR                  */ NULL,
     /* WINED3DSIH_UTOF                  */ NULL,
     /* WINED3DSIH_XOR                   */ NULL,
@@ -6535,7 +6537,11 @@ static void fragment_prog_arbfp(struct wined3d_context *context, const struct wi
             state_arb_specularenable(context, state, STATE_RENDER(WINED3D_RS_SPECULARENABLE));
         }
         context->last_was_pshader = FALSE;
-    } else {
+    }
+    else if (!context->last_was_pshader)
+    {
+        if (device->shader_backend == &arb_program_shader_backend)
+            context->constant_update_mask |= WINED3D_SHADER_CONST_PS_F;
         context->last_was_pshader = TRUE;
     }
 

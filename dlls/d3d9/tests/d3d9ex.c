@@ -1374,6 +1374,23 @@ static void test_lost_device(void)
     hr = IDirect3DDevice9Ex_CheckDeviceState(device, NULL);
     ok(hr == S_PRESENT_OCCLUDED, "Got unexpected hr %#x.\n", hr);
 
+    ret = SetForegroundWindow(GetDesktopWindow());
+    ok(ret, "Failed to set foreground window.\n");
+    hr = IDirect3DDevice9Ex_Present(device, NULL, NULL, NULL, NULL);
+    ok(hr == S_PRESENT_OCCLUDED, "Got unexpected hr %#x.\n", hr);
+    hr = reset_device(device, &desc);
+    ok(hr == D3D_OK, "Got unexpected hr %#x.\n", hr);
+    hr = IDirect3DDevice9Ex_TestCooperativeLevel(device);
+    ok(hr == D3D_OK, "Got unexpected hr %#x.\n", hr);
+    hr = IDirect3DDevice9Ex_Present(device, NULL, NULL, NULL, NULL);
+    ok(hr == D3D_OK, "Got unexpected hr %#x.\n", hr);
+    hr = IDirect3DDevice9Ex_PresentEx(device, NULL, NULL, NULL, NULL, 0);
+    ok(hr == D3D_OK, "Got unexpected hr %#x.\n", hr);
+    hr = IDirect3DDevice9Ex_CheckDeviceState(device, window);
+    ok(hr == D3D_OK, "Got unexpected hr %#x.\n", hr);
+    hr = IDirect3DDevice9Ex_CheckDeviceState(device, NULL);
+    ok(hr == S_PRESENT_OCCLUDED, "Got unexpected hr %#x.\n", hr);
+
     refcount = IDirect3DDevice9Ex_Release(device);
     ok(!refcount, "Device has %u references left.\n", refcount);
 done:
@@ -1702,10 +1719,13 @@ struct message
 {
     UINT message;
     enum message_window window;
+    BOOL check_wparam;
+    WPARAM expect_wparam;
 };
 
 static const struct message *expect_messages;
 static HWND device_window, focus_window;
+static BOOL windowposchanged_received;
 
 struct wndproc_thread_param
 {
@@ -1743,8 +1763,22 @@ static LRESULT CALLBACK test_proc(HWND hwnd, UINT message, WPARAM wparam, LPARAM
         };
 
         if (hwnd == w && expect_messages->message == message)
+        {
+            if (expect_messages->check_wparam)
+                ok(wparam == expect_messages->expect_wparam,
+                        "Got unexpected wparam %lx for message %x, expected %lx.\n",
+                        wparam, message, expect_messages->expect_wparam);
+
             ++expect_messages;
+        }
     }
+
+    /* KDE randomly does something with the hidden window during the
+     * mode change that sometimes generates a WM_WINDOWPOSCHANGING
+     * message. A WM_WINDOWPOSCHANGED message is not generated, so
+     * just flag WM_WINDOWPOSCHANGED as bad. */
+    if (message == WM_WINDOWPOSCHANGED)
+        windowposchanged_received = TRUE;
 
     return DefWindowProcA(hwnd, message, wparam, lparam);
 }
@@ -1795,14 +1829,168 @@ static void test_wndproc(void)
     ULONG ref;
     DWORD res, tid;
     HWND tmp;
+    UINT i, adapter_mode_count;
+    HRESULT hr;
+    D3DDISPLAYMODE d3ddm;
+    DWORD d3d_width = 0, d3d_height = 0, user32_width = 0, user32_height = 0;
+    DEVMODEW devmode;
+    LONG change_ret;
+    BOOL ret;
+    IDirect3D9Ex *d3d9ex;
 
-    static const struct message messages[] =
+    static const struct message create_messages[] =
     {
-        {WM_WINDOWPOSCHANGING,  FOCUS_WINDOW},
-        {WM_ACTIVATE,           FOCUS_WINDOW},
-        {WM_SETFOCUS,           FOCUS_WINDOW},
-        {0,                     0},
+        {WM_WINDOWPOSCHANGING,  FOCUS_WINDOW,   FALSE,  0},
+        /* Do not test wparam here. If device creation succeeds,
+         * wparam is WA_ACTIVE. If device creation fails (testbot)
+         * wparam is set to WA_INACTIVE on some Windows versions. */
+        {WM_ACTIVATE,           FOCUS_WINDOW,   FALSE,  0},
+        {WM_SETFOCUS,           FOCUS_WINDOW,   FALSE,  0},
+        {0,                     0,              FALSE,  0},
     };
+    static const struct message focus_loss_messages[] =
+    {
+        /* WM_ACTIVATE (wparam = WA_INACTIVE) is sent on Windows. It is
+         * not reliable on X11 WMs. When the window focus follows the
+         * mouse pointer the message is not sent.
+         * {WM_ACTIVATE,           FOCUS_WINDOW,   TRUE,   WA_INACTIVE}, */
+        {WM_DISPLAYCHANGE,      DEVICE_WINDOW,  FALSE,  0},
+        /* WM_DISPLAYCHANGE is sent to the focus window too, but the order is
+         * not deterministic. */
+        {WM_WINDOWPOSCHANGING,  DEVICE_WINDOW,  FALSE,  0},
+        /* Windows sends WM_ACTIVATE to the device window, indicating that
+         * SW_SHOWMINIMIZED is used instead of SW_MINIMIZE. Yet afterwards
+         * the foreground and focus window are NULL. On Wine SW_SHOWMINIMIZED
+         * leaves the device window active, breaking re-activation in the
+         * lost device test.
+         * {WM_ACTIVATE,           DEVICE_WINDOW,  TRUE,   0x200000 | WA_ACTIVE}, */
+        {WM_WINDOWPOSCHANGED,   DEVICE_WINDOW,  FALSE,  0},
+        {WM_SIZE,               DEVICE_WINDOW,  TRUE,   SIZE_MINIMIZED},
+        {WM_ACTIVATEAPP,        FOCUS_WINDOW,   TRUE,   FALSE},
+        /* WM_ACTIVATEAPP is sent to the device window too, but the order is
+         * not deterministic. It may be sent after the focus window handling
+         * or before. */
+        {0,                     0,              FALSE,  0},
+    };
+    static const struct message focus_loss_messages_nowc[] =
+    {
+        /* WM_ACTIVATE (wparam = WA_INACTIVE) is sent on Windows. It is
+         * not reliable on X11 WMs. When the window focus follows the
+         * mouse pointer the message is not sent.
+         * {WM_ACTIVATE,           FOCUS_WINDOW,   TRUE,   WA_INACTIVE}, */
+        {WM_DISPLAYCHANGE,      DEVICE_WINDOW,  FALSE,  0},
+        {WM_ACTIVATEAPP,        FOCUS_WINDOW,   TRUE,   FALSE},
+        {0,                     0,              FALSE,  0},
+    };
+    static const struct message focus_loss_messages_hidden[] =
+    {
+        {WM_DISPLAYCHANGE,      DEVICE_WINDOW,  FALSE,  0},
+        {WM_ACTIVATEAPP,        FOCUS_WINDOW,   TRUE,   FALSE},
+        {0,                     0,              FALSE,  0},
+    };
+    static const struct message focus_loss_messages_filtered[] =
+    {
+        /* WM_ACTIVATE is delivered to the window proc because it is
+         * generated by SetForegroundWindow before the d3d routine
+         * starts it work. Don't check for it due to focus-follows-mouse
+         * WMs though. */
+        {WM_DISPLAYCHANGE,      FOCUS_WINDOW,   FALSE,  0},
+        {WM_ACTIVATEAPP,        FOCUS_WINDOW,   TRUE,   FALSE},
+        {0,                     0,              FALSE,  0},
+    };
+    static const struct message sc_restore_messages[] =
+    {
+        {WM_WINDOWPOSCHANGING,  FOCUS_WINDOW,   FALSE,  0},
+        {WM_WINDOWPOSCHANGED,   FOCUS_WINDOW,   FALSE,  0},
+        {WM_SIZE,               FOCUS_WINDOW,   TRUE,   SIZE_RESTORED},
+        {WM_SYSCOMMAND,         FOCUS_WINDOW,   TRUE,   SC_RESTORE},
+        {0,                     0,              FALSE,  0},
+    };
+    static const struct message sc_minimize_messages[] =
+    {
+        {WM_SYSCOMMAND,         FOCUS_WINDOW,   TRUE,   SC_MINIMIZE},
+        {WM_WINDOWPOSCHANGING,  FOCUS_WINDOW,   FALSE,  0},
+        {WM_WINDOWPOSCHANGED,   FOCUS_WINDOW,   FALSE,  0},
+        {WM_MOVE,               FOCUS_WINDOW,   FALSE,  0},
+        {WM_SIZE,               FOCUS_WINDOW,   TRUE,   SIZE_MINIMIZED},
+        {0,                     0,              FALSE,  0},
+    };
+    static const struct message sc_maximize_messages[] =
+    {
+        {WM_SYSCOMMAND,         FOCUS_WINDOW,   TRUE,   SC_MAXIMIZE},
+        {WM_WINDOWPOSCHANGING,  FOCUS_WINDOW,   FALSE,  0},
+        {WM_WINDOWPOSCHANGED,   FOCUS_WINDOW,   FALSE,  0},
+        {WM_MOVE,               FOCUS_WINDOW,   FALSE,  0},
+        /* WM_SIZE(SIZE_MAXIMIZED) is unreliable on native. */
+        {0,                     0,              FALSE,  0},
+    };
+    static const struct
+    {
+        DWORD create_flags;
+        const struct message *focus_loss_messages;
+        BOOL iconic;
+    }
+    tests[] =
+    {
+        {0,                               focus_loss_messages,          TRUE},
+        {CREATE_DEVICE_NOWINDOWCHANGES,   focus_loss_messages_nowc,     FALSE},
+    };
+
+    hr = pDirect3DCreate9Ex(D3D_SDK_VERSION, &d3d9ex);
+    if (FAILED(hr))
+    {
+        skip("Direct3D9Ex is not available (%#x)\n", hr);
+        return;
+    }
+
+    adapter_mode_count = IDirect3D9Ex_GetAdapterModeCount(d3d9ex, D3DADAPTER_DEFAULT, D3DFMT_X8R8G8B8);
+    for (i = 0; i < adapter_mode_count; ++i)
+    {
+        hr = IDirect3D9Ex_EnumAdapterModes(d3d9ex, D3DADAPTER_DEFAULT, D3DFMT_X8R8G8B8, i, &d3ddm);
+        ok(SUCCEEDED(hr), "Failed to enumerate display mode, hr %#x.\n", hr);
+
+        if (d3ddm.Width == registry_mode.dmPelsWidth && d3ddm.Height == registry_mode.dmPelsHeight)
+            continue;
+        /* The r200 driver on Windows XP enumerates modes like 320x200 and 320x240 but
+         * refuses to create a device at these sizes. */
+        if (d3ddm.Width < 640 || d3ddm.Height < 480)
+            continue;
+
+        if (!user32_width)
+        {
+            user32_width = d3ddm.Width;
+            user32_height = d3ddm.Height;
+            continue;
+        }
+
+        /* Make sure the d3d mode is smaller in width or height and at most
+         * equal in the other dimension than the mode passed to
+         * ChangeDisplaySettings. Otherwise Windows shrinks the window to
+         * the ChangeDisplaySettings parameters + 12. */
+        if (d3ddm.Width == user32_width && d3ddm.Height == user32_height)
+            continue;
+        if (d3ddm.Width <= user32_width && d3ddm.Height <= user32_height)
+        {
+            d3d_width = d3ddm.Width;
+            d3d_height = d3ddm.Height;
+            break;
+        }
+        if (user32_width <= d3ddm.Width && user32_height <= d3ddm.Height)
+        {
+            d3d_width = user32_width;
+            d3d_height = user32_height;
+            user32_width = d3ddm.Width;
+            user32_height = d3ddm.Height;
+            break;
+        }
+    }
+
+    if (!d3d_width)
+    {
+        skip("Could not find adequate modes, skipping mode tests.\n");
+        IDirect3D9Ex_Release(d3d9ex);
+        return;
+    }
 
     wc.lpfnWndProc = test_proc;
     wc.lpszClassName = "d3d9_test_wndproc_wc";
@@ -1813,121 +2001,319 @@ static void test_wndproc(void)
     thread_params.test_finished = CreateEventA(NULL, FALSE, FALSE, NULL);
     ok(!!thread_params.test_finished, "CreateEvent failed, last error %#x.\n", GetLastError());
 
-    focus_window = CreateWindowA("d3d9_test_wndproc_wc", "d3d9_test",
-            WS_MAXIMIZE | WS_VISIBLE | WS_CAPTION, 0, 0, registry_mode.dmPelsWidth,
-            registry_mode.dmPelsHeight, 0, 0, 0, 0);
-    device_window = CreateWindowA("d3d9_test_wndproc_wc", "d3d9_test",
-            WS_MAXIMIZE | WS_VISIBLE | WS_CAPTION, 0, 0, registry_mode.dmPelsWidth,
-            registry_mode.dmPelsHeight, 0, 0, 0, 0);
-    thread = CreateThread(NULL, 0, wndproc_thread, &thread_params, 0, &tid);
-    ok(!!thread, "Failed to create thread, last error %#x.\n", GetLastError());
+    memset(&devmode, 0, sizeof(devmode));
+    devmode.dmSize = sizeof(devmode);
 
-    res = WaitForSingleObject(thread_params.window_created, INFINITE);
-    ok(res == WAIT_OBJECT_0, "Wait failed (%#x), last error %#x.\n", res, GetLastError());
-
-    proc = GetWindowLongPtrA(device_window, GWLP_WNDPROC);
-    ok(proc == (LONG_PTR)test_proc, "Expected wndproc %#lx, got %#lx.\n",
-            (LONG_PTR)test_proc, proc);
-    proc = GetWindowLongPtrA(focus_window, GWLP_WNDPROC);
-    ok(proc == (LONG_PTR)test_proc, "Expected wndproc %#lx, got %#lx.\n",
-            (LONG_PTR)test_proc, proc);
-
-    trace("device_window %p, focus_window %p, dummy_window %p.\n",
-            device_window, focus_window, thread_params.dummy_window);
-
-    tmp = GetFocus();
-    ok(tmp == device_window, "Expected focus %p, got %p.\n", device_window, tmp);
-    if (thread_params.running_in_foreground)
+    for (i = 0; i < sizeof(tests) / sizeof(*tests); ++i)
     {
-        tmp = GetForegroundWindow();
-        ok(tmp == thread_params.dummy_window, "Expected foreground window %p, got %p.\n",
-                thread_params.dummy_window, tmp);
-    }
-    else
-        skip("Not running in foreground, skip foreground window test\n");
+        devmode.dmFields = DM_PELSWIDTH | DM_PELSHEIGHT;
+        devmode.dmPelsWidth = user32_width;
+        devmode.dmPelsHeight = user32_height;
+        change_ret = ChangeDisplaySettingsW(&devmode, CDS_FULLSCREEN);
+        ok(change_ret == DISP_CHANGE_SUCCESSFUL, "Failed to change display mode, ret %#x.\n", change_ret);
 
-    flush_events();
+        focus_window = CreateWindowA("d3d9_test_wndproc_wc", "d3d9_test",
+                WS_MAXIMIZE | WS_VISIBLE | WS_CAPTION, 0, 0, user32_width, user32_height, 0, 0, 0, 0);
+        device_window = CreateWindowA("d3d9_test_wndproc_wc", "d3d9_test",
+                WS_MAXIMIZE | WS_VISIBLE | WS_CAPTION, 0, 0, user32_width, user32_height, 0, 0, 0, 0);
+        thread = CreateThread(NULL, 0, wndproc_thread, &thread_params, 0, &tid);
+        ok(!!thread, "Failed to create thread, last error %#x.\n", GetLastError());
 
-    expect_messages = messages;
+        res = WaitForSingleObject(thread_params.window_created, INFINITE);
+        ok(res == WAIT_OBJECT_0, "Wait failed (%#x), last error %#x.\n", res, GetLastError());
 
-    device_desc.device_window = device_window;
-    device_desc.width = registry_mode.dmPelsWidth;
-    device_desc.height = registry_mode.dmPelsHeight;
-    device_desc.flags = CREATE_DEVICE_FULLSCREEN;
-    if (!(device = create_device(focus_window, &device_desc)))
-    {
-        skip("Failed to create a D3D device, skipping tests.\n");
-        goto done;
-    }
+        proc = GetWindowLongPtrA(device_window, GWLP_WNDPROC);
+        ok(proc == (LONG_PTR)test_proc, "Expected wndproc %#lx, got %#lx.\n",
+                (LONG_PTR)test_proc, proc);
+        proc = GetWindowLongPtrA(focus_window, GWLP_WNDPROC);
+        ok(proc == (LONG_PTR)test_proc, "Expected wndproc %#lx, got %#lx.\n",
+                (LONG_PTR)test_proc, proc);
 
-    ok(!expect_messages->message, "Expected message %#x for window %#x, but didn't receive it.\n",
-            expect_messages->message, expect_messages->window);
-    expect_messages = NULL;
+        trace("device_window %p, focus_window %p, dummy_window %p.\n",
+                device_window, focus_window, thread_params.dummy_window);
 
-    if (0) /* Disabled until we can make this work in a reliable way on Wine. */
-    {
         tmp = GetFocus();
-        ok(tmp == focus_window, "Expected focus %p, got %p.\n", focus_window, tmp);
-        tmp = GetForegroundWindow();
-        ok(tmp == focus_window, "Expected foreground window %p, got %p.\n", focus_window, tmp);
-    }
-    SetForegroundWindow(focus_window);
-    flush_events();
+        ok(tmp == device_window, "Expected focus %p, got %p.\n", device_window, tmp);
+        if (thread_params.running_in_foreground)
+        {
+            tmp = GetForegroundWindow();
+            ok(tmp == thread_params.dummy_window, "Expected foreground window %p, got %p.\n",
+                    thread_params.dummy_window, tmp);
+        }
+        else
+            skip("Not running in foreground, skip foreground window test\n");
 
-    filter_messages = focus_window;
+        flush_events();
 
-    proc = GetWindowLongPtrA(device_window, GWLP_WNDPROC);
-    ok(proc == (LONG_PTR)test_proc, "Expected wndproc %#lx, got %#lx.\n",
-            (LONG_PTR)test_proc, proc);
+        expect_messages = create_messages;
 
-    proc = GetWindowLongPtrA(focus_window, GWLP_WNDPROC);
-    ok(proc != (LONG_PTR)test_proc, "Expected wndproc != %#lx.\n", (LONG_PTR)test_proc);
+        device_desc.device_window = device_window;
+        device_desc.width = d3d_width;
+        device_desc.height = d3d_height;
+        device_desc.flags = CREATE_DEVICE_FULLSCREEN | tests[i].create_flags;
+        if (!(device = create_device(focus_window, &device_desc)))
+        {
+            skip("Failed to create a D3D device, skipping tests.\n");
+            goto done;
+        }
 
-    ref = IDirect3DDevice9Ex_Release(device);
-    ok(ref == 0, "The device was not properly freed: refcount %u.\n", ref);
+        ok(!expect_messages->message, "Expected message %#x for window %#x, but didn't receive it, i=%u.\n",
+                expect_messages->message, expect_messages->window, i);
+        expect_messages = NULL;
 
-    proc = GetWindowLongPtrA(focus_window, GWLP_WNDPROC);
-    ok(proc == (LONG_PTR)test_proc, "Expected wndproc %#lx, got %#lx.\n",
-            (LONG_PTR)test_proc, proc);
+        if (0) /* Disabled until we can make this work in a reliable way on Wine. */
+        {
+            tmp = GetFocus();
+            ok(tmp == focus_window, "Expected focus %p, got %p.\n", focus_window, tmp);
+            tmp = GetForegroundWindow();
+            ok(tmp == focus_window, "Expected foreground window %p, got %p.\n", focus_window, tmp);
+        }
+        SetForegroundWindow(focus_window);
+        flush_events();
 
-    device_desc.device_window = focus_window;
-    if (!(device = create_device(focus_window, &device_desc)))
-    {
-        skip("Failed to create a D3D device, skipping tests.\n");
-        goto done;
-    }
+        proc = GetWindowLongPtrA(device_window, GWLP_WNDPROC);
+        ok(proc == (LONG_PTR)test_proc, "Expected wndproc %#lx, got %#lx.\n",
+                (LONG_PTR)test_proc, proc);
 
-    ref = IDirect3DDevice9Ex_Release(device);
-    ok(ref == 0, "The device was not properly freed: refcount %u.\n", ref);
+        proc = GetWindowLongPtrA(focus_window, GWLP_WNDPROC);
+        ok(proc != (LONG_PTR)test_proc, "Expected wndproc != %#lx.\n",
+                (LONG_PTR)test_proc);
 
-    device_desc.device_window = device_window;
-    if (!(device = create_device(focus_window, &device_desc)))
-    {
-        skip("Failed to create a D3D device, skipping tests.\n");
-        goto done;
-    }
+        /* Change the mode while the device is in use and then drop focus. */
+        devmode.dmFields = DM_PELSWIDTH | DM_PELSHEIGHT;
+        devmode.dmPelsWidth = user32_width;
+        devmode.dmPelsHeight = user32_height;
+        change_ret = ChangeDisplaySettingsW(&devmode, CDS_FULLSCREEN);
+        ok(change_ret == DISP_CHANGE_SUCCESSFUL, "Failed to change display mode, ret %#x, i=%u.\n", change_ret, i);
 
-    proc = SetWindowLongPtrA(focus_window, GWLP_WNDPROC, (LONG_PTR)DefWindowProcA);
-    ok(proc != (LONG_PTR)test_proc, "Expected wndproc != %#lx.\n", (LONG_PTR)test_proc);
+        /* Native needs a present call to pick up the mode change. */
+        hr = IDirect3DDevice9Ex_Present(device, NULL, NULL, NULL, NULL);
+        todo_wine ok(hr == S_PRESENT_MODE_CHANGED, "Got unexpected hr %#x, i=%u.\n", hr, i);
+        hr = IDirect3DDevice9Ex_CheckDeviceState(device, device_window);
+        todo_wine ok(hr == S_PRESENT_MODE_CHANGED, "Got unexpected hr %#x, i=%u.\n", hr, i);
 
-    ref = IDirect3DDevice9Ex_Release(device);
-    ok(ref == 0, "The device was not properly freed: refcount %u.\n", ref);
+        expect_messages = tests[i].focus_loss_messages;
+        /* SetForegroundWindow is a poor replacement for the user pressing alt-tab or
+         * manually changing the focus. It generates the same messages, but the task
+         * bar still shows the previous foreground window as active, and the window has
+         * an inactive titlebar if reactivated with SetForegroundWindow. Reactivating
+         * the device is difficult, see below. */
+        SetForegroundWindow(GetDesktopWindow());
+        ok(!expect_messages->message, "Expected message %#x for window %#x, but didn't receive it, i=%u.\n",
+                expect_messages->message, expect_messages->window, i);
+        expect_messages = NULL;
+        tmp = GetFocus();
+        ok(tmp != device_window, "The device window is active, i=%u.\n", i);
+        ok(tmp != focus_window, "The focus window is active, i=%u.\n", i);
 
-    proc = GetWindowLongPtrA(focus_window, GWLP_WNDPROC);
-    ok(proc == (LONG_PTR)DefWindowProcA, "Expected wndproc %#lx, got %#lx.\n",
-            (LONG_PTR)DefWindowProcA, proc);
+        hr = IDirect3DDevice9Ex_CheckDeviceState(device, device_window);
+        ok(hr == S_PRESENT_OCCLUDED, "Got unexpected hr %#x, i=%u.\n", hr, i);
+
+        ret = EnumDisplaySettingsW(NULL, ENUM_CURRENT_SETTINGS, &devmode);
+        ok(ret, "Failed to get display mode.\n");
+        ok(devmode.dmPelsWidth == registry_mode.dmPelsWidth
+                && devmode.dmPelsHeight == registry_mode.dmPelsHeight, "Got unexpect screen size %ux%u.\n",
+                devmode.dmPelsWidth, devmode.dmPelsHeight);
+
+        /* In d3d9ex the device and focus windows have to be minimized and restored,
+         * otherwise native does not notice that focus has been restored. This is
+         * independent of D3DCREATE_NOWINDOWCHANGES. */
+        ShowWindow(device_window, SW_MINIMIZE);
+        ShowWindow(device_window, SW_RESTORE);
+
+        /* Reactivation messages like in d3d8/9 are random in native d3d9ex.
+         * Sometimes they are sent, sometimes they are not (tested on Vista
+         * and Windows 7). The minimizing and restoring of the device window
+         * may have something to do with this, but if the messages are sent,
+         * they are generated by the 3 calls below. */
+        ShowWindow(focus_window, SW_MINIMIZE);
+        ShowWindow(focus_window, SW_RESTORE);
+        /* Set focus twice to make KDE and fvwm in focus-follows-mouse mode happy. */
+        SetForegroundWindow(focus_window);
+        flush_events();
+        SetForegroundWindow(focus_window);
+        flush_events();
+
+        /* Calling Reset is not necessary in d3d9ex. */
+        hr = IDirect3DDevice9Ex_CheckDeviceState(device, device_window);
+        ok(hr == S_OK, "Got unexpected hr %#x, i=%u.\n", hr, i);
+
+        ret = EnumDisplaySettingsW(NULL, ENUM_CURRENT_SETTINGS, &devmode);
+        ok(ret, "Failed to get display mode.\n");
+        ok(devmode.dmPelsWidth == d3d_width
+                && devmode.dmPelsHeight == d3d_height, "Got unexpect screen size %ux%u.\n",
+                devmode.dmPelsWidth, devmode.dmPelsHeight);
+
+        hr = reset_device(device, &device_desc);
+        ok(SUCCEEDED(hr), "Failed to reset device, hr %#x.\n", hr);
+
+        ShowWindow(device_window, SW_HIDE);
+        flush_events();
+
+        expect_messages = focus_loss_messages_hidden;
+        windowposchanged_received = FALSE;
+        SetForegroundWindow(GetDesktopWindow());
+        ok(!expect_messages->message, "Expected message %#x for window %#x, but didn't receive it, i=%u.\n",
+                expect_messages->message, expect_messages->window, i);
+        ok(!windowposchanged_received, "Received WM_WINDOWPOSCHANGED but did not expect it, i=%u.\n", i);
+        expect_messages = NULL;
+        flush_events();
+
+        ret = EnumDisplaySettingsW(NULL, ENUM_CURRENT_SETTINGS, &devmode);
+        ok(ret, "Failed to get display mode.\n");
+        ok(devmode.dmPelsWidth == registry_mode.dmPelsWidth, "Got unexpect width %u.\n", devmode.dmPelsWidth);
+        ok(devmode.dmPelsHeight == registry_mode.dmPelsHeight, "Got unexpect height %u.\n", devmode.dmPelsHeight);
+
+        /* SW_SHOWMINNOACTIVE is needed to make FVWM happy. SW_SHOWNOACTIVATE is needed to make windows
+         * send SIZE_RESTORED after ShowWindow(SW_SHOWMINNOACTIVE). */
+        ShowWindow(focus_window, SW_SHOWNOACTIVATE);
+        ShowWindow(focus_window, SW_SHOWMINNOACTIVE);
+        flush_events();
+
+        expect_messages = sc_restore_messages;
+        SendMessageA(focus_window, WM_SYSCOMMAND, SC_RESTORE, 0);
+        todo_wine ok(!expect_messages->message, "Expected message %#x for window %#x, but didn't receive it, i=%u.\n",
+                expect_messages->message, expect_messages->window, i);
+        expect_messages = NULL;
+        flush_events();
+
+        expect_messages = sc_minimize_messages;
+        SendMessageA(focus_window, WM_SYSCOMMAND, SC_MINIMIZE, 0);
+        ok(!expect_messages->message, "Expected message %#x for window %#x, but didn't receive it, i=%u.\n",
+                expect_messages->message, expect_messages->window, i);
+        expect_messages = NULL;
+        flush_events();
+
+        expect_messages = sc_maximize_messages;
+        SendMessageA(focus_window, WM_SYSCOMMAND, SC_MAXIMIZE, 0);
+        ok(!expect_messages->message, "Expected message %#x for window %#x, but didn't receive it, i=%u.\n",
+                expect_messages->message, expect_messages->window, i);
+        expect_messages = NULL;
+        flush_events();
+
+        SetForegroundWindow(GetDesktopWindow());
+        ShowWindow(device_window, SW_MINIMIZE);
+        ShowWindow(device_window, SW_RESTORE);
+        ShowWindow(focus_window, SW_MINIMIZE);
+        ShowWindow(focus_window, SW_RESTORE);
+        SetForegroundWindow(focus_window);
+        flush_events();
+
+        filter_messages = focus_window;
+        ref = IDirect3DDevice9Ex_Release(device);
+        ok(ref == 0, "The device was not properly freed: refcount %u, i=%u.\n", ref, i);
+
+        /* Fix up the mode until Wine's device release behavior is fixed. */
+        change_ret = ChangeDisplaySettingsW(NULL, CDS_FULLSCREEN);
+        ok(change_ret == DISP_CHANGE_SUCCESSFUL, "Failed to change display mode, ret %#x.\n", change_ret);
+
+        proc = GetWindowLongPtrA(focus_window, GWLP_WNDPROC);
+        ok(proc == (LONG_PTR)test_proc, "Expected wndproc %#lx, got %#lx, i=%u.\n",
+                (LONG_PTR)test_proc, proc, i);
+
+        /* Hide the device window. It prevents WM_ACTIVATEAPP messages from being sent
+         * on native in the test below. It isn't needed anyways. Creating the third
+         * device will show it again. */
+        filter_messages = NULL;
+        ShowWindow(device_window, SW_HIDE);
+        /* Remove the maximized state from the SYSCOMMAND test while we're not
+         * interfering with a device. */
+        ShowWindow(focus_window, SW_SHOWNORMAL);
+        filter_messages = focus_window;
+
+        device_desc.device_window = focus_window;
+        if (!(device = create_device(focus_window, &device_desc)))
+        {
+            skip("Failed to create a D3D device, skipping tests.\n");
+            goto done;
+        }
+        filter_messages = NULL;
+        SetForegroundWindow(focus_window); /* For KDE. */
+        flush_events();
+
+        expect_messages = focus_loss_messages_filtered;
+        windowposchanged_received = FALSE;
+        SetForegroundWindow(GetDesktopWindow());
+        ok(!expect_messages->message, "Expected message %#x for window %#x, but didn't receive it, i=%u.\n",
+                expect_messages->message, expect_messages->window, i);
+        ok(!windowposchanged_received, "Received WM_WINDOWPOSCHANGED but did not expect it, i=%u.\n", i);
+        expect_messages = NULL;
+
+        /* The window is iconic even though no message was sent. */
+        ok(!IsIconic(focus_window) == !tests[i].iconic,
+                "Expected IsIconic %u, got %u, i=%u.\n", tests[i].iconic, IsIconic(focus_window), i);
+
+        ShowWindow(focus_window, SW_SHOWNOACTIVATE);
+        ShowWindow(focus_window, SW_SHOWMINNOACTIVE);
+        flush_events();
+
+        expect_messages = sc_restore_messages;
+        SendMessageA(focus_window, WM_SYSCOMMAND, SC_RESTORE, 0);
+        todo_wine ok(!expect_messages->message, "Expected message %#x for window %#x, but didn't receive it, i=%u.\n",
+                expect_messages->message, expect_messages->window, i);
+        expect_messages = NULL;
+        flush_events();
+
+        /* For FVWM. */
+        ShowWindow(focus_window, SW_RESTORE);
+        flush_events();
+
+        expect_messages = sc_minimize_messages;
+        SendMessageA(focus_window, WM_SYSCOMMAND, SC_MINIMIZE, 0);
+        ok(!expect_messages->message, "Expected message %#x for window %#x, but didn't receive it, i=%u.\n",
+                expect_messages->message, expect_messages->window, i);
+        expect_messages = NULL;
+        flush_events();
+
+        expect_messages = sc_maximize_messages;
+        SendMessageA(focus_window, WM_SYSCOMMAND, SC_MAXIMIZE, 0);
+        ok(!expect_messages->message, "Expected message %#x for window %#x, but didn't receive it, i=%u.\n",
+                expect_messages->message, expect_messages->window, i);
+        expect_messages = NULL;
+        flush_events();
+
+        /* This test can't activate, drop focus and restore focus like in plain d3d9 because d3d9ex
+         * immediately restores the device on activation. There are plenty of WM_WINDOWPOSCHANGED
+         * messages that are generated by ShowWindow, so testing for their absence is pointless. */
+        ShowWindow(focus_window, SW_MINIMIZE);
+        ShowWindow(focus_window, SW_RESTORE);
+        SetForegroundWindow(focus_window);
+        flush_events();
+
+        filter_messages = focus_window;
+        ref = IDirect3DDevice9Ex_Release(device);
+        ok(ref == 0, "The device was not properly freed: refcount %u, i=%u.\n", ref, i);
+
+        device_desc.device_window = device_window;
+        if (!(device = create_device(focus_window, &device_desc)))
+        {
+            skip("Failed to create a D3D device, skipping tests.\n");
+            goto done;
+        }
+
+        proc = SetWindowLongPtrA(focus_window, GWLP_WNDPROC, (LONG_PTR)DefWindowProcA);
+        ok(proc != (LONG_PTR)test_proc, "Expected wndproc != %#lx.\n",
+                (LONG_PTR)test_proc);
+
+        ref = IDirect3DDevice9Ex_Release(device);
+        ok(ref == 0, "The device was not properly freed: refcount %u.\n", ref);
+
+        proc = GetWindowLongPtrA(focus_window, GWLP_WNDPROC);
+        ok(proc == (LONG_PTR)DefWindowProcA, "Expected wndproc %#lx, got %#lx.\n",
+                (LONG_PTR)DefWindowProcA, proc);
 
 done:
-    filter_messages = NULL;
+        filter_messages = NULL;
+        DestroyWindow(device_window);
+        DestroyWindow(focus_window);
+        SetEvent(thread_params.test_finished);
+        WaitForSingleObject(thread, INFINITE);
+        CloseHandle(thread);
+    }
 
-    SetEvent(thread_params.test_finished);
-    WaitForSingleObject(thread, INFINITE);
     CloseHandle(thread_params.test_finished);
     CloseHandle(thread_params.window_created);
-    CloseHandle(thread);
 
-    DestroyWindow(device_window);
-    DestroyWindow(focus_window);
     UnregisterClassA("d3d9_test_wndproc_wc", GetModuleHandleA(NULL));
 }
 
@@ -2135,24 +2521,27 @@ done:
 static void test_window_style(void)
 {
     RECT focus_rect, device_rect, fullscreen_rect, r, r2;
-    LONG device_style, device_exstyle;
+    LONG device_style, device_exstyle, expected_style;
     LONG focus_style, focus_exstyle;
     struct device_desc device_desc;
     LONG style;
     IDirect3DDevice9Ex *device;
     HRESULT hr;
     ULONG ref;
+    BOOL ret;
     static const struct
     {
         LONG style_flags;
         DWORD device_flags;
+        LONG focus_loss_style;
+        LONG create2_style, create2_exstyle;
     }
     tests[] =
     {
-        {0,             0},
-        {WS_VISIBLE,    0},
-        {0,             CREATE_DEVICE_NOWINDOWCHANGES},
-        {WS_VISIBLE,    CREATE_DEVICE_NOWINDOWCHANGES},
+        {0,             0,                              0,              WS_VISIBLE, WS_EX_TOPMOST},
+        {WS_VISIBLE,    0,                              WS_MINIMIZE,    WS_VISIBLE, WS_EX_TOPMOST},
+        {0,             CREATE_DEVICE_NOWINDOWCHANGES,  0,              0,          0},
+        {WS_VISIBLE,    CREATE_DEVICE_NOWINDOWCHANGES,  0,              0,          0},
     };
     unsigned int i;
 
@@ -2226,6 +2615,78 @@ static void test_window_style(void)
         else
             todo_wine ok(style == device_style, "Expected device window style %#x, got %#x, i=%u.\n",
                     device_style, style, i);
+        style = GetWindowLongA(device_window, GWL_EXSTYLE);
+        todo_wine ok(style == device_exstyle, "Expected device window extended style %#x, got %#x, i=%u.\n",
+                device_exstyle, style, i);
+
+        style = GetWindowLongA(focus_window, GWL_STYLE);
+        ok(style == focus_style, "Expected focus window style %#x, got %#x, i=%u.\n",
+                focus_style, style, i);
+        style = GetWindowLongA(focus_window, GWL_EXSTYLE);
+        ok(style == focus_exstyle, "Expected focus window extended style %#x, got %#x, i=%u.\n",
+                focus_exstyle, style, i);
+
+        ref = IDirect3DDevice9Ex_Release(device);
+        ok(ref == 0, "The device was not properly freed: refcount %u.\n", ref);
+
+        style = GetWindowLongA(device_window, GWL_STYLE);
+        if (device_style & WS_VISIBLE)
+            ok(style == device_style, "Expected device window style %#x, got %#x, i=%u.\n",
+                device_style, style, i);
+        else
+            todo_wine ok(style == device_style, "Expected device window style %#x, got %#x, i=%u.\n",
+                    device_style, style, i);
+        style = GetWindowLongA(device_window, GWL_EXSTYLE);
+        todo_wine ok(style == device_exstyle, "Expected device window extended style %#x, got %#x, i=%u.\n",
+                device_exstyle, style, i);
+
+        style = GetWindowLongA(focus_window, GWL_STYLE);
+        ok(style == focus_style, "Expected focus window style %#x, got %#x, i=%u.\n",
+                focus_style, style, i);
+        style = GetWindowLongA(focus_window, GWL_EXSTYLE);
+        ok(style == focus_exstyle, "Expected focus window extended style %#x, got %#x, i=%u.\n",
+                focus_exstyle, style, i);
+
+        /* The second time a device is created on the window the window becomes visible and
+         * topmost if D3DCREATE_NOWINDOWCHANGES is not set. */
+        device_desc.flags = CREATE_DEVICE_FULLSCREEN | tests[i].device_flags;
+        device = create_device(focus_window, &device_desc);
+        ok(!!device, "Failed to create a D3D device.\n");
+        style = GetWindowLongA(device_window, GWL_STYLE);
+        expected_style = device_style | tests[i].create2_style;
+        todo_wine ok(style == expected_style, "Expected device window style %#x, got %#x, i=%u.\n",
+                expected_style, style, i);
+        expected_style = device_exstyle | tests[i].create2_exstyle;
+        style = GetWindowLongA(device_window, GWL_EXSTYLE);
+        todo_wine ok(style == expected_style, "Expected device window extended style %#x, got %#x, i=%u.\n",
+                expected_style, style, i);
+
+        style = GetWindowLongA(focus_window, GWL_STYLE);
+        ok(style == focus_style, "Expected focus window style %#x, got %#x, i=%u.\n",
+                focus_style, style, i);
+        style = GetWindowLongA(focus_window, GWL_EXSTYLE);
+        ok(style == focus_exstyle, "Expected focus window extended style %#x, got %#x, i=%u.\n",
+                focus_exstyle, style, i);
+        ref = IDirect3DDevice9Ex_Release(device);
+        ok(ref == 0, "The device was not properly freed: refcount %u.\n", ref);
+
+        DestroyWindow(device_window);
+        DestroyWindow(focus_window);
+        focus_window = CreateWindowA("d3d9_test_wc", "d3d9_test", WS_OVERLAPPEDWINDOW | tests[i].style_flags,
+                0, 0, registry_mode.dmPelsWidth / 2, registry_mode.dmPelsHeight / 2, 0, 0, 0, 0);
+        device_window = CreateWindowA("d3d9_test_wc", "d3d9_test", WS_OVERLAPPEDWINDOW | tests[i].style_flags,
+                0, 0, registry_mode.dmPelsWidth / 2, registry_mode.dmPelsHeight / 2, 0, 0, 0, 0);
+
+        device_desc.device_window = device_window;
+        device = create_device(focus_window, &device_desc);
+        ok(!!device, "Failed to create a D3D device.\n");
+        ret = SetForegroundWindow(GetDesktopWindow());
+        ok(ret, "Failed to set foreground window.\n");
+
+        style = GetWindowLongA(device_window, GWL_STYLE);
+        expected_style = device_style | tests[i].focus_loss_style;
+        todo_wine ok(style == expected_style, "Expected device window style %#x, got %#x, i=%u.\n",
+                expected_style, style, i);
         style = GetWindowLongA(device_window, GWL_EXSTYLE);
         todo_wine ok(style == device_exstyle, "Expected device window extended style %#x, got %#x, i=%u.\n",
                 device_exstyle, style, i);

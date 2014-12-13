@@ -283,13 +283,18 @@ struct wined3d_settings
 
 extern struct wined3d_settings wined3d_settings DECLSPEC_HIDDEN;
 
-enum wined3d_sampler_texture_type
+enum wined3d_shader_resource_type
 {
-    WINED3DSTT_UNKNOWN = 0,
-    WINED3DSTT_1D = 1,
-    WINED3DSTT_2D = 2,
-    WINED3DSTT_CUBE = 3,
-    WINED3DSTT_VOLUME = 4,
+    WINED3D_SHADER_RESOURCE_NONE,
+    WINED3D_SHADER_RESOURCE_BUFFER,
+    WINED3D_SHADER_RESOURCE_TEXTURE_1D,
+    WINED3D_SHADER_RESOURCE_TEXTURE_2D,
+    WINED3D_SHADER_RESOURCE_TEXTURE_2DMS,
+    WINED3D_SHADER_RESOURCE_TEXTURE_3D,
+    WINED3D_SHADER_RESOURCE_TEXTURE_CUBE,
+    WINED3D_SHADER_RESOURCE_TEXTURE_1DARRAY,
+    WINED3D_SHADER_RESOURCE_TEXTURE_2DARRAY,
+    WINED3D_SHADER_RESOURCE_TEXTURE_2DMSARRAY,
 };
 
 #define WINED3D_SHADER_CONST_VS_F           0x00000001
@@ -342,6 +347,8 @@ enum wined3d_data_type
     WINED3D_DATA_RESOURCE,
     WINED3D_DATA_SAMPLER,
     WINED3D_DATA_UINT,
+    WINED3D_DATA_UNORM,
+    WINED3D_DATA_SNORM,
 };
 
 enum wined3d_immconst_type
@@ -547,6 +554,7 @@ enum WINED3D_SHADER_INSTRUCTION_HANDLER
     WINED3DSIH_TEXREG2GB,
     WINED3DSIH_TEXREG2RGB,
     WINED3DSIH_UDIV,
+    WINED3DSIH_UGE,
     WINED3DSIH_USHR,
     WINED3DSIH_UTOF,
     WINED3DSIH_XOR,
@@ -568,6 +576,12 @@ struct wined3d_shader_version
     BYTE minor;
 };
 
+struct wined3d_shader_resource_info
+{
+    enum wined3d_shader_resource_type type;
+    enum wined3d_data_type data_type;
+};
+
 #define WINED3D_SHADER_VERSION(major, minor) (((major) << 8) | (minor))
 
 struct wined3d_shader_reg_maps
@@ -587,7 +601,7 @@ struct wined3d_shader_reg_maps
     WORD local_bool_consts;                 /* MAX_CONST_B, 16 */
     UINT cb_sizes[WINED3D_MAX_CBS];
 
-    enum wined3d_sampler_texture_type sampler_type[max(MAX_FRAGMENT_SAMPLERS, MAX_VERTEX_SAMPLERS)];
+    struct wined3d_shader_resource_info resource_info[max(MAX_FRAGMENT_SAMPLERS, MAX_VERTEX_SAMPLERS)];
     BYTE bumpmat;                           /* MAX_TEXTURES, 8 */
     BYTE luminanceparams;                   /* MAX_TEXTURES, 8 */
 
@@ -672,7 +686,8 @@ struct wined3d_shader_semantic
 {
     enum wined3d_decl_usage usage;
     UINT usage_idx;
-    enum wined3d_sampler_texture_type sampler_type;
+    enum wined3d_shader_resource_type resource_type;
+    enum wined3d_data_type resource_data_type;
     struct wined3d_shader_dst_param reg;
 };
 
@@ -1523,6 +1538,7 @@ enum wined3d_pci_device
     CARD_NVIDIA_GEFORCE_GTX770      = 0x1184,
     CARD_NVIDIA_GEFORCE_GTX780      = 0x1004,
     CARD_NVIDIA_GEFORCE_GTX780TI    = 0x100a,
+    CARD_NVIDIA_GEFORCE_GTX970      = 0x13c2,
 
     CARD_VMWARE_SVGA3D              = 0x0405,
 
@@ -2661,6 +2677,7 @@ struct wined3d_shader_resource_view
 {
     LONG refcount;
 
+    struct wined3d_resource *resource;
     void *parent;
     const struct wined3d_parent_ops *parent_ops;
 };
@@ -2682,9 +2699,9 @@ struct wined3d_swapchain
     struct wined3d_texture **back_buffers;
     struct wined3d_texture *front_buffer;
     struct wined3d_swapchain_desc desc;
-    struct wined3d_display_mode original_mode;
+    struct wined3d_display_mode original_mode, d3d_mode;
     struct wined3d_gamma_ramp orig_gamma;
-    BOOL render_to_fbo;
+    BOOL render_to_fbo, reapply_mode;
     const struct wined3d_format *ds_format;
     struct wined3d_palette *palette;
 
@@ -2702,6 +2719,7 @@ struct wined3d_swapchain
 
 void x11_copy_to_screen(const struct wined3d_swapchain *swapchain, const RECT *rect) DECLSPEC_HIDDEN;
 
+void wined3d_swapchain_activate(struct wined3d_swapchain *swapchain, BOOL activate) DECLSPEC_HIDDEN;
 struct wined3d_context *swapchain_get_context(struct wined3d_swapchain *swapchain) DECLSPEC_HIDDEN;
 void swapchain_destroy_contexts(struct wined3d_swapchain *swapchain) DECLSPEC_HIDDEN;
 HDC swapchain_get_backup_dc(struct wined3d_swapchain *swapchain) DECLSPEC_HIDDEN;
@@ -2806,7 +2824,6 @@ GLenum gl_primitive_type_from_d3d(enum wined3d_primitive_type primitive_type) DE
 /* Math utils */
 void multiply_matrix(struct wined3d_matrix *dest, const struct wined3d_matrix *src1,
         const struct wined3d_matrix *src2) DECLSPEC_HIDDEN;
-UINT wined3d_log2i(UINT32 x) DECLSPEC_HIDDEN;
 unsigned int count_bits(unsigned int mask) DECLSPEC_HIDDEN;
 
 void wined3d_release_dc(HWND window, HDC dc) DECLSPEC_HIDDEN;
@@ -2906,7 +2923,7 @@ struct wined3d_shader
     } u;
 };
 
-void pixelshader_update_samplers(struct wined3d_shader *shader, WORD tex_types) DECLSPEC_HIDDEN;
+void pixelshader_update_resource_types(struct wined3d_shader *shader, WORD tex_types) DECLSPEC_HIDDEN;
 void find_ps_compile_args(const struct wined3d_state *state, const struct wined3d_shader *shader,
         BOOL position_transformed, struct ps_compile_args *args,
         const struct wined3d_gl_info *gl_info) DECLSPEC_HIDDEN;

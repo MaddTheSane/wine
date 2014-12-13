@@ -954,7 +954,7 @@ static void test_request_parameter_defaults(void)
     ok(req != NULL, "failed to open a request %u\n", GetLastError());
 
     ret = WinHttpSendRequest(req, NULL, 0, NULL, 0, 0, 0);
-    if (!ret && GetLastError() == ERROR_WINHTTP_CANNOT_CONNECT)
+    if (!ret && (GetLastError() == ERROR_WINHTTP_CANNOT_CONNECT || GetLastError() == ERROR_WINHTTP_TIMEOUT))
     {
         skip("connection failed, skipping\n");
         goto done;
@@ -1801,11 +1801,21 @@ static const char nocontentmsg[] =
 "Server: winetest\r\n"
 "\r\n";
 
+static const char notmodified[] =
+"HTTP/1.1 304 Not Modified\r\n"
+"\r\n";
+
 static const char noauthmsg[] =
 "HTTP/1.1 401 Unauthorized\r\n"
 "Server: winetest\r\n"
 "Connection: close\r\n"
 "WWW-Authenticate: Basic realm=\"placebo\"\r\n"
+"\r\n";
+
+static const char okauthmsg[] =
+"HTTP/1.1 200 OK\r\n"
+"Server: winetest\r\n"
+"Connection: close\r\n"
 "\r\n";
 
 struct server_info
@@ -1869,7 +1879,7 @@ static DWORD CALLBACK server_thread(LPVOID param)
         if (strstr(buffer, "/auth"))
         {
             if (strstr(buffer, "Authorization: Basic dXNlcjpwd2Q="))
-                send(c, okmsg, sizeof okmsg - 1, 0);
+                send(c, okauthmsg, sizeof okauthmsg - 1, 0);
             else
                 send(c, noauthmsg, sizeof noauthmsg - 1, 0);
         }
@@ -1887,6 +1897,11 @@ static DWORD CALLBACK server_thread(LPVOID param)
         if (strstr(buffer, "GET /no_content"))
         {
             send(c, nocontentmsg, sizeof nocontentmsg - 1, 0);
+        }
+        if (strstr(buffer, "GET /not_modified"))
+        {
+            send(c, notmodified, sizeof notmodified - 1, 0);
+            Sleep(6000);
         }
         if (strstr(buffer, "GET /quit"))
         {
@@ -2129,7 +2144,7 @@ static void test_no_content(int port)
 {
     static const WCHAR no_contentW[] = {'/','n','o','_','c','o','n','t','e','n','t',0};
     HINTERNET ses, con, req;
-    WCHAR buf[128];
+    char buf[128];
     DWORD size, len = sizeof(buf), bytes_read, status;
     BOOL ret;
 
@@ -2181,6 +2196,7 @@ static void test_no_content(int port)
     ok(size == 0, "expected 0, got %d\n", size);
 
     ret = WinHttpReadData(req, buf, len, &bytes_read);
+    ok(ret, "expected success\n");
     ok( bytes_read == 0, "expected 0, got %u available\n", bytes_read );
 
     size = 12345;
@@ -2200,6 +2216,55 @@ static void test_no_content(int port)
 
     WinHttpCloseHandle(con);
     WinHttpCloseHandle(ses);
+}
+
+static void test_not_modified(int port)
+{
+    static const WCHAR pathW[] = {'/','n','o','t','_','m','o','d','i','f','i','e','d',0};
+    static const WCHAR ifmodifiedW[] = {'I','f','-','M','o','d','i','f','i','e','d','-','S','i','n','c','e',':',' '};
+    BOOL ret;
+    HINTERNET session, request, connection;
+    DWORD status, size, start = GetTickCount();
+    SYSTEMTIME st;
+    WCHAR today[(sizeof(ifmodifiedW) + WINHTTP_TIME_FORMAT_BUFSIZE)/sizeof(WCHAR) + 3];
+
+    memcpy(today, ifmodifiedW, sizeof(ifmodifiedW));
+    GetSystemTime(&st);
+    WinHttpTimeFromSystemTime(&st, &today[sizeof(ifmodifiedW)/sizeof(WCHAR)]);
+
+    session = WinHttpOpen(test_useragent, WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
+        WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
+    ok(session != NULL, "WinHttpOpen failed: %u\n", GetLastError());
+
+    connection = WinHttpConnect(session, localhostW, port, 0);
+    ok(connection != NULL, "WinHttpConnect failed: %u\n", GetLastError());
+
+    request = WinHttpOpenRequest(connection, NULL, pathW, NULL, WINHTTP_NO_REFERER,
+        WINHTTP_DEFAULT_ACCEPT_TYPES, WINHTTP_FLAG_BYPASS_PROXY_CACHE);
+    ok(request != NULL, "WinHttpOpenrequest failed: %u\n", GetLastError());
+
+    ret = WinHttpSendRequest(request, today, ~0u, NULL, 0, 0, 0);
+    ok(ret, "WinHttpSendRequest failed: %u\n", GetLastError());
+
+    ret = WinHttpReceiveResponse(request, NULL);
+    ok(ret, "WinHttpReceiveResponse failed: %u\n", GetLastError());
+
+    size = sizeof(status);
+    ret = WinHttpQueryHeaders(request, WINHTTP_QUERY_STATUS_CODE|WINHTTP_QUERY_FLAG_NUMBER,
+                              NULL, &status, &size, NULL);
+    ok(ret, "WinHttpQueryHeaders failed: %u\n", GetLastError());
+    ok(status == HTTP_STATUS_NOT_MODIFIED, "got %u\n", status);
+
+    size = 0xdeadbeef;
+    ret = WinHttpQueryDataAvailable(request, &size);
+    ok(ret, "WinHttpQueryDataAvailable failed: %u\n", GetLastError());
+    ok(!size, "got %u\n", size);
+
+    WinHttpCloseHandle(request);
+    WinHttpCloseHandle(connection);
+    WinHttpCloseHandle(session);
+    start = GetTickCount() - start;
+    ok(start <= 2000, "Expected less than 2 seconds for the test, got %u ms\n", start);
 }
 
 static void test_bad_header( int port )
@@ -2870,6 +2935,23 @@ static void test_IWinHttpRequest(void)
     hr = IWinHttpRequest_Release( req );
     ok( hr == S_OK, "got %08x\n", hr );
 
+    hr = CoCreateInstance( &CLSID_WinHttpRequest, NULL, CLSCTX_INPROC_SERVER, &IID_IWinHttpRequest, (void **)&req );
+    ok( hr == S_OK, "got %08x\n", hr );
+
+    V_VT( &async ) = VT_I4;
+    V_I4( &async ) = 1;
+    hr = IWinHttpRequest_Open( req, method, url, async );
+    ok( hr == S_OK, "got %08x\n", hr );
+
+    hr = IWinHttpRequest_Send( req, empty );
+    ok( hr == S_OK, "got %08x\n", hr );
+
+    hr = IWinHttpRequest_WaitForResponse( req, timeout, &succeeded );
+    ok( hr == S_OK, "got %08x\n", hr );
+
+    hr = IWinHttpRequest_Release( req );
+    ok( hr == S_OK, "got %08x\n", hr );
+
     SysFreeString( method );
     SysFreeString( url );
     SysFreeString( username );
@@ -3044,12 +3126,8 @@ static void test_WinHttpGetProxyForUrl(void)
     options.dwAutoDetectFlags = WINHTTP_AUTO_DETECT_TYPE_DNS_A;
 
     memset( &info, 0, sizeof(info) );
-    SetLastError(0xdeadbeef);
     ret = WinHttpGetProxyForUrl( session, urlW, &options, &info );
-    error = GetLastError();
-    if (!ret) ok( error == ERROR_WINHTTP_AUTODETECTION_FAILED ||
-                  error == ERROR_WINHTTP_UNABLE_TO_DOWNLOAD_SCRIPT, "got %u\n", error );
-    else
+    if (ret)
     {
         trace("Proxy.AccessType=%u\n", info.dwAccessType);
         trace("Proxy.Proxy=%s\n", wine_dbgstr_w(info.lpszProxy));
@@ -3063,11 +3141,8 @@ static void test_WinHttpGetProxyForUrl(void)
     options.lpszAutoConfigUrl = wpadW;
 
     memset( &info, 0, sizeof(info) );
-    SetLastError(0xdeadbeef);
     ret = WinHttpGetProxyForUrl( session, urlW, &options, &info );
-    error = GetLastError();
-    if (!ret) ok( error == ERROR_WINHTTP_UNABLE_TO_DOWNLOAD_SCRIPT, "got %u\n", error );
-    else
+    if (ret)
     {
         trace("Proxy.AccessType=%u\n", info.dwAccessType);
         trace("Proxy.Proxy=%s\n", wine_dbgstr_w(info.lpszProxy));
@@ -3201,6 +3276,7 @@ START_TEST (winhttp)
     test_basic_request(si.port, NULL, basicW);
     test_no_headers(si.port);
     test_no_content(si.port);
+    test_not_modified(si.port);
     test_basic_authentication(si.port);
     test_bad_header(si.port);
     test_multiple_reads(si.port);

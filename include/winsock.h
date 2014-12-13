@@ -662,6 +662,7 @@ typedef struct WS(WSAData)
 #define SO_RCVTIMEO                0x1006
 #define SO_ERROR                   0x1007
 #define SO_TYPE                    0x1008
+#define SO_BSP_STATE               0x1009
 
 
 #define IOCPARM_MASK               0x7f
@@ -696,6 +697,7 @@ typedef struct WS(WSAData)
 #define WS_SO_RCVTIMEO             0x1006
 #define WS_SO_ERROR                0x1007
 #define WS_SO_TYPE                 0x1008
+#define WS_SO_BSP_STATE            0x1009
 
 #define WS_IOCPARM_MASK            0x7f
 #define WS_IOC_VOID                0x20000000

@@ -3095,6 +3095,79 @@ INT WINAPI WS_getsockopt(SOCKET s, INT level,
             }
             release_sock_fd( s, fd );
             return ret;
+        case WS_SO_BSP_STATE:
+        {
+            int req_size, addr_size;
+            WSAPROTOCOL_INFOW infow;
+            CSADDR_INFO *csinfo;
+
+            ret = ws_protocol_info(s, TRUE, &infow, &addr_size);
+            if (ret)
+            {
+                if (infow.iAddressFamily == WS_AF_INET)
+                    addr_size = sizeof(struct sockaddr_in);
+                else if (infow.iAddressFamily == WS_AF_INET6)
+                    addr_size = sizeof(struct sockaddr_in6);
+                else
+                {
+                    FIXME("Family %d is unsupported for SO_BSP_STATE", infow.iAddressFamily);
+                    SetLastError(WSAEAFNOSUPPORT);
+                    return SOCKET_ERROR;
+                }
+
+                req_size = sizeof(CSADDR_INFO) + addr_size * 2;
+                if (*optlen < req_size)
+                {
+                    ret = 0;
+                    SetLastError(WSAEFAULT);
+                }
+                else
+                {
+                    union generic_unix_sockaddr uaddr;
+                    socklen_t uaddrlen = sizeof(uaddr);
+
+                    if ( (fd = get_sock_fd( s, 0, NULL )) == -1)
+                        return SOCKET_ERROR;
+
+                    csinfo = (CSADDR_INFO*) optval;
+
+                    /* Check if the sock is bound */
+                    if (!getsockname(fd, &uaddr.addr, &uaddrlen) &&
+                        is_sockaddr_bound(&uaddr.addr, uaddrlen))
+                    {
+                        csinfo->LocalAddr.lpSockaddr =
+                            (LPSOCKADDR) (optval + sizeof(CSADDR_INFO));
+                        ws_sockaddr_u2ws(&uaddr.addr, csinfo->LocalAddr.lpSockaddr, &addr_size);
+                        csinfo->LocalAddr.iSockaddrLength = addr_size;
+                    }
+                    else
+                    {
+                        csinfo->LocalAddr.lpSockaddr = NULL;
+                        csinfo->LocalAddr.iSockaddrLength = 0;
+                    }
+
+                    /* Check if the sock is connected */
+                    if (!getpeername(fd, &uaddr.addr, &uaddrlen) &&
+                        is_sockaddr_bound(&uaddr.addr, uaddrlen))
+                    {
+                        csinfo->RemoteAddr.lpSockaddr =
+                            (LPSOCKADDR) (optval + sizeof(CSADDR_INFO) + addr_size);
+                        ws_sockaddr_u2ws(&uaddr.addr, csinfo->RemoteAddr.lpSockaddr, &addr_size);
+                        csinfo->RemoteAddr.iSockaddrLength = addr_size;
+                    }
+                    else
+                    {
+                        csinfo->RemoteAddr.lpSockaddr = NULL;
+                        csinfo->RemoteAddr.iSockaddrLength = 0;
+                    }
+
+                    csinfo->iSocketType = infow.iSocketType;
+                    csinfo->iProtocol = infow.iProtocol;
+                    release_sock_fd( s, fd );
+                }
+            }
+            return ret ? 0 : SOCKET_ERROR;
+        }
         case WS_SO_DONTLINGER:
         {
             struct linger lingval;
@@ -4386,27 +4459,37 @@ static void release_poll_fds( const WS_fd_set *readfds, const WS_fd_set *writefd
 static int get_poll_results( WS_fd_set *readfds, WS_fd_set *writefds, WS_fd_set *exceptfds,
                              const struct pollfd *fds )
 {
-    unsigned int i, j = 0, k, total = 0;
+    const struct pollfd *poll_writefds  = fds + (readfds ? readfds->fd_count : 0);
+    const struct pollfd *poll_exceptfds = poll_writefds + (writefds ? writefds->fd_count : 0);
+    unsigned int i, k, total = 0;
 
     if (readfds)
     {
-        for (i = k = 0; i < readfds->fd_count; i++, j++)
-            if (fds[j].revents) readfds->fd_array[k++] = readfds->fd_array[i];
+        for (i = k = 0; i < readfds->fd_count; i++)
+        {
+            if (fds[i].revents ||
+                    (readfds == writefds && (poll_writefds[i].revents & POLLOUT) && !(poll_writefds[i].revents & POLLHUP)) ||
+                    (readfds == exceptfds && poll_exceptfds[i].revents))
+                readfds->fd_array[k++] = readfds->fd_array[i];
+        }
         readfds->fd_count = k;
         total += k;
     }
-    if (writefds)
+    if (writefds && writefds != readfds)
     {
-        for (i = k = 0; i < writefds->fd_count; i++, j++)
-            if ((fds[j].revents & POLLOUT) && !(fds[j].revents & POLLHUP))
+        for (i = k = 0; i < writefds->fd_count; i++)
+        {
+            if (((poll_writefds[i].revents & POLLOUT) && !(poll_writefds[i].revents & POLLHUP)) ||
+                    (writefds == exceptfds && poll_exceptfds[i].revents))
                 writefds->fd_array[k++] = writefds->fd_array[i];
+        }
         writefds->fd_count = k;
         total += k;
     }
-    if (exceptfds)
+    if (exceptfds && exceptfds != readfds && exceptfds != writefds)
     {
-        for (i = k = 0; i < exceptfds->fd_count; i++, j++)
-            if (fds[j].revents) exceptfds->fd_array[k++] = exceptfds->fd_array[i];
+        for (i = k = 0; i < exceptfds->fd_count; i++)
+            if (poll_exceptfds[i].revents) exceptfds->fd_array[k++] = exceptfds->fd_array[i];
         exceptfds->fd_count = k;
         total += k;
     }
@@ -5003,6 +5086,7 @@ int WINAPI WS_setsockopt(SOCKET s, int level, int optname,
     {
         woptval= *((const INT16 *) optval);
         optval= (char*) &woptval;
+        woptval&= (1 << optlen * 8) - 1;
         optlen=sizeof(int);
     }
     fd = get_sock_fd( s, 0, NULL );
@@ -5158,6 +5242,17 @@ struct WS_hostent* WINAPI WS_gethostbyaddr(const char *addr, int len, int type)
 }
 
 /***********************************************************************
+ *		WS_compare_routes_by_metric_asc (INTERNAL)
+ *
+ * Comparison function for qsort(), for sorting two routes (struct route)
+ * by metric in ascending order.
+ */
+static int WS_compare_routes_by_metric_asc(const void *left, const void *right)
+{
+    return ((const struct route*)left)->metric - ((const struct route*)right)->metric;
+}
+
+/***********************************************************************
  *		WS_get_local_ips		(INTERNAL)
  *
  * Returns the list of local IP addresses by going through the network
@@ -5171,7 +5266,7 @@ struct WS_hostent* WINAPI WS_gethostbyaddr(const char *addr, int len, int type)
  */
 static struct WS_hostent* WS_get_local_ips( char *hostname )
 {
-    int last_metric, numroutes = 0, i, j;
+    int numroutes = 0, i, j;
     DWORD n;
     PIP_ADAPTER_INFO adapters = NULL, k;
     struct WS_hostent *hostlist = NULL;
@@ -5251,30 +5346,15 @@ static struct WS_hostent* WS_get_local_ips( char *hostname )
     hostlist->h_aliases[0] = NULL; /* NULL-terminate the alias list */
     hostlist->h_addrtype = AF_INET;
     hostlist->h_length = sizeof(struct in_addr); /* = 4 */
-    /* Reorder the entries when placing them in the host list, Windows expects
+    /* Reorder the entries before placing them in the host list. Windows expects
      * the IP list in order from highest priority to lowest (the critical thing
      * is that most applications expect the first IP to be the default route).
      */
-    last_metric = -1;
+    if (numroutes > 1)
+        qsort(route_addrs, numroutes, sizeof(struct route), WS_compare_routes_by_metric_asc);
+
     for (i = 0; i < numroutes; i++)
-    {
-       struct in_addr addr;
-       int metric = 0xFFFF;
-
-       memcpy(&addr, magic_loopback_addr, 4);
-       for (j = 0; j < numroutes; j++)
-       {
-           int this_metric = route_addrs[j].metric;
-
-           if (this_metric > last_metric && this_metric < metric)
-           {
-               addr = route_addrs[j].addr;
-               metric = this_metric;
-           }
-       }
-       last_metric = metric;
-       (*(struct in_addr *) hostlist->h_addr_list[i]) = addr;
-    }
+        (*(struct in_addr *) hostlist->h_addr_list[i]) = route_addrs[i].addr;
 
     /* Cleanup all allocated memory except the address list,
      * the address list is used by the calling app.

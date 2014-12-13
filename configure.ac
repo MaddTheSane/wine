@@ -1359,7 +1359,7 @@ then
         [AC_CHECK_HEADER(gnutls/gnutls.h,
             [AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[#include <gnutls/gnutls.h>
 #include <gnutls/crypto.h>]], [[static typeof(gnutls_mac_get_key_size) *func; if (func) return 0;]])],
-                [WINE_CHECK_SONAME(gnutls,gnutls_global_init,,[GNUTLS_CFLAGS=""],[$GNUTLS_LIBS])])],
+                [WINE_CHECK_SONAME(gnutls,gnutls_global_init,,[GNUTLS_CFLAGS=""],[$GNUTLS_LIBS],[[libgnutls\\(-deb0\\)\\{0,1\\}]])])],
             [GNUTLS_CFLAGS=""])])
 fi
 WINE_WARNING_WITH(gnutls,[test "x$ac_cv_lib_soname_gnutls" = "x"],
@@ -2556,8 +2556,6 @@ then
 fi
 
 dnl Check for isinf
-ac_save_LIBS="$LIBS"
-LIBS="$LIBS -lm"
 AC_CACHE_CHECK([for isinf], ac_cv_have_isinf,
                AC_LINK_IFELSE([AC_LANG_PROGRAM([[#include <math.h>]], [[float f = 0.0; return isinf(f)]])],[ac_cv_have_isinf="yes"],[ac_cv_have_isinf="no"]))
 if test "$ac_cv_have_isinf" = "yes"
@@ -2572,7 +2570,39 @@ if test "$ac_cv_have_isnan" = "yes"
 then
     AC_DEFINE(HAVE_ISNAN, 1, [Define to 1 if you have the `isnan' function.])
 fi
+
+AC_CHECK_FUNCS(\
+	cbrt \
+	cbrtf \
+	exp2 \
+	exp2f \
+	llrint \
+	llrintf \
+	llround \
+	llroundf \
+	log2 \
+	log2f \
+	lrint \
+	lrintf \
+	lround \
+	lroundf \
+	rint \
+	rintf \
+	round \
+	roundf \
+	trunc \
+	truncf
+)
 LIBS="$ac_save_LIBS"
+
+dnl Check for __builtin_clz
+AC_CACHE_CHECK([for __builtin_clz], ac_cv_have___builtin_clz,
+               AC_LINK_IFELSE([AC_LANG_PROGRAM(,[[return __builtin_clz(1)]])],
+               [ac_cv_have___builtin_clz="yes"], [ac_cv_have___builtin_clz="no"]))
+if test "$ac_cv_have___builtin_clz" = "yes"
+then
+    AC_DEFINE(HAVE___BUILTIN_CLZ, 1, [Define to 1 if you have the `__builtin_clz' built-in function.])
+fi
 
 dnl *** check for the need to define platform-specific symbols
 
@@ -2647,9 +2677,16 @@ WINE_CONFIG_DLL(amstream,,[clean])
 WINE_CONFIG_TEST(dlls/amstream/tests)
 WINE_CONFIG_DLL(api-ms-win-core-com-l1-1-0)
 WINE_CONFIG_DLL(api-ms-win-core-console-l1-1-0)
+WINE_CONFIG_DLL(api-ms-win-core-datetime-l1-1-0)
+WINE_CONFIG_DLL(api-ms-win-core-datetime-l1-1-1)
 WINE_CONFIG_DLL(api-ms-win-core-debug-l1-1-1)
 WINE_CONFIG_DLL(api-ms-win-core-errorhandling-l1-1-1)
+WINE_CONFIG_DLL(api-ms-win-core-errorhandling-l1-1-2)
+WINE_CONFIG_DLL(api-ms-win-core-fibers-l1-1-0)
+WINE_CONFIG_DLL(api-ms-win-core-fibers-l1-1-1)
 WINE_CONFIG_DLL(api-ms-win-core-file-l1-2-0)
+WINE_CONFIG_DLL(api-ms-win-core-file-l2-1-0)
+WINE_CONFIG_DLL(api-ms-win-core-file-l2-1-1)
 WINE_CONFIG_DLL(api-ms-win-core-handle-l1-1-0)
 WINE_CONFIG_DLL(api-ms-win-core-heap-l1-2-0)
 WINE_CONFIG_DLL(api-ms-win-core-heap-obsolete-l1-1-0)
@@ -2658,6 +2695,7 @@ WINE_CONFIG_DLL(api-ms-win-core-io-l1-1-1)
 WINE_CONFIG_DLL(api-ms-win-core-kernel32-legacy-l1-1-0)
 WINE_CONFIG_DLL(api-ms-win-core-libraryloader-l1-1-1)
 WINE_CONFIG_DLL(api-ms-win-core-localization-l1-2-0)
+WINE_CONFIG_DLL(api-ms-win-core-localization-l1-2-1)
 WINE_CONFIG_DLL(api-ms-win-core-localization-obsolete-l1-1-0)
 WINE_CONFIG_DLL(api-ms-win-core-localregistry-l1-1-0)
 WINE_CONFIG_DLL(api-ms-win-core-memory-l1-1-1)
@@ -2665,6 +2703,7 @@ WINE_CONFIG_DLL(api-ms-win-core-namedpipe-l1-2-0)
 WINE_CONFIG_DLL(api-ms-win-core-processenvironment-l1-2-0)
 WINE_CONFIG_DLL(api-ms-win-core-processthreads-l1-1-0)
 WINE_CONFIG_DLL(api-ms-win-core-processthreads-l1-1-1)
+WINE_CONFIG_DLL(api-ms-win-core-processthreads-l1-1-2)
 WINE_CONFIG_DLL(api-ms-win-core-profile-l1-1-0)
 WINE_CONFIG_DLL(api-ms-win-core-psapi-l1-1-0)
 WINE_CONFIG_DLL(api-ms-win-core-registry-l1-1-0)
@@ -2673,12 +2712,16 @@ WINE_CONFIG_DLL(api-ms-win-core-shlwapi-legacy-l1-1-0)
 WINE_CONFIG_DLL(api-ms-win-core-string-l1-1-0)
 WINE_CONFIG_DLL(api-ms-win-core-synch-l1-2-0)
 WINE_CONFIG_DLL(api-ms-win-core-sysinfo-l1-2-0)
+WINE_CONFIG_DLL(api-ms-win-core-sysinfo-l1-2-1)
 WINE_CONFIG_DLL(api-ms-win-core-threadpool-legacy-l1-1-0)
 WINE_CONFIG_DLL(api-ms-win-core-timezone-l1-1-0)
 WINE_CONFIG_DLL(api-ms-win-core-url-l1-1-0)
 WINE_CONFIG_DLL(api-ms-win-core-util-l1-1-0)
 WINE_CONFIG_DLL(api-ms-win-core-winrt-error-l1-1-0)
+WINE_CONFIG_DLL(api-ms-win-core-winrt-error-l1-1-1)
+WINE_CONFIG_DLL(api-ms-win-core-winrt-l1-1-0)
 WINE_CONFIG_DLL(api-ms-win-core-winrt-string-l1-1-0)
+WINE_CONFIG_DLL(api-ms-win-core-xstate-l2-1-0)
 WINE_CONFIG_DLL(api-ms-win-downlevel-advapi32-l1-1-0)
 WINE_CONFIG_DLL(api-ms-win-downlevel-advapi32-l2-1-0)
 WINE_CONFIG_DLL(api-ms-win-downlevel-normaliz-l1-1-0)
@@ -2723,6 +2766,7 @@ WINE_CONFIG_DLL(capi2032,,[implib])
 WINE_CONFIG_DLL(cards,,[implib])
 WINE_CONFIG_DLL(cfgmgr32,,[implib])
 WINE_CONFIG_DLL(clusapi,,[implib])
+WINE_CONFIG_DLL(combase)
 WINE_CONFIG_DLL(comcat)
 WINE_CONFIG_TEST(dlls/comcat/tests)
 WINE_CONFIG_DLL(comctl32,,[implib,po])
@@ -2741,6 +2785,7 @@ WINE_CONFIG_DLL(crypt32,,[implib,po])
 WINE_CONFIG_TEST(dlls/crypt32/tests)
 WINE_CONFIG_DLL(cryptdlg,,[po])
 WINE_CONFIG_DLL(cryptdll,,[implib])
+WINE_CONFIG_DLL(cryptext)
 WINE_CONFIG_DLL(cryptnet,,[implib])
 WINE_CONFIG_TEST(dlls/cryptnet/tests)
 WINE_CONFIG_DLL(cryptui,,[implib,po])
@@ -2960,6 +3005,8 @@ WINE_CONFIG_DLL(mcicda)
 WINE_CONFIG_DLL(mciqtz32)
 WINE_CONFIG_DLL(mciseq)
 WINE_CONFIG_DLL(mciwave)
+WINE_CONFIG_DLL(mfplat)
+WINE_CONFIG_DLL(mfreadwrite)
 WINE_CONFIG_DLL(mgmtapi)
 WINE_CONFIG_DLL(midimap)
 WINE_CONFIG_DLL(mlang,,[clean,implib])
@@ -3021,6 +3068,7 @@ WINE_CONFIG_DLL(msvcp100)
 WINE_CONFIG_TEST(dlls/msvcp100/tests)
 WINE_CONFIG_DLL(msvcp110)
 WINE_CONFIG_DLL(msvcp120)
+WINE_CONFIG_DLL(msvcp120_app)
 WINE_CONFIG_DLL(msvcp60)
 WINE_CONFIG_TEST(dlls/msvcp60/tests)
 WINE_CONFIG_DLL(msvcp70)
@@ -3032,6 +3080,8 @@ WINE_CONFIG_DLL(msvcr100,,[implib])
 WINE_CONFIG_TEST(dlls/msvcr100/tests)
 WINE_CONFIG_DLL(msvcr110,,[implib])
 WINE_CONFIG_DLL(msvcr120,,[implib])
+WINE_CONFIG_TEST(dlls/msvcr120/tests)
+WINE_CONFIG_DLL(msvcr120_app)
 WINE_CONFIG_DLL(msvcr70,,[implib])
 WINE_CONFIG_DLL(msvcr71,,[implib])
 WINE_CONFIG_DLL(msvcr80,,[implib])
@@ -3234,6 +3284,7 @@ WINE_CONFIG_TEST(dlls/version/tests)
 WINE_CONFIG_DLL(vmm.vxd,enable_win16)
 WINE_CONFIG_DLL(vnbt.vxd,enable_win16)
 WINE_CONFIG_DLL(vnetbios.vxd,enable_win16)
+WINE_CONFIG_DLL(vssapi)
 WINE_CONFIG_DLL(vtdapi.vxd,enable_win16)
 WINE_CONFIG_DLL(vwin32.vxd,enable_win16)
 WINE_CONFIG_DLL(w32skrnl,enable_win16)

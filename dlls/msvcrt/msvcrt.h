@@ -366,6 +366,16 @@ struct MSVCRT_lconv {
     char n_sep_by_space;
     char p_sign_posn;
     char n_sign_posn;
+#if _MSVCR_VER >= 120
+    MSVCRT_wchar_t* _W_decimal_point;
+    MSVCRT_wchar_t* _W_thousands_sep;
+    MSVCRT_wchar_t* _W_int_curr_symbol;
+    MSVCRT_wchar_t* _W_currency_symbol;
+    MSVCRT_wchar_t* _W_mon_decimal_point;
+    MSVCRT_wchar_t* _W_mon_thousands_sep;
+    MSVCRT_wchar_t* _W_positive_sign;
+    MSVCRT_wchar_t* _W_negative_sign;
+#endif
 };
 
 struct MSVCRT__exception {
@@ -813,6 +823,13 @@ struct MSVCRT__stat64 {
 #define MSVCRT__FPCLASS_PD   0x0080  /* Positive Denormal */
 #define MSVCRT__FPCLASS_PN   0x0100  /* Positive Normal */
 #define MSVCRT__FPCLASS_PINF 0x0200  /* Positive Infinity */
+
+/* fpclassify constants */
+#define MSVCRT_FP_INFINITE   1
+#define MSVCRT_FP_NAN        2
+#define MSVCRT_FP_NORMAL    -1
+#define MSVCRT_FP_SUBNORMAL -2
+#define MSVCRT_FP_ZERO       0
 
 #define MSVCRT__MCW_EM        0x0008001f
 #define MSVCRT__MCW_IC        0x00040000

@@ -26,6 +26,10 @@
 #ifndef __WINE_WINED3D_H
 #define __WINE_WINED3D_H
 
+#ifndef __WINE_CONFIG_H
+# error You must include config.h to use this header
+#endif
+
 #include "wine/list.h"
 
 #define WINED3D_OK                                              S_OK
@@ -1237,6 +1241,8 @@ enum wined3d_display_rotation
 #define WINED3D_NO3D                                            0x00000002
 #define WINED3D_VIDMEM_ACCOUNTING                               0x00000004
 #define WINED3D_PRESENT_CONVERSION                              0x00000008
+#define WINED3D_RESTORE_MODE_ON_ACTIVATE                        0x00000010
+#define WINED3D_FOCUS_MESSAGES                                  0x00000020
 
 #define WINED3D_RESZ_CODE                                       0x7fa05000
 
@@ -2440,8 +2446,8 @@ ULONG __cdecl wined3d_shader_incref(struct wined3d_shader *shader);
 HRESULT __cdecl wined3d_shader_set_local_constants_float(struct wined3d_shader *shader,
         UINT start_idx, const float *src_data, UINT vector4f_count);
 
-HRESULT __cdecl wined3d_shader_resource_view_create(void *parent, const struct wined3d_parent_ops *parent_ops,
-        struct wined3d_shader_resource_view **view);
+HRESULT __cdecl wined3d_shader_resource_view_create(struct wined3d_resource *resource, void *parent,
+        const struct wined3d_parent_ops *parent_ops, struct wined3d_shader_resource_view **view);
 ULONG __cdecl wined3d_shader_resource_view_decref(struct wined3d_shader_resource_view *view);
 void * __cdecl wined3d_shader_resource_view_get_parent(const struct wined3d_shader_resource_view *view);
 ULONG __cdecl wined3d_shader_resource_view_incref(struct wined3d_shader_resource_view *view);
@@ -2552,5 +2558,36 @@ HRESULT __cdecl wined3d_volume_map(struct wined3d_volume *volume,
         struct wined3d_map_desc *map_desc, const struct wined3d_box *box, DWORD flags);
 void __cdecl wined3d_volume_preload(struct wined3d_volume *volume);
 HRESULT __cdecl wined3d_volume_unmap(struct wined3d_volume *volume);
+
+/* Return the integer base-2 logarithm of x. Undefined for x == 0. */
+static inline unsigned int wined3d_log2i(unsigned int x)
+{
+#ifdef HAVE___BUILTIN_CLZ
+    return __builtin_clz(x) ^ 0x1f;
+#else
+    static const unsigned int l[] =
+    {
+        ~0u, 0, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3,
+          4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
+          5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5,
+          5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5,
+          6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
+          6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
+          6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
+          6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
+          7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7,
+          7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7,
+          7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7,
+          7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7,
+          7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7,
+          7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7,
+          7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7,
+          7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7,
+    };
+    unsigned int i;
+
+    return (i = x >> 16) ? (x = i >> 8) ? l[x] + 24 : l[i] + 16 : (i = x >> 8) ? l[i] + 8 : l[x];
+#endif
+}
 
 #endif /* __WINE_WINED3D_H */

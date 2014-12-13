@@ -1,7 +1,7 @@
 /*
  *    GDI Interop
  *
- * Copyright 2012 Nikolay Sivov for CodeWeavers
+ * Copyright 2012, 2014 Nikolay Sivov for CodeWeavers
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -31,15 +31,23 @@
 
 WINE_DEFAULT_DEBUG_CHANNEL(dwrite);
 
+static const DWRITE_MATRIX identity =
+{
+    1.0f, 0.0f,
+    0.0f, 1.0f,
+    0.0f, 0.0f
+};
+
 struct gdiinterop {
     IDWriteGdiInterop IDWriteGdiInterop_iface;
-    IDWriteFactory *factory;
+    IDWriteFactory2 *factory;
 };
 
 struct rendertarget {
-    IDWriteBitmapRenderTarget IDWriteBitmapRenderTarget_iface;
+    IDWriteBitmapRenderTarget1 IDWriteBitmapRenderTarget1_iface;
     LONG ref;
 
+    DWRITE_TEXT_ANTIALIAS_MODE antialiasmode;
     FLOAT pixels_per_dip;
     DWRITE_MATRIX m;
     SIZE size;
@@ -68,9 +76,9 @@ static HRESULT create_target_dibsection(HDC hdc, UINT32 width, UINT32 height)
     return S_OK;
 }
 
-static inline struct rendertarget *impl_from_IDWriteBitmapRenderTarget(IDWriteBitmapRenderTarget *iface)
+static inline struct rendertarget *impl_from_IDWriteBitmapRenderTarget1(IDWriteBitmapRenderTarget1 *iface)
 {
-    return CONTAINING_RECORD(iface, struct rendertarget, IDWriteBitmapRenderTarget_iface);
+    return CONTAINING_RECORD(iface, struct rendertarget, IDWriteBitmapRenderTarget1_iface);
 }
 
 static inline struct gdiinterop *impl_from_IDWriteGdiInterop(IDWriteGdiInterop *iface)
@@ -78,16 +86,18 @@ static inline struct gdiinterop *impl_from_IDWriteGdiInterop(IDWriteGdiInterop *
     return CONTAINING_RECORD(iface, struct gdiinterop, IDWriteGdiInterop_iface);
 }
 
-static HRESULT WINAPI rendertarget_QueryInterface(IDWriteBitmapRenderTarget *iface, REFIID riid, void **obj)
+static HRESULT WINAPI rendertarget_QueryInterface(IDWriteBitmapRenderTarget1 *iface, REFIID riid, void **obj)
 {
-    struct rendertarget *This = impl_from_IDWriteBitmapRenderTarget(iface);
+    struct rendertarget *This = impl_from_IDWriteBitmapRenderTarget1(iface);
 
     TRACE("(%p)->(%s %p)\n", This, debugstr_guid(riid), obj);
 
-    if (IsEqualIID(riid, &IID_IUnknown) || IsEqualIID(riid, &IID_IDWriteBitmapRenderTarget))
+    if (IsEqualIID(riid, &IID_IDWriteBitmapRenderTarget1) ||
+        IsEqualIID(riid, &IID_IDWriteBitmapRenderTarget) ||
+        IsEqualIID(riid, &IID_IUnknown))
     {
         *obj = iface;
-        IDWriteBitmapRenderTarget_AddRef(iface);
+        IDWriteBitmapRenderTarget1_AddRef(iface);
         return S_OK;
     }
 
@@ -96,17 +106,17 @@ static HRESULT WINAPI rendertarget_QueryInterface(IDWriteBitmapRenderTarget *ifa
     return E_NOINTERFACE;
 }
 
-static ULONG WINAPI rendertarget_AddRef(IDWriteBitmapRenderTarget *iface)
+static ULONG WINAPI rendertarget_AddRef(IDWriteBitmapRenderTarget1 *iface)
 {
-    struct rendertarget *This = impl_from_IDWriteBitmapRenderTarget(iface);
+    struct rendertarget *This = impl_from_IDWriteBitmapRenderTarget1(iface);
     ULONG ref = InterlockedIncrement(&This->ref);
     TRACE("(%p)->(%d)\n", This, ref);
     return ref;
 }
 
-static ULONG WINAPI rendertarget_Release(IDWriteBitmapRenderTarget *iface)
+static ULONG WINAPI rendertarget_Release(IDWriteBitmapRenderTarget1 *iface)
 {
-    struct rendertarget *This = impl_from_IDWriteBitmapRenderTarget(iface);
+    struct rendertarget *This = impl_from_IDWriteBitmapRenderTarget1(iface);
     ULONG ref = InterlockedDecrement(&This->ref);
 
     TRACE("(%p)->(%d)\n", This, ref);
@@ -120,34 +130,34 @@ static ULONG WINAPI rendertarget_Release(IDWriteBitmapRenderTarget *iface)
     return ref;
 }
 
-static HRESULT WINAPI rendertarget_DrawGlyphRun(IDWriteBitmapRenderTarget *iface,
+static HRESULT WINAPI rendertarget_DrawGlyphRun(IDWriteBitmapRenderTarget1 *iface,
     FLOAT baselineOriginX, FLOAT baselineOriginY, DWRITE_MEASURING_MODE measuring_mode,
     DWRITE_GLYPH_RUN const* glyph_run, IDWriteRenderingParams* params, COLORREF textColor,
     RECT *blackbox_rect)
 {
-    struct rendertarget *This = impl_from_IDWriteBitmapRenderTarget(iface);
+    struct rendertarget *This = impl_from_IDWriteBitmapRenderTarget1(iface);
     FIXME("(%p)->(%f %f %d %p %p 0x%08x %p): stub\n", This, baselineOriginX, baselineOriginY,
         measuring_mode, glyph_run, params, textColor, blackbox_rect);
     return E_NOTIMPL;
 }
 
-static HDC WINAPI rendertarget_GetMemoryDC(IDWriteBitmapRenderTarget *iface)
+static HDC WINAPI rendertarget_GetMemoryDC(IDWriteBitmapRenderTarget1 *iface)
 {
-    struct rendertarget *This = impl_from_IDWriteBitmapRenderTarget(iface);
+    struct rendertarget *This = impl_from_IDWriteBitmapRenderTarget1(iface);
     TRACE("(%p)\n", This);
     return This->hdc;
 }
 
-static FLOAT WINAPI rendertarget_GetPixelsPerDip(IDWriteBitmapRenderTarget *iface)
+static FLOAT WINAPI rendertarget_GetPixelsPerDip(IDWriteBitmapRenderTarget1 *iface)
 {
-    struct rendertarget *This = impl_from_IDWriteBitmapRenderTarget(iface);
+    struct rendertarget *This = impl_from_IDWriteBitmapRenderTarget1(iface);
     TRACE("(%p)\n", This);
     return This->pixels_per_dip;
 }
 
-static HRESULT WINAPI rendertarget_SetPixelsPerDip(IDWriteBitmapRenderTarget *iface, FLOAT pixels_per_dip)
+static HRESULT WINAPI rendertarget_SetPixelsPerDip(IDWriteBitmapRenderTarget1 *iface, FLOAT pixels_per_dip)
 {
-    struct rendertarget *This = impl_from_IDWriteBitmapRenderTarget(iface);
+    struct rendertarget *This = impl_from_IDWriteBitmapRenderTarget1(iface);
 
     TRACE("(%p)->(%.2f)\n", This, pixels_per_dip);
 
@@ -158,9 +168,9 @@ static HRESULT WINAPI rendertarget_SetPixelsPerDip(IDWriteBitmapRenderTarget *if
     return S_OK;
 }
 
-static HRESULT WINAPI rendertarget_GetCurrentTransform(IDWriteBitmapRenderTarget *iface, DWRITE_MATRIX *transform)
+static HRESULT WINAPI rendertarget_GetCurrentTransform(IDWriteBitmapRenderTarget1 *iface, DWRITE_MATRIX *transform)
 {
-    struct rendertarget *This = impl_from_IDWriteBitmapRenderTarget(iface);
+    struct rendertarget *This = impl_from_IDWriteBitmapRenderTarget1(iface);
 
     TRACE("(%p)->(%p)\n", This, transform);
 
@@ -168,25 +178,28 @@ static HRESULT WINAPI rendertarget_GetCurrentTransform(IDWriteBitmapRenderTarget
     return S_OK;
 }
 
-static HRESULT WINAPI rendertarget_SetCurrentTransform(IDWriteBitmapRenderTarget *iface, DWRITE_MATRIX const *transform)
+static HRESULT WINAPI rendertarget_SetCurrentTransform(IDWriteBitmapRenderTarget1 *iface, DWRITE_MATRIX const *transform)
 {
-    struct rendertarget *This = impl_from_IDWriteBitmapRenderTarget(iface);
-    FIXME("(%p)->(%p): stub\n", This, transform);
-    return E_NOTIMPL;
+    struct rendertarget *This = impl_from_IDWriteBitmapRenderTarget1(iface);
+
+    TRACE("(%p)->(%p)\n", This, transform);
+
+    This->m = transform ? *transform : identity;
+    return S_OK;
 }
 
-static HRESULT WINAPI rendertarget_GetSize(IDWriteBitmapRenderTarget *iface, SIZE *size)
+static HRESULT WINAPI rendertarget_GetSize(IDWriteBitmapRenderTarget1 *iface, SIZE *size)
 {
-    struct rendertarget *This = impl_from_IDWriteBitmapRenderTarget(iface);
+    struct rendertarget *This = impl_from_IDWriteBitmapRenderTarget1(iface);
 
     TRACE("(%p)->(%p)\n", This, size);
     *size = This->size;
     return S_OK;
 }
 
-static HRESULT WINAPI rendertarget_Resize(IDWriteBitmapRenderTarget *iface, UINT32 width, UINT32 height)
+static HRESULT WINAPI rendertarget_Resize(IDWriteBitmapRenderTarget1 *iface, UINT32 width, UINT32 height)
 {
-    struct rendertarget *This = impl_from_IDWriteBitmapRenderTarget(iface);
+    struct rendertarget *This = impl_from_IDWriteBitmapRenderTarget1(iface);
 
     TRACE("(%p)->(%u %u)\n", This, width, height);
 
@@ -196,7 +209,27 @@ static HRESULT WINAPI rendertarget_Resize(IDWriteBitmapRenderTarget *iface, UINT
     return create_target_dibsection(This->hdc, width, height);
 }
 
-static const IDWriteBitmapRenderTargetVtbl rendertargetvtbl = {
+static DWRITE_TEXT_ANTIALIAS_MODE WINAPI rendertarget_GetTextAntialiasMode(IDWriteBitmapRenderTarget1 *iface)
+{
+    struct rendertarget *This = impl_from_IDWriteBitmapRenderTarget1(iface);
+    TRACE("(%p)\n", This);
+    return This->antialiasmode;
+}
+
+static HRESULT WINAPI rendertarget_SetTextAntialiasMode(IDWriteBitmapRenderTarget1 *iface, DWRITE_TEXT_ANTIALIAS_MODE mode)
+{
+    struct rendertarget *This = impl_from_IDWriteBitmapRenderTarget1(iface);
+
+    TRACE("(%p)->(%d)\n", This, mode);
+
+    if ((DWORD)mode > DWRITE_TEXT_ANTIALIAS_MODE_GRAYSCALE)
+        return E_INVALIDARG;
+
+    This->antialiasmode = mode;
+    return S_OK;
+}
+
+static const IDWriteBitmapRenderTarget1Vtbl rendertargetvtbl = {
     rendertarget_QueryInterface,
     rendertarget_AddRef,
     rendertarget_Release,
@@ -207,7 +240,9 @@ static const IDWriteBitmapRenderTargetVtbl rendertargetvtbl = {
     rendertarget_GetCurrentTransform,
     rendertarget_SetCurrentTransform,
     rendertarget_GetSize,
-    rendertarget_Resize
+    rendertarget_Resize,
+    rendertarget_GetTextAntialiasMode,
+    rendertarget_SetTextAntialiasMode
 };
 
 static HRESULT create_rendertarget(HDC hdc, UINT32 width, UINT32 height, IDWriteBitmapRenderTarget **ret)
@@ -220,7 +255,7 @@ static HRESULT create_rendertarget(HDC hdc, UINT32 width, UINT32 height, IDWrite
     target = heap_alloc(sizeof(struct rendertarget));
     if (!target) return E_OUTOFMEMORY;
 
-    target->IDWriteBitmapRenderTarget_iface.lpVtbl = &rendertargetvtbl;
+    target->IDWriteBitmapRenderTarget1_iface.lpVtbl = &rendertargetvtbl;
     target->ref = 1;
 
     target->size.cx = width;
@@ -229,16 +264,15 @@ static HRESULT create_rendertarget(HDC hdc, UINT32 width, UINT32 height, IDWrite
     target->hdc = CreateCompatibleDC(hdc);
     hr = create_target_dibsection(target->hdc, width, height);
     if (FAILED(hr)) {
-        IDWriteBitmapRenderTarget_Release(&target->IDWriteBitmapRenderTarget_iface);
+        IDWriteBitmapRenderTarget1_Release(&target->IDWriteBitmapRenderTarget1_iface);
         return hr;
     }
 
-    target->m.m11 = target->m.m22 = 1.0;
-    target->m.m12 = target->m.m21 = 0.0;
-    target->m.dx  = target->m.dy  = 0.0;
+    target->m = identity;
     target->pixels_per_dip = 1.0;
+    target->antialiasmode = DWRITE_TEXT_ANTIALIAS_MODE_CLEARTYPE;
 
-    *ret = &target->IDWriteBitmapRenderTarget_iface;
+    *ret = (IDWriteBitmapRenderTarget*)&target->IDWriteBitmapRenderTarget1_iface;
 
     return S_OK;
 }
@@ -265,14 +299,14 @@ static ULONG WINAPI gdiinterop_AddRef(IDWriteGdiInterop *iface)
 {
     struct gdiinterop *This = impl_from_IDWriteGdiInterop(iface);
     TRACE("(%p)\n", This);
-    return IDWriteFactory_AddRef(This->factory);
+    return IDWriteFactory2_AddRef(This->factory);
 }
 
 static ULONG WINAPI gdiinterop_Release(IDWriteGdiInterop *iface)
 {
     struct gdiinterop *This = impl_from_IDWriteGdiInterop(iface);
     TRACE("(%p)\n", This);
-    return IDWriteFactory_Release(This->factory);
+    return IDWriteFactory2_Release(This->factory);
 }
 
 static HRESULT WINAPI gdiinterop_CreateFontFromLOGFONT(IDWriteGdiInterop *iface,
@@ -292,7 +326,7 @@ static HRESULT WINAPI gdiinterop_CreateFontFromLOGFONT(IDWriteGdiInterop *iface,
 
     if (!logfont) return E_INVALIDARG;
 
-    hr = IDWriteFactory_GetSystemFontCollection(This->factory, &collection, FALSE);
+    hr = IDWriteFactory2_GetSystemFontCollection(This->factory, &collection, FALSE);
     if (FAILED(hr)) {
         ERR("failed to get system font collection: 0x%08x.\n", hr);
         return hr;
@@ -431,7 +465,7 @@ static const struct IDWriteGdiInteropVtbl gdiinteropvtbl = {
     gdiinterop_CreateBitmapRenderTarget
 };
 
-HRESULT create_gdiinterop(IDWriteFactory *factory, IDWriteGdiInterop **ret)
+HRESULT create_gdiinterop(IDWriteFactory2 *factory, IDWriteGdiInterop **ret)
 {
     struct gdiinterop *This;
 
