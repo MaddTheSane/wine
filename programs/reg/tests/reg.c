@@ -151,6 +151,11 @@ static void test_add(void)
     err = RegDeleteKeyA(HKEY_CURRENT_USER, KEY_BASE "\\keytest4");
     ok(err == ERROR_SUCCESS, "got exit code %d\n", r);
 
+    /* REG_NONE */
+    run_reg_exe("reg add HKCU\\" KEY_BASE " /v none0 /d deadbeef /t REG_NONE /f", &r);
+    ok(r == REG_EXIT_SUCCESS, "got exit code %d\n", r);
+    verify_reg(hkey, "none0", REG_NONE, "d\0e\0a\0d\0b\0e\0e\0f\0\0", 18, TODO_REG_SIZE);
+
     /* REG_SZ */
     run_reg_exe("reg add HKCU\\" KEY_BASE " /d WineTest /f", &r);
     ok(r == REG_EXIT_SUCCESS || broken(r == REG_EXIT_FAILURE /* WinXP */),
@@ -286,6 +291,9 @@ static void test_add(void)
     todo_wine ok(r == REG_EXIT_FAILURE || broken(r == REG_EXIT_SUCCESS /* WinXP */), "got exit code %u\n", r);
     run_reg_exe("reg add HKCU\\" KEY_BASE " /t REG_DWORD /v dword10 /f /d -0x1", &r);
     todo_wine ok(r == REG_EXIT_FAILURE || broken(r == REG_EXIT_SUCCESS /* WinXP */), "got exit code %u\n", r);
+
+    run_reg_exe("reg add HKCU\\" KEY_BASE " /v dword8 /t REG_dword /d 0x01ffffffff /f", &r);
+    todo_wine ok(r == REG_EXIT_FAILURE || broken(r == REG_EXIT_SUCCESS /* WinXP */), "got exit code %d\n", r);
 
     /* REG_DWORD_LITTLE_ENDIAN */
     run_reg_exe("reg add HKCU\\" KEY_BASE " /v DWORD_LE /t REG_DWORD_LITTLE_ENDIAN /d 456 /f", &r);

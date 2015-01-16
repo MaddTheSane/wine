@@ -646,6 +646,7 @@ typedef struct {
     HRESULT (*bind_to_tree)(HTMLDOMNode*);
     void (*traverse)(HTMLDOMNode*,nsCycleCollectionTraversalCallback*);
     void (*unlink)(HTMLDOMNode*);
+    BOOL (*is_text_edit)(HTMLDOMNode*);
 } NodeImplVtbl;
 
 struct HTMLDOMNode {
@@ -748,6 +749,8 @@ struct HTMLDocumentNode {
 
     BOOL skip_mutation_notif;
 
+    UINT charset;
+
     struct list selection_list;
     struct list range_list;
     struct list plugin_hosts;
@@ -756,7 +759,6 @@ struct HTMLDocumentNode {
 HRESULT HTMLDocument_Create(IUnknown*,REFIID,void**) DECLSPEC_HIDDEN;
 HRESULT HTMLLoadOptions_Create(IUnknown*,REFIID,void**) DECLSPEC_HIDDEN;
 HRESULT create_doc_from_nsdoc(nsIDOMHTMLDocument*,HTMLDocumentObj*,HTMLInnerWindow*,HTMLDocumentNode**) DECLSPEC_HIDDEN;
-HRESULT create_document_fragment(nsIDOMNode*,HTMLDocumentNode*,HTMLDocumentNode**) DECLSPEC_HIDDEN;
 
 HRESULT HTMLOuterWindow_Create(HTMLDocumentObj*,nsIDOMWindow*,HTMLOuterWindow*,HTMLOuterWindow**) DECLSPEC_HIDDEN;
 HRESULT update_window_doc(HTMLInnerWindow*) DECLSPEC_HIDDEN;
@@ -805,6 +807,8 @@ void notif_focus(HTMLDocumentObj*) DECLSPEC_HIDDEN;
 void show_tooltip(HTMLDocumentObj*,DWORD,DWORD,LPCWSTR) DECLSPEC_HIDDEN;
 void hide_tooltip(HTMLDocumentObj*) DECLSPEC_HIDDEN;
 HRESULT get_client_disp_property(IOleClientSite*,DISPID,VARIANT*) DECLSPEC_HIDDEN;
+
+UINT get_document_charset(HTMLDocumentNode*) DECLSPEC_HIDDEN;
 
 HRESULT ProtocolFactory_Create(REFCLSID,REFIID,void**) DECLSPEC_HIDDEN;
 
@@ -1017,7 +1021,7 @@ struct task_t {
     LONG target_magic;
     task_proc_t proc;
     task_proc_t destr;
-    struct task_t *next;
+    struct list entry;
 };
 
 typedef struct {
@@ -1027,8 +1031,7 @@ typedef struct {
 
 typedef struct {
     HWND thread_hwnd;
-    task_t *task_queue_head;
-    task_t *task_queue_tail;
+    struct list task_list;
     struct list timer_list;
 } thread_data_t;
 
@@ -1038,6 +1041,7 @@ HWND get_thread_hwnd(void) DECLSPEC_HIDDEN;
 LONG get_task_target_magic(void) DECLSPEC_HIDDEN;
 HRESULT push_task(task_t*,task_proc_t,task_proc_t,LONG) DECLSPEC_HIDDEN;
 void remove_target_tasks(LONG) DECLSPEC_HIDDEN;
+void flush_pending_tasks(LONG) DECLSPEC_HIDDEN;
 
 HRESULT set_task_timer(HTMLInnerWindow*,DWORD,BOOL,IDispatch*,LONG*) DECLSPEC_HIDDEN;
 HRESULT clear_task_timer(HTMLInnerWindow*,BOOL,DWORD) DECLSPEC_HIDDEN;

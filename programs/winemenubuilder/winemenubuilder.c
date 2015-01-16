@@ -1012,7 +1012,6 @@ static HRESULT open_file_type_icon(LPCWSTR szFileName, IStream **ppStream)
     WCHAR *comma;
     WCHAR *executable = NULL;
     int index = 0;
-    char *output_path = NULL;
     HRESULT hr = HRESULT_FROM_WIN32(ERROR_NOT_FOUND);
 
     extension = strrchrW(szFileName, '.');
@@ -1028,19 +1027,18 @@ static HRESULT open_file_type_icon(LPCWSTR szFileName, IStream **ppStream)
             *comma = 0;
             index = atoiW(comma + 1);
         }
-        hr = open_icon(icon, index, FALSE, ppStream);
+        hr = open_module_icon(icon, index, ppStream);
     }
     else
     {
         executable = assoc_query(ASSOCSTR_EXECUTABLE, extension, openW);
         if (executable)
-            hr = open_icon(executable, 0, FALSE, ppStream);
+            hr = open_module_icon(executable, 0, ppStream);
     }
 
 end:
     HeapFree(GetProcessHeap(), 0, icon);
     HeapFree(GetProcessHeap(), 0, executable);
-    HeapFree(GetProcessHeap(), 0, output_path);
     return hr;
 }
 

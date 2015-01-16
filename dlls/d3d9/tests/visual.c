@@ -6775,8 +6775,6 @@ static void pretransformed_varying_test(void)
     hr = IDirect3DDevice9_SetVertexDeclaration(device, decl);
     ok(hr == D3D_OK, "IDirect3DDevice9_SetVertexDeclaration returned %08x\n", hr);
 
-    hr = IDirect3DDevice9_SetVertexDeclaration(device, decl);
-    ok(hr == D3D_OK, "IDirect3DDevice9_SetVertexDeclaration returned %08x\n", hr);
     for (i = 0; i < sizeof(tests) / sizeof(*tests); ++i)
     {
         IDirect3DPixelShader9 *shader;
@@ -15993,8 +15991,6 @@ static void volume_dxt5_test(void)
     hr = IDirect3DDevice9_EndScene(device);
     ok(SUCCEEDED(hr), "Failed to end scene, hr %#x.\n", hr);
 
-    hr = IDirect3DDevice9_Present(device, NULL, NULL, NULL, NULL);
-    ok(SUCCEEDED(hr), "Failed to present, hr %#x.\n", hr);
     for (i = 0; i < 4; i++)
     {
         color = getPixelColor(device, 80 + 160 * i, 240);
@@ -16002,6 +15998,8 @@ static void volume_dxt5_test(void)
                 "Expected color 0x%08x, got 0x%08x, case %u.\n", expected_colors[i], color, i);
     }
 
+    hr = IDirect3DDevice9_Present(device, NULL, NULL, NULL, NULL);
+    ok(SUCCEEDED(hr), "Failed to present, hr %#x.\n", hr);
     IDirect3DVolumeTexture9_Release(texture);
     refcount = IDirect3DDevice9_Release(device);
     ok(!refcount, "Device has %u references left.\n", refcount);
@@ -16800,8 +16798,6 @@ static void test_3dc_formats(void)
     hr = IDirect3DDevice9_EndScene(device);
     ok(SUCCEEDED(hr), "Failed to end scene, hr %#x.\n", hr);
 
-    hr = IDirect3DDevice9_Present(device, NULL, NULL, NULL, NULL);
-    ok(SUCCEEDED(hr), "Failed to present, hr %#x.\n", hr);
     for (i = 0; i < 4; ++i)
     {
         color = getPixelColor(device, expected_colors[i].position.x, expected_colors[i].position.y);
@@ -16810,6 +16806,8 @@ static void test_3dc_formats(void)
                 expected_colors[i].amd, expected_colors[i].nvidia, color, i);
     }
 
+    hr = IDirect3DDevice9_Present(device, NULL, NULL, NULL, NULL);
+    ok(SUCCEEDED(hr), "Failed to present, hr %#x.\n", hr);
     IDirect3DTexture9_Release(ati2n_texture);
     IDirect3DTexture9_Release(ati1n_texture);
     refcount = IDirect3DDevice9_Release(device);

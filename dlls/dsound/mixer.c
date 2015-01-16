@@ -51,16 +51,14 @@ void DSOUND_RecalcVolPan(PDSVOLUMEPAN volpan)
 
 	TRACE("Vol=%d Pan=%d\n", volpan->lVolume, volpan->lPan);
 	/* the AmpFactors are expressed in 16.16 fixed point */
-	volpan->dwVolAmpFactor = (ULONG) (pow(2.0, volpan->lVolume / 600.0) * 0xffff);
-	/* FIXME: dwPan{Left|Right}AmpFactor */
 
 	/* FIXME: use calculated vol and pan ampfactors */
 	temp = (double) (volpan->lVolume - (volpan->lPan > 0 ? volpan->lPan : 0));
-	volpan->dwTotalLeftAmpFactor = (ULONG) (pow(2.0, temp / 600.0) * 0xffff);
+	volpan->dwTotalAmpFactor[0] = (ULONG) (pow(2.0, temp / 600.0) * 0xffff);
 	temp = (double) (volpan->lVolume + (volpan->lPan < 0 ? volpan->lPan : 0));
-	volpan->dwTotalRightAmpFactor = (ULONG) (pow(2.0, temp / 600.0) * 0xffff);
+	volpan->dwTotalAmpFactor[1] = (ULONG) (pow(2.0, temp / 600.0) * 0xffff);
 
-	TRACE("left = %x, right = %x\n", volpan->dwTotalLeftAmpFactor, volpan->dwTotalRightAmpFactor);
+	TRACE("left = %x, right = %x\n", volpan->dwTotalAmpFactor[0], volpan->dwTotalAmpFactor[1]);
 }
 
 void DSOUND_AmpFactorToVolPan(PDSVOLUMEPAN volpan)
@@ -68,25 +66,19 @@ void DSOUND_AmpFactorToVolPan(PDSVOLUMEPAN volpan)
     double left,right;
     TRACE("(%p)\n",volpan);
 
-    TRACE("left=%x, right=%x\n",volpan->dwTotalLeftAmpFactor,volpan->dwTotalRightAmpFactor);
-    if (volpan->dwTotalLeftAmpFactor==0)
+    TRACE("left=%x, right=%x\n",volpan->dwTotalAmpFactor[0],volpan->dwTotalAmpFactor[1]);
+    if (volpan->dwTotalAmpFactor[0]==0)
         left=-10000;
     else
-        left=600 * log(((double)volpan->dwTotalLeftAmpFactor) / 0xffff) / log(2);
-    if (volpan->dwTotalRightAmpFactor==0)
+        left=600 * log(((double)volpan->dwTotalAmpFactor[0]) / 0xffff) / log(2);
+    if (volpan->dwTotalAmpFactor[1]==0)
         right=-10000;
     else
-        right=600 * log(((double)volpan->dwTotalRightAmpFactor) / 0xffff) / log(2);
+        right=600 * log(((double)volpan->dwTotalAmpFactor[1]) / 0xffff) / log(2);
     if (left<right)
-    {
         volpan->lVolume=right;
-        volpan->dwVolAmpFactor=volpan->dwTotalRightAmpFactor;
-    }
     else
-    {
         volpan->lVolume=left;
-        volpan->dwVolAmpFactor=volpan->dwTotalLeftAmpFactor;
-    }
     if (volpan->lVolume < -10000)
         volpan->lVolume=-10000;
     volpan->lPan=right-left;
@@ -112,7 +104,8 @@ void DSOUND_RecalcFormat(IDirectSoundBufferImpl *dsb)
 	TRACE("(%p)\n",dsb);
 
 	pwfxe = (WAVEFORMATEXTENSIBLE *) dsb->pwfx;
-	dsb->freqAdjust = (float)dsb->freq / dsb->device->pwfx->nSamplesPerSec;
+	dsb->freqAdjustNum = dsb->freq;
+	dsb->freqAdjustDen = dsb->device->pwfx->nSamplesPerSec;
 
 	if ((pwfxe->Format.wFormatTag == WAVE_FORMAT_IEEE_FLOAT) || ((pwfxe->Format.wFormatTag == WAVE_FORMAT_EXTENSIBLE)
 	    && (IsEqualGUID(&pwfxe->SubFormat, &KSDATAFORMAT_SUBTYPE_IEEE_FLOAT))))
@@ -125,12 +118,12 @@ void DSOUND_RecalcFormat(IDirectSoundBufferImpl *dsb)
 	 * sample in the secondary buffer. firgain specifies what
 	 * to multiply the FIR output by in order to attenuate it correctly.
 	 */
-	if (dsb->freqAdjust > 1.0f) {
+	if (dsb->freqAdjustNum / dsb->freqAdjustDen > 0) {
 		/**
 		 * Yes, round it a bit to make sure that the
 		 * linear interpolation factor never changes.
 		 */
-		dsb->firstep = ceil(fir_step / dsb->freqAdjust);
+		dsb->firstep = fir_step * dsb->freqAdjustDen / dsb->freqAdjustNum;
 	} else {
 		dsb->firstep = fir_step;
 	}
@@ -139,7 +132,7 @@ void DSOUND_RecalcFormat(IDirectSoundBufferImpl *dsb)
 	/* calculate the 10ms write lead */
 	dsb->writelead = (dsb->freq / 100) * dsb->pwfx->nBlockAlign;
 
-	dsb->freqAcc = 0;
+	dsb->freqAccNum = 0;
 
 	dsb->get_aux = ieee ? getbpp[4] : getbpp[dsb->pwfx->wBitsPerSample/8 - 1];
 	dsb->put_aux = putieee32;
@@ -158,12 +151,28 @@ void DSOUND_RecalcFormat(IDirectSoundBufferImpl *dsb)
 	else if (ichannels == 1)
 	{
 		dsb->mix_channels = 1;
-		dsb->put = put_mono2stereo;
+
+		if (ochannels == 2)
+			dsb->put = put_mono2stereo;
+		else if (ochannels == 4)
+			dsb->put = put_mono2quad;
+		else if (ochannels == 6)
+			dsb->put = put_mono2surround51;
 	}
 	else if (ochannels == 1)
 	{
 		dsb->mix_channels = 1;
 		dsb->get = get_mono;
+	}
+	else if (ichannels == 2 && ochannels == 4)
+	{
+		dsb->mix_channels = 2;
+		dsb->put = put_stereo2quad;
+	}
+	else if (ichannels == 2 && ochannels == 6)
+	{
+		dsb->mix_channels = 2;
+		dsb->put = put_stereo2surround51;
 	}
 	else
 	{
@@ -223,16 +232,20 @@ void DSOUND_CheckEvent(const IDirectSoundBufferImpl *dsb, DWORD playpos, int len
         }
     }
 
-    TRACE("Not stopped: first notify: %u (%u), range: [%u,%u)\n", first,
-            dsb->notifies[check].dwOffset, playpos, (playpos + len) % dsb->buflen);
+    TRACE("Not stopped: first notify: %u (%u), left notify: %u (%u), range: [%u,%u)\n",
+            first, dsb->notifies[first].dwOffset,
+            left, dsb->notifies[left].dwOffset,
+            playpos, (playpos + len) % dsb->buflen);
 
     /* send notifications in range */
-    for(check = left; check < dsb->nrofnotifies; ++check){
-        if(dsb->notifies[check].dwOffset >= playpos + len)
-            break;
+    if(dsb->notifies[left].dwOffset >= playpos){
+        for(check = left; check < dsb->nrofnotifies; ++check){
+            if(dsb->notifies[check].dwOffset >= playpos + len)
+                break;
 
-        TRACE("Signalling %p (%u)\n", dsb->notifies[check].hEventNotify, dsb->notifies[check].dwOffset);
-        SetEvent(dsb->notifies[check].hEventNotify);
+            TRACE("Signalling %p (%u)\n", dsb->notifies[check].hEventNotify, dsb->notifies[check].dwOffset);
+            SetEvent(dsb->notifies[check].hEventNotify);
+        }
     }
 
     if(playpos + len > dsb->buflen){
@@ -266,18 +279,17 @@ static UINT cp_fields_noresample(IDirectSoundBufferImpl *dsb, UINT count)
     return count;
 }
 
-static UINT cp_fields_resample(IDirectSoundBufferImpl *dsb, UINT count, float *freqAcc)
+static UINT cp_fields_resample(IDirectSoundBufferImpl *dsb, UINT count, LONG64 *freqAccNum)
 {
     UINT i, channel;
     UINT istride = dsb->pwfx->nBlockAlign;
     UINT ostride = dsb->device->pwfx->nChannels * sizeof(float);
 
-    float freqAdjust = dsb->freqAdjust;
-    float freqAcc_start = *freqAcc;
-    float freqAcc_end = freqAcc_start + count * freqAdjust;
+    LONG64 freqAcc_start = *freqAccNum;
+    LONG64 freqAcc_end = freqAcc_start + count * dsb->freqAdjustNum;
     UINT dsbfirstep = dsb->firstep;
     UINT channels = dsb->mix_channels;
-    UINT max_ipos = freqAcc_start + count * freqAdjust;
+    UINT max_ipos = (freqAcc_start + count * dsb->freqAdjustNum) / dsb->freqAdjustDen;
 
     UINT fir_cachesize = (fir_len + dsbfirstep - 2) / dsbfirstep;
     UINT required_input = max_ipos + fir_cachesize;
@@ -299,8 +311,8 @@ static UINT cp_fields_resample(IDirectSoundBufferImpl *dsb, UINT count, float *f
                     dsb->sec_mixpos + i * istride, channel);
 
     for(i = 0; i < count; ++i) {
-        float total_fir_steps = (freqAcc_start + i * freqAdjust) * dsbfirstep;
-        UINT int_fir_steps = total_fir_steps;
+        UINT int_fir_steps = (freqAcc_start + i * dsb->freqAdjustNum) * dsbfirstep / dsb->freqAdjustDen;
+        float total_fir_steps = (freqAcc_start + i * dsb->freqAdjustNum) * dsbfirstep / (float)dsb->freqAdjustDen;
         UINT ipos = int_fir_steps / dsbfirstep;
 
         UINT idx = (ipos + 1) * dsbfirstep - int_fir_steps - 1;
@@ -325,8 +337,7 @@ static UINT cp_fields_resample(IDirectSoundBufferImpl *dsb, UINT count, float *f
         }
     }
 
-    freqAcc_end -= (int)freqAcc_end;
-    *freqAcc = freqAcc_end;
+    *freqAccNum = freqAcc_end % dsb->freqAdjustDen;
 
     HeapFree(GetProcessHeap(), 0, fir_copy);
     HeapFree(GetProcessHeap(), 0, intermediate);
@@ -334,14 +345,14 @@ static UINT cp_fields_resample(IDirectSoundBufferImpl *dsb, UINT count, float *f
     return max_ipos;
 }
 
-static void cp_fields(IDirectSoundBufferImpl *dsb, UINT count, float *freqAcc)
+static void cp_fields(IDirectSoundBufferImpl *dsb, UINT count, LONG64 *freqAccNum)
 {
     DWORD ipos, adv;
 
-    if (dsb->freqAdjust == 1.0)
-        adv = cp_fields_noresample(dsb, count); /* *freqAcc is unmodified */
+    if (dsb->freqAdjustNum == dsb->freqAdjustDen)
+        adv = cp_fields_noresample(dsb, count); /* *freqAccNum is unmodified */
     else
-        adv = cp_fields_resample(dsb, count, freqAcc);
+        adv = cp_fields_resample(dsb, count, freqAccNum);
 
     ipos = dsb->sec_mixpos + adv * dsb->pwfx->nBlockAlign;
     if (ipos >= dsb->buflen) {
@@ -397,38 +408,36 @@ static void DSOUND_MixToTemporary(IDirectSoundBufferImpl *dsb, DWORD frames)
 			dsb->device->tmp_buffer = HeapAlloc(GetProcessHeap(), 0, size_bytes);
 	}
 
-	cp_fields(dsb, frames, &dsb->freqAcc);
+	cp_fields(dsb, frames, &dsb->freqAccNum);
 }
 
 static void DSOUND_MixerVol(const IDirectSoundBufferImpl *dsb, INT frames)
 {
 	INT	i;
-	float vLeft, vRight;
+	float vols[DS_MAX_CHANNELS];
 	UINT channels = dsb->device->pwfx->nChannels, chan;
 
 	TRACE("(%p,%d)\n",dsb,frames);
-	TRACE("left = %x, right = %x\n", dsb->volpan.dwTotalLeftAmpFactor,
-		dsb->volpan.dwTotalRightAmpFactor);
+	TRACE("left = %x, right = %x\n", dsb->volpan.dwTotalAmpFactor[0],
+		dsb->volpan.dwTotalAmpFactor[1]);
 
 	if ((!(dsb->dsbd.dwFlags & DSBCAPS_CTRLPAN) || (dsb->volpan.lPan == 0)) &&
 	    (!(dsb->dsbd.dwFlags & DSBCAPS_CTRLVOLUME) || (dsb->volpan.lVolume == 0)) &&
 	     !(dsb->dsbd.dwFlags & DSBCAPS_CTRL3D))
 		return; /* Nothing to do */
 
-	if (channels != 1 && channels != 2)
+	if (channels > DS_MAX_CHANNELS)
 	{
 		FIXME("There is no support for %u channels\n", channels);
 		return;
 	}
 
-	vLeft = dsb->volpan.dwTotalLeftAmpFactor / ((float)0xFFFF);
-	vRight = dsb->volpan.dwTotalRightAmpFactor / ((float)0xFFFF);
+	for (i = 0; i < channels; ++i)
+		vols[i] = dsb->volpan.dwTotalAmpFactor[i] / ((float)0xFFFF);
+
 	for(i = 0; i < frames; ++i){
 		for(chan = 0; chan < channels; ++chan){
-			if(chan == 0)
-				dsb->device->tmp_buffer[i * channels + chan] *= vLeft;
-			else
-				dsb->device->tmp_buffer[i * channels + chan] *= vRight;
+			dsb->device->tmp_buffer[i * channels + chan] *= vols[chan];
 		}
 	}
 }
@@ -511,7 +520,7 @@ static DWORD DSOUND_MixOne(IDirectSoundBufferImpl *dsb, DWORD writepos, DWORD mi
 			mixlen = 2 * dsb->device->fraglen;
 			writepos += primary_done;
 			dsb->sec_mixpos += (primary_done / dsb->device->pwfx->nBlockAlign) *
-				dsb->pwfx->nBlockAlign * dsb->freqAdjust;
+				dsb->pwfx->nBlockAlign * dsb->freqAdjustNum / dsb->freqAdjustDen;
 		}
 	}
 

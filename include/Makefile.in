@@ -27,6 +27,7 @@ PUBLIC_IDL_H_SRCS = \
 	d3d10.idl \
 	d3d10_1.idl \
 	d3d11.idl \
+	d3d11_1.idl \
 	d3d11sdklayers.idl \
 	d3dcommon.idl \
 	ddstream.idl \
@@ -137,6 +138,7 @@ PUBLIC_IDL_H_SRCS = \
 	wpcapi.idl \
 	wtypes.idl \
 	wuapi.idl \
+	xaudio2.idl \
 	xmllite.idl
 
 IDL_TLB_SRCS = \
@@ -246,6 +248,7 @@ SRCDIR_INCLUDES = \
 	dde.rh \
 	ddeml.h \
 	ddk/compstui.h \
+	ddk/csq.h \
 	ddk/hidsdi.h \
 	ddk/imm.h \
 	ddk/mountmgr.h \
@@ -396,6 +399,7 @@ SRCDIR_INCLUDES = \
 	mciavi.h \
 	mcx.h \
 	mediaerr.h \
+	mferror.h \
 	midles.h \
 	minmax.h \
 	mmddk.h \

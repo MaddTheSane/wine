@@ -1328,8 +1328,8 @@ static void bind_dummy_textures(const struct wined3d_device *device, const struc
 
     for (i = 0; i < count; ++i)
     {
-        GL_EXTCALL(glActiveTextureARB(GL_TEXTURE0_ARB + i));
-        checkGLcall("glActiveTextureARB");
+        GL_EXTCALL(glActiveTexture(GL_TEXTURE0 + i));
+        checkGLcall("glActiveTexture");
 
         gl_info->gl_ops.gl.p_glBindTexture(GL_TEXTURE_2D, device->dummy_texture_2d[i]);
         checkGLcall("glBindTexture");
@@ -1920,6 +1920,8 @@ static void SetupForBlit(const struct wined3d_device *device, struct wined3d_con
             context_invalidate_state(context, STATE_SAMPLER(sampler));
         }
     }
+    if (gl_info->supported[ARB_SAMPLER_OBJECTS])
+        GL_EXTCALL(glBindSampler(0, 0));
     context_active_texture(context, gl_info, 0);
 
     sampler = context->rev_tex_unit_map[0];
@@ -2115,8 +2117,8 @@ void context_set_draw_buffer(struct wined3d_context *context, GLenum buffer)
 /* Context activation is done by the caller. */
 void context_active_texture(struct wined3d_context *context, const struct wined3d_gl_info *gl_info, unsigned int unit)
 {
-    GL_EXTCALL(glActiveTextureARB(GL_TEXTURE0 + unit));
-    checkGLcall("glActiveTextureARB");
+    GL_EXTCALL(glActiveTexture(GL_TEXTURE0 + unit));
+    checkGLcall("glActiveTexture");
     context->active_texture = unit;
 }
 

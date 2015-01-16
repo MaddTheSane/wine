@@ -1822,7 +1822,7 @@ static INT WS_EnumProtocols( BOOL unicode, const INT *protocols, LPWSAPROTOCOL_I
     if (*len < size || !buffer)
     {
         *len = size;
-        WSASetLastError(WSAENOBUFS);
+        SetLastError(WSAENOBUFS);
         return SOCKET_ERROR;
     }
 
@@ -2985,7 +2985,10 @@ int WINAPI WS_getpeername(SOCKET s, struct WS_sockaddr *name, int *namelen)
                 /* The buffer was too small */
                 SetLastError(WSAEFAULT);
             else
+            {
                 res = 0;
+                TRACE("=> %s\n", debugstr_sockaddr(name));
+            }
         }
         else
             SetLastError(wsaErrno());
@@ -3110,7 +3113,7 @@ INT WINAPI WS_getsockopt(SOCKET s, INT level,
                     addr_size = sizeof(struct sockaddr_in6);
                 else
                 {
-                    FIXME("Family %d is unsupported for SO_BSP_STATE", infow.iAddressFamily);
+                    FIXME("Family %d is unsupported for SO_BSP_STATE\n", infow.iAddressFamily);
                     SetLastError(WSAEAFNOSUPPORT);
                     return SOCKET_ERROR;
                 }
@@ -3377,7 +3380,7 @@ INT WINAPI WS_getsockopt(SOCKET s, INT level,
         int namelen;
         switch(optname)
         {
-        case IPX_PTYPE:
+        case WS_IPX_PTYPE:
             if ((fd = get_sock_fd( s, 0, NULL )) == -1) return SOCKET_ERROR;
 #ifdef SOL_IPX
             if(getsockopt(fd, SOL_IPX, IPX_TYPE, optval, (socklen_t *)optlen) == -1)
@@ -3398,7 +3401,7 @@ INT WINAPI WS_getsockopt(SOCKET s, INT level,
             release_sock_fd( s, fd );
             return ret;
 
-        case IPX_ADDRESS:
+        case WS_IPX_ADDRESS:
             /*
             *  On a Win2000 system with one network card there are usually
             *  three ipx devices one with a speed of 28.8kbps, 10Mbps and 100Mbps.
@@ -3423,7 +3426,7 @@ INT WINAPI WS_getsockopt(SOCKET s, INT level,
                                        * note 1MB = 1000kB in this case */
             return 0;
 
-        case IPX_MAX_ADAPTER_NUM:
+        case WS_IPX_MAX_ADAPTER_NUM:
             FIXME("IPX_MAX_ADAPTER_NUM\n");
             *(int*)optval = 1; /* As noted under IPX_ADDRESS we have just one card. */
             return 0;
@@ -3635,7 +3638,7 @@ int WINAPI WSAHtonl(SOCKET s, WS_u_long hostlong, WS_u_long *lpnetlong)
         *lpnetlong = htonl(hostlong);
         return 0;
     }
-    WSASetLastError(WSAEFAULT);
+    SetLastError(WSAEFAULT);
     return SOCKET_ERROR;
 }
 
@@ -3654,7 +3657,7 @@ int WINAPI WSAHtons(SOCKET s, WS_u_short hostshort, WS_u_short *lpnetshort)
         *lpnetshort = htons(hostshort);
         return 0;
     }
-    WSASetLastError(WSAEFAULT);
+    SetLastError(WSAEFAULT);
     return SOCKET_ERROR;
 }
 
@@ -3825,7 +3828,7 @@ INT WINAPI WSAIoctl(SOCKET s, DWORD code, LPVOID in_buff, DWORD in_size, LPVOID 
     case WS_FIONBIO:
         if (in_size != sizeof(WS_u_long) || IS_INTRESOURCE(in_buff))
         {
-            WSASetLastError(WSAEFAULT);
+            SetLastError(WSAEFAULT);
             return SOCKET_ERROR;
         }
         TRACE("-> FIONBIO (%x)\n", *(WS_u_long*)in_buff);
@@ -3845,7 +3848,7 @@ INT WINAPI WSAIoctl(SOCKET s, DWORD code, LPVOID in_buff, DWORD in_size, LPVOID 
     {
         if (out_size != sizeof(WS_u_long) || IS_INTRESOURCE(out_buff))
         {
-            WSASetLastError(WSAEFAULT);
+            SetLastError(WSAEFAULT);
             return SOCKET_ERROR;
         }
         if ((fd = get_sock_fd( s, 0, NULL )) == -1) return SOCKET_ERROR;
@@ -3861,7 +3864,7 @@ INT WINAPI WSAIoctl(SOCKET s, DWORD code, LPVOID in_buff, DWORD in_size, LPVOID 
         socklen_t oobsize = sizeof(int);
         if (out_size != sizeof(WS_u_long) || IS_INTRESOURCE(out_buff))
         {
-            WSASetLastError(WSAEFAULT);
+            SetLastError(WSAEFAULT);
             return SOCKET_ERROR;
         }
         if ((fd = get_sock_fd( s, 0, NULL )) == -1) return SOCKET_ERROR;
@@ -3896,7 +3899,7 @@ INT WINAPI WSAIoctl(SOCKET s, DWORD code, LPVOID in_buff, DWORD in_size, LPVOID 
 
            if (!out_buff || !ret_size)
            {
-               WSASetLastError(WSAEFAULT);
+               SetLastError(WSAEFAULT);
                return SOCKET_ERROR;
            }
 
@@ -4006,14 +4009,14 @@ INT WINAPI WSAIoctl(SOCKET s, DWORD code, LPVOID in_buff, DWORD in_size, LPVOID 
 
         if (!ret_size)
         {
-            WSASetLastError(WSAEFAULT);
+            SetLastError(WSAEFAULT);
             return SOCKET_ERROR;
         }
 
         if (out_size && out_size < FIELD_OFFSET(SOCKET_ADDRESS_LIST, Address[0]))
         {
             *ret_size = 0;
-            WSASetLastError(WSAEINVAL);
+            SetLastError(WSAEINVAL);
             return SOCKET_ERROR;
         }
 
@@ -4138,7 +4141,7 @@ INT WINAPI WSAIoctl(SOCKET s, DWORD code, LPVOID in_buff, DWORD in_size, LPVOID 
 
         if (!in_buff || in_size < sizeof(struct tcp_keepalive))
         {
-            WSASetLastError(WSAEFAULT);
+            SetLastError(WSAEFAULT);
             return SOCKET_ERROR;
         }
 
@@ -4182,7 +4185,7 @@ INT WINAPI WSAIoctl(SOCKET s, DWORD code, LPVOID in_buff, DWORD in_size, LPVOID 
        if (!in_buff || in_size < sizeof(struct WS_sockaddr) ||
            !out_buff || out_size < sizeof(struct WS_sockaddr_in) || !ret_size)
        {
-           WSASetLastError(WSAEFAULT);
+           SetLastError(WSAEFAULT);
            return SOCKET_ERROR;
        }
        if (daddr->sa_family != AF_INET)
@@ -4233,7 +4236,7 @@ INT WINAPI WSAIoctl(SOCKET s, DWORD code, LPVOID in_buff, DWORD in_size, LPVOID 
        FIXME("WS_SIO_UDP_CONNRESET stub\n");
        break;
     case 0x667e: /* Netscape tries hard to use bogus ioctl 0x667e */
-        WSASetLastError(WSAEOPNOTSUPP);
+        SetLastError(WSAEOPNOTSUPP);
         return SOCKET_ERROR;
     default:
         status = WSAEOPNOTSUPP;
@@ -4698,7 +4701,7 @@ static int WS2_sendto( SOCKET s, LPWSABUF lpBuffers, DWORD dwBufferCount,
             _enable_event(SOCKET2HANDLE(s), FD_WRITE, 0, 0);
 
             if (err != STATUS_PENDING) HeapFree( GetProcessHeap(), 0, wsa );
-            WSASetLastError( NtStatusToWSAError( err ));
+            SetLastError(NtStatusToWSAError( err ));
             return SOCKET_ERROR;
         }
 
@@ -4713,7 +4716,7 @@ static int WS2_sendto( SOCKET s, LPWSABUF lpBuffers, DWORD dwBufferCount,
         }
         else NtQueueApcThread( GetCurrentThread(), (PNTAPCFUNC)ws2_async_apc,
                                (ULONG_PTR)wsa, (ULONG_PTR)iosb, 0 );
-        WSASetLastError(0);
+        SetLastError(ERROR_SUCCESS);
         return 0;
     }
 
@@ -4779,14 +4782,14 @@ static int WS2_sendto( SOCKET s, LPWSABUF lpBuffers, DWORD dwBufferCount,
     if (lpNumberOfBytesSent) *lpNumberOfBytesSent = bytes_sent;
     if (wsa != &localwsa) HeapFree( GetProcessHeap(), 0, wsa );
     release_sock_fd( s, fd );
-    WSASetLastError(0);
+    SetLastError(ERROR_SUCCESS);
     return 0;
 
 error:
     if (wsa != &localwsa) HeapFree( GetProcessHeap(), 0, wsa );
     release_sock_fd( s, fd );
     WARN(" -> ERROR %d\n", err);
-    WSASetLastError(err);
+    SetLastError(err);
     return SOCKET_ERROR;
 }
 
@@ -4984,10 +4987,10 @@ int WINAPI WS_setsockopt(SOCKET s, int level, int optname,
     case WS_NSPROTO_IPX:
         switch(optname)
         {
-        case IPX_PTYPE:
+        case WS_IPX_PTYPE:
             return set_ipx_packettype(s, *(int*)optval);
 
-        case IPX_FILTERPTYPE:
+        case WS_IPX_FILTERPTYPE:
             /* Sets the receive filter packet type, at the moment we don't support it */
             FIXME("IPX_FILTERPTYPE: %x\n", *optval);
             /* Returning 0 is better for now than returning a SOCKET_ERROR */
@@ -5177,7 +5180,7 @@ int WINAPI WS_shutdown(SOCKET s, int how)
 error:
     release_sock_fd( s, fd );
     _enable_event( SOCKET2HANDLE(s), 0, 0, clear_flags );
-    WSASetLastError( err );
+    SetLastError( err );
     return SOCKET_ERROR;
 }
 
@@ -5385,7 +5388,7 @@ struct WS_hostent* WINAPI WS_gethostbyname(const char* name)
         return NULL;
     }
     if( gethostname( hostname, 100) == -1) {
-        SetLastError( WSAENOBUFS); /* appropriate ? */
+        SetLastError(WSAENOBUFS); /* appropriate ? */
         return retval;
     }
     if( !name || !name[0]) {
@@ -5656,7 +5659,7 @@ int WINAPI WS_getaddrinfo(LPCSTR nodename, LPCSTR servname, const struct WS_addr
 
         if (punixhints->ai_socktype < 0)
         {
-            WSASetLastError(WSAESOCKTNOSUPPORT);
+            SetLastError(WSAESOCKTNOSUPPORT);
             HeapFree(GetProcessHeap(), 0, hostname);
             return SOCKET_ERROR;
         }
@@ -5920,7 +5923,7 @@ int WINAPI WS_getnameinfo(const SOCKADDR *sa, WS_socklen_t salen, PCHAR host,
     size = ws_sockaddr_ws2u(sa, salen, &sa_u);
     if (!size)
     {
-        WSASetLastError(WSAEFAULT);
+        SetLastError(WSAEFAULT);
         return WSA_NOT_ENOUGH_MEMORY;
     }
     ret = getnameinfo(&sa_u.addr, size, host, hostlen, serv, servlen, convert_niflag_w2u(flags));
@@ -6074,7 +6077,7 @@ BOOL WINAPI WSAGetOverlappedResult( SOCKET s, LPWSAOVERLAPPED lpOverlapped,
     if ( lpOverlapped == NULL )
     {
         ERR( "Invalid pointer\n" );
-        WSASetLastError(WSA_INVALID_PARAMETER);
+        SetLastError(WSA_INVALID_PARAMETER);
         return FALSE;
     }
 
@@ -6173,7 +6176,7 @@ SOCKET WINAPI WSASocketA(int af, int type, int protocol,
 
     if (!len)
     {
-        WSASetLastError( WSAEINVAL);
+        SetLastError(WSAEINVAL);
         return SOCKET_ERROR;
     }
 
@@ -6359,13 +6362,17 @@ SOCKET WINAPI WSAJoinLeaf(
  */
 int WINAPI __WSAFDIsSet(SOCKET s, WS_fd_set *set)
 {
-  int i = set->fd_count;
-
-  TRACE("(%ld,%p(%i))\n", s, set, i);
+  int i = set->fd_count, ret = 0;
 
   while (i--)
-      if (set->fd_array[i] == s) return 1;
-  return 0;
+      if (set->fd_array[i] == s)
+      {
+          ret = 1;
+          break;
+      }
+
+  TRACE("(socket %04lx, fd_set %p, count %i) <- %d\n", s, set, set->fd_count, ret);
+  return ret;
 }
 
 /***********************************************************************
@@ -6712,7 +6719,7 @@ static int WS2_recv_base( SOCKET s, LPWSABUF lpBuffers, DWORD dwBufferCount,
                 SERVER_END_REQ;
 
                 if (err != STATUS_PENDING) HeapFree( GetProcessHeap(), 0, wsa );
-                WSASetLastError( NtStatusToWSAError( err ));
+                SetLastError(NtStatusToWSAError( err ));
                 return SOCKET_ERROR;
             }
 
@@ -6772,6 +6779,7 @@ static int WS2_recv_base( SOCKET s, LPWSABUF lpBuffers, DWORD dwBufferCount,
     if (wsa != &localwsa) HeapFree( GetProcessHeap(), 0, wsa );
     release_sock_fd( s, fd );
     _enable_event(SOCKET2HANDLE(s), FD_READ, 0, 0);
+    SetLastError(ERROR_SUCCESS);
 
     return 0;
 
@@ -6779,7 +6787,7 @@ error:
     if (wsa != &localwsa) HeapFree( GetProcessHeap(), 0, wsa );
     release_sock_fd( s, fd );
     WARN(" -> ERROR %d\n", err);
-    WSASetLastError( err );
+    SetLastError( err );
     return SOCKET_ERROR;
 }
 
@@ -6921,7 +6929,7 @@ int WINAPI WSADuplicateSocketW( SOCKET s, DWORD dwProcessId, LPWSAPROTOCOL_INFOW
 int WINAPI WSAInstallServiceClassA(LPWSASERVICECLASSINFOA info)
 {
     FIXME("Request to install service %s\n",debugstr_a(info->lpszServiceClassName));
-    WSASetLastError(WSAEACCES);
+    SetLastError(WSAEACCES);
     return SOCKET_ERROR;
 }
 
@@ -6931,7 +6939,7 @@ int WINAPI WSAInstallServiceClassA(LPWSASERVICECLASSINFOA info)
 int WINAPI WSAInstallServiceClassW(LPWSASERVICECLASSINFOW info)
 {
     FIXME("Request to install service %s\n",debugstr_w(info->lpszServiceClassName));
-    WSASetLastError(WSAEACCES);
+    SetLastError(WSAEACCES);
     return SOCKET_ERROR;
 }
 
@@ -6941,7 +6949,7 @@ int WINAPI WSAInstallServiceClassW(LPWSASERVICECLASSINFOW info)
 int WINAPI WSARemoveServiceClass(LPGUID info)
 {
     FIXME("Request to remove service %p\n",info);
-    WSASetLastError(WSATYPE_NOT_FOUND);
+    SetLastError(WSATYPE_NOT_FOUND);
     return SOCKET_ERROR;
 }
 
@@ -6958,7 +6966,7 @@ PCSTR WINAPI WS_inet_ntop( INT family, PVOID addr, PSTR buffer, SIZE_T len )
     TRACE("family %d, addr (%p), buffer (%p), len %ld\n", family, addr, buffer, len);
     if (!buffer)
     {
-        WSASetLastError( STATUS_INVALID_PARAMETER );
+        SetLastError( STATUS_INVALID_PARAMETER );
         return NULL;
     }
 
@@ -6977,15 +6985,15 @@ PCSTR WINAPI WS_inet_ntop( INT family, PVOID addr, PSTR buffer, SIZE_T len )
         break;
     }
     default:
-        WSASetLastError( WSAEAFNOSUPPORT );
+        SetLastError( WSAEAFNOSUPPORT );
         return NULL;
     }
 
-    if (!pdst) WSASetLastError( STATUS_INVALID_PARAMETER );
+    if (!pdst) SetLastError( STATUS_INVALID_PARAMETER );
     return pdst;
 #else
     FIXME( "not supported on this platform\n" );
-    WSASetLastError( WSAEAFNOSUPPORT );
+    SetLastError( WSAEAFNOSUPPORT );
     return NULL;
 #endif
 }
@@ -7018,7 +7026,7 @@ INT WINAPI WS_inet_pton( INT family, PCSTR addr, PVOID buffer)
     return ret;
 #else
     FIXME( "not supported on this platform\n" );
-    WSASetLastError( WSAEAFNOSUPPORT );
+    SetLastError( WSAEAFNOSUPPORT );
     return SOCKET_ERROR;
 #endif
 }
@@ -7043,7 +7051,7 @@ INT WINAPI WSAStringToAddressA(LPSTR AddressString,
 
     if (!AddressString)
     {
-        WSASetLastError(WSAEINVAL);
+        SetLastError(WSAEINVAL);
         return SOCKET_ERROR;
     }
 
@@ -7054,7 +7062,7 @@ INT WINAPI WSAStringToAddressA(LPSTR AddressString,
                             strlen(AddressString) + 1);
     if (!workBuffer)
     {
-        WSASetLastError(WSA_NOT_ENOUGH_MEMORY);
+        SetLastError(WSA_NOT_ENOUGH_MEMORY);
         return SOCKET_ERROR;
     }
 
@@ -7081,6 +7089,12 @@ INT WINAPI WSAStringToAddressA(LPSTR AddressString,
         ptrPort = strchr(workBuffer, ':');
         if(ptrPort)
         {
+            /* User may have entered an IPv6 and asked to parse as IPv4 */
+            if(strchr(ptrPort + 1, ':'))
+            {
+                res = WSAEINVAL;
+                break;
+            }
             ((LPSOCKADDR_IN)lpAddress)->sin_port = htons(atoi(ptrPort+1));
             *ptrPort = '\0';
         }
@@ -7154,7 +7168,7 @@ INT WINAPI WSAStringToAddressA(LPSTR AddressString,
     HeapFree(GetProcessHeap(), 0, workBuffer);
 
     if (!res) return 0;
-    WSASetLastError(res);
+    SetLastError(res);
     return SOCKET_ERROR;
 }
 
@@ -7190,7 +7204,7 @@ INT WINAPI WSAStringToAddressW(LPWSTR AddressString,
         if (!WideCharToMultiByte( CP_ACP, 0, lpProtocolInfo->szProtocol, -1,
                                   lpProtoInfoA->szProtocol, WSAPROTOCOL_LEN+1, NULL, NULL ))
         {
-            WSASetLastError( WSAEINVAL);
+            SetLastError(WSAEINVAL);
             return SOCKET_ERROR;
         }
     }
@@ -7216,7 +7230,7 @@ INT WINAPI WSAStringToAddressW(LPWSTR AddressString,
     else
         res = WSAEINVAL;
 
-    WSASetLastError(res);
+    SetLastError(res);
     return SOCKET_ERROR;
 }
 
@@ -7263,7 +7277,7 @@ INT WINAPI WSAAddressToStringA( LPSOCKADDR sockaddr, DWORD len,
             strcpy(buffer, "[");
         if (!WS_inet_ntop(WS_AF_INET6, &sockaddr6->sin6_addr, buffer+strlen(buffer), sizeof(buffer)))
         {
-            WSASetLastError(WSAEINVAL);
+            SetLastError(WSAEINVAL);
             return SOCKET_ERROR;
         }
         if ((sockaddr6->sin6_scope_id))
@@ -7274,7 +7288,7 @@ INT WINAPI WSAAddressToStringA( LPSOCKADDR sockaddr, DWORD len,
     }
 
     default:
-        WSASetLastError(WSAEINVAL);
+        SetLastError(WSAEINVAL);
         return SOCKET_ERROR;
     }
 
@@ -7283,7 +7297,7 @@ INT WINAPI WSAAddressToStringA( LPSOCKADDR sockaddr, DWORD len,
     if (*lenstr <  size)
     {
         *lenstr = size;
-        WSASetLastError(WSAEFAULT);
+        SetLastError(WSAEFAULT);
         return SOCKET_ERROR;
     }
 
@@ -7333,7 +7347,7 @@ INT WINAPI WSAAddressToStringW( LPSOCKADDR sockaddr, DWORD len,
     if (*lenstr <  size)
     {
         *lenstr = size;
-        WSASetLastError(WSAEFAULT);
+        SetLastError(WSAEFAULT);
         return SOCKET_ERROR;
     }
 
@@ -7378,7 +7392,7 @@ INT WINAPI WSAGetServiceClassInfoA( LPGUID provider, LPGUID service, LPDWORD len
 {
     FIXME( "(%s %s %p %p) Stub!\n", debugstr_guid(provider), debugstr_guid(service),
            len, info );
-    WSASetLastError(WSA_NOT_ENOUGH_MEMORY);
+    SetLastError(WSA_NOT_ENOUGH_MEMORY);
     return SOCKET_ERROR; 
 }
 
@@ -7390,7 +7404,7 @@ INT WINAPI WSAGetServiceClassInfoW( LPGUID provider, LPGUID service, LPDWORD len
 {
     FIXME( "(%s %s %p %p) Stub!\n", debugstr_guid(provider), debugstr_guid(service),
            len, info );
-    WSASetLastError(WSA_NOT_ENOUGH_MEMORY);
+    SetLastError(WSA_NOT_ENOUGH_MEMORY);
     return SOCKET_ERROR;
 }
 
@@ -7400,7 +7414,7 @@ INT WINAPI WSAGetServiceClassInfoW( LPGUID provider, LPGUID service, LPDWORD len
 INT WINAPI WSAGetServiceClassNameByClassIdA( LPGUID class, LPSTR service, LPDWORD len )
 {
     FIXME( "(%s %p %p) Stub!\n", debugstr_guid(class), service, len );
-    WSASetLastError(WSA_NOT_ENOUGH_MEMORY);
+    SetLastError(WSA_NOT_ENOUGH_MEMORY);
     return SOCKET_ERROR;
 }
 
@@ -7410,7 +7424,7 @@ INT WINAPI WSAGetServiceClassNameByClassIdA( LPGUID class, LPSTR service, LPDWOR
 INT WINAPI WSAGetServiceClassNameByClassIdW( LPGUID class, LPWSTR service, LPDWORD len )
 {
     FIXME( "(%s %p %p) Stub!\n", debugstr_guid(class), service, len );
-    WSASetLastError(WSA_NOT_ENOUGH_MEMORY);
+    SetLastError(WSA_NOT_ENOUGH_MEMORY);
     return SOCKET_ERROR;
 }
 
@@ -7423,7 +7437,7 @@ INT WINAPI WSALookupServiceBeginA( LPWSAQUERYSETA lpqsRestrictions,
 {
     FIXME("(%p 0x%08x %p) Stub!\n", lpqsRestrictions, dwControlFlags,
             lphLookup);
-    WSASetLastError(WSA_NOT_ENOUGH_MEMORY);
+    SetLastError(WSA_NOT_ENOUGH_MEMORY);
     return SOCKET_ERROR;
 }
 
@@ -7436,7 +7450,7 @@ INT WINAPI WSALookupServiceBeginW( LPWSAQUERYSETW lpqsRestrictions,
 {
     FIXME("(%p 0x%08x %p) Stub!\n", lpqsRestrictions, dwControlFlags,
             lphLookup);
-    WSASetLastError(WSA_NOT_ENOUGH_MEMORY);
+    SetLastError(WSA_NOT_ENOUGH_MEMORY);
     return SOCKET_ERROR;
 }
 
@@ -7455,7 +7469,7 @@ INT WINAPI WSALookupServiceEnd( HANDLE lookup )
 INT WINAPI WSALookupServiceNextA( HANDLE lookup, DWORD flags, LPDWORD len, LPWSAQUERYSETA results )
 {
     FIXME( "(%p 0x%08x %p %p) Stub!\n", lookup, flags, len, results );
-    WSASetLastError(WSA_E_NO_MORE);
+    SetLastError(WSA_E_NO_MORE);
     return SOCKET_ERROR;
 }
 
@@ -7465,7 +7479,7 @@ INT WINAPI WSALookupServiceNextA( HANDLE lookup, DWORD flags, LPDWORD len, LPWSA
 INT WINAPI WSALookupServiceNextW( HANDLE lookup, DWORD flags, LPDWORD len, LPWSAQUERYSETW results )
 {
     FIXME( "(%p 0x%08x %p %p) Stub!\n", lookup, flags, len, results );
-    WSASetLastError(WSA_E_NO_MORE);
+    SetLastError(WSA_E_NO_MORE);
     return SOCKET_ERROR;
 }
 
@@ -7593,7 +7607,7 @@ INT WINAPI WSANSPIoctl( HANDLE hLookup, DWORD dwControlCode, LPVOID lpvInBuffer,
 {
     FIXME("(%p, 0x%08x, %p, 0x%08x, %p, 0x%08x, %p, %p) Stub!\n", hLookup, dwControlCode,
     lpvInBuffer, cbInBuffer, lpvOutBuffer, cbOutBuffer, lpcbBytesReturned, lpCompletion);
-    WSASetLastError(WSA_NOT_ENOUGH_MEMORY);
+    SetLastError(WSA_NOT_ENOUGH_MEMORY);
     return SOCKET_ERROR;
 }
 

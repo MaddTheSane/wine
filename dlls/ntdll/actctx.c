@@ -129,6 +129,7 @@ struct assembly_identity
     WCHAR                *type;
     struct assembly_version version;
     BOOL                  optional;
+    BOOL                  delayed;
 };
 
 struct strsection_header
@@ -656,6 +657,7 @@ static const struct olemisc_entry olemisc_values[] =
 
 static const WCHAR xmlW[] = {'?','x','m','l',0};
 static const WCHAR manifestv1W[] = {'u','r','n',':','s','c','h','e','m','a','s','-','m','i','c','r','o','s','o','f','t','-','c','o','m',':','a','s','m','.','v','1',0};
+static const WCHAR manifestv2W[] = {'u','r','n',':','s','c','h','e','m','a','s','-','m','i','c','r','o','s','o','f','t','-','c','o','m',':','a','s','m','.','v','2',0};
 static const WCHAR manifestv3W[] = {'u','r','n',':','s','c','h','e','m','a','s','-','m','i','c','r','o','s','o','f','t','-','c','o','m',':','a','s','m','.','v','3',0};
 
 static const WCHAR dotManifestW[] = {'.','m','a','n','i','f','e','s','t',0};
@@ -1833,11 +1835,16 @@ static BOOL parse_binding_redirect_elem(xmlbuf_t* xmlbuf)
 
 static BOOL parse_description_elem(xmlbuf_t* xmlbuf)
 {
-    xmlstr_t    elem, content;
-    BOOL        end = FALSE, ret = TRUE;
+    xmlstr_t    elem, content, attr_name, attr_value;
+    BOOL        end = FALSE, ret = TRUE, error = FALSE;
 
-    if (!parse_expect_no_attr(xmlbuf, &end) || end ||
-        !parse_text_content(xmlbuf, &content))
+    while (next_xml_attr(xmlbuf, &attr_name, &attr_value, &error, &end))
+        WARN("unknown attr %s=%s\n", debugstr_xmlstr(&attr_name), debugstr_xmlstr(&attr_value));
+
+    if (error) return FALSE;
+    if (end) return TRUE;
+
+    if (!parse_text_content(xmlbuf, &content))
         return FALSE;
 
     TRACE("Got description %s\n", debugstr_xmlstr(&content));
@@ -2021,13 +2028,25 @@ static BOOL parse_clr_surrogate_elem(xmlbuf_t* xmlbuf, struct assembly* assembly
 static BOOL parse_dependent_assembly_elem(xmlbuf_t* xmlbuf, struct actctx_loader* acl, BOOL optional)
 {
     struct assembly_identity    ai;
-    xmlstr_t                    elem;
-    BOOL                        end = FALSE, ret = TRUE;
+    xmlstr_t                    elem, attr_name, attr_value;
+    BOOL                        end = FALSE, error = FALSE, ret = TRUE, delayed = FALSE;
 
-    if (!parse_expect_no_attr(xmlbuf, &end) || end) return end;
+    while (next_xml_attr(xmlbuf, &attr_name, &attr_value, &error, &end))
+    {
+        static const WCHAR allowDelayedBindingW[] = {'a','l','l','o','w','D','e','l','a','y','e','d','B','i','n','d','i','n','g',0};
+        static const WCHAR trueW[] = {'t','r','u','e',0};
+
+        if (xmlstr_cmp(&attr_name, allowDelayedBindingW))
+            delayed = xmlstr_cmp(&attr_value, trueW);
+        else
+            WARN("unknown attr %s=%s\n", debugstr_xmlstr(&attr_name), debugstr_xmlstr(&attr_value));
+    }
+
+    if (error || end) return end;
 
     memset(&ai, 0, sizeof(ai));
     ai.optional = optional;
+    ai.delayed = delayed;
 
     if (!parse_expect_elem(xmlbuf, assemblyIdentityW, asmv1W) ||
         !parse_assembly_identity_elem(xmlbuf, acl->actctx, &ai))
@@ -2213,7 +2232,9 @@ static BOOL parse_assembly_elem(xmlbuf_t* xmlbuf, struct actctx_loader* acl,
         }
         else if (xmlstr_cmp(&attr_name, xmlnsW))
         {
-            if (!xmlstr_cmp(&attr_value, manifestv1W) && !xmlstr_cmp(&attr_value, manifestv3W))
+            if (!xmlstr_cmp(&attr_value, manifestv1W) &&
+                !xmlstr_cmp(&attr_value, manifestv2W) &&
+                !xmlstr_cmp(&attr_value, manifestv3W))
             {
                 FIXME("wrong namespace %s\n", debugstr_xmlstr(&attr_value));
                 return FALSE;
@@ -2906,7 +2927,7 @@ static NTSTATUS parse_depend_manifests(struct actctx_loader* acl)
     {
         if (lookup_assembly(acl, &acl->dependencies[i]) != STATUS_SUCCESS)
         {
-            if (!acl->dependencies[i].optional)
+            if (!acl->dependencies[i].optional && !acl->dependencies[i].delayed)
             {
                 FIXME( "Could not find dependent assembly %s (%s)\n",
                     debugstr_w(acl->dependencies[i].name),

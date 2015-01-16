@@ -8,19 +8,19 @@
 @ stub HSTRING_UserUnmarshal64
 @ stub WindowsCompareStringOrdinal
 @ stub WindowsConcatString
-@ stub WindowsCreateString
-@ stub WindowsCreateStringReference
-@ stub WindowsDeleteString
-@ stub WindowsDeleteStringBuffer
-@ stub WindowsDuplicateString
-@ stub WindowsGetStringLen
-@ stub WindowsGetStringRawBuffer
+@ stdcall WindowsCreateString(ptr long ptr) combase.WindowsCreateString
+@ stdcall WindowsCreateStringReference(wstr long ptr ptr) combase.WindowsCreateStringReference
+@ stdcall WindowsDeleteString(ptr) combase.WindowsDeleteString
+@ stdcall WindowsDeleteStringBuffer(ptr) combase.WindowsDeleteStringBuffer
+@ stdcall WindowsDuplicateString(ptr ptr) combase.WindowsDuplicateString
+@ stdcall WindowsGetStringLen(ptr) combase.WindowsGetStringLen
+@ stdcall WindowsGetStringRawBuffer(ptr ptr) combase.WindowsGetStringRawBuffer
 @ stub WindowsInspectString
-@ stub WindowsIsStringEmpty
-@ stub WindowsPreallocateStringBuffer
-@ stub WindowsPromoteStringBuffer
+@ stdcall WindowsIsStringEmpty(ptr) combase.WindowsIsStringEmpty
+@ stdcall WindowsPreallocateStringBuffer(long ptr ptr) combase.WindowsPreallocateStringBuffer
+@ stdcall WindowsPromoteStringBuffer(ptr ptr) combase.WindowsPromoteStringBuffer
 @ stub WindowsReplaceString
-@ stub WindowsStringHasEmbeddedNull
+@ stdcall WindowsStringHasEmbeddedNull(ptr ptr) combase.WindowsStringHasEmbeddedNull
 @ stub WindowsSubstring
 @ stub WindowsSubstringWithSpecifiedLength
 @ stub WindowsTrimStringEnd

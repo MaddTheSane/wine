@@ -967,7 +967,7 @@ static HRESULT WINAPI HTMLWindow2_open(IHTMLWindow2 *iface, BSTR url, BSTR name,
     if(FAILED(hres))
         return hres;
 
-    hres = navigate_new_window(window, uri, name, pomWindowResult);
+    hres = navigate_new_window(window, uri, name, NULL, pomWindowResult);
     IUri_Release(uri);
     return hres;
 }
@@ -1594,15 +1594,33 @@ static HRESULT WINAPI HTMLWindow3_Invoke(IHTMLWindow3 *iface, DISPID dispIdMembe
 static HRESULT WINAPI HTMLWindow3_get_screenLeft(IHTMLWindow3 *iface, LONG *p)
 {
     HTMLWindow *This = impl_from_IHTMLWindow3(iface);
-    FIXME("(%p)->(%p)\n", This, p);
-    return E_NOTIMPL;
+    nsresult nsres;
+
+    TRACE("(%p)->(%p)\n", This, p);
+
+    nsres = nsIDOMWindow_GetScreenX(This->outer_window->nswindow, p);
+    if(NS_FAILED(nsres)) {
+        ERR("GetScreenX failed: %08x\n", nsres);
+        return E_FAIL;
+    }
+
+    return S_OK;
 }
 
 static HRESULT WINAPI HTMLWindow3_get_screenTop(IHTMLWindow3 *iface, LONG *p)
 {
     HTMLWindow *This = impl_from_IHTMLWindow3(iface);
-    FIXME("(%p)->(%p)\n", This, p);
-    return E_NOTIMPL;
+    nsresult nsres;
+
+    TRACE("(%p)->(%p)\n", This, p);
+
+    nsres = nsIDOMWindow_GetScreenY(This->outer_window->nswindow, p);
+    if(NS_FAILED(nsres)) {
+        ERR("GetScreenY failed: %08x\n", nsres);
+        return E_FAIL;
+    }
+
+    return S_OK;
 }
 
 static HRESULT WINAPI HTMLWindow3_attachEvent(IHTMLWindow3 *iface, BSTR event, IDispatch *pDisp, VARIANT_BOOL *pfResult)

@@ -48,6 +48,7 @@ BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD reason, LPVOID reserved)
     case DLL_PROCESS_DETACH:
         if (reserved) break;
         release_shared_factory(shared_factory);
+        release_freetype();
     }
     return TRUE;
 }
@@ -453,6 +454,7 @@ struct dwritefactory {
     LONG ref;
 
     IDWriteFontCollection *system_collection;
+    IDWriteFontCollection *eudc_collection;
     IDWriteGdiInterop *gdiinterop;
 
     IDWriteLocalFontFileLoader* localfontfileloader;
@@ -505,6 +507,8 @@ static void release_dwritefactory(struct dwritefactory *factory)
 
     if (factory->system_collection)
         IDWriteFontCollection_Release(factory->system_collection);
+    if (factory->eudc_collection)
+        IDWriteFontCollection_Release(factory->eudc_collection);
     if (factory->gdiinterop)
         release_gdiinterop(factory->gdiinterop);
     heap_free(factory);
@@ -921,18 +925,22 @@ static HRESULT WINAPI dwritefactory_CreateTextFormat(IDWriteFactory2 *iface, WCH
     DWRITE_FONT_STRETCH stretch, FLOAT size, WCHAR const *locale, IDWriteTextFormat **format)
 {
     struct dwritefactory *This = impl_from_IDWriteFactory2(iface);
+    IDWriteFontCollection *syscollection = NULL;
+    HRESULT hr;
+
     TRACE("(%p)->(%s %p %d %d %d %f %s %p)\n", This, debugstr_w(family_name), collection, weight, style, stretch,
         size, debugstr_w(locale), format);
 
-    if (!collection)
-    {
-        HRESULT hr = IDWriteFactory2_GetSystemFontCollection(iface, &collection, FALSE);
-        if (hr != S_OK)
+    if (!collection) {
+        hr = IDWriteFactory2_GetSystemFontCollection(iface, &syscollection, FALSE);
+        if (FAILED(hr))
             return hr;
-        /* Our ref count is 1 too many, since we will add ref in create_textformat */
-        IDWriteFontCollection_Release(This->system_collection);
     }
-    return create_textformat(family_name, collection, weight, style, stretch, size, locale, format);
+
+    hr = create_textformat(family_name, collection ? collection : syscollection, weight, style, stretch, size, locale, format);
+    if (syscollection)
+        IDWriteFontCollection_Release(syscollection);
+    return hr;
 }
 
 static HRESULT WINAPI dwritefactory_CreateTypography(IDWriteFactory2 *iface, IDWriteTypography **typography)
@@ -977,11 +985,13 @@ static HRESULT WINAPI dwritefactory_CreateGdiCompatibleTextLayout(IDWriteFactory
     DWRITE_MATRIX const* transform, BOOL use_gdi_natural, IDWriteTextLayout **layout)
 {
     struct dwritefactory *This = impl_from_IDWriteFactory2(iface);
-    FIXME("(%p)->(%s:%u %p %f %f %f %p %d %p): semi-stub\n", This, debugstr_wn(string, len), len, format, layout_width, layout_height,
+
+    TRACE("(%p)->(%s:%u %p %f %f %f %p %d %p)\n", This, debugstr_wn(string, len), len, format, layout_width, layout_height,
         pixels_per_dip, transform, use_gdi_natural, layout);
 
     if (!format) return E_INVALIDARG;
-    return create_textlayout(string, len, format, layout_width, layout_height, layout);
+    return create_gdicompat_textlayout(string, len, format, layout_width, layout_height, pixels_per_dip, transform,
+        use_gdi_natural, layout);
 }
 
 static HRESULT WINAPI dwritefactory_CreateEllipsisTrimmingSign(IDWriteFactory2 *iface, IDWriteTextFormat *format,
@@ -1021,8 +1031,22 @@ static HRESULT WINAPI dwritefactory1_GetEudcFontCollection(IDWriteFactory2 *ifac
     BOOL check_for_updates)
 {
     struct dwritefactory *This = impl_from_IDWriteFactory2(iface);
-    FIXME("(%p)->(%p %d): stub\n", This, collection, check_for_updates);
-    return E_NOTIMPL;
+    HRESULT hr = S_OK;
+
+    TRACE("(%p)->(%p %d)\n", This, collection, check_for_updates);
+
+    if (check_for_updates)
+        FIXME("checking for eudc updates not implemented\n");
+
+    if (!This->eudc_collection)
+        hr = get_eudc_fontcollection(iface, &This->eudc_collection);
+
+    if (SUCCEEDED(hr))
+        IDWriteFontCollection_AddRef(This->eudc_collection);
+
+    *collection = This->eudc_collection;
+
+    return hr;
 }
 
 static HRESULT WINAPI dwritefactory1_CreateCustomRenderingParams(IDWriteFactory2 *iface, FLOAT gamma,
@@ -1168,6 +1192,7 @@ static void init_dwritefactory(struct dwritefactory *factory, DWRITE_FACTORY_TYP
     factory->ref = 1;
     factory->localfontfileloader = NULL;
     factory->system_collection = NULL;
+    factory->eudc_collection = NULL;
     factory->gdiinterop = NULL;
 
     list_init(&factory->collection_loaders);

@@ -1613,3 +1613,43 @@ DWORD WINAPI VerInstallFileW(
     HeapFree( GetProcessHeap(), 0, wcurd );
     return ret;
 }
+
+/******************************************************************************
+ * GetFileVersionInfoSizeExA                    [VERSION.@]
+ */
+DWORD WINAPI GetFileVersionInfoSizeExA(DWORD flags, LPCSTR filename, LPDWORD handle)
+{
+    FIXME("stub: %u %s %p\n", flags, wine_dbgstr_a(filename), handle);
+    SetLastError(ERROR_CALL_NOT_IMPLEMENTED);
+    return 0;
+}
+
+/******************************************************************************
+ * GetFileVersionInfoSizeExW                     [VERSION.@]
+ */
+DWORD WINAPI GetFileVersionInfoSizeExW(DWORD flags, LPCWSTR filename, LPDWORD handle)
+{
+    FIXME("stub: %u %s %p\n", flags, wine_dbgstr_w(filename), handle);
+    SetLastError(ERROR_CALL_NOT_IMPLEMENTED);
+    return 0;
+}
+
+/******************************************************************************
+ * GetFileVersionInfoExA                     [VERSION.@]
+ */
+BOOL WINAPI GetFileVersionInfoExA(DWORD flags, LPCSTR filename, DWORD handle, DWORD len, LPVOID data)
+{
+    FIXME("stub: %u %s %u %u %p\n", flags, wine_dbgstr_a(filename), handle, len, data);
+    SetLastError(ERROR_CALL_NOT_IMPLEMENTED);
+    return 0;
+}
+
+/******************************************************************************
+ * GetFileVersionInfoExW                     [VERSION.@]
+ */
+BOOL WINAPI GetFileVersionInfoExW(DWORD flags, LPCWSTR filename, DWORD handle, DWORD len, LPVOID data)
+{
+    FIXME("stub: %u %s %u %u %p\n", flags, wine_dbgstr_w(filename), handle, len, data);
+    SetLastError(ERROR_CALL_NOT_IMPLEMENTED);
+    return 0;
+}

@@ -413,55 +413,50 @@ static void shader_glsl_validate_link(const struct wined3d_gl_info *gl_info, GLh
 }
 
 /* Context activation is done by the caller. */
-static void shader_glsl_load_psamplers(const struct wined3d_gl_info *gl_info,
-        const DWORD *tex_unit_map, GLhandleARB programId)
+static void shader_glsl_load_samplers(const struct wined3d_gl_info *gl_info,
+        const DWORD *tex_unit_map, GLhandleARB program_id)
 {
-    GLint name_loc;
+    unsigned int mapped_unit;
     char sampler_name[20];
-    unsigned int i;
+    const char *prefix;
+    unsigned int i, j;
+    GLint name_loc;
 
-    for (i = 0; i < MAX_FRAGMENT_SAMPLERS; ++i)
+    static const struct
     {
-        snprintf(sampler_name, sizeof(sampler_name), "ps_sampler%u", i);
-        name_loc = GL_EXTCALL(glGetUniformLocationARB(programId, sampler_name));
-        if (name_loc != -1) {
-            DWORD mapped_unit = tex_unit_map[i];
-            if (mapped_unit != WINED3D_UNMAPPED_STAGE && mapped_unit < gl_info->limits.fragment_samplers)
+        enum wined3d_shader_type type;
+        unsigned int base_idx;
+        unsigned int count;
+    }
+    sampler_info[] =
+    {
+        {WINED3D_SHADER_TYPE_PIXEL,     0,                      MAX_FRAGMENT_SAMPLERS},
+        {WINED3D_SHADER_TYPE_VERTEX,    MAX_FRAGMENT_SAMPLERS,  MAX_VERTEX_SAMPLERS},
+    };
+
+    for (i = 0; i < ARRAY_SIZE(sampler_info); ++i)
+    {
+        prefix = shader_glsl_get_prefix(sampler_info[i].type);
+
+        for (j = 0; j < sampler_info[i].count; ++j)
+        {
+            snprintf(sampler_name, sizeof(sampler_name), "%s_sampler%u", prefix, j);
+            name_loc = GL_EXTCALL(glGetUniformLocationARB(program_id, sampler_name));
+            if (name_loc == -1)
+                continue;
+
+            mapped_unit = tex_unit_map[sampler_info[i].base_idx + j];
+            if (mapped_unit == WINED3D_UNMAPPED_STAGE || mapped_unit >= gl_info->limits.combined_samplers)
             {
-                TRACE("Loading %s for texture %d\n", sampler_name, mapped_unit);
-                GL_EXTCALL(glUniform1iARB(name_loc, mapped_unit));
-                checkGLcall("glUniform1iARB");
-            } else {
-                ERR("Trying to load sampler %s on unsupported unit %d\n", sampler_name, mapped_unit);
+                ERR("Trying to load sampler %s on unsupported unit %u.\n", sampler_name, mapped_unit);
+                continue;
             }
+
+            TRACE("Loading sampler %s on unit %u.\n", sampler_name, mapped_unit);
+            GL_EXTCALL(glUniform1iARB(name_loc, mapped_unit));
         }
     }
-}
-
-/* Context activation is done by the caller. */
-static void shader_glsl_load_vsamplers(const struct wined3d_gl_info *gl_info,
-        const DWORD *tex_unit_map, GLhandleARB programId)
-{
-    GLint name_loc;
-    char sampler_name[20];
-    unsigned int i;
-
-    for (i = 0; i < MAX_VERTEX_SAMPLERS; ++i)
-    {
-        snprintf(sampler_name, sizeof(sampler_name), "vs_sampler%u", i);
-        name_loc = GL_EXTCALL(glGetUniformLocationARB(programId, sampler_name));
-        if (name_loc != -1) {
-            DWORD mapped_unit = tex_unit_map[MAX_FRAGMENT_SAMPLERS + i];
-            if (mapped_unit != WINED3D_UNMAPPED_STAGE && mapped_unit < gl_info->limits.combined_samplers)
-            {
-                TRACE("Loading %s for texture %d\n", sampler_name, mapped_unit);
-                GL_EXTCALL(glUniform1iARB(name_loc, mapped_unit));
-                checkGLcall("glUniform1iARB");
-            } else {
-                ERR("Trying to load sampler %s on unsupported unit %d\n", sampler_name, mapped_unit);
-            }
-        }
-    }
+    checkGLcall("glUniform1iARB");
 }
 
 /* Context activation is done by the caller. */
@@ -5996,10 +5991,8 @@ static void set_glsl_shader_program(const struct wined3d_context *context, const
      * vertex shader with fixed function pixel processing is used we make sure that the card
      * supports enough samplers to allow the max number of vertex samplers with all possible
      * fixed function fragment processing setups. So once the program is linked these samplers
-     * won't change.
-     */
-    shader_glsl_load_vsamplers(gl_info, context->tex_unit_map, programId);
-    shader_glsl_load_psamplers(gl_info, context->tex_unit_map, programId);
+     * won't change. */
+    shader_glsl_load_samplers(gl_info, context->tex_unit_map, programId);
 
     entry->constant_update_mask = 0;
     if (vshader)
@@ -6604,7 +6597,7 @@ static void shader_glsl_get_caps(const struct wined3d_gl_info *gl_info, struct s
     if (gl_info->supported[EXT_GPU_SHADER4] && gl_info->supported[ARB_SHADER_BIT_ENCODING]
             && gl_info->supported[ARB_GEOMETRY_SHADER4] && gl_info->glsl_version >= MAKEDWORD_VERSION(1, 50)
             && gl_info->supported[ARB_DRAW_ELEMENTS_BASE_VERTEX] && gl_info->supported[ARB_DRAW_INSTANCED]
-            && gl_info->supported[ARB_TEXTURE_RG])
+            && gl_info->supported[ARB_TEXTURE_RG] && gl_info->supported[ARB_SAMPLER_OBJECTS])
         shader_model = 4;
     /* ARB_shader_texture_lod or EXT_gpu_shader4 is required for the SM3
      * texldd and texldl instructions. */

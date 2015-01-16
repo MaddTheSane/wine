@@ -33,6 +33,7 @@
 #include "winternl.h"
 #include "excpt.h"
 #include "winioctl.h"
+#include "ddk/csq.h"
 #include "ddk/ntddk.h"
 #include "ddk/ntifs.h"
 #include "wine/unicode.h"
@@ -142,6 +143,7 @@ static NTSTATUS process_ioctl( DEVICE_OBJECT *device, ULONG code, void *in_buff,
     IRP irp;
     MDL mdl;
     IO_STACK_LOCATION irpsp;
+    FILE_OBJECT file;
     PDRIVER_DISPATCH dispatch = device->DriverObject->MajorFunction[IRP_MJ_DEVICE_CONTROL];
     NTSTATUS status;
     LARGE_INTEGER count;
@@ -152,6 +154,7 @@ static NTSTATUS process_ioctl( DEVICE_OBJECT *device, ULONG code, void *in_buff,
     memset( &irp, 0x55, sizeof(irp) );
     memset( &irpsp, 0x66, sizeof(irpsp) );
     memset( &mdl, 0x77, sizeof(mdl) );
+    memset( &file, 0x88, sizeof(file) );
 
     irp.RequestorMode = UserMode;
     if ((code & 3) == METHOD_BUFFERED)
@@ -166,6 +169,7 @@ static NTSTATUS process_ioctl( DEVICE_OBJECT *device, ULONG code, void *in_buff,
     irp.UserBuffer = out_buff;
     irp.MdlAddress = &mdl;
     irp.Tail.Overlay.s.u2.CurrentStackLocation = &irpsp;
+    irp.Tail.Overlay.OriginalFileObject = &file;
     irp.UserIosb = NULL;
 
     irpsp.MajorFunction = IRP_MJ_DEVICE_CONTROL;
@@ -181,6 +185,9 @@ static NTSTATUS process_ioctl( DEVICE_OBJECT *device, ULONG code, void *in_buff,
     mdl.StartVa = out_buff;
     mdl.ByteCount = *out_size;
     mdl.ByteOffset = 0;
+
+    file.FsContext = NULL;
+    file.FsContext2 = NULL;
 
     device->CurrentIrp = &irp;
 
@@ -1451,6 +1458,13 @@ KPRIORITY WINAPI KeSetPriorityThread( PKTHREAD Thread, KPRIORITY Priority )
     return Priority;
 }
 
+/***********************************************************************
+ *           KeSetSystemAffinityThread   (NTOSKRNL.EXE.@)
+ */
+VOID WINAPI KeSetSystemAffinityThread(KAFFINITY Affinity)
+{
+    FIXME("(%lx) stub\n", Affinity);
+}
 
 /***********************************************************************
  *           KeWaitForSingleObject   (NTOSKRNL.EXE.@)
@@ -1994,5 +2008,17 @@ NTSTATUS WINAPI IoRegisterPlugPlayNotification(IO_NOTIFICATION_EVENT_CATEGORY ca
                                                PVOID context, PVOID *notification)
 {
     FIXME("(%u %u %p %p %p %p %p) stub\n", category, flags, data, driver, callback, context, notification);
+    return STATUS_SUCCESS;
+}
+
+/*****************************************************
+ *           IoCsqInitialize  (NTOSKRNL.EXE.@)
+ */
+NTSTATUS WINAPI IoCsqInitialize(PIO_CSQ csq, PIO_CSQ_INSERT_IRP insert_irp, PIO_CSQ_REMOVE_IRP remove_irp,
+                                PIO_CSQ_PEEK_NEXT_IRP peek_irp, PIO_CSQ_ACQUIRE_LOCK acquire_lock,
+                                PIO_CSQ_RELEASE_LOCK release_lock, PIO_CSQ_COMPLETE_CANCELED_IRP complete_irp)
+{
+    FIXME("(%p %p %p %p %p %p %p) stub\n",
+          csq, insert_irp, remove_irp, peek_irp, acquire_lock, release_lock, complete_irp);
     return STATUS_SUCCESS;
 }

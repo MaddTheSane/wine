@@ -1769,8 +1769,10 @@ static void test_ip_pktinfo(void)
          * Send a packet from the client to the server and test for specifying
          * a short control header.
          */
+        SetLastError(0xdeadbeef);
         rc=sendto(s2, msg, sizeof(msg), 0, (struct sockaddr*)&s2addr, sizeof(s2addr));
         ok(rc == sizeof(msg), "sendto() failed error: %d\n", WSAGetLastError());
+        ok(GetLastError() == ERROR_SUCCESS, "Expected 0, got %d\n", GetLastError());
         hdr.Control.len = 1;
         rc=pWSARecvMsg(s1, &hdr, &dwSize, NULL, NULL);
         err=WSAGetLastError();
@@ -1783,8 +1785,10 @@ static void test_ip_pktinfo(void)
         rc=pWSARecvMsg(s1, &hdr, NULL, &ov, NULL);
         err=WSAGetLastError();
         ok(rc != 0 && err == WSA_IO_PENDING, "WSARecvMsg() failed error: %d\n", err);
+        SetLastError(0xdeadbeef);
         rc=sendto(s2, msg, sizeof(msg), 0, (struct sockaddr*)&s2addr, sizeof(s2addr));
         ok(rc == sizeof(msg), "sendto() failed error: %d\n", WSAGetLastError());
+        ok(GetLastError() == ERROR_SUCCESS, "Expected 0, got %d\n", GetLastError());
         if (WaitForSingleObject(ov.hEvent, 100) != WAIT_OBJECT_0)
         {
             skip("Server side did not receive packet, some tests skipped.\n");
@@ -3010,6 +3014,7 @@ static void test_WSAStringToAddressA(void)
     CHAR address6[] = "::1";
     CHAR address7[] = "[::1]";
     CHAR address8[] = "[::1]:65535";
+    CHAR address9[] = "2001::1";
 
     len = 0;
     sockaddr.sin_family = AF_INET;
@@ -3093,6 +3098,12 @@ static void test_WSAStringToAddressA(void)
         (ret == SOCKET_ERROR && GLE == WSAEINVAL),
         "WSAStringToAddressA() failed for IPv6 address: %d\n", GLE);
 
+    len = sizeof(sockaddr);
+
+    ret = WSAStringToAddressA( address9, AF_INET, NULL, (SOCKADDR*)&sockaddr, &len );
+    GLE = WSAGetLastError();
+    ok( (ret == SOCKET_ERROR && GLE == WSAEINVAL),
+        "WSAStringToAddressA() should have failed with %d\n", GLE );
 }
 
 static void test_WSAStringToAddressW(void)
@@ -3113,6 +3124,7 @@ static void test_WSAStringToAddressW(void)
     WCHAR address6[] = {':',':','1','\0'};
     WCHAR address7[] = {'[',':',':','1',']','\0'};
     WCHAR address8[] = {'[',':',':','1',']',':','6','5','5','3','5','\0'};
+    WCHAR address9[] = {'2','0','0','1',':',':','1','\0'};
 
     len = 0;
     sockaddr.sin_family = AF_INET;
@@ -3209,6 +3221,12 @@ static void test_WSAStringToAddressW(void)
         (ret == SOCKET_ERROR && GLE == WSAEINVAL),
         "WSAStringToAddressW() failed for IPv6 address: %d\n", GLE);
 
+    len = sizeof(sockaddr);
+
+    ret = WSAStringToAddressW( address9, AF_INET, NULL, (SOCKADDR*)&sockaddr, &len );
+    GLE = WSAGetLastError();
+    ok( (ret == SOCKET_ERROR && GLE == WSAEINVAL),
+        "WSAStringToAddressW() should have failed with %d\n", GLE );
 }
 
 static DWORD WINAPI SelectReadThread(void *param)
@@ -5109,16 +5127,22 @@ static void test_events(int useMessages)
     /* broken on all windows - FD_CONNECT error is garbage */
 
     /* Test simple send/recv */
+    SetLastError(0xdeadbeef);
     ret = send(dst, buffer, 100, 0);
     ok(ret == 100, "Failed to send buffer %d err %d\n", ret, GetLastError());
+    ok(GetLastError() == ERROR_SUCCESS, "Expected 0, got %d\n", GetLastError());
     ok_event_seq(src, hEvent, read_seq, NULL, 0);
 
+    SetLastError(0xdeadbeef);
     ret = recv(src, buffer, 1, MSG_PEEK);
     ok(ret == 1, "Failed to peek at recv buffer %d err %d\n", ret, GetLastError());
+    ok(GetLastError() == ERROR_SUCCESS, "Expected 0, got %d\n", GetLastError());
     ok_event_seq(src, hEvent, read_seq, NULL, 0);
 
+    SetLastError(0xdeadbeef);
     ret = recv(src, buffer, 50, 0);
     ok(ret == 50, "Failed to recv buffer %d err %d\n", ret, GetLastError());
+    ok(GetLastError() == ERROR_SUCCESS, "Expected 0, got %d\n", GetLastError());
     ok_event_seq(src, hEvent, read_seq, NULL, 0);
 
     ret = recv(src, buffer, 50, 0);
@@ -5142,8 +5166,10 @@ static void test_events(int useMessages)
     else
         ok_event_seq(src, hEvent, empty_seq, NULL, 0);
 
+    SetLastError(0xdeadbeef);
     ret = recv(src, buffer, 1, 0);
     ok(ret == 1, "Failed to recv buffer %d err %d\n", ret, GetLastError());
+    ok(GetLastError() == ERROR_SUCCESS, "Expected 0, got %d\n", GetLastError());
     ok_event_seq(src, hEvent, empty_seq, NULL, 0);
 
     /* Interaction with overlapped */
@@ -5185,8 +5211,10 @@ static void test_events(int useMessages)
         ok(buffer[1] == '2', "Got %c instead of 2\n", buffer[1]);
     }
 
+    SetLastError(0xdeadbeef);
     ret = send(dst, "1", 1, 0);
     ok(ret == 1, "Failed to send buffer %d err %d\n", ret, GetLastError());
+    ok(GetLastError() == ERROR_SUCCESS, "Expected 0, got %d\n", GetLastError());
     ok_event_seq(src, hEvent, read_seq, NULL, 0);
 
     ret = recv(src, buffer, 1, 0);
@@ -5557,17 +5585,22 @@ static void test_WSASendMsg(void)
     set_blocking(sock, TRUE);
 
     bytesSent = 0;
+    SetLastError(0xdeadbeef);
     ret = pWSASendMsg(sock, &msg, 0, &bytesSent, NULL, NULL);
     ok(!ret, "WSASendMsg should have worked\n");
+    ok(GetLastError() == 0 || broken(GetLastError() == 0xdeadbeef) /* Win <= 2008 */,
+       "Expected 0, got %d\n", GetLastError());
     ok(bytesSent == iovec[0].len, "incorret bytes sent, expected %d, sent %d\n",
        iovec[0].len, bytesSent);
 
     /* receive data */
     addrlen = sizeof(sockaddr);
     memset(buffer, 0, sizeof(buffer));
+    SetLastError(0xdeadbeef);
     ret = recvfrom(dst, buffer, sizeof(buffer), 0, (struct sockaddr *) &sockaddr, &addrlen);
     ok(ret == bytesSent, "got %d, expected %d\n",
        ret, bytesSent);
+    ok(GetLastError() == ERROR_SUCCESS, "Expected 0, got %d\n", GetLastError());
 
     /* A successful call to WSASendMsg must have bound the socket */
     addrlen = sizeof(sockaddr);
@@ -5582,17 +5615,22 @@ static void test_WSASendMsg(void)
     msg.dwBufferCount = 2; /* send both buffers */
 
     bytesSent = 0;
+    SetLastError(0xdeadbeef);
     ret = pWSASendMsg(sock, &msg, 0, &bytesSent, NULL, NULL);
     ok(!ret, "WSASendMsg should have worked\n");
     ok(bytesSent == iovec[0].len + iovec[1].len, "incorret bytes sent, expected %d, sent %d\n",
        iovec[0].len + iovec[1].len, bytesSent);
+    ok(GetLastError() == 0 || broken(GetLastError() == 0xdeadbeef) /* Win <= 2008 */,
+       "Expected 0, got %d\n", GetLastError());
 
     /* receive data */
     addrlen = sizeof(sockaddr);
     memset(buffer, 0, sizeof(buffer));
+    SetLastError(0xdeadbeef);
     ret = recvfrom(dst, buffer, sizeof(buffer), 0, (struct sockaddr *) &sockaddr, &addrlen);
     ok(ret == bytesSent, "got %d, expected %d\n",
        ret, bytesSent);
+    ok(GetLastError() == ERROR_SUCCESS, "Expected 0, got %d\n", GetLastError());
 
     closesocket(sock);
     closesocket(dst);
@@ -5705,8 +5743,6 @@ static void test_WSARecv(void)
     BOOL bret;
     HANDLE thread;
 
-    memset(&ov, 0, sizeof(ov));
-
     tcp_socketpair(&src, &dest);
     if (src == INVALID_SOCKET || dest == INVALID_SOCKET)
     {
@@ -5714,9 +5750,42 @@ static void test_WSARecv(void)
         goto end;
     }
 
-    bufs.len = sizeof(buf);
-    bufs.buf = buf;
+    memset(&ov, 0, sizeof(ov));
     flags = 0;
+    bufs.len = 2;
+    bufs.buf = buf;
+
+    /* Send 4 bytes and receive in two calls of 2 */
+    SetLastError(0xdeadbeef);
+    iret = send(src, "test", 4, 0);
+    ok(iret == 4, "Expected 4, got %d\n", iret);
+    ok(GetLastError() == ERROR_SUCCESS, "Expected 0, got %d\n", GetLastError());
+    SetLastError(0xdeadbeef);
+    bytesReturned = 0xdeadbeef;
+    iret = WSARecv(dest, &bufs, 1, &bytesReturned, &flags, NULL, NULL);
+    ok(!iret, "Expected 0, got %d\n", iret);
+    ok(bytesReturned, "Expected 2, got %d\n", bytesReturned);
+    ok(GetLastError() == ERROR_SUCCESS, "Expected 0, got %d\n", GetLastError());
+    SetLastError(0xdeadbeef);
+    bytesReturned = 0xdeadbeef;
+    iret = WSARecv(dest, &bufs, 1, &bytesReturned, &flags, NULL, NULL);
+    ok(!iret, "Expected 0, got %d\n", iret);
+    ok(bytesReturned, "Expected 2, got %d\n", bytesReturned);
+    ok(GetLastError() == ERROR_SUCCESS, "Expected 0, got %d\n", GetLastError());
+
+    bufs.len = 4;
+    SetLastError(0xdeadbeef);
+    iret = send(src, "test", 4, 0);
+    ok(iret == 4, "Expected 4, got %d\n", iret);
+    ok(GetLastError() == ERROR_SUCCESS, "Expected 0, got %d\n", GetLastError());
+    SetLastError(0xdeadbeef);
+    bytesReturned = 0xdeadbeef;
+    iret = WSARecv(dest, &bufs, 1, &bytesReturned, &flags, NULL, NULL);
+    ok(!iret, "Expected 0, got %d\n", iret);
+    ok(bytesReturned, "Expected 4, got %d\n", bytesReturned);
+    ok(GetLastError() == ERROR_SUCCESS, "Expected 0, got %d\n", GetLastError());
+
+    bufs.len = sizeof(buf);
 
     ov.hEvent = CreateEventA(NULL, FALSE, FALSE, NULL);
     ok(ov.hEvent != NULL, "could not create event object, errno = %d\n", GetLastError());

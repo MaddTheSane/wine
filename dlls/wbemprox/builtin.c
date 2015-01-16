@@ -28,6 +28,7 @@
 #include "windef.h"
 #include "winbase.h"
 #include "winsock2.h"
+#include "ws2tcpip.h"
 #include "initguid.h"
 #include "wbemcli.h"
 #include "wbemprov.h"
@@ -52,6 +53,8 @@ static const WCHAR class_cdromdriveW[] =
     {'W','i','n','3','2','_','C','D','R','O','M','D','r','i','v','e',0};
 static const WCHAR class_compsysW[] =
     {'W','i','n','3','2','_','C','o','m','p','u','t','e','r','S','y','s','t','e','m',0};
+static const WCHAR class_compsysproductW[] =
+    {'W','i','n','3','2','_','C','o','m','p','u','t','e','r','S','y','s','t','e','m','P','r','o','d','u','c','t',0};
 static const WCHAR class_datafileW[] =
     {'C','I','M','_','D','a','t','a','F','i','l','e',0};
 static const WCHAR class_directoryW[] =
@@ -149,6 +152,8 @@ static const WCHAR prop_displaynameW[] =
     {'D','i','s','p','l','a','y','N','a','m','e',0};
 static const WCHAR prop_diskindexW[] =
     {'D','i','s','k','I','n','d','e','x',0};
+static const WCHAR prop_dnshostnameW[] =
+    {'D','N','S','H','o','s','t','N','a','m','e',0};
 static const WCHAR prop_domainW[] =
     {'D','o','m','a','i','n',0};
 static const WCHAR prop_domainroleW[] =
@@ -257,6 +262,8 @@ static const WCHAR prop_startingoffsetW[] =
     {'S','t','a','r','t','i','n','g','O','f','f','s','e','t',0};
 static const WCHAR prop_stateW[] =
     {'S','t','a','t','e',0};
+static const WCHAR prop_statusinfoW[] =
+    {'S','t','a','t','u','s','I','n','f','o',0};
 static const WCHAR prop_strvalueW[] =
     {'S','t','r','i','n','g','V','a','l','u','e',0};
 static const WCHAR prop_suitemaskW[] =
@@ -277,10 +284,16 @@ static const WCHAR prop_typeW[] =
     {'T','y','p','e',0};
 static const WCHAR prop_uniqueidW[] =
     {'U','n','i','q','u','e','I','d',0};
+static const WCHAR prop_uuidW[] =
+    {'U','U','I','D',0};
 static const WCHAR prop_varianttypeW[] =
     {'V','a','r','i','a','n','t','T','y','p','e',0};
 static const WCHAR prop_versionW[] =
     {'V','e','r','s','i','o','n',0};
+static const WCHAR prop_videoprocessorW[] =
+    {'V','i','d','e','o','P','r','o','c','e','s','s','o','r',0};
+static const WCHAR prop_volumenameW[] =
+    {'V','o','l','u','m','e','N','a','m','e',0};
 static const WCHAR prop_volumeserialnumberW[] =
     {'V','o','l','u','m','e','S','e','r','i','a','l','N','u','m','b','e','r',0};
 
@@ -323,6 +336,10 @@ static const struct column col_compsys[] =
     { prop_numprocessorsW,        CIM_UINT32, VT_I4 },
     { prop_totalphysicalmemoryW,  CIM_UINT64 }
 };
+static const struct column col_compsysproduct[] =
+{
+    { prop_uuidW,    CIM_STRING }
+};
 static const struct column col_datafile[] =
 {
     { prop_nameW,    CIM_STRING|COL_FLAG_DYNAMIC|COL_FLAG_KEY },
@@ -364,6 +381,7 @@ static const struct column col_logicaldisk[] =
     { prop_freespaceW,          CIM_UINT64 },
     { prop_nameW,               CIM_STRING|COL_FLAG_DYNAMIC },
     { prop_sizeW,               CIM_UINT64 },
+    { prop_volumenameW,         CIM_STRING|COL_FLAG_DYNAMIC },
     { prop_volumeserialnumberW, CIM_STRING|COL_FLAG_DYNAMIC }
 };
 static const struct column col_networkadapter[] =
@@ -382,6 +400,7 @@ static const struct column col_networkadapter[] =
 };
 static const struct column col_networkadapterconfig[] =
 {
+    { prop_dnshostnameW,        CIM_STRING|COL_FLAG_DYNAMIC },
     { prop_indexW,              CIM_UINT32|COL_FLAG_KEY, VT_I4 },
     { prop_ipconnectionmetricW, CIM_UINT32, VT_I4 },
     { prop_ipenabledW,          CIM_BOOLEAN },
@@ -488,7 +507,8 @@ static const struct column col_service[] =
 static const struct column col_sounddevice[] =
 {
     { prop_nameW,        CIM_STRING },
-    { prop_productnameW, CIM_STRING }
+    { prop_productnameW, CIM_STRING },
+    { prop_statusinfoW,  CIM_UINT16 }
 };
 static const struct column col_stdregprov[] =
 {
@@ -512,7 +532,8 @@ static const struct column col_videocontroller[] =
     { prop_descriptionW,          CIM_STRING|COL_FLAG_DYNAMIC },
     { prop_deviceidW,             CIM_STRING|COL_FLAG_KEY },
     { prop_nameW,                 CIM_STRING|COL_FLAG_DYNAMIC },
-    { prop_pnpdeviceidW,          CIM_STRING|COL_FLAG_DYNAMIC }
+    { prop_pnpdeviceidW,          CIM_STRING|COL_FLAG_DYNAMIC },
+    { prop_videoprocessorW,       CIM_STRING|COL_FLAG_DYNAMIC }
 };
 
 static const WCHAR baseboard_manufacturerW[] =
@@ -550,6 +571,9 @@ static const WCHAR compsys_manufacturerW[] =
     {'T','h','e',' ','W','i','n','e',' ','P','r','o','j','e','c','t',0};
 static const WCHAR compsys_modelW[] =
     {'W','i','n','e',0};
+static const WCHAR compsysproduct_uuidW[] =
+    {'0','0','0','0','0','0','0','0','-','0','0','0','0','-','0','0','0','0','-','0','0','0','0','-',
+     '0','0','0','0','0','0','0','0','0','0','0','0',0};
 static const WCHAR diskdrive_interfacetypeW[] =
     {'I','D','E',0};
 static const WCHAR diskdrive_manufacturerW[] =
@@ -636,6 +660,10 @@ struct record_computersystem
     UINT32       num_processors;
     UINT64       total_physical_memory;
 };
+struct record_computersystemproduct
+{
+    const WCHAR *uuid;
+};
 struct record_datafile
 {
     const WCHAR *name;
@@ -677,6 +705,7 @@ struct record_logicaldisk
     UINT64       freespace;
     const WCHAR *name;
     UINT64       size;
+    const WCHAR *volumename;
     const WCHAR *volumeserialnumber;
 };
 struct record_networkadapter
@@ -695,6 +724,7 @@ struct record_networkadapter
 };
 struct record_networkadapterconfig
 {
+    const WCHAR *dnshostname;
     UINT32       index;
     UINT32       ipconnectionmetric;
     int          ipenabled;
@@ -802,6 +832,7 @@ struct record_sounddevice
 {
     const WCHAR *name;
     const WCHAR *productname;
+    UINT16       statusinfo;
 };
 struct record_stdregprov
 {
@@ -826,6 +857,7 @@ struct record_videocontroller
     const WCHAR *device_id;
     const WCHAR *name;
     const WCHAR *pnpdevice_id;
+    const WCHAR *videoprocessor;
 };
 #include "poppack.h"
 
@@ -837,6 +869,10 @@ static const struct record_bios data_bios[] =
 {
     { bios_descriptionW, bios_descriptionW, bios_manufacturerW, bios_releasedateW, bios_serialnumberW,
       bios_smbiosbiosversionW, bios_versionW }
+};
+static const struct record_computersystemproduct data_compsysproduct[] =
+{
+    { compsysproduct_uuidW }
 };
 static const struct record_param data_param[] =
 {
@@ -881,7 +917,7 @@ static const struct record_qualifier data_qualifier[] =
 };
 static const struct record_sounddevice data_sounddevice[] =
 {
-    { sounddevice_productnameW, sounddevice_productnameW }
+    { sounddevice_productnameW, sounddevice_productnameW, 3 /* enabled */ }
 };
 static const struct record_stdregprov data_stdregprov[] =
 {
@@ -1650,6 +1686,12 @@ static enum fill_status fill_diskpartition( struct table *table, const struct ex
     return status;
 }
 
+static WCHAR *get_volumename( const WCHAR *root )
+{
+    WCHAR buf[MAX_PATH + 1] = {0};
+    GetVolumeInformationW( root, buf, sizeof(buf)/sizeof(buf[0]), NULL, NULL, NULL, NULL, 0 );
+    return heap_strdupW( buf );
+}
 static WCHAR *get_volumeserialnumber( const WCHAR *root )
 {
     static const WCHAR fmtW[] = {'%','0','8','X',0};
@@ -1692,6 +1734,7 @@ static enum fill_status fill_logicaldisk( struct table *table, const struct expr
             rec->freespace          = get_freespace( root, &size );
             rec->name               = heap_strdupW( device_id );
             rec->size               = size;
+            rec->volumename         = get_volumename( root );
             rec->volumeserialnumber = get_volumeserialnumber( root );
             if (!match_row( table, row, cond, &status ))
             {
@@ -1810,6 +1853,17 @@ static enum fill_status fill_networkadapter( struct table *table, const struct e
     return status;
 }
 
+static WCHAR *get_dnshostname( IP_ADAPTER_UNICAST_ADDRESS *addr )
+{
+    const SOCKET_ADDRESS *sa = &addr->Address;
+    WCHAR buf[NI_MAXHOST];
+
+    if (!addr) return NULL;
+    if (GetNameInfoW( sa->lpSockaddr, sa->iSockaddrLength, buf, sizeof(buf)/sizeof(buf[0]), NULL,
+                      0, NI_NAMEREQD )) return NULL;
+    return heap_strdupW( buf );
+}
+
 static enum fill_status fill_networkadapterconfig( struct table *table, const struct expr *cond )
 {
     struct record_networkadapterconfig *rec;
@@ -1841,6 +1895,7 @@ static enum fill_status fill_networkadapterconfig( struct table *table, const st
         if (aa->IfType == IF_TYPE_SOFTWARE_LOOPBACK) continue;
 
         rec = (struct record_networkadapterconfig *)(table->data + offset);
+        rec->dnshostname        = get_dnshostname( aa->FirstUnicastAddress );
         rec->index              = aa->u.s.IfIndex;
         rec->ipconnectionmetric = 20;
         rec->ipenabled          = -1;
@@ -2402,6 +2457,7 @@ done:
     rec->device_id             = videocontroller_deviceidW;
     rec->name                  = heap_strdupW( name );
     rec->pnpdevice_id          = get_pnpdeviceid( &desc );
+    rec->videoprocessor        = heap_strdupW( name );
     if (!match_row( table, row, cond, &status )) free_row_values( table, row );
     else row++;
 
@@ -2419,6 +2475,7 @@ static struct table builtin_classes[] =
     { class_biosW, SIZEOF(col_bios), col_bios, SIZEOF(data_bios), 0, (BYTE *)data_bios },
     { class_cdromdriveW, SIZEOF(col_cdromdrive), col_cdromdrive, 0, 0, NULL, fill_cdromdrive },
     { class_compsysW, SIZEOF(col_compsys), col_compsys, 0, 0, NULL, fill_compsys },
+    { class_compsysproductW, SIZEOF(col_compsysproduct), col_compsysproduct, SIZEOF(data_compsysproduct), 0, (BYTE *)data_compsysproduct },
     { class_datafileW, SIZEOF(col_datafile), col_datafile, 0, 0, NULL, fill_datafile },
     { class_directoryW, SIZEOF(col_directory), col_directory, 0, 0, NULL, fill_directory },
     { class_diskdriveW, SIZEOF(col_diskdrive), col_diskdrive, 0, 0, NULL, fill_diskdrive },
@@ -2426,8 +2483,7 @@ static struct table builtin_classes[] =
     { class_logicaldiskW, SIZEOF(col_logicaldisk), col_logicaldisk, 0, 0, NULL, fill_logicaldisk },
     { class_logicaldisk2W, SIZEOF(col_logicaldisk), col_logicaldisk, 0, 0, NULL, fill_logicaldisk },
     { class_networkadapterW, SIZEOF(col_networkadapter), col_networkadapter, 0, 0, NULL, fill_networkadapter },
-    { class_networkadapterconfigW, SIZEOF(col_networkadapterconfig), col_networkadapterconfig, 0, 0, NULL,
-      fill_networkadapterconfig },
+    { class_networkadapterconfigW, SIZEOF(col_networkadapterconfig), col_networkadapterconfig, 0, 0, NULL, fill_networkadapterconfig },
     { class_osW, SIZEOF(col_os), col_os, 0, 0, NULL, fill_os },
     { class_paramsW, SIZEOF(col_param), col_param, SIZEOF(data_param), 0, (BYTE *)data_param },
     { class_physicalmediaW, SIZEOF(col_physicalmedia), col_physicalmedia, SIZEOF(data_physicalmedia), 0, (BYTE *)data_physicalmedia },

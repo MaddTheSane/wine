@@ -158,10 +158,10 @@ static void IDirectSound_test(LPDIRECTSOUND dso, BOOL initialized,
     if (rc==DS_OK) {
         rc=IDirectSound_GetSpeakerConfig(dso,&new_speaker_config);
         ok(rc==DS_OK,"IDirectSound_GetSpeakerConfig() failed: %08x\n", rc);
-        if (rc==DS_OK && speaker_config!=new_speaker_config)
+        if (rc==DS_OK && speaker_config!=new_speaker_config && ref_speaker_config!=new_speaker_config)
                trace("IDirectSound_GetSpeakerConfig() failed to set speaker "
-               "config: expected 0x%08x, got 0x%08x\n",
-               speaker_config,new_speaker_config);
+               "config: expected 0x%08x or 0x%08x, got 0x%08x\n",
+               speaker_config,ref_speaker_config,new_speaker_config);
         IDirectSound_SetSpeakerConfig(dso,ref_speaker_config);
     }
 
@@ -1532,10 +1532,9 @@ static void test_notifications(LPGUID lpGuid)
     rc = IDirectSoundBuffer_QueryInterface(buf, &IID_IDirectSoundNotify, (void**)&buf_notif);
     ok(rc == DS_OK, "QueryInterface(IID_IDirectSoundNotify): %08x\n", rc);
 
-    /* create notifications at each end of the buffer */
     notifies[0].dwOffset = 0;
     handles[0] = notifies[0].hEventNotify = CreateEventW(NULL, FALSE, FALSE, NULL);
-    notifies[1].dwOffset = bufdesc.dwBufferBytes - 1;
+    notifies[1].dwOffset = bufdesc.dwBufferBytes / 2;
     handles[1] = notifies[1].hEventNotify = CreateEventW(NULL, FALSE, FALSE, NULL);
 
     rc = IDirectSoundNotify_SetNotificationPositions(buf_notif, 2, notifies);
@@ -1550,8 +1549,6 @@ static void test_notifications(LPGUID lpGuid)
     for(cycles = 0; cycles < 6 /* 1.5s */; ++cycles){
         DWORD wait;
 
-        /* since the notifications are on opposite ends of the entire buffer,
-         * they should arrive well-ordered in an alternating sequence. */
         wait = WaitForMultipleObjects(2, handles, FALSE, 1000);
         ok(wait <= WAIT_OBJECT_0 + 1 && wait - WAIT_OBJECT_0 == expect,
            "Got unexpected notification order or timeout: %u\n", wait);

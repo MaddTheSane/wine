@@ -144,6 +144,7 @@ HRESULT get_typeinfo( enum type_id tid, ITypeInfo **ret )
             ITypeInfo_Release( info );
     }
     *ret = typeinfo[tid];
+    ITypeInfo_AddRef(typeinfo[tid]);
     return S_OK;
 }
 
@@ -256,8 +257,12 @@ static HRESULT WINAPI fw_app_get_IpVersion(
 {
     fw_app *This = impl_from_INetFwAuthorizedApplication( iface );
 
-    FIXME("%p, %p\n", This, ipVersion);
-    return E_NOTIMPL;
+    TRACE("%p, %p\n", This, ipVersion);
+
+    if (!ipVersion)
+        return E_POINTER;
+    *ipVersion = NET_FW_IP_VERSION_ANY;
+    return S_OK;
 }
 
 static HRESULT WINAPI fw_app_put_IpVersion(
@@ -266,8 +271,8 @@ static HRESULT WINAPI fw_app_put_IpVersion(
 {
     fw_app *This = impl_from_INetFwAuthorizedApplication( iface );
 
-    FIXME("%p, %u\n", This, ipVersion);
-    return E_NOTIMPL;
+    TRACE("%p, %u\n", This, ipVersion);
+    return S_OK;
 }
 
 static HRESULT WINAPI fw_app_get_Scope(

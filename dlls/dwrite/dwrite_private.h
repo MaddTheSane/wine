@@ -17,9 +17,17 @@
  */
 
 #include "dwrite_2.h"
+#include "d2d1.h"
 
 #include "wine/debug.h"
 #include "wine/unicode.h"
+
+static const DWRITE_MATRIX identity =
+{
+    1.0f, 0.0f,
+    0.0f, 1.0f,
+    0.0f, 0.0f
+};
 
 static inline void *heap_alloc(size_t len)
 {
@@ -94,6 +102,7 @@ extern HRESULT create_numbersubstitution(DWRITE_NUMBER_SUBSTITUTION_METHOD,const
 extern HRESULT create_textformat(const WCHAR*,IDWriteFontCollection*,DWRITE_FONT_WEIGHT,DWRITE_FONT_STYLE,DWRITE_FONT_STRETCH,
                                  FLOAT,const WCHAR*,IDWriteTextFormat**) DECLSPEC_HIDDEN;
 extern HRESULT create_textlayout(const WCHAR*,UINT32,IDWriteTextFormat*,FLOAT,FLOAT,IDWriteTextLayout**) DECLSPEC_HIDDEN;
+extern HRESULT create_gdicompat_textlayout(const WCHAR*,UINT32,IDWriteTextFormat*,FLOAT,FLOAT,FLOAT,const DWRITE_MATRIX*,BOOL,IDWriteTextLayout**) DECLSPEC_HIDDEN;
 extern HRESULT create_trimmingsign(IDWriteInlineObject**) DECLSPEC_HIDDEN;
 extern HRESULT create_typography(IDWriteTypography**) DECLSPEC_HIDDEN;
 extern HRESULT create_gdiinterop(IDWriteFactory2*,IDWriteGdiInterop**) DECLSPEC_HIDDEN;
@@ -102,6 +111,7 @@ extern HRESULT create_localizedstrings(IDWriteLocalizedStrings**) DECLSPEC_HIDDE
 extern HRESULT add_localizedstring(IDWriteLocalizedStrings*,const WCHAR*,const WCHAR*) DECLSPEC_HIDDEN;
 extern HRESULT clone_localizedstring(IDWriteLocalizedStrings *iface, IDWriteLocalizedStrings **strings) DECLSPEC_HIDDEN;
 extern HRESULT get_system_fontcollection(IDWriteFactory2*,IDWriteFontCollection**) DECLSPEC_HIDDEN;
+extern HRESULT get_eudc_fontcollection(IDWriteFactory2*,IDWriteFontCollection**) DECLSPEC_HIDDEN;
 extern HRESULT get_textanalyzer(IDWriteTextAnalyzer**) DECLSPEC_HIDDEN;
 extern HRESULT create_font_file(IDWriteFontFileLoader *loader, const void *reference_key, UINT32 key_size, IDWriteFontFile **font_file) DECLSPEC_HIDDEN;
 extern HRESULT create_localfontfileloader(IDWriteLocalFontFileLoader** iface) DECLSPEC_HIDDEN;
@@ -125,12 +135,29 @@ extern HRESULT opentype_get_font_strings_from_id(const void*,DWRITE_INFORMATIONA
 extern HRESULT bidi_computelevels(const WCHAR*,UINT32,UINT8,UINT8*,UINT8*) DECLSPEC_HIDDEN;
 extern WCHAR bidi_get_mirrored_char(WCHAR) DECLSPEC_HIDDEN;
 
+enum outline_point_tag {
+    OUTLINE_POINT_START  = 1 << 0,
+    OUTLINE_POINT_END    = 1 << 1,
+    OUTLINE_POINT_BEZIER = 1 << 2,
+    OUTLINE_POINT_LINE   = 1 << 3
+};
+
+struct glyph_outline {
+    D2D1_POINT_2F *points;
+    UINT8 *tags;
+    UINT16 count;
+    FLOAT  advance;
+};
+
+extern HRESULT new_glyph_outline(UINT32,struct glyph_outline**) DECLSPEC_HIDDEN;
+
 /* FreeType integration */
 extern BOOL init_freetype(void) DECLSPEC_HIDDEN;
 extern void release_freetype(void) DECLSPEC_HIDDEN;
 extern HRESULT freetype_get_design_glyph_metrics(IDWriteFontFace2*,UINT16,UINT16,DWRITE_GLYPH_METRICS*) DECLSPEC_HIDDEN;
 extern void freetype_notify_cacheremove(IDWriteFontFace2*) DECLSPEC_HIDDEN;
 extern BOOL freetype_is_monospaced(IDWriteFontFace2*) DECLSPEC_HIDDEN;
+extern HRESULT freetype_get_glyph_outline(IDWriteFontFace2*,FLOAT,UINT16,USHORT,struct glyph_outline**) DECLSPEC_HIDDEN;
 
 /* Glyph shaping */
 enum SCRIPT_JUSTIFY

@@ -421,14 +421,127 @@ static void WINAPI dwritefontface_ReleaseFontTable(IDWriteFontFace2 *iface, void
     IDWriteFontFileStream_ReleaseFileFragment(This->streams[0], table_context);
 }
 
+HRESULT new_glyph_outline(UINT32 count, struct glyph_outline **ret)
+{
+    struct glyph_outline *outline;
+    D2D1_POINT_2F *points;
+    UINT8 *tags;
+
+    *ret = NULL;
+
+    outline = heap_alloc(sizeof(*outline));
+    if (!outline)
+        return E_OUTOFMEMORY;
+
+    points = heap_alloc(count*sizeof(D2D1_POINT_2F));
+    tags = heap_alloc(count*sizeof(UINT8));
+    if (!points || !tags) {
+        heap_free(points);
+        heap_free(tags);
+        heap_free(outline);
+        return E_OUTOFMEMORY;
+    }
+
+    outline->points = points;
+    outline->tags = tags;
+    outline->count = count;
+    outline->advance = 0.0;
+
+    *ret = outline;
+    return S_OK;
+}
+
+static void free_glyph_outline(struct glyph_outline *outline)
+{
+    heap_free(outline->points);
+    heap_free(outline->tags);
+    heap_free(outline);
+}
+
+static void report_glyph_outline(const struct glyph_outline *outline, IDWriteGeometrySink *sink)
+{
+    UINT16 p;
+
+    for (p = 0; p < outline->count; p++) {
+        if (outline->tags[p] & OUTLINE_POINT_START) {
+            ID2D1SimplifiedGeometrySink_BeginFigure(sink, outline->points[p], D2D1_FIGURE_BEGIN_FILLED);
+            continue;
+        }
+
+        if (outline->tags[p] & OUTLINE_POINT_LINE)
+            ID2D1SimplifiedGeometrySink_AddLines(sink, outline->points+p, 1);
+        else if (outline->tags[p] & OUTLINE_POINT_BEZIER) {
+            static const UINT16 segment_length = 3;
+            ID2D1SimplifiedGeometrySink_AddBeziers(sink, (D2D1_BEZIER_SEGMENT*)&outline->points[p], 1);
+            p += segment_length - 1;
+        }
+
+        if (outline->tags[p] & OUTLINE_POINT_END)
+            ID2D1SimplifiedGeometrySink_EndFigure(sink, D2D1_FIGURE_END_CLOSED);
+    }
+}
+
+static inline void translate_glyph_outline(struct glyph_outline *outline, FLOAT xoffset, FLOAT yoffset)
+{
+    UINT16 p;
+
+    for (p = 0; p < outline->count; p++) {
+        outline->points[p].x += xoffset;
+        outline->points[p].y += yoffset;
+    }
+}
+
 static HRESULT WINAPI dwritefontface_GetGlyphRunOutline(IDWriteFontFace2 *iface, FLOAT emSize,
-    UINT16 const *glyph_indices, FLOAT const* glyph_advances, DWRITE_GLYPH_OFFSET const *glyph_offsets,
-    UINT32 glyph_count, BOOL is_sideways, BOOL is_rtl, IDWriteGeometrySink *geometrysink)
+    UINT16 const *glyphs, FLOAT const* advances, DWRITE_GLYPH_OFFSET const *offsets,
+    UINT32 count, BOOL is_sideways, BOOL is_rtl, IDWriteGeometrySink *sink)
 {
     struct dwrite_fontface *This = impl_from_IDWriteFontFace2(iface);
-    FIXME("(%p)->(%f %p %p %p %u %d %d %p): stub\n", This, emSize, glyph_indices, glyph_advances, glyph_offsets,
-        glyph_count, is_sideways, is_rtl, geometrysink);
-    return E_NOTIMPL;
+    FLOAT advance = 0.0;
+    HRESULT hr;
+    UINT32 g;
+
+    TRACE("(%p)->(%.2f %p %p %p %u %d %d %p)\n", This, emSize, glyphs, advances, offsets,
+        count, is_sideways, is_rtl, sink);
+
+    if (!glyphs || !sink)
+        return E_INVALIDARG;
+
+    if (is_sideways)
+        FIXME("sideways mode is not supported.\n");
+
+    for (g = 0; g < count; g++) {
+        FLOAT xoffset = 0.0, yoffset = 0.0;
+        struct glyph_outline *outline;
+
+        /* FIXME: cache outlines */
+
+        hr = freetype_get_glyph_outline(iface, emSize, glyphs[g], This->simulations, &outline);
+        if (FAILED(hr))
+            return hr;
+
+        /* glyph offsets act as current glyph adjustment */
+        if (offsets) {
+            xoffset += is_rtl ? -offsets[g].advanceOffset : offsets[g].advanceOffset;
+            yoffset -= offsets[g].ascenderOffset;
+        }
+
+        if (g == 0)
+            advance = is_rtl ? -outline->advance : 0.0;
+
+        xoffset += advance;
+        translate_glyph_outline(outline, xoffset, yoffset);
+
+        /* update advance to next glyph */
+        if (advances)
+            advance += is_rtl ? -advances[g] : advances[g];
+        else
+            advance += is_rtl ? -outline->advance : outline->advance;
+
+        report_glyph_outline(outline, sink);
+        free_glyph_outline(outline);
+    }
+
+    return S_OK;
 }
 
 static HRESULT WINAPI dwritefontface_GetRecommendedRenderingMode(IDWriteFontFace2 *iface, FLOAT emSize,
@@ -1853,6 +1966,58 @@ HRESULT get_system_fontcollection(IDWriteFactory2 *factory, IDWriteFontCollectio
     hr = create_font_collection(factory, enumerator, TRUE, collection);
     IDWriteFontFileEnumerator_Release(enumerator);
     return hr;
+}
+
+static HRESULT WINAPI eudcfontfileenumerator_QueryInterface(IDWriteFontFileEnumerator *iface, REFIID riid, void **obj)
+{
+    *obj = NULL;
+
+    if (IsEqualIID(riid, &IID_IDWriteFontFileEnumerator) || IsEqualIID(riid, &IID_IUnknown)) {
+        IDWriteFontFileEnumerator_AddRef(iface);
+        *obj = iface;
+        return S_OK;
+    }
+
+    return E_NOINTERFACE;
+}
+
+static ULONG WINAPI eudcfontfileenumerator_AddRef(IDWriteFontFileEnumerator *iface)
+{
+    return 2;
+}
+
+static ULONG WINAPI eudcfontfileenumerator_Release(IDWriteFontFileEnumerator *iface)
+{
+    return 1;
+}
+
+static HRESULT WINAPI eudcfontfileenumerator_GetCurrentFontFile(IDWriteFontFileEnumerator *iface, IDWriteFontFile **file)
+{
+    *file = NULL;
+    return E_FAIL;
+}
+
+static HRESULT WINAPI eudcfontfileenumerator_MoveNext(IDWriteFontFileEnumerator *iface, BOOL *current)
+{
+    *current = FALSE;
+    return S_OK;
+}
+
+static const struct IDWriteFontFileEnumeratorVtbl eudcfontfileenumeratorvtbl =
+{
+    eudcfontfileenumerator_QueryInterface,
+    eudcfontfileenumerator_AddRef,
+    eudcfontfileenumerator_Release,
+    eudcfontfileenumerator_MoveNext,
+    eudcfontfileenumerator_GetCurrentFontFile
+};
+
+static IDWriteFontFileEnumerator eudc_fontfile_enumerator = { &eudcfontfileenumeratorvtbl };
+
+HRESULT get_eudc_fontcollection(IDWriteFactory2 *factory, IDWriteFontCollection **collection)
+{
+    TRACE("building EUDC font collection for factory %p\n", factory);
+    return create_font_collection(factory, &eudc_fontfile_enumerator, FALSE, collection);
 }
 
 static HRESULT WINAPI dwritefontfile_QueryInterface(IDWriteFontFile *iface, REFIID riid, void **obj)

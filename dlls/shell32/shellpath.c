@@ -2573,7 +2573,7 @@ static inline BOOL _SHAppendToUnixPath(char *szBasePath, LPCWSTR pwszSubPath) {
             /* Fall back to hard coded defaults. */
             switch (LOWORD(pwszSubPath)) {
                 case IDS_PERSONAL:
-                    lstrcpyW(wszSubPath, PersonalW);
+                    lstrcpyW(wszSubPath, DocumentsW);
                     break;
                 case IDS_MYMUSIC:
                     lstrcpyW(wszSubPath, My_MusicW);
@@ -2684,6 +2684,7 @@ static void _SHCreateSymbolicLinks(void)
     {
         /* '$HOME' doesn't exist. Create 'My Pictures', 'My Videos' and 'My Music' subdirs
          * in '%USERPROFILE%\\My Documents' or fail silently if they already exist. */
+        pszHome = NULL;
         strcpy(szPersonalTarget, pszPersonal);
         for (i = 0; i < sizeof(aidsMyStuff)/sizeof(aidsMyStuff[0]); i++) {
             strcpy(szMyStuffTarget, szPersonalTarget);

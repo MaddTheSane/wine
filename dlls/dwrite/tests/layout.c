@@ -881,6 +881,113 @@ static void test_typography(void)
     IDWriteTypography_Release(typography);
 }
 
+static void test_GetClusterMetrics(void)
+{
+    static const WCHAR strW[] = {'a','b','c','d',0};
+    IDWriteInlineObject *trimm;
+    IDWriteTextFormat *format;
+    IDWriteTextLayout *layout;
+    DWRITE_TEXT_RANGE range;
+    UINT32 count;
+    HRESULT hr;
+
+    hr = IDWriteFactory_CreateTextFormat(factory, tahomaW, NULL, DWRITE_FONT_WEIGHT_NORMAL, DWRITE_FONT_STYLE_NORMAL,
+        DWRITE_FONT_STRETCH_NORMAL, 10.0, enusW, &format);
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+
+    hr = IDWriteFactory_CreateTextLayout(factory, strW, 4, format, 1000.0, 1000.0, &layout);
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+
+    count = 0;
+    hr = IDWriteTextLayout_GetClusterMetrics(layout, NULL, 0, &count);
+todo_wine {
+    ok(hr == E_NOT_SUFFICIENT_BUFFER, "got 0x%08x\n", hr);
+    ok(count == 4, "got %u\n", count);
+}
+    hr = IDWriteFactory_CreateEllipsisTrimmingSign(factory, format, &trimm);
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+
+    range.startPosition = 0;
+    range.length = 2;
+    hr = IDWriteTextLayout_SetInlineObject(layout, trimm, range);
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+
+    /* inline object takes a separate cluster, replaced codepoints number doesn't matter */
+    count = 0;
+    hr = IDWriteTextLayout_GetClusterMetrics(layout, NULL, 0, &count);
+todo_wine {
+    ok(hr == E_NOT_SUFFICIENT_BUFFER, "got 0x%08x\n", hr);
+    ok(count == 3, "got %u\n", count);
+}
+    IDWriteInlineObject_Release(trimm);
+    IDWriteTextLayout_Release(layout);
+    IDWriteTextFormat_Release(format);
+}
+
+static void test_SetLocaleName(void)
+{
+    static const WCHAR strW[] = {'a','b','c','d',0};
+    WCHAR buffW[LOCALE_NAME_MAX_LENGTH+sizeof(strW)/sizeof(WCHAR)];
+    IDWriteTextFormat *format;
+    IDWriteTextLayout *layout;
+    DWRITE_TEXT_RANGE range;
+    HRESULT hr;
+
+    hr = IDWriteFactory_CreateTextFormat(factory, tahomaW, NULL, DWRITE_FONT_WEIGHT_NORMAL, DWRITE_FONT_STYLE_NORMAL,
+        DWRITE_FONT_STRETCH_NORMAL, 10.0, enusW, &format);
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+
+    hr = IDWriteFactory_CreateTextLayout(factory, strW, 4, format, 1000.0, 1000.0, &layout);
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+
+    range.startPosition = 0;
+    range.length = 1;
+    hr = IDWriteTextLayout_SetLocaleName(layout, enusW, range);
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+
+    hr = IDWriteTextLayout_SetLocaleName(layout, NULL, range);
+    ok(hr == E_INVALIDARG, "got 0x%08x\n", hr);
+
+    /* invalid locale name is allowed */
+    hr = IDWriteTextLayout_SetLocaleName(layout, strW, range);
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+
+    hr = IDWriteTextLayout_GetLocaleName(layout, 0, NULL, 0, NULL);
+    ok(hr == E_INVALIDARG, "got 0x%08x\n", hr);
+
+if (0) /* crashes on native */
+    hr = IDWriteTextLayout_GetLocaleName(layout, 0, NULL, 1, NULL);
+
+    buffW[0] = 0;
+    hr = IDWriteTextLayout_GetLocaleName(layout, 0, buffW, sizeof(buffW)/sizeof(WCHAR), NULL);
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+    ok(!lstrcmpW(buffW, strW), "got %s\n", wine_dbgstr_w(buffW));
+
+    /* get with a shorter buffer */
+    buffW[0] = 0xa;
+    hr = IDWriteTextLayout_GetLocaleName(layout, 0, buffW, 1, NULL);
+    ok(hr == E_NOT_SUFFICIENT_BUFFER, "got 0x%08x\n", hr);
+    ok(buffW[0] == 0, "got %x\n", buffW[0]);
+
+    /* name is too long */
+    lstrcpyW(buffW, strW);
+    while (lstrlenW(buffW) <= LOCALE_NAME_MAX_LENGTH)
+        lstrcatW(buffW, strW);
+
+    range.startPosition = 0;
+    range.length = 1;
+    hr = IDWriteTextLayout_SetLocaleName(layout, buffW, range);
+    ok(hr == E_INVALIDARG, "got 0x%08x\n", hr);
+
+    buffW[0] = 0;
+    hr = IDWriteTextLayout_GetLocaleName(layout, 0, buffW, sizeof(buffW)/sizeof(WCHAR), NULL);
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+    ok(!lstrcmpW(buffW, strW), "got %s\n", wine_dbgstr_w(buffW));
+
+    IDWriteTextLayout_Release(layout);
+    IDWriteTextFormat_Release(format);
+}
+
 START_TEST(layout)
 {
     HRESULT hr;
@@ -905,6 +1012,8 @@ START_TEST(layout)
     test_SetInlineObject();
     test_draw_sequence();
     test_typography();
+    test_GetClusterMetrics();
+    test_SetLocaleName();
 
     IDWriteFactory_Release(factory);
 }

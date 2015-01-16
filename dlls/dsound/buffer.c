@@ -274,7 +274,8 @@ static HRESULT WINAPI IDirectSoundBufferImpl_SetFrequency(IDirectSoundBuffer8 *i
 	oldFreq = This->freq;
 	This->freq = freq;
 	if (freq != oldFreq) {
-		This->freqAdjust = This->freq / (float)This->device->pwfx->nSamplesPerSec;
+		This->freqAdjustNum = This->freq;
+		This->freqAdjustDen = This->device->pwfx->nSamplesPerSec;
 		This->nAvgBytesPerSec = freq * This->pwfx->nBlockAlign;
 		DSOUND_RecalcFormat(This);
 	}
@@ -935,7 +936,8 @@ HRESULT IDirectSoundBufferImpl_Create(
 	dsb->sec_mixpos = 0;
 	dsb->state = STATE_STOPPED;
 
-	dsb->freqAdjust = dsb->freq / (float)device->pwfx->nSamplesPerSec;
+	dsb->freqAdjustNum = dsb->freq;
+	dsb->freqAdjustDen = device->pwfx->nSamplesPerSec;
 	dsb->nAvgBytesPerSec = dsb->freq *
 		dsbd->lpwfxFormat->nBlockAlign;
 
@@ -991,6 +993,9 @@ void secondarybuffer_destroy(IDirectSoundBufferImpl *This)
 
     if (ref > 1)
         WARN("Destroying buffer with %u in use interfaces\n", ref - 1);
+
+    if (This->dsbd.dwFlags & DSBCAPS_LOCHARDWARE)
+        This->device->drvcaps.dwFreeHwMixingAllBuffers++;
 
     DirectSoundDevice_RemoveBuffer(This->device, This);
     RtlDeleteResource(&This->lock);

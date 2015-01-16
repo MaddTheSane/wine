@@ -129,10 +129,11 @@ static BOOL IsMediaTypeEqual(const DMO_PARTIAL_MEDIATYPE* mt1, const DMO_PARTIAL
 
 static HRESULT write_types(HKEY hkey, LPCWSTR name, const DMO_PARTIAL_MEDIATYPE* types, DWORD count)
 {
-    HRESULT hres = S_OK;
+    LONG ret;
+
     if (MSDMO_MAJOR_VERSION > 5)
     {
-        hres = RegSetValueExW(hkey, name, 0, REG_BINARY, (const BYTE*) types,
+        ret = RegSetValueExW(hkey, name, 0, REG_BINARY, (const BYTE*) types,
                           count* sizeof(DMO_PARTIAL_MEDIATYPE));
     }
     else
@@ -141,15 +142,18 @@ static HRESULT write_types(HKEY hkey, LPCWSTR name, const DMO_PARTIAL_MEDIATYPE*
         DWORD index = 0;
         WCHAR szGuidKey[64];
 
-        hres = RegCreateKeyExW(hkey, name, 0, NULL, REG_OPTION_NON_VOLATILE,
+        ret = RegCreateKeyExW(hkey, name, 0, NULL, REG_OPTION_NON_VOLATILE,
                                KEY_WRITE, NULL, &skey1, NULL);
+        if (ret)
+            return HRESULT_FROM_WIN32(ret);
+
         while (index < count)
         {
             GUIDToString(szGuidKey,&types[index].type);
-            hres = RegCreateKeyExW(skey1, szGuidKey, 0, NULL,
+            ret = RegCreateKeyExW(skey1, szGuidKey, 0, NULL,
                         REG_OPTION_NON_VOLATILE, KEY_WRITE, NULL, &skey2, NULL);
             GUIDToString(szGuidKey,&types[index].subtype);
-            hres = RegCreateKeyExW(skey2, szGuidKey, 0, NULL,
+            ret = RegCreateKeyExW(skey2, szGuidKey, 0, NULL,
                         REG_OPTION_NON_VOLATILE, KEY_WRITE, NULL, &skey3, NULL);
             RegCloseKey(skey3);
             RegCloseKey(skey2);
@@ -158,7 +162,7 @@ static HRESULT write_types(HKEY hkey, LPCWSTR name, const DMO_PARTIAL_MEDIATYPE*
         RegCloseKey(skey1);
     }
 
-    return hres;
+    return HRESULT_FROM_WIN32(ret);
 }
 
 /***************************************************************
@@ -184,7 +188,10 @@ HRESULT WINAPI DMORegister(
     HKEY hckey = 0;
     HKEY hclskey = 0;
 
-    TRACE("%s\n", debugstr_w(szName));
+    TRACE("%s %s %s\n", debugstr_w(szName), debugstr_guid(clsidDMO), debugstr_guid(guidCategory));
+
+    if (IsEqualGUID(guidCategory, &GUID_NULL))
+        return E_INVALIDARG;
 
     hres = RegCreateKeyExW(HKEY_CLASSES_ROOT, szDMORootKey, 0, NULL,
         REG_OPTION_NON_VOLATILE, KEY_WRITE, NULL, &hrkey, NULL);
@@ -248,46 +255,70 @@ lend:
     return hres;
 }
 
+static HRESULT unregister_dmo_from_category(const WCHAR *dmoW, const WCHAR *catW, HKEY categories)
+{
+    HKEY catkey;
+    LONG ret;
+
+    ret = RegOpenKeyExW(categories, catW, 0, KEY_WRITE, &catkey);
+    if (!ret)
+    {
+        ret = RegDeleteKeyW(catkey, dmoW);
+        RegCloseKey(catkey);
+    }
+
+    return !ret ? S_OK : S_FALSE;
+}
 
 /***************************************************************
  * DMOUnregister (MSDMO.@)
  *
  * Unregister a DirectX Media Object.
  */
-HRESULT WINAPI DMOUnregister(REFCLSID clsidDMO, REFGUID guidCategory)
+HRESULT WINAPI DMOUnregister(REFCLSID dmo, REFGUID category)
 {
-    HRESULT hres;
-    WCHAR szguid[64];
-    HKEY hrkey = 0;
-    HKEY hckey = 0;
+    HKEY rootkey = 0, categorieskey = 0;
+    WCHAR dmoW[64], catW[64];
+    HRESULT hr = S_FALSE;
+    LONG ret;
 
-    GUIDToString(szguid, clsidDMO);
+    TRACE("%s %s\n", debugstr_guid(dmo), debugstr_guid(category));
 
-    TRACE("%s %p\n", debugstr_w(szguid), guidCategory);
+    ret = RegOpenKeyExW(HKEY_CLASSES_ROOT, szDMORootKey, 0, KEY_WRITE, &rootkey);
+    if (ret)
+        return S_FALSE;
 
-    hres = RegOpenKeyExW(HKEY_CLASSES_ROOT, szDMORootKey, 0, KEY_WRITE, &hrkey);
-    if (ERROR_SUCCESS != hres)
+    GUIDToString(dmoW, dmo);
+    RegDeleteKeyW(rootkey, dmoW);
+
+    /* open 'Categories' */
+    ret = RegOpenKeyExW(rootkey, szDMOCategories, 0, KEY_WRITE|KEY_ENUMERATE_SUB_KEYS, &categorieskey);
+    RegCloseKey(rootkey);
+    if (ret)
+    {
+        hr = HRESULT_FROM_WIN32(ret);
         goto lend;
+    }
 
-    hres = RegDeleteKeyW(hrkey, szguid);
-    if (ERROR_SUCCESS != hres)
-        goto lend;
+    /* remove from all categories */
+    if (IsEqualGUID(category, &GUID_NULL))
+    {
+        DWORD index = 0, len = sizeof(catW)/sizeof(WCHAR);
 
-    hres = RegOpenKeyExW(hrkey, szDMOCategories, 0, KEY_WRITE, &hckey);
-    if (ERROR_SUCCESS != hres)
-        goto lend;
-
-    hres = RegDeleteKeyW(hckey, szguid);
-    if (ERROR_SUCCESS != hres)
-        goto lend;
+        while (!RegEnumKeyExW(categorieskey, index++, catW, &len, NULL, NULL, NULL, NULL))
+            hr = unregister_dmo_from_category(dmoW, catW, categorieskey);
+    }
+    else
+    {
+        GUIDToString(catW, category);
+        hr = unregister_dmo_from_category(dmoW, catW, categorieskey);
+    }
 
 lend:
-    if (hckey)
-        RegCloseKey(hckey);
-    if (hrkey)
-        RegCloseKey(hrkey);
+    if (categorieskey)
+        RegCloseKey(categorieskey);
 
-    return hres;
+    return hr;
 }
 
 
@@ -299,27 +330,24 @@ lend:
 HRESULT WINAPI DMOGetName(REFCLSID clsidDMO, WCHAR szName[])
 {
     WCHAR szguid[64];
-    HRESULT hres;
     HKEY hrkey = 0;
     HKEY hkey = 0;
     static const INT max_name_len = 80;
     DWORD count;
+    LONG ret;
 
     TRACE("%s\n", debugstr_guid(clsidDMO));
 
-    hres = RegOpenKeyExW(HKEY_CLASSES_ROOT, szDMORootKey, 
-        0, KEY_READ, &hrkey);
-    if (ERROR_SUCCESS != hres)
+    ret = RegOpenKeyExW(HKEY_CLASSES_ROOT, szDMORootKey, 0, KEY_READ, &hrkey);
+    if (ERROR_SUCCESS != ret)
         goto lend;
 
-    hres = RegOpenKeyExW(hrkey, GUIDToString(szguid, clsidDMO),
-        0, KEY_READ, &hkey);
-    if (ERROR_SUCCESS != hres)
+    ret = RegOpenKeyExW(hrkey, GUIDToString(szguid, clsidDMO), 0, KEY_READ, &hkey);
+    if (ERROR_SUCCESS != ret)
         goto lend;
 
     count = max_name_len * sizeof(WCHAR);
-    hres = RegQueryValueExW(hkey, NULL, NULL, NULL, 
-        (LPBYTE) szName, &count); 
+    ret = RegQueryValueExW(hkey, NULL, NULL, NULL, (LPBYTE) szName, &count);
 
     TRACE(" szName=%s\n", debugstr_w(szName));
 lend:
@@ -328,9 +356,8 @@ lend:
     if (hkey)
         RegCloseKey(hkey);
 
-    return hres;
+    return HRESULT_FROM_WIN32(ret);
 }
-
 
 /**************************************************************************
 *   IEnumDMOImpl_Destructor
@@ -364,6 +391,7 @@ static HRESULT IEnumDMO_Constructor(
     IEnumDMOImpl* lpedmo;
     HRESULT hr = S_OK;
     UINT size;
+    LONG ret;
 
     *obj = NULL;
 
@@ -406,8 +434,8 @@ static HRESULT IEnumDMO_Constructor(
     /* If not filtering by category enum from media objects root */
     if (IsEqualGUID(guidCategory, &GUID_NULL))
     {
-        if (!RegOpenKeyExW(HKEY_CLASSES_ROOT, szDMORootKey, 0, KEY_READ, &lpedmo->hkey))
-            hr = E_FAIL;
+        if ((ret = RegOpenKeyExW(HKEY_CLASSES_ROOT, szDMORootKey, 0, KEY_READ, &lpedmo->hkey)))
+            hr = HRESULT_FROM_WIN32(ret);
     }
     else
     {
@@ -416,8 +444,8 @@ static HRESULT IEnumDMO_Constructor(
 
         wsprintfW(szKey, szCat3Fmt, szDMORootKey, szDMOCategories,
             GUIDToString(szguid, guidCategory));
-        if (!RegOpenKeyExW(HKEY_CLASSES_ROOT, szKey, 0, KEY_READ, &lpedmo->hkey))
-            hr = E_FAIL;
+        if ((ret = RegOpenKeyExW(HKEY_CLASSES_ROOT, szKey, 0, KEY_READ, &lpedmo->hkey)))
+            hr = HRESULT_FROM_WIN32(ret);
     }
 
 lerr:
@@ -506,6 +534,7 @@ static HRESULT WINAPI IEnumDMO_fnNext(
     DWORD len;
     UINT count = 0;
     HRESULT hres = S_OK;
+    LONG ret;
 
     IEnumDMOImpl *This = impl_from_IEnumDMO(iface);
 
@@ -519,17 +548,20 @@ static HRESULT WINAPI IEnumDMO_fnNext(
         This->index++;
 
         len = MAX_PATH;
-        hres = RegEnumKeyExW(This->hkey, This->index, szNextKey, &len, NULL, NULL, NULL, &ft);
-        if (hres != ERROR_SUCCESS)
+        ret = RegEnumKeyExW(This->hkey, This->index, szNextKey, &len, NULL, NULL, NULL, &ft);
+        if (ret != ERROR_SUCCESS)
+        {
+            hres = HRESULT_FROM_WIN32(ret);
             break;
+        }
 
         TRACE("found %s\n", debugstr_w(szNextKey));
 
         if (!(This->dwFlags & DMO_ENUMF_INCLUDE_KEYED))
         {
             wsprintfW(szKey, szCat3Fmt, szDMORootKey, szNextKey, szDMOKeyed);
-            hres = RegOpenKeyExW(HKEY_CLASSES_ROOT, szKey, 0, KEY_READ, &hkey);
-            if (ERROR_SUCCESS == hres)
+            ret = RegOpenKeyExW(HKEY_CLASSES_ROOT, szKey, 0, KEY_READ, &hkey);
+            if (ERROR_SUCCESS == ret)
             {
                 RegCloseKey(hkey);
                 /* Skip Keyed entries */
@@ -538,7 +570,7 @@ static HRESULT WINAPI IEnumDMO_fnNext(
         }
 
         wsprintfW(szKey, szCat2Fmt, szDMORootKey, szNextKey);
-        hres = RegOpenKeyExW(HKEY_CLASSES_ROOT, szKey, 0, KEY_READ, &hkey);
+        ret = RegOpenKeyExW(HKEY_CLASSES_ROOT, szKey, 0, KEY_READ, &hkey);
 
         if (This->pInTypes)
         {
@@ -550,7 +582,7 @@ static HRESULT WINAPI IEnumDMO_fnNext(
                     sizeof(szValue)/sizeof(DMO_PARTIAL_MEDIATYPE),
                     (DMO_PARTIAL_MEDIATYPE*)szValue);
 
-            if (ERROR_SUCCESS != hres)
+            if (FAILED(hres))
             {
                 RegCloseKey(hkey);
                 continue;
@@ -587,7 +619,7 @@ static HRESULT WINAPI IEnumDMO_fnNext(
                     sizeof(szValue)/sizeof(DMO_PARTIAL_MEDIATYPE),
                     (DMO_PARTIAL_MEDIATYPE*)szValue);
 
-	    if (ERROR_SUCCESS != hres)
+	    if (FAILED(hres))
             {
                 RegCloseKey(hkey);
                 continue;
@@ -617,8 +649,8 @@ static HRESULT WINAPI IEnumDMO_fnNext(
 	/* Media object wasn't filtered so add it to return list */
         Names[count] = NULL;
 	len = MAX_PATH * sizeof(WCHAR);
-        hres = RegQueryValueExW(hkey, NULL, NULL, NULL, (LPBYTE) szValue, &len); 
-        if (ERROR_SUCCESS == hres)
+        ret = RegQueryValueExW(hkey, NULL, NULL, NULL, (LPBYTE)szValue, &len);
+        if (ERROR_SUCCESS == ret)
 	{
             Names[count] = HeapAlloc(GetProcessHeap(), 0, (strlenW(szValue) + 1) * sizeof(WCHAR));
 	    if (Names[count])
@@ -718,11 +750,16 @@ static const IEnumDMOVtbl edmovt =
 HRESULT read_types(HKEY root, LPCWSTR key, ULONG *supplied, ULONG requested, DMO_PARTIAL_MEDIATYPE* types )
 {
     HRESULT ret = S_OK;
+
     if (MSDMO_MAJOR_VERSION > 5)
     {
         DWORD len;
+        LONG rc;
+
         len = requested * sizeof(DMO_PARTIAL_MEDIATYPE);
-        ret = RegQueryValueExW(root, key, NULL, NULL, (LPBYTE) types, &len);
+        rc = RegQueryValueExW(root, key, NULL, NULL, (LPBYTE) types, &len);
+        ret = HRESULT_FROM_WIN32(rc);
+
         *supplied = len / sizeof(DMO_PARTIAL_MEDIATYPE);
     }
     else

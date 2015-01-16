@@ -23,6 +23,7 @@
 #include <assert.h>
 #include <stdarg.h>
 #include <stdio.h>
+#include <math.h>
 
 #define COBJMACROS
 #define NONAMELESSSTRUCT
@@ -270,8 +271,15 @@ static HRESULT WINAPI IDirectSound8Impl_GetCaps(IDirectSound8 *iface, DSCAPS *ds
     dscaps->dwMaxHwMixingStaticBuffers     = This->device->drvcaps.dwMaxHwMixingStaticBuffers;
     dscaps->dwMaxHwMixingStreamingBuffers  = This->device->drvcaps.dwMaxHwMixingStreamingBuffers;
     dscaps->dwFreeHwMixingAllBuffers       = This->device->drvcaps.dwFreeHwMixingAllBuffers;
-    dscaps->dwFreeHwMixingStaticBuffers    = This->device->drvcaps.dwFreeHwMixingStaticBuffers;
-    dscaps->dwFreeHwMixingStreamingBuffers = This->device->drvcaps.dwFreeHwMixingStreamingBuffers;
+
+    if (This->device->drvcaps.dwFreeHwMixingAllBuffers > 0) {
+        dscaps->dwFreeHwMixingStaticBuffers    = This->device->drvcaps.dwFreeHwMixingStaticBuffers;
+        dscaps->dwFreeHwMixingStreamingBuffers = This->device->drvcaps.dwFreeHwMixingStreamingBuffers;
+    } else {
+        dscaps->dwFreeHwMixingStaticBuffers    = 0;
+        dscaps->dwFreeHwMixingStreamingBuffers = 0;
+    }
+
     dscaps->dwMaxHw3DAllBuffers            = This->device->drvcaps.dwMaxHw3DAllBuffers;
     dscaps->dwMaxHw3DStaticBuffers         = This->device->drvcaps.dwMaxHw3DStaticBuffers;
     dscaps->dwMaxHw3DStreamingBuffers      = This->device->drvcaps.dwMaxHw3DStreamingBuffers;
@@ -386,8 +394,8 @@ static HRESULT WINAPI IDirectSound8Impl_SetSpeakerConfig(IDirectSound8 *iface, D
         return DSERR_UNINITIALIZED;
     }
 
-    This->device->speaker_config = config;
-    WARN("not fully functional\n");
+    /* NOP on Vista and above */
+
     return DS_OK;
 }
 
@@ -585,6 +593,78 @@ HRESULT WINAPI DirectSoundCreate8(
     return hr;
 }
 
+void DSOUND_ParseSpeakerConfig(DirectSoundDevice *device)
+{
+    switch (DSSPEAKER_CONFIG(device->speaker_config)) {
+        case DSSPEAKER_MONO:
+            device->speaker_angles[0] = M_PI/180.0f * 0.0f;
+            device->speaker_num[0] = 0;
+            device->num_speakers = 1;
+            device->lfe_channel = -1;
+        break;
+
+        case DSSPEAKER_STEREO:
+        case DSSPEAKER_HEADPHONE:
+            device->speaker_angles[0] = M_PI/180.0f * -90.0f;
+            device->speaker_angles[1] = M_PI/180.0f *  90.0f;
+            device->speaker_num[0] = 0; /* Left */
+            device->speaker_num[1] = 1; /* Right */
+            device->num_speakers = 2;
+            device->lfe_channel = -1;
+        break;
+
+        case DSSPEAKER_QUAD:
+            device->speaker_angles[0] = M_PI/180.0f * -135.0f;
+            device->speaker_angles[1] = M_PI/180.0f *  -45.0f;
+            device->speaker_angles[2] = M_PI/180.0f *   45.0f;
+            device->speaker_angles[3] = M_PI/180.0f *  135.0f;
+            device->speaker_num[0] = 2; /* Rear left */
+            device->speaker_num[1] = 0; /* Front left */
+            device->speaker_num[2] = 1; /* Front right */
+            device->speaker_num[3] = 3; /* Rear right */
+            device->num_speakers = 4;
+            device->lfe_channel = -1;
+        break;
+
+        case DSSPEAKER_5POINT1_BACK:
+            device->speaker_angles[0] = M_PI/180.0f * -135.0f;
+            device->speaker_angles[1] = M_PI/180.0f *  -45.0f;
+            device->speaker_angles[2] = M_PI/180.0f *    0.0f;
+            device->speaker_angles[3] = M_PI/180.0f *   45.0f;
+            device->speaker_angles[4] = M_PI/180.0f *  135.0f;
+            device->speaker_angles[5] = 9999.0f;
+            device->speaker_num[0] = 4; /* Rear left */
+            device->speaker_num[1] = 0; /* Front left */
+            device->speaker_num[2] = 2; /* Front centre */
+            device->speaker_num[3] = 1; /* Front right */
+            device->speaker_num[4] = 5; /* Rear right */
+            device->speaker_num[5] = 3; /* LFE */
+            device->num_speakers = 6;
+            device->lfe_channel = 3;
+        break;
+
+        case DSSPEAKER_5POINT1_SURROUND:
+            device->speaker_angles[0] = M_PI/180.0f *  -90.0f;
+            device->speaker_angles[1] = M_PI/180.0f *  -30.0f;
+            device->speaker_angles[2] = M_PI/180.0f *    0.0f;
+            device->speaker_angles[3] = M_PI/180.0f *   30.0f;
+            device->speaker_angles[4] = M_PI/180.0f *   90.0f;
+            device->speaker_angles[5] = 9999.0f;
+            device->speaker_num[0] = 4; /* Rear left */
+            device->speaker_num[1] = 0; /* Front left */
+            device->speaker_num[2] = 2; /* Front centre */
+            device->speaker_num[3] = 1; /* Front right */
+            device->speaker_num[4] = 5; /* Rear right */
+            device->speaker_num[5] = 3; /* LFE */
+            device->num_speakers = 6;
+            device->lfe_channel = 3;
+        break;
+
+        default:
+            WARN("unknown speaker_config %u\n", device->speaker_config);
+    }
+}
+
 /*******************************************************************************
  *        DirectSoundDevice
  */
@@ -604,6 +684,8 @@ static HRESULT DirectSoundDevice_Create(DirectSoundDevice ** ppDevice)
     device->priolevel      = DSSCL_NORMAL;
     device->state          = STATE_STOPPED;
     device->speaker_config = DSSPEAKER_COMBINED(DSSPEAKER_STEREO, DSSPEAKER_GEOMETRY_WIDE);
+
+    DSOUND_ParseSpeakerConfig(device);
 
     /* 3D listener initial parameters */
     device->ds3dl.dwSize   = sizeof(DS3DLISTENER);
@@ -838,9 +920,12 @@ HRESULT DirectSoundDevice_Initialize(DirectSoundDevice ** ppDevice, LPCGUID lpcG
     device->drvcaps.dwPrimaryBuffers = 1;
     device->drvcaps.dwMinSecondarySampleRate = DSBFREQUENCY_MIN;
     device->drvcaps.dwMaxSecondarySampleRate = DSBFREQUENCY_MAX;
-    device->drvcaps.dwMaxHwMixingAllBuffers = 1;
+    device->drvcaps.dwMaxHwMixingAllBuffers = 16;
     device->drvcaps.dwMaxHwMixingStaticBuffers = 1;
     device->drvcaps.dwMaxHwMixingStreamingBuffers = 1;
+    device->drvcaps.dwFreeHwMixingAllBuffers = device->drvcaps.dwMaxHwMixingAllBuffers;
+    device->drvcaps.dwFreeHwMixingStaticBuffers = device->drvcaps.dwMaxHwMixingStaticBuffers;
+    device->drvcaps.dwFreeHwMixingStreamingBuffers = device->drvcaps.dwMaxHwMixingStreamingBuffers;
 
     ZeroMemory(&device->volpan, sizeof(device->volpan));
 
@@ -900,10 +985,12 @@ HRESULT DirectSoundDevice_CreateSoundBuffer(
         TRACE("(lpwfxFormat=%p)\n",dsbd->lpwfxFormat);
     }
 
-    if (dsbd->dwFlags & DSBCAPS_LOCHARDWARE &&
-            !(dsbd->dwFlags & DSBCAPS_PRIMARYBUFFER)) {
-        TRACE("LOCHARDWARE is not supported, returning E_NOTIMPL\n");
-        return E_NOTIMPL;
+    if (!(dsbd->dwFlags & DSBCAPS_PRIMARYBUFFER) &&
+        dsbd->dwFlags & DSBCAPS_LOCHARDWARE &&
+        device->drvcaps.dwFreeHwMixingAllBuffers == 0)
+    {
+        WARN("ran out of emulated hardware buffers\n");
+        return DSERR_ALLOCATED;
     }
 
     if (dsbd->dwFlags & DSBCAPS_PRIMARYBUFFER) {
@@ -987,9 +1074,11 @@ HRESULT DirectSoundDevice_CreateSoundBuffer(
         }
 
         hres = IDirectSoundBufferImpl_Create(device, &dsb, dsbd);
-        if (dsb)
+        if (dsb) {
             *ppdsb = (IDirectSoundBuffer*)&dsb->IDirectSoundBuffer8_iface;
-        else
+            if (dsbd->dwFlags & DSBCAPS_LOCHARDWARE)
+                device->drvcaps.dwFreeHwMixingAllBuffers--;
+        } else
             WARN("IDirectSoundBufferImpl_Create failed\n");
    }
 

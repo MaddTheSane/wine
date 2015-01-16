@@ -46,7 +46,7 @@
 #@ stub CreatePersistentTcpPortReservation
 #@ stub CreatePersistentUdpPortReservation
 @ stdcall CreateProxyArpEntry( long long long )
-#@ stub CreateSortedAddressPairs
+@ stdcall CreateSortedAddressPairs( ptr long ptr long long ptr ptr )
 #@ stub CreateUnicastIpAddressEntry
 #@ stub DeleteAnycastIpAddressEntry
 @ stdcall DeleteIPAddress( long )
@@ -66,7 +66,7 @@
 #@ stub FlushIpNetTable2
 @ stub FlushIpNetTableFromStack
 #@ stub FlushIpPathTable
-#@ stub FreeMibTable
+@ stdcall FreeMibTable( ptr )
 @ stdcall GetAdapterIndex( wstr ptr )
 @ stub GetAdapterOrderMap
 @ stdcall GetAdaptersAddresses( long long ptr ptr ptr )

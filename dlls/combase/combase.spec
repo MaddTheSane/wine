@@ -289,19 +289,19 @@
 @ stub WdtpInterfacePointer_UserUnmarshal64
 @ stub WindowsCompareStringOrdinal
 @ stub WindowsConcatString
-@ stub WindowsCreateString
-@ stub WindowsCreateStringReference
-@ stub WindowsDeleteString
-@ stub WindowsDeleteStringBuffer
-@ stub WindowsDuplicateString
-@ stub WindowsGetStringLen
-@ stub WindowsGetStringRawBuffer
+@ stdcall WindowsCreateString(ptr long ptr)
+@ stdcall WindowsCreateStringReference(wstr long ptr ptr)
+@ stdcall WindowsDeleteString(ptr)
+@ stdcall WindowsDeleteStringBuffer(ptr)
+@ stdcall WindowsDuplicateString(ptr ptr)
+@ stdcall WindowsGetStringLen(ptr)
+@ stdcall WindowsGetStringRawBuffer(ptr ptr)
 @ stub WindowsInspectString
-@ stub WindowsIsStringEmpty
-@ stub WindowsPreallocateStringBuffer
-@ stub WindowsPromoteStringBuffer
+@ stdcall WindowsIsStringEmpty(ptr)
+@ stdcall WindowsPreallocateStringBuffer(long ptr ptr)
+@ stdcall WindowsPromoteStringBuffer(ptr ptr)
 @ stub WindowsReplaceString
-@ stub WindowsStringHasEmbeddedNull
+@ stdcall WindowsStringHasEmbeddedNull(ptr ptr)
 @ stub WindowsSubstring
 @ stub WindowsSubstringWithSpecifiedLength
 @ stub WindowsTrimStringEnd

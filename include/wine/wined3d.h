@@ -1721,6 +1721,13 @@ struct wined3d_map_desc
     void *data;
 };
 
+struct wined3d_sub_resource_data
+{
+    const void *data;
+    unsigned int row_pitch;
+    unsigned int slice_pitch;
+};
+
 struct wined3d_box
 {
     UINT left;
@@ -1967,6 +1974,24 @@ struct wined3d_rendertarget_view_desc
             unsigned int layer_count;
         } texture;
     } u;
+};
+
+struct wined3d_sampler_desc
+{
+    enum wined3d_texture_address address_u;
+    enum wined3d_texture_address address_v;
+    enum wined3d_texture_address address_w;
+    float border_color[4];
+    enum wined3d_texture_filter_type mag_filter;
+    enum wined3d_texture_filter_type min_filter;
+    enum wined3d_texture_filter_type mip_filter;
+    float lod_bias;
+    float min_lod;
+    float max_lod;
+    unsigned int max_anisotropy;
+    BOOL compare;
+    enum wined3d_cmp_func comparison_func;
+    BOOL srgb_decode;
 };
 
 struct wined3d_shader_signature_element
@@ -2427,7 +2452,8 @@ void * __cdecl wined3d_rendertarget_view_get_sub_resource_parent(const struct wi
 ULONG __cdecl wined3d_rendertarget_view_incref(struct wined3d_rendertarget_view *view);
 void __cdecl wined3d_rendertarget_view_set_parent(struct wined3d_rendertarget_view *view, void *parent);
 
-HRESULT __cdecl wined3d_sampler_create(void *parent, struct wined3d_sampler **sampler);
+HRESULT __cdecl wined3d_sampler_create(struct wined3d_device *device, const struct wined3d_sampler_desc *desc,
+        void *parent, struct wined3d_sampler **sampler);
 ULONG __cdecl wined3d_sampler_decref(struct wined3d_sampler *sampler);
 void * __cdecl wined3d_sampler_get_parent(const struct wined3d_sampler *sampler);
 ULONG __cdecl wined3d_sampler_incref(struct wined3d_sampler *sampler);
@@ -2516,8 +2542,8 @@ void __cdecl wined3d_swapchain_set_window(struct wined3d_swapchain *swapchain, H
 HRESULT __cdecl wined3d_texture_add_dirty_region(struct wined3d_texture *texture,
         UINT layer, const struct wined3d_box *dirty_region);
 HRESULT __cdecl wined3d_texture_create(struct wined3d_device *device, const struct wined3d_resource_desc *desc,
-        UINT level_count, DWORD surface_flags, void *parent, const struct wined3d_parent_ops *parent_ops,
-        struct wined3d_texture **texture);
+        UINT level_count, DWORD surface_flags, const struct wined3d_sub_resource_data *data, void *parent,
+        const struct wined3d_parent_ops *parent_ops, struct wined3d_texture **texture);
 ULONG __cdecl wined3d_texture_decref(struct wined3d_texture *texture);
 void __cdecl wined3d_texture_generate_mipmaps(struct wined3d_texture *texture);
 enum wined3d_texture_filter_type __cdecl wined3d_texture_get_autogen_filter_type(const struct wined3d_texture *texture);

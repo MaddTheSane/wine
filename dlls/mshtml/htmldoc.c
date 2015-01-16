@@ -42,6 +42,8 @@
 
 WINE_DEFAULT_DEBUG_CHANNEL(mshtml);
 
+static HRESULT create_document_fragment(nsIDOMNode *nsnode, HTMLDocumentNode *doc_node, HTMLDocumentNode **ret);
+
 HRESULT get_doc_elem_by_id(HTMLDocumentNode *doc, const WCHAR *id, HTMLElement **ret)
 {
     nsIDOMNodeList *nsnode_list;
@@ -113,6 +115,38 @@ HRESULT get_doc_elem_by_id(HTMLDocumentNode *doc, const WCHAR *id, HTMLElement *
     hres = get_elem(doc, nselem, ret);
     nsIDOMElement_Release(nselem);
     return hres;
+}
+
+UINT get_document_charset(HTMLDocumentNode *doc)
+{
+    nsAString charset_str;
+    UINT ret = 0;
+    nsresult nsres;
+
+    if(doc->charset)
+        return doc->charset;
+
+    nsAString_Init(&charset_str, NULL);
+    nsres = nsIDOMHTMLDocument_GetCharacterSet(doc->nsdoc, &charset_str);
+    if(NS_SUCCEEDED(nsres)) {
+        const PRUnichar *charset;
+
+        nsAString_GetData(&charset_str, &charset);
+
+        if(*charset) {
+            BSTR str = SysAllocString(charset);
+            ret = cp_from_charset_string(str);
+            SysFreeString(str);
+        }
+    }else {
+        ERR("GetCharset failed: %08x\n", nsres);
+    }
+    nsAString_Finish(&charset_str);
+
+    if(!ret)
+        return CP_UTF8;
+
+    return doc->charset = ret;
 }
 
 static inline HTMLDocument *impl_from_IHTMLDocument2(IHTMLDocument2 *iface)
@@ -280,6 +314,11 @@ static HRESULT WINAPI HTMLDocument_get_activeElement(IHTMLDocument2 *iface, IHTM
     if(NS_FAILED(nsres)) {
         ERR("GetActiveElement failed: %08x\n", nsres);
         return E_FAIL;
+    }
+
+    if(!nselem) {
+        *p = NULL;
+        return S_OK;
     }
 
     hres = get_elem(This->doc_node, nselem, &elem);
@@ -1669,7 +1708,7 @@ static HRESULT WINAPI HTMLDocument_createStyleSheet(IHTMLDocument2 *iface, BSTR 
     if(lIndex != -1)
         FIXME("Unsupported lIndex %d\n", lIndex);
 
-    if(bstrHref) {
+    if(bstrHref && *bstrHref) {
         FIXME("semi-stub for href %s\n", debugstr_w(bstrHref));
         *ppnewStyleSheet = HTMLStyleSheet_Create(NULL);
         return S_OK;
@@ -4615,7 +4654,7 @@ HRESULT create_doc_from_nsdoc(nsIDOMHTMLDocument *nsdoc, HTMLDocumentObj *doc_ob
     return S_OK;
 }
 
-HRESULT create_document_fragment(nsIDOMNode *nsnode, HTMLDocumentNode *doc_node, HTMLDocumentNode **ret)
+static HRESULT create_document_fragment(nsIDOMNode *nsnode, HTMLDocumentNode *doc_node, HTMLDocumentNode **ret)
 {
     HTMLDocumentNode *doc_frag;
 
