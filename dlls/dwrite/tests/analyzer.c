@@ -30,6 +30,7 @@
 #include "wine/test.h"
 
 static IDWriteFactory *factory;
+static const WCHAR test_fontfile[] = {'w','i','n','e','_','t','e','s','t','_','f','o','n','t','.','t','t','f',0};
 
 enum analysis_kind {
     ScriptAnalysis,
@@ -265,6 +266,14 @@ static HRESULT WINAPI analysissink_SetScriptAnalysis(IDWriteTextAnalysisSink *if
     return S_OK;
 }
 
+static DWRITE_SCRIPT_ANALYSIS g_sa;
+static HRESULT WINAPI analysissink_SetScriptAnalysis2(IDWriteTextAnalysisSink *iface,
+    UINT32 position, UINT32 length, DWRITE_SCRIPT_ANALYSIS const* sa)
+{
+    g_sa = *sa;
+    return S_OK;
+}
+
 #define BREAKPOINT_COUNT 20
 static DWRITE_LINE_BREAKPOINT g_actual_bp[BREAKPOINT_COUNT];
 
@@ -310,7 +319,18 @@ static IDWriteTextAnalysisSinkVtbl analysissinkvtbl = {
     analysissink_SetNumberSubstitution
 };
 
+static IDWriteTextAnalysisSinkVtbl analysissinkvtbl2 = {
+    analysissink_QueryInterface,
+    analysissink_AddRef,
+    analysissink_Release,
+    analysissink_SetScriptAnalysis2,
+    analysissink_SetLineBreakpoints,
+    analysissink_SetBidiLevel,
+    analysissink_SetNumberSubstitution
+};
+
 static IDWriteTextAnalysisSink analysissink = { &analysissinkvtbl };
+static IDWriteTextAnalysisSink analysissink2 = { &analysissinkvtbl2 };
 
 static HRESULT WINAPI analysissource_QueryInterface(IDWriteTextAnalysisSource *iface,
     REFIID riid, void **obj)
@@ -421,6 +441,40 @@ static IDWriteFontFace *create_fontface(void)
     IDWriteGdiInterop_Release(interop);
 
     return fontface;
+}
+
+static void create_testfontfile(const WCHAR *filename)
+{
+    DWORD written;
+    HANDLE file;
+    HRSRC res;
+    void *ptr;
+
+    file = CreateFileW(filename, GENERIC_READ|GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, 0, 0);
+    ok(file != INVALID_HANDLE_VALUE, "file creation failed\n");
+
+    res = FindResourceA(GetModuleHandleA(NULL), (LPCSTR)MAKEINTRESOURCE(1), (LPCSTR)RT_RCDATA);
+    ok(res != 0, "couldn't find resource\n");
+    ptr = LockResource(LoadResource(GetModuleHandleA(NULL), res));
+    WriteFile(file, ptr, SizeofResource(GetModuleHandleA(NULL), res), &written, NULL);
+    ok(written == SizeofResource(GetModuleHandleA(NULL), res), "couldn't write resource\n");
+    CloseHandle(file);
+}
+
+static IDWriteFontFace *create_testfontface(const WCHAR *filename)
+{
+    IDWriteFontFace *face;
+    IDWriteFontFile *file;
+    HRESULT hr;
+
+    hr = IDWriteFactory_CreateFontFileReference(factory, filename, NULL, &file);
+    ok(hr == S_OK, "got 0x%08x\n",hr);
+
+    hr = IDWriteFactory_CreateFontFace(factory, DWRITE_FONT_FACE_TYPE_TRUETYPE, 1, &file, 0,
+        DWRITE_FONT_SIMULATIONS_NONE, &face);
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+
+    return face;
 }
 
 struct sa_test {
@@ -836,6 +890,22 @@ static void init_expected_sa(struct call_sequence **seq, const struct sa_test *t
     add_call(seq, 0, &end_of_sequence);
 }
 
+static void get_script_analysis(const WCHAR *str, DWRITE_SCRIPT_ANALYSIS *sa)
+{
+    IDWriteTextAnalyzer *analyzer;
+    HRESULT hr;
+
+    g_source = str;
+
+    hr = IDWriteFactory_CreateTextAnalyzer(factory, &analyzer);
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+
+    hr = IDWriteTextAnalyzer_AnalyzeScript(analyzer, &analysissource, 0, lstrlenW(g_source), &analysissink2);
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+
+    *sa = g_sa;
+}
+
 static void test_AnalyzeScript(void)
 {
     const struct sa_test *ptr = sa_tests;
@@ -1174,6 +1244,194 @@ if (0) {
     IDWriteFontFace_Release(fontface);
 }
 
+static BOOL has_feature(const DWRITE_FONT_FEATURE_TAG *tags, UINT32 count, DWRITE_FONT_FEATURE_TAG feature)
+{
+    UINT32 i;
+
+    for (i = 0; i < count; i++)
+        if (tags[i] == feature) return TRUE;
+    return FALSE;
+}
+
+static void test_GetTypographicFeatures(void)
+{
+    static const WCHAR localeW[] = {'c','a','d','a','b','r','a',0};
+    static const WCHAR arabicW[] = {0x064a,0x064f,0x0633,0};
+    static const WCHAR abcW[] = {'a','b','c',0};
+    DWRITE_FONT_FEATURE_TAG tags[20];
+    IDWriteTextAnalyzer2 *analyzer2;
+    IDWriteTextAnalyzer *analyzer;
+    IDWriteFontFace *fontface;
+    DWRITE_SCRIPT_ANALYSIS sa;
+    UINT32 count;
+    HRESULT hr;
+    BOOL ret;
+
+    hr = IDWriteFactory_CreateTextAnalyzer(factory, &analyzer);
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+
+    hr = IDWriteTextAnalyzer_QueryInterface(analyzer, &IID_IDWriteTextAnalyzer2, (void**)&analyzer2);
+    IDWriteTextAnalyzer_Release(analyzer);
+    if (hr != S_OK) {
+        win_skip("GetTypographicFeatures() is not supported.\n");
+        return;
+    }
+
+    fontface = create_fontface();
+
+    get_script_analysis(abcW, &sa);
+    count = 0;
+    hr = IDWriteTextAnalyzer2_GetTypographicFeatures(analyzer2, fontface, sa, NULL, 0, &count, NULL);
+todo_wine {
+    ok(hr == E_NOT_SUFFICIENT_BUFFER, "got 0x%08x\n", hr);
+    ok(count > 0, "got %u\n", count);
+}
+    /* invalid locale name is ignored */
+    get_script_analysis(abcW, &sa);
+    count = 0;
+    hr = IDWriteTextAnalyzer2_GetTypographicFeatures(analyzer2, fontface, sa, localeW, 0, &count, NULL);
+todo_wine {
+    ok(hr == E_NOT_SUFFICIENT_BUFFER, "got 0x%08x\n", hr);
+    ok(count > 0, "got %u\n", count);
+}
+    /* both GSUB and GPOS features are reported */
+    get_script_analysis(arabicW, &sa);
+    memset(tags, 0, sizeof(tags));
+    count = 0;
+    hr = IDWriteTextAnalyzer2_GetTypographicFeatures(analyzer2, fontface, sa, NULL, sizeof(tags)/sizeof(tags[0]), &count, tags);
+todo_wine {
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+    ok(count > 0, "got %u\n", count);
+    ret = has_feature(tags, count, DWRITE_FONT_FEATURE_TAG_CONTEXTUAL_ALTERNATES);
+    ok(ret, "expected 'calt' feature\n");
+    ret = has_feature(tags, count, DWRITE_FONT_FEATURE_TAG_MARK_TO_MARK_POSITIONING);
+    ok(ret, "expected 'mkmk' feature\n");
+}
+    get_script_analysis(abcW, &sa);
+    memset(tags, 0, sizeof(tags));
+    count = 0;
+    hr = IDWriteTextAnalyzer2_GetTypographicFeatures(analyzer2, fontface, sa, NULL, sizeof(tags)/sizeof(tags[0]), &count, tags);
+todo_wine {
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+    ok(count > 0, "got %u\n", count);
+    ret = has_feature(tags, count, DWRITE_FONT_FEATURE_TAG_GLYPH_COMPOSITION_DECOMPOSITION);
+    ok(ret, "expected 'ccmp' feature\n");
+    ret = has_feature(tags, count, DWRITE_FONT_FEATURE_TAG_MARK_TO_MARK_POSITIONING);
+    ok(ret, "expected 'mkmk' feature\n");
+}
+    ret = has_feature(tags, count, DWRITE_FONT_FEATURE_TAG_CONTEXTUAL_ALTERNATES);
+    ok(!ret, "unexpected 'calt' feature\n");
+
+    IDWriteFontFace_Release(fontface);
+    IDWriteTextAnalyzer2_Release(analyzer2);
+}
+
+static void test_GetGlyphPlacements(void)
+{
+    DWRITE_SHAPING_GLYPH_PROPERTIES glyphprops[2];
+    DWRITE_SHAPING_TEXT_PROPERTIES textprops[2];
+    static const WCHAR aW[] = {'A','D',0};
+    UINT16 clustermap[2], glyphs[2];
+    DWRITE_GLYPH_OFFSET offsets[2];
+    IDWriteTextAnalyzer *analyzer;
+    IDWriteFontFace *fontface;
+    DWRITE_SCRIPT_ANALYSIS sa;
+    FLOAT advances[2];
+    UINT32 count, len;
+    HRESULT hr;
+
+    hr = IDWriteFactory_CreateTextAnalyzer(factory, &analyzer);
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+
+    create_testfontfile(test_fontfile);
+    fontface = create_testfontface(test_fontfile);
+
+    get_script_analysis(aW, &sa);
+    count = 0;
+    len = lstrlenW(aW);
+    hr = IDWriteTextAnalyzer_GetGlyphs(analyzer, aW, len, fontface, FALSE, FALSE, &sa, NULL,
+        NULL, NULL, NULL, 0, len, clustermap, textprops, glyphs, glyphprops, &count);
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+    ok(count == 2, "got %u\n", count);
+
+    /* just return on zero glyphs */
+    advances[0] = advances[1] = 1.0;
+    offsets[0].advanceOffset = offsets[0].ascenderOffset = 2.0;
+    hr = IDWriteTextAnalyzer_GetGlyphPlacements(analyzer, aW, clustermap, textprops,
+        len, glyphs, glyphprops, 0, fontface, 0.0, FALSE, FALSE, &sa, NULL, NULL,
+        NULL, 0, advances, offsets);
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+    ok(advances[0] == 1.0, "got %.2f\n", advances[0]);
+    ok(offsets[0].advanceOffset == 2.0 && offsets[0].ascenderOffset == 2.0, "got %.2f,%.2f\n",
+        offsets[0].advanceOffset, offsets[0].ascenderOffset);
+
+    /* advances/offsets are scaled with provided font emSize and designed eM box size */
+    advances[0] = advances[1] = 1.0;
+    memset(offsets, 0xcc, sizeof(offsets));
+    hr = IDWriteTextAnalyzer_GetGlyphPlacements(analyzer, aW, clustermap, textprops,
+        len, glyphs, glyphprops, len, fontface, 0.0, FALSE, FALSE, &sa, NULL, NULL,
+        NULL, 0, advances, offsets);
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+    ok(advances[0] == 0.0, "got %.2f\n", advances[0]);
+    ok(offsets[0].advanceOffset == 0.0 && offsets[0].ascenderOffset == 0.0, "got %.2f,%.2f\n",
+        offsets[0].advanceOffset, offsets[0].ascenderOffset);
+
+    advances[0] = advances[1] = 1.0;
+    memset(offsets, 0xcc, sizeof(offsets));
+    hr = IDWriteTextAnalyzer_GetGlyphPlacements(analyzer, aW, clustermap, textprops,
+        len, glyphs, glyphprops, len, fontface, 2048.0, FALSE, FALSE, &sa, NULL, NULL,
+        NULL, 0, advances, offsets);
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+    ok(advances[0] == 1000.0, "got %.2f\n", advances[0]);
+    ok(offsets[0].advanceOffset == 0.0 && offsets[0].ascenderOffset == 0.0, "got %.2f,%.2f\n",
+        offsets[0].advanceOffset, offsets[0].ascenderOffset);
+
+    advances[0] = advances[1] = 1.0;
+    memset(offsets, 0xcc, sizeof(offsets));
+    hr = IDWriteTextAnalyzer_GetGlyphPlacements(analyzer, aW, clustermap, textprops,
+        len, glyphs, glyphprops, len, fontface, 1024.0, FALSE, FALSE, &sa, NULL, NULL,
+        NULL, 0, advances, offsets);
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+    ok(advances[0] == 500.0, "got %.2f\n", advances[0]);
+    ok(advances[1] == 500.0, "got %.2f\n", advances[1]);
+    ok(offsets[0].advanceOffset == 0.0 && offsets[0].ascenderOffset == 0.0, "got %.2f,%.2f\n",
+        offsets[0].advanceOffset, offsets[0].ascenderOffset);
+
+    advances[0] = advances[1] = 1.0;
+    memset(offsets, 0xcc, sizeof(offsets));
+    hr = IDWriteTextAnalyzer_GetGlyphPlacements(analyzer, aW, clustermap, textprops,
+        len, glyphs, glyphprops, len, fontface, 20.48, FALSE, FALSE, &sa, NULL, NULL,
+        NULL, 0, advances, offsets);
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+    ok(advances[0] == 10.0, "got %.2f\n", advances[0]);
+    ok(advances[1] == 10.0, "got %.2f\n", advances[1]);
+    ok(offsets[0].advanceOffset == 0.0 && offsets[0].ascenderOffset == 0.0, "got %.2f,%.2f\n",
+        offsets[0].advanceOffset, offsets[0].ascenderOffset);
+
+    /* without clustermap */
+    advances[0] = advances[1] = 1.0;
+    hr = IDWriteTextAnalyzer_GetGlyphPlacements(analyzer, aW, NULL, textprops,
+        len, glyphs, glyphprops, len, fontface, 1024.0, FALSE, FALSE, &sa, NULL, NULL,
+        NULL, 0, advances, offsets);
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+    ok(advances[0] == 500.0, "got %.2f\n", advances[0]);
+    ok(advances[1] == 500.0, "got %.2f\n", advances[1]);
+
+    /* it's happy to use negative size too */
+    advances[0] = advances[1] = 1.0;
+    memset(offsets, 0xcc, sizeof(offsets));
+    hr = IDWriteTextAnalyzer_GetGlyphPlacements(analyzer, aW, clustermap, textprops,
+        len, glyphs, glyphprops, len, fontface, -10.24, FALSE, FALSE, &sa, NULL, NULL,
+        NULL, 0, advances, offsets);
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+    ok(advances[0] == -5.0, "got %.2f\n", advances[0]);
+    ok(offsets[0].advanceOffset == 0.0 && offsets[0].ascenderOffset == 0.0, "got %.2f,%.2f\n",
+        offsets[0].advanceOffset, offsets[0].ascenderOffset);
+
+    IDWriteTextAnalyzer_Release(analyzer);
+    DeleteFileW(test_fontfile);
+}
+
 START_TEST(analyzer)
 {
     HRESULT hr;
@@ -1195,6 +1453,8 @@ START_TEST(analyzer)
     test_GetTextComplexity();
     test_GetGlyphs();
     test_numbersubstitution();
+    test_GetTypographicFeatures();
+    test_GetGlyphPlacements();
 
     IDWriteFactory_Release(factory);
 }

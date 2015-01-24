@@ -546,6 +546,19 @@ static HRESULT exec_get_print_template(HTMLDocument *This, DWORD nCmdexecopt, VA
     return E_NOTIMPL;
 }
 
+static HRESULT exec_optical_zoom(HTMLDocument *This, DWORD nCmdexecopt, VARIANT *pvaIn, VARIANT *pvaOut)
+{
+    TRACE("(%p)->(%d %s %p)\n", This, nCmdexecopt, debugstr_variant(pvaIn), pvaOut);
+
+    if(!pvaIn || V_VT(pvaIn) != VT_I4) {
+        FIXME("Unsupported argument %s\n", debugstr_variant(pvaIn));
+        return E_NOTIMPL;
+    }
+
+    set_viewer_zoom(This->doc_obj->nscontainer, (float)V_I4(pvaIn)/100);
+    return S_OK;
+}
+
 static HRESULT query_mshtml_copy(HTMLDocument *This, OLECMD *cmd)
 {
     FIXME("(%p)\n", This);
@@ -695,7 +708,7 @@ static HRESULT query_enabled_stub(HTMLDocument *This, OLECMD *cmd)
 static const struct {
     OLECMDF cmdf;
     HRESULT (*func)(HTMLDocument*,DWORD,VARIANT*,VARIANT*);
-} exec_table[OLECMDID_GETPRINTTEMPLATE+1] = {
+} exec_table[] = {
     {0},
     { OLECMDF_SUPPORTED,                  exec_open                 }, /* OLECMDID_OPEN */
     { OLECMDF_SUPPORTED,                  exec_new                  }, /* OLECMDID_NEW */
@@ -735,7 +748,9 @@ static const struct {
     { OLECMDF_SUPPORTED,                  exec_close                }, /* OLECMDID_CLOSE */
     {0},{0},{0},
     { OLECMDF_SUPPORTED,                  exec_set_print_template   }, /* OLECMDID_SETPRINTTEMPLATE */
-    { OLECMDF_SUPPORTED,                  exec_get_print_template   }  /* OLECMDID_GETPRINTTEMPLATE */
+    { OLECMDF_SUPPORTED,                  exec_get_print_template   }, /* OLECMDID_GETPRINTTEMPLATE */
+    {0},{0},{0},{0},{0},{0},{0},{0},{0},{0},
+    { 0, /* not reported as supported */  exec_optical_zoom         }  /* OLECMDID_OPTICAL_ZOOM */
 };
 
 static const cmdtable_t base_cmds[] = {
@@ -790,18 +805,22 @@ static HRESULT WINAPI OleCommandTarget_QueryStatus(IOleCommandTarget *iface, con
         ULONG cCmds, OLECMD prgCmds[], OLECMDTEXT *pCmdText)
 {
     HTMLDocument *This = impl_from_IOleCommandTarget(iface);
-    HRESULT hres = S_OK, hr;
+    HRESULT hres;
 
     TRACE("(%p)->(%s %d %p %p)\n", This, debugstr_guid(pguidCmdGroup), cCmds, prgCmds, pCmdText);
+
+    if(pCmdText)
+        FIXME("Unsupported pCmdText\n");
+    if(!cCmds)
+        return S_OK;
 
     if(!pguidCmdGroup) {
         ULONG i;
 
         for(i=0; i<cCmds; i++) {
-            if(prgCmds[i].cmdID<OLECMDID_OPEN || prgCmds[i].cmdID>OLECMDID_GETPRINTTEMPLATE) {
+            if(prgCmds[i].cmdID < OLECMDID_OPEN || prgCmds[i].cmdID >= sizeof(exec_table)/sizeof(*exec_table)) {
                 WARN("Unsupported cmdID = %d\n", prgCmds[i].cmdID);
                 prgCmds[i].cmdf = 0;
-                hres = OLECMDERR_E_NOTSUPPORTED;
             }else {
                 if(prgCmds[i].cmdID == OLECMDID_OPEN || prgCmds[i].cmdID == OLECMDID_NEW) {
                     IOleCommandTarget *cmdtrg = NULL;
@@ -809,14 +828,14 @@ static HRESULT WINAPI OleCommandTarget_QueryStatus(IOleCommandTarget *iface, con
 
                     prgCmds[i].cmdf = OLECMDF_SUPPORTED;
                     if(This->doc_obj->client) {
-                        hr = IOleClientSite_QueryInterface(This->doc_obj->client, &IID_IOleCommandTarget,
+                        hres = IOleClientSite_QueryInterface(This->doc_obj->client, &IID_IOleCommandTarget,
                                 (void**)&cmdtrg);
-                        if(SUCCEEDED(hr)) {
+                        if(SUCCEEDED(hres)) {
                             olecmd.cmdID = prgCmds[i].cmdID;
                             olecmd.cmdf = 0;
 
-                            hr = IOleCommandTarget_QueryStatus(cmdtrg, NULL, 1, &olecmd, NULL);
-                            if(SUCCEEDED(hr) && olecmd.cmdf)
+                            hres = IOleCommandTarget_QueryStatus(cmdtrg, NULL, 1, &olecmd, NULL);
+                            if(SUCCEEDED(hres) && olecmd.cmdf)
                                 prgCmds[i].cmdf = olecmd.cmdf;
                         }
                     }else {
@@ -826,33 +845,28 @@ static HRESULT WINAPI OleCommandTarget_QueryStatus(IOleCommandTarget *iface, con
                     prgCmds[i].cmdf = exec_table[prgCmds[i].cmdID].cmdf;
                     TRACE("cmdID = %d  returning %x\n", prgCmds[i].cmdID, prgCmds[i].cmdf);
                 }
-                hres = S_OK;
             }
         }
 
-        if(pCmdText)
-            FIXME("Set pCmdText\n");
-    }else if(IsEqualGUID(&CGID_MSHTML, pguidCmdGroup)) {
+        return (prgCmds[cCmds-1].cmdf & OLECMDF_SUPPORTED) ? S_OK : OLECMDERR_E_NOTSUPPORTED;
+    }
+
+    if(IsEqualGUID(&CGID_MSHTML, pguidCmdGroup)) {
         ULONG i;
 
         for(i=0; i<cCmds; i++) {
-            HRESULT hres = query_from_table(This, base_cmds, prgCmds+i);
+            hres = query_from_table(This, base_cmds, prgCmds+i);
             if(hres == OLECMDERR_E_NOTSUPPORTED)
                 hres = query_from_table(This, editmode_cmds, prgCmds+i);
             if(hres == OLECMDERR_E_NOTSUPPORTED)
                 FIXME("CGID_MSHTML: unsupported cmdID %d\n", prgCmds[i].cmdID);
         }
 
-        hres = prgCmds[i-1].cmdf ? S_OK : OLECMDERR_E_NOTSUPPORTED;
-
-        if(pCmdText)
-            FIXME("Set pCmdText\n");
-    }else {
-        FIXME("Unsupported pguidCmdGroup %s\n", debugstr_guid(pguidCmdGroup));
-        hres = OLECMDERR_E_UNKNOWNGROUP;
+        return (prgCmds[cCmds-1].cmdf & OLECMDF_SUPPORTED) ? S_OK : OLECMDERR_E_NOTSUPPORTED;
     }
 
-    return hres;
+    FIXME("Unsupported pguidCmdGroup %s\n", debugstr_guid(pguidCmdGroup));
+    return OLECMDERR_E_UNKNOWNGROUP;
 }
 
 static HRESULT exec_from_table(HTMLDocument *This, const cmdtable_t *cmdtable, DWORD cmdid,
@@ -875,7 +889,7 @@ static HRESULT WINAPI OleCommandTarget_Exec(IOleCommandTarget *iface, const GUID
     HTMLDocument *This = impl_from_IOleCommandTarget(iface);
 
     if(!pguidCmdGroup) {
-        if(nCmdID<OLECMDID_OPEN || nCmdID>OLECMDID_GETPRINTTEMPLATE || !exec_table[nCmdID].func) {
+        if(nCmdID < OLECMDID_OPEN || nCmdID >= sizeof(exec_table)/sizeof(*exec_table) || !exec_table[nCmdID].func) {
             WARN("Unsupported cmdID = %d\n", nCmdID);
             return OLECMDERR_E_NOTSUPPORTED;
         }

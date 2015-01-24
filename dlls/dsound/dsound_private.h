@@ -111,24 +111,10 @@ typedef struct BufferMemory
     struct list buffers;
 } BufferMemory;
 
-ULONG DirectSoundDevice_Release(DirectSoundDevice * device) DECLSPEC_HIDDEN;
-HRESULT DirectSoundDevice_Initialize(
-    DirectSoundDevice ** ppDevice,
-    LPCGUID lpcGUID) DECLSPEC_HIDDEN;
 HRESULT DirectSoundDevice_AddBuffer(
     DirectSoundDevice * device,
     IDirectSoundBufferImpl * pDSB) DECLSPEC_HIDDEN;
 void DirectSoundDevice_RemoveBuffer(DirectSoundDevice * device, IDirectSoundBufferImpl * pDSB) DECLSPEC_HIDDEN;
-HRESULT DirectSoundDevice_CreateSoundBuffer(
-    DirectSoundDevice * device,
-    LPCDSBUFFERDESC dsbd,
-    LPLPDIRECTSOUNDBUFFER ppdsb,
-    LPUNKNOWN lpunk,
-    BOOL from8) DECLSPEC_HIDDEN;
-HRESULT DirectSoundDevice_DuplicateSoundBuffer(
-    DirectSoundDevice * device,
-    LPDIRECTSOUNDBUFFER psb,
-    LPLPDIRECTSOUNDBUFFER ppdsb) DECLSPEC_HIDDEN;
 
 /*****************************************************************************
  * IDirectSoundBuffer implementation structure
@@ -219,7 +205,6 @@ HRESULT DSOUND_PrimaryGetPosition(DirectSoundDevice *device, LPDWORD playpos, LP
 LPWAVEFORMATEX DSOUND_CopyFormat(LPCWAVEFORMATEX wfex) DECLSPEC_HIDDEN;
 HRESULT DSOUND_ReopenDevice(DirectSoundDevice *device, BOOL forcewave) DECLSPEC_HIDDEN;
 HRESULT DSOUND_PrimaryOpen(DirectSoundDevice *device) DECLSPEC_HIDDEN;
-DWORD DSOUND_FindSpeakerConfig(IMMDevice *mmdevice, int channels) DECLSPEC_HIDDEN;
 HRESULT primarybuffer_create(DirectSoundDevice *device, IDirectSoundBufferImpl **ppdsb,
     const DSBUFFERDESC *dsbd) DECLSPEC_HIDDEN;
 void primarybuffer_destroy(IDirectSoundBufferImpl *This) DECLSPEC_HIDDEN;

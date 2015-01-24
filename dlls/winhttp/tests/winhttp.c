@@ -31,7 +31,6 @@
 
 #include "wine/test.h"
 
-static HANDLE wait_event;
 static const WCHAR test_useragent[] =
     {'W','i','n','e',' ','R','e','g','r','e','s','s','i','o','n',' ','T','e','s','t',0};
 static const WCHAR test_winehq[] = {'t','e','s','t','.','w','i','n','e','h','q','.','o','r','g',0};
@@ -1819,6 +1818,11 @@ static const char okauthmsg[] =
 "Connection: close\r\n"
 "\r\n";
 
+static const char headmsg[] =
+"HTTP/1.1 200 OK\r\n"
+"Content-Length: 100\r\n"
+"\r\n";
+
 struct server_info
 {
     HANDLE event;
@@ -1830,7 +1834,7 @@ struct server_info
 static DWORD CALLBACK server_thread(LPVOID param)
 {
     struct server_info *si = param;
-    int r, c, i, on;
+    int r, c = -1, i, on;
     SOCKET s;
     struct sockaddr_in sa;
     char buffer[0x100];
@@ -1859,7 +1863,7 @@ static DWORD CALLBACK server_thread(LPVOID param)
     SetEvent(si->event);
     do
     {
-        c = accept(s, NULL, NULL);
+        if (c == -1) c = accept(s, NULL, NULL);
 
         memset(buffer, 0, sizeof buffer);
         for(i = 0; i < sizeof buffer - 1; i++)
@@ -1898,11 +1902,17 @@ static DWORD CALLBACK server_thread(LPVOID param)
         if (strstr(buffer, "GET /no_content"))
         {
             send(c, nocontentmsg, sizeof nocontentmsg - 1, 0);
+            continue;
         }
         if (strstr(buffer, "GET /not_modified"))
         {
             send(c, notmodified, sizeof notmodified - 1, 0);
-            WaitForSingleObject(wait_event, 5000);
+            continue;
+        }
+        if (strstr(buffer, "HEAD /head"))
+        {
+            send(c, headmsg, sizeof headmsg - 1, 0);
+            continue;
         }
         if (strstr(buffer, "GET /quit"))
         {
@@ -1912,6 +1922,7 @@ static DWORD CALLBACK server_thread(LPVOID param)
         }
         shutdown(c, 2);
         closesocket(c);
+        c = -1;
 
     } while (!last_request);
 
@@ -2219,6 +2230,65 @@ static void test_no_content(int port)
     WinHttpCloseHandle(ses);
 }
 
+static void test_head_request(int port)
+{
+    static const WCHAR verbW[] = {'H','E','A','D',0};
+    static const WCHAR headW[] = {'/','h','e','a','d',0};
+    HINTERNET ses, con, req;
+    char buf[128];
+    DWORD size, len, count, status;
+    BOOL ret;
+
+    ses = WinHttpOpen(test_useragent, 0, NULL, NULL, 0);
+    ok(ses != NULL, "failed to open session %u\n", GetLastError());
+
+    con = WinHttpConnect(ses, localhostW, port, 0);
+    ok(con != NULL, "failed to open a connection %u\n", GetLastError());
+
+    req = WinHttpOpenRequest(con, verbW, headW, NULL, NULL, NULL, 0);
+    ok(req != NULL, "failed to open a request %u\n", GetLastError());
+
+    ret = WinHttpSendRequest(req, NULL, 0, NULL, 0, 0, 0);
+    ok(ret, "failed to send request %u\n", GetLastError());
+
+    ret = WinHttpReceiveResponse(req, NULL);
+    ok(ret, "failed to receive response %u\n", GetLastError());
+
+    status = 0xdeadbeef;
+    size = sizeof(status);
+    ret = WinHttpQueryHeaders(req, WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER,
+                              NULL, &status, &size, NULL);
+    ok(ret, "failed to get status code %u\n", GetLastError());
+    ok(status == 200, "got %u\n", status);
+
+    len = 0xdeadbeef;
+    size = sizeof(len);
+    ret = WinHttpQueryHeaders(req, WINHTTP_QUERY_CONTENT_LENGTH | WINHTTP_QUERY_FLAG_NUMBER,
+                              NULL, &len, &size, 0);
+    ok(ret, "failed to get content-length header %u\n", GetLastError());
+    ok(len == 100, "got %u\n", len);
+
+    count = 0xdeadbeef;
+    ret = WinHttpQueryDataAvailable(req, &count);
+    ok(ret, "failed to query data available %u\n", GetLastError());
+    ok(!count, "got %u\n", count);
+
+    len = sizeof(buf);
+    count = 0xdeadbeef;
+    ret = WinHttpReadData(req, buf, len, &count);
+    ok(ret, "failed to read data %u\n", GetLastError());
+    ok(!count, "got %u\n", count);
+
+    count = 0xdeadbeef;
+    ret = WinHttpQueryDataAvailable(req, &count);
+    ok(ret, "failed to query data available %u\n", GetLastError());
+    ok(!count, "got %u\n", count);
+
+    WinHttpCloseHandle(req);
+    WinHttpCloseHandle(con);
+    WinHttpCloseHandle(ses);
+}
+
 static void test_not_modified(int port)
 {
     static const WCHAR pathW[] = {'/','n','o','t','_','m','o','d','i','f','i','e','d',0};
@@ -2249,8 +2319,6 @@ static void test_not_modified(int port)
 
     ret = WinHttpReceiveResponse(request, NULL);
     ok(ret, "WinHttpReceiveResponse failed: %u\n", GetLastError());
-
-    SetEvent(wait_event);
 
     size = sizeof(status);
     ret = WinHttpQueryHeaders(request, WINHTTP_QUERY_STATUS_CODE|WINHTTP_QUERY_FLAG_NUMBER,
@@ -3275,12 +3343,11 @@ START_TEST (winhttp)
     if (ret != WAIT_OBJECT_0)
         return;
 
-    wait_event = CreateEventW(NULL, FALSE, FALSE, NULL);
-
     test_connection_info(si.port);
     test_basic_request(si.port, NULL, basicW);
     test_no_headers(si.port);
     test_no_content(si.port);
+    test_head_request(si.port);
     test_not_modified(si.port);
     test_basic_authentication(si.port);
     test_bad_header(si.port);
@@ -3288,8 +3355,6 @@ START_TEST (winhttp)
 
     /* send the basic request again to shutdown the server thread */
     test_basic_request(si.port, NULL, quitW);
-
-    CloseHandle(wait_event);
 
     WaitForSingleObject(thread, 3000);
 }

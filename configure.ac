@@ -122,6 +122,7 @@ AC_PROG_CXX
 dnl We can't use AC_PROG_CPP for winegcc, it uses by default $(CC) -E
 AC_CHECK_TOOL(CPPBIN,cpp,cpp)
 AC_DEFINE_UNQUOTED(EXEEXT,["$ac_exeext"],[Define to the file extension for executables.])
+AC_CHECK_TOOL(LD,ld)
 
 case $host in
   *-darwin*)
@@ -2044,6 +2045,7 @@ AC_CHECK_FUNCS(\
 	dlopen \
 	epoll_create \
 	ffs \
+	finitef \
 	fnmatch \
 	fork \
 	fpclass \
@@ -2060,6 +2062,7 @@ AC_CHECK_FUNCS(\
 	gettimeofday \
 	getuid \
 	if_nameindex \
+	isnanf \
 	kqueue \
 	lstat \
 	memmove \

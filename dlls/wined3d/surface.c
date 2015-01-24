@@ -1334,23 +1334,23 @@ static void surface_download_data(struct wined3d_surface *surface, const struct 
 
     if (format->flags & WINED3DFMT_FLAG_COMPRESSED)
     {
-        TRACE("(%p) : Calling glGetCompressedTexImageARB level %d, format %#x, type %#x, data %p.\n",
+        TRACE("(%p) : Calling glGetCompressedTexImage level %d, format %#x, type %#x, data %p.\n",
                 surface, surface->texture_level, format->glFormat, format->glType, data.addr);
 
         if (data.buffer_object)
         {
             GL_EXTCALL(glBindBuffer(GL_PIXEL_PACK_BUFFER, data.buffer_object));
             checkGLcall("glBindBuffer");
-            GL_EXTCALL(glGetCompressedTexImageARB(surface->texture_target, surface->texture_level, NULL));
-            checkGLcall("glGetCompressedTexImageARB");
+            GL_EXTCALL(glGetCompressedTexImage(surface->texture_target, surface->texture_level, NULL));
+            checkGLcall("glGetCompressedTexImage");
             GL_EXTCALL(glBindBuffer(GL_PIXEL_PACK_BUFFER, 0));
             checkGLcall("glBindBuffer");
         }
         else
         {
-            GL_EXTCALL(glGetCompressedTexImageARB(surface->texture_target,
+            GL_EXTCALL(glGetCompressedTexImage(surface->texture_target,
                     surface->texture_level, data.addr));
-            checkGLcall("glGetCompressedTexImageARB");
+            checkGLcall("glGetCompressedTexImage");
         }
     }
     else
@@ -1515,30 +1515,30 @@ void wined3d_surface_upload_data(struct wined3d_surface *surface, const struct w
         else
             internal = format->glInternal;
 
-        TRACE("glCompressedTexSubImage2DARB, target %#x, level %d, x %d, y %d, w %d, h %d, "
+        TRACE("glCompressedTexSubImage2D, target %#x, level %d, x %d, y %d, w %d, h %d, "
                 "format %#x, image_size %#x, addr %p.\n", surface->texture_target, surface->texture_level,
                 dst_point->x, dst_point->y, update_w, update_h, internal, row_count * row_length, addr);
 
         if (row_length == src_pitch)
         {
-            GL_EXTCALL(glCompressedTexSubImage2DARB(surface->texture_target, surface->texture_level,
+            GL_EXTCALL(glCompressedTexSubImage2D(surface->texture_target, surface->texture_level,
                     dst_point->x, dst_point->y, update_w, update_h, internal, row_count * row_length, addr));
         }
         else
         {
             UINT row, y;
 
-            /* glCompressedTexSubImage2DARB() ignores pixel store state, so we
-             * can't use the unpack row length like below. */
+            /* glCompressedTexSubImage2D() ignores pixel store state, so we
+             * can't use the unpack row length like for glTexSubImage2D. */
             for (row = 0, y = dst_point->y; row < row_count; ++row)
             {
-                GL_EXTCALL(glCompressedTexSubImage2DARB(surface->texture_target, surface->texture_level,
+                GL_EXTCALL(glCompressedTexSubImage2D(surface->texture_target, surface->texture_level,
                         dst_point->x, y, update_w, format->block_height, internal, row_length, addr));
                 y += format->block_height;
                 addr += src_pitch;
             }
         }
-        checkGLcall("glCompressedTexSubImage2DARB");
+        checkGLcall("glCompressedTexSubImage2D");
     }
     else
     {
@@ -1821,11 +1821,11 @@ void surface_load(struct wined3d_surface *surface, BOOL srgb)
     if (surface->resource.pool == WINED3D_POOL_SCRATCH)
         ERR("Not supported on scratch surfaces.\n");
 
-    ck_changed = !(surface->flags & SFLAG_GLCKEY) != !(surface->container->color_key_flags & WINEDDSD_CKSRCBLT);
+    ck_changed = !(surface->flags & SFLAG_GLCKEY) != !(surface->container->color_key_flags & WINED3D_CKEY_SRC_BLT);
 
     /* Reload if either the texture and sysmem have different ideas about the
      * color key, or the actual key values changed. */
-    if (ck_changed || ((surface->container->color_key_flags & WINEDDSD_CKSRCBLT)
+    if (ck_changed || ((surface->container->color_key_flags & WINED3D_CKEY_SRC_BLT)
             && (surface->gl_color_key.color_space_low_value
             != surface->container->src_blt_color_key.color_space_low_value
             || surface->gl_color_key.color_space_high_value
@@ -3685,12 +3685,12 @@ static HRESULT surface_blt_special(struct wined3d_surface *dst_surface, const RE
         else if (flags & WINEDDBLT_KEYSRCOVERRIDE)
         {
             /* Use color key from DDBltFx */
-            wined3d_texture_set_color_key(src_surface->container, WINEDDSD_CKSRCBLT, &DDBltFx->ddckSrcColorkey);
+            wined3d_texture_set_color_key(src_surface->container, WINED3D_CKEY_SRC_BLT, &DDBltFx->ddckSrcColorkey);
         }
         else
         {
             /* Do not use color key */
-            wined3d_texture_set_color_key(src_surface->container, WINEDDSD_CKSRCBLT, NULL);
+            wined3d_texture_set_color_key(src_surface->container, WINED3D_CKEY_SRC_BLT, NULL);
         }
 
         surface_blt_to_drawable(device, filter,
@@ -3698,8 +3698,8 @@ static HRESULT surface_blt_special(struct wined3d_surface *dst_surface, const RE
                 src_surface, src_rect, dst_surface, dst_rect);
 
         /* Restore the color key parameters */
-        wined3d_texture_set_color_key(src_surface->container, WINEDDSD_CKSRCBLT,
-                (old_color_key_flags & WINEDDSD_CKSRCBLT) ? &old_blt_key : NULL);
+        wined3d_texture_set_color_key(src_surface->container, WINED3D_CKEY_SRC_BLT,
+                (old_color_key_flags & WINED3D_CKEY_SRC_BLT) ? &old_blt_key : NULL);
 
         surface_validate_location(dst_surface, dst_surface->container->resource.draw_binding);
         surface_invalidate_location(dst_surface, ~dst_surface->container->resource.draw_binding);
@@ -4178,7 +4178,7 @@ static HRESULT surface_load_texture(struct wined3d_surface *surface,
     wined3d_texture_prepare_texture(texture, context, srgb);
     wined3d_texture_bind_and_dirtify(texture, context, srgb);
 
-    if (texture->color_key_flags & WINEDDSD_CKSRCBLT)
+    if (texture->color_key_flags & WINED3D_CKEY_SRC_BLT)
     {
         surface->flags |= SFLAG_GLCKEY;
         surface->gl_color_key = texture->src_blt_color_key;

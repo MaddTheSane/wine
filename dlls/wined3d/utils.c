@@ -795,7 +795,7 @@ const struct wined3d_color_key_conversion * wined3d_format_get_color_key_convers
         WINED3DFMT_B8G8R8A8_UNORM,  convert_p8_uint_b8g8r8a8_unorm
     };
 
-    if (need_alpha_ck && (texture->color_key_flags & WINEDDSD_CKSRCBLT))
+    if (need_alpha_ck && (texture->color_key_flags & WINED3D_CKEY_SRC_BLT))
     {
         for (i = 0; i < sizeof(color_key_info) / sizeof(*color_key_info); ++i)
         {
@@ -2901,6 +2901,8 @@ const char *debug_d3dstate(DWORD state)
         return wine_dbg_sprintf("STATE_SHADER(%s)", debug_shader_type(state - STATE_SHADER(0)));
     if (STATE_IS_CONSTANT_BUFFER(state))
         return wine_dbg_sprintf("STATE_CONSTANT_BUFFER(%s)", debug_shader_type(state - STATE_CONSTANT_BUFFER(0)));
+    if (STATE_IS_SHADER_RESOURCE_BINDING(state))
+        return "STATE_SHADER_RESOURCE_BINDING";
     if (STATE_IS_TRANSFORM(state))
         return wine_dbg_sprintf("STATE_TRANSFORM(%s)", debug_d3dtstype(state - STATE_TRANSFORM(0)));
     if (STATE_IS_STREAMSRC(state))
@@ -3525,7 +3527,7 @@ void gen_ffp_frag_op(const struct wined3d_context *context, const struct wined3d
 
             if (texture_dimensions == GL_TEXTURE_2D || texture_dimensions == GL_TEXTURE_RECTANGLE_ARB)
             {
-                if (texture->color_key_flags & WINEDDSD_CKSRCBLT && !texture->resource.format->alpha_size)
+                if (texture->color_key_flags & WINED3D_CKEY_SRC_BLT && !texture->resource.format->alpha_size)
                 {
                     if (aop == WINED3D_TOP_DISABLE)
                     {

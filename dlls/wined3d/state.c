@@ -535,7 +535,7 @@ static void state_alpha(struct wined3d_context *context, const struct wined3d_st
      * WINED3D_RS_COLORKEYENABLE state(which is d3d <= 3 only). The texture
      * function will call alpha in case it finds some texture + colorkeyenable
      * combination which needs extra care. */
-    if (state->textures[0] && (state->textures[0]->color_key_flags & WINEDDSD_CKSRCBLT))
+    if (state->textures[0] && (state->textures[0]->color_key_flags & WINED3D_CKEY_SRC_BLT))
         enable_ckey = TRUE;
 
     if (enable_ckey || context->last_was_ckey)
@@ -860,7 +860,15 @@ static void state_stencil(struct wined3d_context *context, const struct wined3d_
         gl_info->gl_ops.gl.p_glEnable(GL_STENCIL_TEST);
         checkGLcall("glEnable GL_STENCIL_TEST");
 
-        if (gl_info->supported[EXT_STENCIL_TWO_SIDE])
+        if (gl_info->supported[WINED3D_GL_VERSION_2_0])
+        {
+            GL_EXTCALL(glStencilFuncSeparate(GL_FRONT, func, ref, mask));
+            GL_EXTCALL(glStencilOpSeparate(GL_FRONT, stencilFail, depthFail, stencilPass));
+            GL_EXTCALL(glStencilFuncSeparate(GL_BACK, func_ccw, ref, mask));
+            GL_EXTCALL(glStencilOpSeparate(GL_BACK, stencilFail_ccw, depthFail_ccw, stencilPass_ccw));
+            checkGLcall("setting two sided stencil state");
+        }
+        else if (gl_info->supported[EXT_STENCIL_TWO_SIDE])
         {
             /* Apply back first, then front. This function calls glActiveStencilFaceEXT,
              * which has an effect on the code below too. If we apply the front face
@@ -881,7 +889,9 @@ static void state_stencil(struct wined3d_context *context, const struct wined3d_
             checkGLcall("glStencilOpSeparateATI(GL_FRONT, ...)");
             GL_EXTCALL(glStencilOpSeparateATI(GL_BACK, stencilFail_ccw, depthFail_ccw, stencilPass_ccw));
             checkGLcall("glStencilOpSeparateATI(GL_BACK, ...)");
-        } else {
+        }
+        else
+        {
             ERR("Separate (two sided) stencil not supported on this version of opengl. Caps weren't honored?\n");
         }
     }
@@ -3214,7 +3224,7 @@ void tex_alphaop(struct wined3d_context *context, const struct wined3d_state *st
 
         if (texture_dimensions == GL_TEXTURE_2D || texture_dimensions == GL_TEXTURE_RECTANGLE_ARB)
         {
-            if (texture->color_key_flags & WINEDDSD_CKSRCBLT && !texture->resource.format->alpha_size)
+            if (texture->color_key_flags & WINED3D_CKEY_SRC_BLT && !texture->resource.format->alpha_size)
             {
                 /* Color keying needs to pass alpha values from the texture through to have the alpha test work
                  * properly. On the other hand applications can still use texture combiners apparently. This code
@@ -4147,10 +4157,10 @@ static inline void unload_numbered_array(struct wined3d_context *context, int i)
 {
     const struct wined3d_gl_info *gl_info = context->gl_info;
 
-    GL_EXTCALL(glDisableVertexAttribArrayARB(i));
-    checkGLcall("glDisableVertexAttribArrayARB(reg)");
+    GL_EXTCALL(glDisableVertexAttribArray(i));
+    checkGLcall("glDisableVertexAttribArray");
     if (gl_info->supported[ARB_INSTANCED_ARRAYS])
-        GL_EXTCALL(glVertexAttribDivisorARB(i, 0));
+        GL_EXTCALL(glVertexAttribDivisor(i, 0));
 
     context->numbered_array_mask &= ~(1 << i);
 }
@@ -4186,7 +4196,7 @@ static void load_numbered_arrays(struct wined3d_context *context,
             if (context->numbered_array_mask & (1 << i))
                 unload_numbered_array(context, i);
             if (state->shader[WINED3D_SHADER_TYPE_VERTEX]->reg_maps.input_registers & (1 << i))
-                GL_EXTCALL(glVertexAttrib4fARB(i, 0.0f, 0.0f, 0.0f, 0.0f));
+                GL_EXTCALL(glVertexAttrib4f(i, 0.0f, 0.0f, 0.0f, 0.0f));
             continue;
         }
 
@@ -4206,11 +4216,11 @@ static void load_numbered_arrays(struct wined3d_context *context,
                 continue;
             }
 
-            GL_EXTCALL(glVertexAttribDivisorARB(i, 1));
+            GL_EXTCALL(glVertexAttribDivisor(i, 1));
         }
         else if (gl_info->supported[ARB_INSTANCED_ARRAYS])
         {
-            GL_EXTCALL(glVertexAttribDivisorARB(i, 0));
+            GL_EXTCALL(glVertexAttribDivisor(i, 0));
         }
 
         TRACE_(d3d_shader)("Loading array %u [VBO=%u]\n", i, stream_info->elements[i].data.buffer_object);
@@ -4227,7 +4237,7 @@ static void load_numbered_arrays(struct wined3d_context *context,
              * pointer. vb can point to a user pointer data blob. In that case
              * curVBO will be 0. If there is a vertex buffer but no vbo we
              * won't be load converted attributes anyway. */
-            GL_EXTCALL(glVertexAttribPointerARB(i, stream_info->elements[i].format->gl_vtx_format,
+            GL_EXTCALL(glVertexAttribPointer(i, stream_info->elements[i].format->gl_vtx_format,
                     stream_info->elements[i].format->gl_vtx_type,
                     stream_info->elements[i].format->gl_normalized,
                     stream_info->elements[i].stride, stream_info->elements[i].data.addr
@@ -4235,14 +4245,14 @@ static void load_numbered_arrays(struct wined3d_context *context,
 
             if (!(context->numbered_array_mask & (1 << i)))
             {
-                GL_EXTCALL(glEnableVertexAttribArrayARB(i));
+                GL_EXTCALL(glEnableVertexAttribArray(i));
                 context->numbered_array_mask |= (1 << i);
             }
         }
         else
         {
             /* Stride = 0 means always the same values.
-             * glVertexAttribPointerARB doesn't do that. Instead disable the
+             * glVertexAttribPointer doesn't do that. Instead disable the
              * pointer and set up the attribute statically. But we have to
              * figure out the system memory address. */
             const BYTE *ptr = stream_info->elements[i].data.addr;
@@ -4256,20 +4266,20 @@ static void load_numbered_arrays(struct wined3d_context *context,
             switch (stream_info->elements[i].format->id)
             {
                 case WINED3DFMT_R32_FLOAT:
-                    GL_EXTCALL(glVertexAttrib1fvARB(i, (const GLfloat *)ptr));
+                    GL_EXTCALL(glVertexAttrib1fv(i, (const GLfloat *)ptr));
                     break;
                 case WINED3DFMT_R32G32_FLOAT:
-                    GL_EXTCALL(glVertexAttrib2fvARB(i, (const GLfloat *)ptr));
+                    GL_EXTCALL(glVertexAttrib2fv(i, (const GLfloat *)ptr));
                     break;
                 case WINED3DFMT_R32G32B32_FLOAT:
-                    GL_EXTCALL(glVertexAttrib3fvARB(i, (const GLfloat *)ptr));
+                    GL_EXTCALL(glVertexAttrib3fv(i, (const GLfloat *)ptr));
                     break;
                 case WINED3DFMT_R32G32B32A32_FLOAT:
-                    GL_EXTCALL(glVertexAttrib4fvARB(i, (const GLfloat *)ptr));
+                    GL_EXTCALL(glVertexAttrib4fv(i, (const GLfloat *)ptr));
                     break;
 
                 case WINED3DFMT_R8G8B8A8_UINT:
-                    GL_EXTCALL(glVertexAttrib4NubvARB(i, ptr));
+                    GL_EXTCALL(glVertexAttrib4ubv(i, ptr));
                     break;
                 case WINED3DFMT_B8G8R8A8_UNORM:
                     if (gl_info->supported[ARB_VERTEX_ARRAY_BGRA])
@@ -4278,38 +4288,38 @@ static void load_numbered_arrays(struct wined3d_context *context,
                         DWORD c = *src & 0xff00ff00;
                         c |= (*src & 0xff0000) >> 16;
                         c |= (*src & 0xff) << 16;
-                        GL_EXTCALL(glVertexAttrib4NubvARB(i, (GLubyte *)&c));
+                        GL_EXTCALL(glVertexAttrib4Nubv(i, (GLubyte *)&c));
                         break;
                     }
                     /* else fallthrough */
                 case WINED3DFMT_R8G8B8A8_UNORM:
-                    GL_EXTCALL(glVertexAttrib4NubvARB(i, ptr));
+                    GL_EXTCALL(glVertexAttrib4Nubv(i, ptr));
                     break;
 
                 case WINED3DFMT_R16G16_SINT:
-                    GL_EXTCALL(glVertexAttrib4svARB(i, (const GLshort *)ptr));
+                    GL_EXTCALL(glVertexAttrib2sv(i, (const GLshort *)ptr));
                     break;
                 case WINED3DFMT_R16G16B16A16_SINT:
-                    GL_EXTCALL(glVertexAttrib4svARB(i, (const GLshort *)ptr));
+                    GL_EXTCALL(glVertexAttrib4sv(i, (const GLshort *)ptr));
                     break;
 
                 case WINED3DFMT_R16G16_SNORM:
                 {
                     const GLshort s[4] = {((const GLshort *)ptr)[0], ((const GLshort *)ptr)[1], 0, 1};
-                    GL_EXTCALL(glVertexAttrib4NsvARB(i, s));
+                    GL_EXTCALL(glVertexAttrib4Nsv(i, s));
                     break;
                 }
                 case WINED3DFMT_R16G16_UNORM:
                 {
                     const GLushort s[4] = {((const GLushort *)ptr)[0], ((const GLushort *)ptr)[1], 0, 1};
-                    GL_EXTCALL(glVertexAttrib4NusvARB(i, s));
+                    GL_EXTCALL(glVertexAttrib4Nusv(i, s));
                     break;
                 }
                 case WINED3DFMT_R16G16B16A16_SNORM:
-                    GL_EXTCALL(glVertexAttrib4NsvARB(i, (const GLshort *)ptr));
+                    GL_EXTCALL(glVertexAttrib4Nsv(i, (const GLshort *)ptr));
                     break;
                 case WINED3DFMT_R16G16B16A16_UNORM:
-                    GL_EXTCALL(glVertexAttrib4NusvARB(i, (const GLushort *)ptr));
+                    GL_EXTCALL(glVertexAttrib4Nusv(i, (const GLushort *)ptr));
                     break;
 
                 case WINED3DFMT_R10G10B10A2_UINT:
@@ -4331,7 +4341,7 @@ static void load_numbered_arrays(struct wined3d_context *context,
                     {
                         float x = float_16_to_32(((const unsigned short *)ptr) + 0);
                         float y = float_16_to_32(((const unsigned short *)ptr) + 1);
-                        GL_EXTCALL(glVertexAttrib2fARB(i, x, y));
+                        GL_EXTCALL(glVertexAttrib2f(i, x, y));
                     }
                     break;
                 case WINED3DFMT_R16G16B16A16_FLOAT:
@@ -4346,7 +4356,7 @@ static void load_numbered_arrays(struct wined3d_context *context,
                         float y = float_16_to_32(((const unsigned short *)ptr) + 1);
                         float z = float_16_to_32(((const unsigned short *)ptr) + 2);
                         float w = float_16_to_32(((const unsigned short *)ptr) + 3);
-                        GL_EXTCALL(glVertexAttrib4fARB(i, x, y, z, w));
+                        GL_EXTCALL(glVertexAttrib4f(i, x, y, z, w));
                     }
                     break;
 
@@ -5010,11 +5020,8 @@ static void psorigin(struct wined3d_context *context, const struct wined3d_state
     const struct wined3d_gl_info *gl_info = context->gl_info;
     GLint origin = context->render_offscreen ? GL_LOWER_LEFT : GL_UPPER_LEFT;
 
-    if (gl_info->supported[NV_POINT_SPRITE])
-    {
-        GL_EXTCALL(glPointParameteriNV(GL_POINT_SPRITE_COORD_ORIGIN, origin));
-        checkGLcall("glPointParameteriNV(GL_POINT_SPRITE_COORD_ORIGIN, ...)");
-    }
+    GL_EXTCALL(glPointParameteri(GL_POINT_SPRITE_COORD_ORIGIN, origin));
+    checkGLcall("glPointParameteri(GL_POINT_SPRITE_COORD_ORIGIN, ...)");
 }
 
 void state_srgbwrite(struct wined3d_context *context, const struct wined3d_state *state, DWORD state_id)
@@ -5081,6 +5088,14 @@ static void state_cb_warn(struct wined3d_context *context, const struct wined3d_
     WARN("Constant buffers (%s) no supported.\n", debug_d3dstate(state_id));
 }
 
+static void state_shader_resource_binding(struct wined3d_context *context,
+        const struct wined3d_state *state, DWORD state_id)
+{
+    TRACE("context %p, state %p, state_id %#x.\n", context, state, state_id);
+
+    context->update_shader_resource_bindings = 1;
+}
+
 const struct StateEntryTemplate misc_state_template[] =
 {
     { STATE_CONSTANT_BUFFER(WINED3D_SHADER_TYPE_VERTEX),  { STATE_CONSTANT_BUFFER(WINED3D_SHADER_TYPE_VERTEX),  state_cb_vs,        }, ARB_UNIFORM_BUFFER_OBJECT       },
@@ -5089,6 +5104,7 @@ const struct StateEntryTemplate misc_state_template[] =
     { STATE_CONSTANT_BUFFER(WINED3D_SHADER_TYPE_GEOMETRY),{ STATE_CONSTANT_BUFFER(WINED3D_SHADER_TYPE_GEOMETRY),state_cb_warn,      }, WINED3D_GL_EXT_NONE             },
     { STATE_CONSTANT_BUFFER(WINED3D_SHADER_TYPE_PIXEL),   { STATE_CONSTANT_BUFFER(WINED3D_SHADER_TYPE_PIXEL),   state_cb_ps,        }, ARB_UNIFORM_BUFFER_OBJECT       },
     { STATE_CONSTANT_BUFFER(WINED3D_SHADER_TYPE_PIXEL),   { STATE_CONSTANT_BUFFER(WINED3D_SHADER_TYPE_PIXEL),   state_cb_warn,      }, WINED3D_GL_EXT_NONE             },
+    { STATE_SHADER_RESOURCE_BINDING,                      { STATE_SHADER_RESOURCE_BINDING,                      state_shader_resource_binding}, WINED3D_GL_EXT_NONE    },
     { STATE_RENDER(WINED3D_RS_SRCBLEND),                  { STATE_RENDER(WINED3D_RS_ALPHABLENDENABLE),          NULL                }, WINED3D_GL_EXT_NONE             },
     { STATE_RENDER(WINED3D_RS_DESTBLEND),                 { STATE_RENDER(WINED3D_RS_ALPHABLENDENABLE),          NULL                }, WINED3D_GL_EXT_NONE             },
     { STATE_RENDER(WINED3D_RS_ALPHABLENDENABLE),          { STATE_RENDER(WINED3D_RS_ALPHABLENDENABLE),          state_blend         }, WINED3D_GL_EXT_NONE             },
@@ -6020,6 +6036,7 @@ static void validate_state_table(struct StateEntry *state_table)
         STATE_CONSTANT_BUFFER(WINED3D_SHADER_TYPE_VERTEX),
         STATE_CONSTANT_BUFFER(WINED3D_SHADER_TYPE_GEOMETRY),
         STATE_CONSTANT_BUFFER(WINED3D_SHADER_TYPE_PIXEL),
+        STATE_SHADER_RESOURCE_BINDING,
         STATE_VIEWPORT,
         STATE_LIGHT_TYPE,
         STATE_SCISSORRECT,

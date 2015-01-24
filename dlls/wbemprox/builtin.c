@@ -176,6 +176,8 @@ static const WCHAR prop_idW[] =
     {'I','D',0};
 static const WCHAR prop_identificationcodeW[] =
     {'I','d','e','n','t','i','f','i','c','a','t','i','o','n','C','o','d','e',0};
+static const WCHAR prop_identifyingnumberW[] =
+    {'I','d','e','n','t','i','f','y','i','n','g','N','u','m','b','e','r',0};
 static const WCHAR prop_indexW[] =
     {'I','n','d','e','x',0};
 static const WCHAR prop_installdateW[] =
@@ -238,6 +240,10 @@ static const WCHAR prop_processidW[] =
     {'P','r','o','c','e','s','s','I','D',0};
 static const WCHAR prop_processoridW[] =
     {'P','r','o','c','e','s','s','o','r','I','d',0};
+static const WCHAR prop_processortypeW[] =
+    {'P','r','o','c','e','s','s','o','r','T','y','p','e',0};
+static const WCHAR prop_productW[] =
+    {'P','r','o','d','u','c','t',0};
 static const WCHAR prop_productnameW[] =
     {'P','r','o','d','u','c','t','N','a','m','e',0};
 static const WCHAR prop_releasedateW[] =
@@ -303,8 +309,10 @@ static const struct column col_baseboard[] =
     { prop_manufacturerW,  CIM_STRING },
     { prop_modelW,         CIM_STRING },
     { prop_nameW,          CIM_STRING },
+    { prop_productW,       CIM_STRING },
     { prop_serialnumberW,  CIM_STRING },
-    { prop_tagW,           CIM_STRING|COL_FLAG_KEY }
+    { prop_tagW,           CIM_STRING|COL_FLAG_KEY },
+    { prop_versionW,       CIM_STRING }
 };
 static const struct column col_bios[] =
 {
@@ -338,7 +346,8 @@ static const struct column col_compsys[] =
 };
 static const struct column col_compsysproduct[] =
 {
-    { prop_uuidW,    CIM_STRING }
+    { prop_identifyingnumberW,  CIM_STRING|COL_FLAG_KEY },
+    { prop_uuidW,               CIM_STRING }
 };
 static const struct column col_datafile[] =
 {
@@ -358,6 +367,7 @@ static const struct column col_diskdrive[] =
     { prop_manufacturerW,  CIM_STRING },
     { prop_mediatypeW,     CIM_STRING },
     { prop_modelW,         CIM_STRING },
+    { prop_pnpdeviceidW,   CIM_STRING },
     { prop_serialnumberW,  CIM_STRING },
     { prop_sizeW,          CIM_UINT64 }
 };
@@ -475,6 +485,7 @@ static const struct column col_processor[] =
     { prop_numcoresW,             CIM_UINT32, VT_I4 },
     { prop_numlogicalprocessorsW, CIM_UINT32, VT_I4 },
     { prop_processoridW,          CIM_STRING|COL_FLAG_DYNAMIC },
+    { prop_processortypeW,        CIM_UINT16, VT_I4 },
     { prop_uniqueidW,             CIM_STRING }
 };
 static const struct column col_qualifier[] =
@@ -542,6 +553,8 @@ static const WCHAR baseboard_serialnumberW[] =
     {'N','o','n','e',0};
 static const WCHAR baseboard_tagW[] =
     {'B','a','s','e',' ','B','o','a','r','d',0};
+static const WCHAR baseboard_versionW[] =
+    {'1','.','0',0};
 static const WCHAR bios_descriptionW[] =
     {'D','e','f','a','u','l','t',' ','S','y','s','t','e','m',' ','B','I','O','S',0};
 static const WCHAR bios_manufacturerW[] =
@@ -571,6 +584,8 @@ static const WCHAR compsys_manufacturerW[] =
     {'T','h','e',' ','W','i','n','e',' ','P','r','o','j','e','c','t',0};
 static const WCHAR compsys_modelW[] =
     {'W','i','n','e',0};
+static const WCHAR compsysproduct_identifyingnumberW[] =
+    {'0',0};
 static const WCHAR compsysproduct_uuidW[] =
     {'0','0','0','0','0','0','0','0','-','0','0','0','0','-','0','0','0','0','-','0','0','0','0','-',
      '0','0','0','0','0','0','0','0','0','0','0','0',0};
@@ -584,6 +599,8 @@ static const WCHAR diskdrive_mediatype_removableW[] =
     {'R','e','m','o','v','a','b','l','e',' ','m','e','d','i','a',0};
 static const WCHAR diskdrive_modelW[] =
     {'W','i','n','e',' ','D','i','s','k',' ','D','r','i','v','e',0};
+static const WCHAR diskdrive_pnpdeviceidW[] =
+    {'I','D','E','\\','D','i','s','k','\\','V','E','N','_','W','I','N','E',0};
 static const WCHAR diskdrive_serialW[] =
     {'W','I','N','E','H','D','I','S','K',0};
 static const WCHAR networkadapter_pnpdeviceidW[]=
@@ -627,8 +644,10 @@ struct record_baseboard
     const WCHAR *manufacturer;
     const WCHAR *model;
     const WCHAR *name;
+    const WCHAR *product;
     const WCHAR *serialnumber;
     const WCHAR *tag;
+    const WCHAR *version;
 };
 struct record_bios
 {
@@ -662,6 +681,7 @@ struct record_computersystem
 };
 struct record_computersystemproduct
 {
+    const WCHAR *identifyingnumber;
     const WCHAR *uuid;
 };
 struct record_datafile
@@ -682,6 +702,7 @@ struct record_diskdrive
     const WCHAR *manufacturer;
     const WCHAR *mediatype;
     const WCHAR *model;
+    const WCHAR *pnpdevice_id;
     const WCHAR *serialnumber;
     UINT64       size;
 };
@@ -799,6 +820,7 @@ struct record_processor
     UINT32       num_cores;
     UINT32       num_logical_processors;
     const WCHAR *processor_id;
+    UINT16       processortype;
     const WCHAR *unique_id;
 };
 struct record_qualifier
@@ -863,7 +885,7 @@ struct record_videocontroller
 
 static const struct record_baseboard data_baseboard[] =
 {
-    { baseboard_manufacturerW, baseboard_tagW, baseboard_tagW, baseboard_serialnumberW, baseboard_tagW }
+    { baseboard_manufacturerW, baseboard_tagW, baseboard_tagW, baseboard_tagW, baseboard_serialnumberW, baseboard_versionW }
 };
 static const struct record_bios data_bios[] =
 {
@@ -872,7 +894,7 @@ static const struct record_bios data_bios[] =
 };
 static const struct record_computersystemproduct data_compsysproduct[] =
 {
-    { compsysproduct_uuidW }
+    { compsysproduct_identifyingnumberW, compsysproduct_uuidW }
 };
 static const struct record_param data_param[] =
 {
@@ -1607,6 +1629,7 @@ static enum fill_status fill_diskdrive( struct table *table, const struct expr *
             else
                 rec->mediatype = diskdrive_mediatype_removableW;
             rec->model         = diskdrive_modelW;
+            rec->pnpdevice_id  = diskdrive_pnpdeviceidW;
             rec->serialnumber  = diskdrive_serialW;
             get_freespace( root, &size );
             rec->size          = size;
@@ -2111,6 +2134,7 @@ static enum fill_status fill_processor( struct table *table, const struct expr *
         rec->num_cores              = num_cores;
         rec->num_logical_processors = num_logical_processors;
         rec->processor_id           = heap_strdupW( processor_id );
+        rec->processortype          = 3; /* central processor */
         rec->unique_id              = NULL;
         if (!match_row( table, i, cond, &status ))
         {

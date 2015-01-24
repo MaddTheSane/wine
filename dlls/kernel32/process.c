@@ -3259,12 +3259,20 @@ BOOL WINAPI GetProcessAffinityMask( HANDLE hProcess, PDWORD_PTR process_mask, PD
 {
     NTSTATUS status = STATUS_SUCCESS;
 
-    if (system_mask) *system_mask = (1 << NtCurrentTeb()->Peb->NumberOfProcessors) - 1;
     if (process_mask)
     {
         if ((status = NtQueryInformationProcess( hProcess, ProcessAffinityMask,
                                                  process_mask, sizeof(*process_mask), NULL )))
             SetLastError( RtlNtStatusToDosError(status) );
+    }
+    if (system_mask && status == STATUS_SUCCESS)
+    {
+        SYSTEM_BASIC_INFORMATION info;
+
+        if ((status = NtQuerySystemInformation( SystemBasicInformation, &info, sizeof(info), NULL )))
+            SetLastError( RtlNtStatusToDosError(status) );
+        else
+            *system_mask = info.ActiveProcessorsAffinityMask;
     }
     return !status;
 }
@@ -3755,7 +3763,7 @@ DWORD WINAPI RegisterServiceProcess(DWORD dwProcessId, DWORD dwType)
  */
 BOOL WINAPI IsWow64Process(HANDLE hProcess, PBOOL Wow64Process)
 {
-    ULONG pbi;
+    ULONG_PTR pbi;
     NTSTATUS status;
 
     status = NtQueryInformationProcess( hProcess, ProcessWow64Information, &pbi, sizeof(pbi), NULL );
