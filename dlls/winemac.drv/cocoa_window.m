@@ -265,6 +265,7 @@ static inline NSUInteger adjusted_modifiers_for_option_behavior(NSUInteger modif
 
                 context = (CGContextRef)[[NSGraphicsContext currentContext] graphicsPort];
                 CGContextSetBlendMode(context, kCGBlendModeCopy);
+                CGContextSetInterpolationQuality(context, kCGInterpolationNone);
 
                 for (i = 0; i < count; i++)
                 {
@@ -790,7 +791,7 @@ static inline NSUInteger adjusted_modifiers_for_option_behavior(NSUInteger modif
                 if (captured)
                     level = CGShieldingWindowLevel() + 1; /* Need +1 or we don't get mouse moves */
                 else
-                    level = NSMainMenuWindowLevel + 1;
+                    level = NSStatusWindowLevel + 1;
 
                 if (self.floating)
                     level++;

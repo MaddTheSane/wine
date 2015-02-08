@@ -22,7 +22,7 @@
 @ stub ExfInterlockedInsertTailList
 @ stub ExfInterlockedPopEntryList
 @ stub ExfInterlockedPushEntryList
-@ stub ExfInterlockedRemoveHeadList
+@ stdcall -norelay ExfInterlockedRemoveHeadList(ptr ptr)
 @ stub ExfReleasePushLock
 @ stub Exfi386InterlockedDecrementLong
 @ stub Exfi386InterlockedExchangeUlong
@@ -153,7 +153,7 @@
 @ stub ExInterlockedInsertTailList
 @ stub ExInterlockedPopEntryList
 @ stub ExInterlockedPushEntryList
-@ stub ExInterlockedRemoveHeadList
+@ stdcall ExInterlockedRemoveHeadList(ptr ptr)
 @ stub ExIsProcessorFeaturePresent
 @ stub ExIsResourceAcquiredExclusiveLite
 @ stub ExIsResourceAcquiredSharedLite

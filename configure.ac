@@ -284,7 +284,7 @@ then
 else
   test "$srcdir" = . || AC_MSG_ERROR([Maintainer mode cannot work out of tree.])
   AC_CHECK_PROGS(FONTFORGE, fontforge, false)
-  AC_CHECK_PROGS(RSVG, rsvg, false)
+  AC_CHECK_PROGS(RSVG, rsvg-convert rsvg, false)
   AC_CHECK_PROGS(CONVERT, convert, false)
   AC_CHECK_PROGS(ICOTOOL, icotool, false)
   test "$FONTFORGE" != "false" || AC_MSG_ERROR([You need fontforge to rebuild fonts in maintainer mode.])
@@ -813,9 +813,20 @@ uninstall::
     fi
     if test "$ac_cv_header_QuickTime_ImageCompression_h" = "yes"
     then
-        AC_SUBST(QUICKTIME_LIBS,"-framework QuickTime -framework ApplicationServices -framework CoreVideo")
-        enable_wineqtdecoder=${enable_wineqtdecoder:-yes}
-    else
+        dnl Make sure we can actually use the QuickTime framework
+        ac_save_LIBS="$LIBS"
+        LIBS="-framework QuickTime -framework ApplicationServices -framework CoreVideo $LIBS"
+        AC_MSG_CHECKING([for the QuickTime framework])
+        AC_LINK_IFELSE([AC_LANG_PROGRAM([[#include <QuickTime/ImageCompression.h>]],[[CodecManagerVersion(NULL);]])],
+                       [AC_MSG_RESULT([yes])
+                        AC_SUBST(QUICKTIME_LIBS,"-framework QuickTime -framework ApplicationServices -framework CoreVideo")
+                        enable_wineqtdecoder=${enable_wineqtdecoder:-yes}],
+                       [AC_MSG_RESULT([no])
+                        ac_cv_header_QuickTime_ImageCompression_h=no])
+        LIBS="$ac_save_LIBS"
+    fi
+    if test "$ac_cv_header_QuickTime_ImageCompression_h" != "yes"
+    then
         WINE_NOTICE([QuickTime ${notice_platform}development files not found, video decoding won't be supported.])
     fi
     if test "$ac_cv_header_Carbon_Carbon_h" = "yes"
@@ -2929,6 +2940,7 @@ WINE_CONFIG_DLL(dxgi,,[implib])
 WINE_CONFIG_TEST(dlls/dxgi/tests)
 WINE_CONFIG_LIB(dxguid)
 WINE_CONFIG_DLL(dxva2)
+WINE_CONFIG_DLL(evr)
 WINE_CONFIG_DLL(explorerframe,,[clean])
 WINE_CONFIG_TEST(dlls/explorerframe/tests)
 WINE_CONFIG_DLL(ext-ms-win-gdi-devcaps-l1-1-0)
@@ -3233,6 +3245,7 @@ WINE_CONFIG_DLL(shlwapi,,[implib,po])
 WINE_CONFIG_TEST(dlls/shlwapi/tests)
 WINE_CONFIG_DLL(slbcsp)
 WINE_CONFIG_DLL(slc,,[implib])
+WINE_CONFIG_TEST(dlls/slc/tests)
 WINE_CONFIG_DLL(snmpapi,,[implib])
 WINE_CONFIG_TEST(dlls/snmpapi/tests)
 WINE_CONFIG_DLL(softpub)

@@ -1474,7 +1474,7 @@ int CDECL MSVCRT__wctomb_l(char *dst, MSVCRT_wchar_t ch, MSVCRT__locale_t locale
 {
     int len;
 
-    MSVCRT__wctomb_s_l(&len, dst, dst ? 6 : 0, ch, locale);
+    MSVCRT__wctomb_s_l(&len, dst, dst ? MSVCRT_MB_LEN_MAX : 0, ch, locale);
     return len;
 }
 
@@ -1588,11 +1588,27 @@ INT CDECL MSVCRT_iswprint( MSVCRT_wchar_t wc )
 }
 
 /*********************************************************************
+ *		_iswpunct_l (MSVCRT.@)
+ */
+INT CDECL MSVCRT__iswpunct_l( MSVCRT_wchar_t wc, MSVCRT__locale_t locale )
+{
+    return ispunctW( wc );
+}
+
+/*********************************************************************
  *		iswpunct (MSVCRT.@)
  */
 INT CDECL MSVCRT_iswpunct( MSVCRT_wchar_t wc )
 {
     return ispunctW( wc );
+}
+
+/*********************************************************************
+ *		_iswspace_l (MSVCRT.@)
+ */
+INT CDECL MSVCRT__iswspace_l( MSVCRT_wchar_t wc, MSVCRT__locale_t locale )
+{
+    return isspaceW( wc );
 }
 
 /*********************************************************************

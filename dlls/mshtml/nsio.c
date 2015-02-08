@@ -268,8 +268,10 @@ static nsresult before_async_open(nsChannel *channel, NSContainer *container, BO
     return NS_OK;
 }
 
-HRESULT load_nsuri(HTMLOuterWindow *window, nsWineURI *uri, nsChannelBSC *channelbsc, DWORD flags)
+HRESULT load_nsuri(HTMLOuterWindow *window, nsWineURI *uri, nsIInputStream *post_stream,
+        nsChannelBSC *channelbsc, DWORD flags)
 {
+    nsIDocShellLoadInfo *load_info = NULL;
     nsIWebNavigation *web_navigation;
     nsIDocShell *doc_shell;
     HTMLDocumentNode *doc;
@@ -288,14 +290,27 @@ HRESULT load_nsuri(HTMLOuterWindow *window, nsWineURI *uri, nsChannelBSC *channe
         return E_FAIL;
     }
 
+    if(post_stream) {
+        nsres = nsIDocShell_CreateLoadInfo(doc_shell, &load_info);
+        if(NS_FAILED(nsres)) {
+            nsIDocShell_Release(doc_shell);
+            return E_FAIL;
+        }
+
+        nsres = nsIDocShellLoadInfo_SetPostDataStream(load_info, post_stream);
+        assert(nsres == NS_OK);
+    }
+
     uri->channel_bsc = channelbsc;
     doc = window->base.inner_window->doc;
     doc->skip_mutation_notif = TRUE;
-    nsres = nsIDocShell_LoadURI(doc_shell, (nsIURI*)&uri->nsIFileURL_iface, NULL, flags, FALSE);
+    nsres = nsIDocShell_LoadURI(doc_shell, (nsIURI*)&uri->nsIFileURL_iface, load_info, flags, FALSE);
     if(doc == window->base.inner_window->doc)
         doc->skip_mutation_notif = FALSE;
     uri->channel_bsc = NULL;
     nsIDocShell_Release(doc_shell);
+    if(load_info)
+        nsIDocShellLoadInfo_Release(load_info);
     if(NS_FAILED(nsres)) {
         WARN("LoadURI failed: %08x\n", nsres);
         return E_FAIL;
@@ -3622,18 +3637,48 @@ static nsresult NSAPI nsNetUtil_ParseContentType(nsINetUtil *iface, const nsACSt
     return nsINetUtil_ParseContentType(net_util, aTypeHeader, aCharset, aHadCharset, aContentType);
 }
 
+static const char *debugstr_protocol_flags(UINT32 flags)
+{
+    switch(flags) {
+#define X(f) case f: return #f
+    X(URI_STD);
+    X(URI_NORELATIVE);
+    X(URI_NOAUTH);
+    X(ALLOWS_PROXY);
+    X(ALLOWS_PROXY_HTTP);
+    X(URI_INHERITS_SECURITY_CONTEXT);
+    X(URI_FORBIDS_AUTOMATIC_DOCUMENT_REPLACEMENT);
+    X(URI_LOADABLE_BY_ANYONE);
+    X(URI_DANGEROUS_TO_LOAD);
+    X(URI_IS_UI_RESOURCE);
+    X(URI_IS_LOCAL_FILE);
+    X(URI_LOADABLE_BY_SUBSUMERS);
+    X(URI_DOES_NOT_RETURN_DATA);
+    X(URI_IS_LOCAL_RESOURCE);
+    X(URI_OPENING_EXECUTES_SCRIPT);
+    X(URI_NON_PERSISTABLE);
+    X(URI_FORBIDS_COOKIE_ACCESS);
+    X(URI_CROSS_ORIGIN_NEEDS_WEBAPPS_PERM);
+    X(URI_SYNC_LOAD_IS_OK);
+    X(URI_SAFE_TO_LOAD_IN_SECURE_CONTEXT);
+#undef X
+    default:
+        return wine_dbg_sprintf("%08x", flags);
+    }
+}
+
 static nsresult NSAPI nsNetUtil_ProtocolHasFlags(nsINetUtil *iface, nsIURI *aURI, UINT32 aFlags, cpp_bool *_retval)
 {
-    TRACE("()\n");
+    TRACE("(%p %s %p)\n", aURI, debugstr_protocol_flags(aFlags), _retval);
 
     return nsINetUtil_ProtocolHasFlags(net_util, aURI, aFlags, _retval);
 }
 
 static nsresult NSAPI nsNetUtil_URIChainHasFlags(nsINetUtil *iface, nsIURI *aURI, UINT32 aFlags, cpp_bool *_retval)
 {
-    TRACE("(%p %08x %p)\n", aURI, aFlags, _retval);
+    TRACE("(%p %s %p)\n", aURI, debugstr_protocol_flags(aFlags), _retval);
 
-    if(aFlags == (1<<11)) {
+    if(aFlags == URI_DOES_NOT_RETURN_DATA) {
         *_retval = FALSE;
         return NS_OK;
     }

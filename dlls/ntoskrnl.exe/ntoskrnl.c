@@ -2022,3 +2022,26 @@ NTSTATUS WINAPI IoCsqInitialize(PIO_CSQ csq, PIO_CSQ_INSERT_IRP insert_irp, PIO_
           csq, insert_irp, remove_irp, peek_irp, acquire_lock, release_lock, complete_irp);
     return STATUS_SUCCESS;
 }
+
+/*****************************************************
+ *           ExInterlockedRemoveHeadList  (NTOSKRNL.EXE.@)
+ */
+PLIST_ENTRY WINAPI ExInterlockedRemoveHeadList(PLIST_ENTRY head, PKSPIN_LOCK lock)
+{
+    FIXME("(%p %p) stub\n", head, lock);
+    return NULL;
+}
+
+/***********************************************************************
+ *           ExfInterlockedRemoveHeadList   (NTOSKRNL.EXE.@)
+ */
+#ifdef DEFINE_FASTCALL2_ENTRYPOINT
+DEFINE_FASTCALL2_ENTRYPOINT( ExfInterlockedRemoveHeadList )
+PLIST_ENTRY WINAPI __regs_ExfInterlockedRemoveHeadList(PLIST_ENTRY head, PKSPIN_LOCK lock)
+#else
+PLIST_ENTRY WINAPI ExfInterlockedRemoveHeadList(PLIST_ENTRY head, PKSPIN_LOCK lock)
+#endif
+{
+    FIXME("(%p %p) stub\n", head, lock);
+    return ExInterlockedRemoveHeadList( head, lock );
+}

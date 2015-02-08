@@ -22,7 +22,7 @@
 @ stub SdbApphelpNotifyExSdbApphelpNotifyEx
 @ stub SdbBuildCompatEnvVariables
 @ stub SdbCloseApphelpInformation
-@ stub SdbCloseDatabase
+@ stdcall SdbCloseDatabase(ptr)
 @ stub SdbCloseDatabaseWrite
 @ stub SdbCloseLocalDatabase
 @ stub SdbCommitIndexes
@@ -62,7 +62,7 @@
 @ stub SdbGetFileImageType
 @ stub SdbGetFileImageTypeEx
 @ stub SdbGetFileInfo
-@ stub SdbGetFirstChild
+@ stdcall SdbGetFirstChild(ptr long)
 @ stub SdbGetIndex
 @ stub SdbGetItemFromItemRef
 @ stub SdbGetLayerName
@@ -96,7 +96,7 @@
 @ stub SdbOpenApphelpInformation
 @ stub SdbOpenApphelpInformationByID
 @ stub SdbOpenApphelpResourceFile
-@ stub SdbOpenDatabase
+@ stdcall SdbOpenDatabase(wstr long)
 @ stub SdbOpenDbFromGuid
 @ stub SdbOpenLocalDatabase
 @ stub SdbPackAppCompatData

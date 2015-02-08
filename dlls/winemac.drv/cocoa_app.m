@@ -1584,16 +1584,16 @@ int macdrv_err_on;
     {
         WineWindow* window = (WineWindow*)[theEvent window];
         NSEventType type = [theEvent type];
-        BOOL broughtWindowForward = FALSE;
+        WineWindow* windowBroughtForward = nil;
+        BOOL process = FALSE;
 
         if ([window isKindOfClass:[WineWindow class]] &&
-            !window.disabled && !window.noActivate &&
             type == NSLeftMouseDown &&
             (([theEvent modifierFlags] & (NSShiftKeyMask | NSControlKeyMask| NSAlternateKeyMask | NSCommandKeyMask)) != NSCommandKeyMask))
         {
             NSWindowButton windowButton;
 
-            broughtWindowForward = TRUE;
+            windowBroughtForward = window;
 
             /* Any left-click on our window anyplace other than the close or
                minimize buttons will bring it forward. */
@@ -1607,7 +1607,7 @@ int macdrv_err_on;
                     NSPoint point = [button convertPoint:[theEvent locationInWindow] fromView:nil];
                     if ([button mouse:point inRect:[button bounds]])
                     {
-                        broughtWindowForward = FALSE;
+                        windowBroughtForward = nil;
                         break;
                     }
                 }
@@ -1623,7 +1623,6 @@ int macdrv_err_on;
         {
             BOOL pressed = (type == NSLeftMouseDown || type == NSRightMouseDown || type == NSOtherMouseDown);
             CGPoint pt = CGEventGetLocation([theEvent CGEvent]);
-            BOOL process;
 
             if (clippingCursor)
                 [self clipCursorLocation:&pt];
@@ -1690,12 +1689,13 @@ int macdrv_err_on;
 
                 macdrv_release_event(event);
             }
-            else if (broughtWindowForward)
-            {
-                [[window ancestorWineWindow] postBroughtForwardEvent];
-                if (![window isKeyWindow])
-                    [self windowGotFocus:window];
-            }
+        }
+
+        if (!process && windowBroughtForward)
+        {
+            [[windowBroughtForward ancestorWineWindow] postBroughtForwardEvent];
+            if (![windowBroughtForward isKeyWindow] && !windowBroughtForward.disabled && !windowBroughtForward.noActivate)
+                [self windowGotFocus:windowBroughtForward];
         }
 
         // Since mouse button events deliver absolute cursor position, the

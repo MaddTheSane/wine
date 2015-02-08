@@ -59,6 +59,8 @@ typedef WCHAR PRUnichar;
 #define uint32_t UINT32
 #define uint64_t UINT64
 
+#define char16_t PRUnichar
+
 typedef uint64_t DOMTimeStamp;
 typedef uint32_t nsLoadFlags;
 typedef int64_t PRTime;
@@ -150,7 +152,6 @@ typedef nsISupports nsINode;
 typedef nsISupports nsIStyleSheet;
 typedef nsISupports nsIStyleRule;
 typedef nsISupports nsIDOMUserDataHandler;
-typedef nsISupports nsIDocShellLoadInfo;
 typedef nsISupports nsISHEntry;
 typedef nsISupports nsIPresShell;
 typedef nsISupports nsIDocumentCharsetInfo;
@@ -381,6 +382,24 @@ interface nsIInputStream : nsISupports
             uint32_t aCount, uint32_t *aWriteCount),
             void *aClosure, uint32_t aCount, uint32_t *_retval);
     nsresult IsNonBlocking(bool *_retval);
+}
+
+[
+    object,
+    uuid(8429d350-1040-4661-8b71-f2a6ba455980),
+    local
+]
+interface nsISeekableStream : nsISupports
+{
+    enum {
+        NS_SEEK_SET = 0,
+        NS_SEEK_CUR = 1,
+        NS_SEEK_END = 2
+    };
+
+    nsresult Seek(int32_t whence, int64_t offset);
+    nsresult Tell(int64_t *_retval);
+    nsresult SetEOF();
 }
 
 [
@@ -2731,6 +2750,27 @@ interface nsIDirectoryServiceProvider2 : nsIDirectoryServiceProvider
 ]
 interface nsIProtocolHandler : nsISupports
 {
+    const unsigned long URI_STD = 0;
+    const unsigned long URI_NORELATIVE = (1<<0);
+    const unsigned long URI_NOAUTH = (1<<1);
+    const unsigned long ALLOWS_PROXY = (1<<2);
+    const unsigned long ALLOWS_PROXY_HTTP = (1<<3);
+    const unsigned long URI_INHERITS_SECURITY_CONTEXT = (1<<4);
+    const unsigned long URI_FORBIDS_AUTOMATIC_DOCUMENT_REPLACEMENT = (1<<5);
+    const unsigned long URI_LOADABLE_BY_ANYONE = (1<<6);
+    const unsigned long URI_DANGEROUS_TO_LOAD = (1<<7);
+    const unsigned long URI_IS_UI_RESOURCE = (1<<8);
+    const unsigned long URI_IS_LOCAL_FILE = (1<<9);
+    const unsigned long URI_LOADABLE_BY_SUBSUMERS = (1<<10);
+    const unsigned long URI_DOES_NOT_RETURN_DATA = (1<<11);
+    const unsigned long URI_IS_LOCAL_RESOURCE = (1<<12);
+    const unsigned long URI_OPENING_EXECUTES_SCRIPT = (1<<13);
+    const unsigned long URI_NON_PERSISTABLE = (1<<14);
+    const unsigned long URI_FORBIDS_COOKIE_ACCESS = (1<<15);
+    const unsigned long URI_CROSS_ORIGIN_NEEDS_WEBAPPS_PERM = (1<<16);
+    const unsigned long URI_SYNC_LOAD_IS_OK = (1<<17);
+    const unsigned long URI_SAFE_TO_LOAD_IN_SECURE_CONTEXT = (1<<18);
+
     nsresult GetScheme(nsACString *aScheme);
     nsresult GetDefaultPort(int32_t *aDefaultPort);
     nsresult GetProtocolFlags(uint32_t *aProtocolFlags);
@@ -3668,6 +3708,44 @@ interface nsIContentViewer : nsISupports
     nsresult ResumePainting();
     nsresult EmulateMedium(const nsAString *aMediaType);
     nsresult StopEmulatingMedium();
+}
+
+[
+    object,
+    uuid(c8d3b1e1-565a-427e-9d68-b109910ce9b7),
+    local
+]
+interface nsIDocShellLoadInfo : nsISupports
+{
+    typedef int nsDocShellInfoLoadType;
+
+    nsresult GetReferrer(nsIURI **aReferrer);
+    nsresult SetReferrer(nsIURI *aReferrer);
+    nsresult GetOwner(nsISupports **aOwner);
+    nsresult SetOwner(nsISupports *aOwner);
+    nsresult GetInheritOwner(bool *aInheritOwner);
+    nsresult SetInheritOwner(bool aInheritOwner);
+    nsresult GetOwnerIsExplicit(bool *aOwnerIsExplicit);
+    nsresult SetOwnerIsExplicit(bool aOwnerIsExplicit);
+    nsresult GetLoadType(nsDocShellInfoLoadType *aLoadType);
+    nsresult SetLoadType(nsDocShellInfoLoadType aLoadType);
+    nsresult GetSHEntry(nsISHEntry **aSHEntry);
+    nsresult SetSHEntry(nsISHEntry *aSHEntry);
+    nsresult GetTarget(char16_t **aTarget);
+    nsresult SetTarget(const char16_t * aTarget);
+    nsresult GetPostDataStream(nsIInputStream **aPostDataStream);
+    nsresult SetPostDataStream(nsIInputStream *aPostDataStream);
+    nsresult GetHeadersStream(nsIInputStream * *aHeadersStream);
+    nsresult SetHeadersStream(nsIInputStream *aHeadersStream);
+    nsresult GetSendReferrer(bool *aSendReferrer);
+    nsresult SetSendReferrer(bool aSendReferrer);
+    nsresult GetIsSrcdocLoad(bool *aIsSrcdocLoad);
+    nsresult GetSrcdocData(nsAString *aSrcdocData);
+    nsresult SetSrcdocData(const nsAString *aSrcdocData);
+    nsresult GetSourceDocShell(nsIDocShell * *aSourceDocShell);
+    nsresult SetSourceDocShell(nsIDocShell *aSourceDocShell);
+    nsresult GetBaseURI(nsIURI **aBaseURI);
+    nsresult SetBaseURI(nsIURI *aBaseURI);
 }
 
 [

@@ -147,9 +147,17 @@ HRESULT d2d_gradient_init(struct d2d_gradient *gradient, ID2D1RenderTarget *rend
 static void d2d_brush_init(struct d2d_brush *brush, ID2D1RenderTarget *render_target,
         enum d2d_brush_type type, const D2D1_BRUSH_PROPERTIES *desc, const struct ID2D1BrushVtbl *vtbl)
 {
+    static const D2D1_MATRIX_3X2_F identity =
+    {
+        1.0f, 0.0f,
+        0.0f, 1.0f,
+        0.0f, 0.0f,
+    };
+
     brush->ID2D1Brush_iface.lpVtbl = vtbl;
     brush->refcount = 1;
     brush->opacity = desc ? desc->opacity : 1.0f;
+    brush->transform = desc ? desc->transform : identity;
     brush->type = type;
 }
 
@@ -221,7 +229,11 @@ static void STDMETHODCALLTYPE d2d_solid_color_brush_SetOpacity(ID2D1SolidColorBr
 static void STDMETHODCALLTYPE d2d_solid_color_brush_SetTransform(ID2D1SolidColorBrush *iface,
         const D2D1_MATRIX_3X2_F *transform)
 {
-    FIXME("iface %p, transform %p stub!\n", iface, transform);
+    struct d2d_brush *brush = impl_from_ID2D1SolidColorBrush(iface);
+
+    TRACE("iface %p, transform %p.\n", iface, transform);
+
+    brush->transform = *transform;
 }
 
 static float STDMETHODCALLTYPE d2d_solid_color_brush_GetOpacity(ID2D1SolidColorBrush *iface)
@@ -236,16 +248,11 @@ static float STDMETHODCALLTYPE d2d_solid_color_brush_GetOpacity(ID2D1SolidColorB
 static void STDMETHODCALLTYPE d2d_solid_color_brush_GetTransform(ID2D1SolidColorBrush *iface,
         D2D1_MATRIX_3X2_F *transform)
 {
-    static const D2D1_MATRIX_3X2_F identity =
-    {
-        1.0f, 0.0f,
-        0.0f, 1.0f,
-        0.0f, 0.0f,
-    };
+    struct d2d_brush *brush = impl_from_ID2D1SolidColorBrush(iface);
 
-    FIXME("iface %p, transform %p stub!\n", iface, transform);
+    TRACE("iface %p, transform %p.\n", iface, transform);
 
-    *transform = identity;
+    *transform = brush->transform;
 }
 
 static void STDMETHODCALLTYPE d2d_solid_color_brush_SetColor(ID2D1SolidColorBrush *iface, const D2D1_COLOR_F *color)
@@ -356,7 +363,11 @@ static void STDMETHODCALLTYPE d2d_linear_gradient_brush_SetOpacity(ID2D1LinearGr
 static void STDMETHODCALLTYPE d2d_linear_gradient_brush_SetTransform(ID2D1LinearGradientBrush *iface,
         const D2D1_MATRIX_3X2_F *transform)
 {
-    FIXME("iface %p, transform %p stub!\n", iface, transform);
+    struct d2d_brush *brush = impl_from_ID2D1LinearGradientBrush(iface);
+
+    TRACE("iface %p, transform %p.\n", iface, transform);
+
+    brush->transform = *transform;
 }
 
 static float STDMETHODCALLTYPE d2d_linear_gradient_brush_GetOpacity(ID2D1LinearGradientBrush *iface)
@@ -369,16 +380,11 @@ static float STDMETHODCALLTYPE d2d_linear_gradient_brush_GetOpacity(ID2D1LinearG
 static void STDMETHODCALLTYPE d2d_linear_gradient_brush_GetTransform(ID2D1LinearGradientBrush *iface,
         D2D1_MATRIX_3X2_F *transform)
 {
-    static const D2D1_MATRIX_3X2_F identity =
-    {
-        1.0f, 0.0f,
-        0.0f, 1.0f,
-        0.0f, 0.0f,
-    };
+    struct d2d_brush *brush = impl_from_ID2D1LinearGradientBrush(iface);
 
-    FIXME("iface %p, transform %p stub!\n", iface, transform);
+    TRACE("iface %p, transform %p.\n", iface, transform);
 
-    *transform = identity;
+    *transform = brush->transform;
 }
 
 static void STDMETHODCALLTYPE d2d_linear_gradient_brush_SetStartPoint(ID2D1LinearGradientBrush *iface,
@@ -492,7 +498,10 @@ static ULONG STDMETHODCALLTYPE d2d_bitmap_brush_Release(ID2D1BitmapBrush *iface)
     TRACE("%p decreasing refcount to %u.\n", iface, refcount);
 
     if (!refcount)
+    {
+        ID3D10SamplerState_Release(brush->u.bitmap.sampler_state);
         HeapFree(GetProcessHeap(), 0, brush);
+    }
 
     return refcount;
 }
@@ -517,7 +526,11 @@ static void STDMETHODCALLTYPE d2d_bitmap_brush_SetOpacity(ID2D1BitmapBrush *ifac
 static void STDMETHODCALLTYPE d2d_bitmap_brush_SetTransform(ID2D1BitmapBrush *iface,
         const D2D1_MATRIX_3X2_F *transform)
 {
-    FIXME("iface %p, transform %p stub!\n", iface, transform);
+    struct d2d_brush *brush = impl_from_ID2D1BitmapBrush(iface);
+
+    TRACE("iface %p, transform %p.\n", iface, transform);
+
+    brush->transform = *transform;
 }
 
 static float STDMETHODCALLTYPE d2d_bitmap_brush_GetOpacity(ID2D1BitmapBrush *iface)
@@ -532,16 +545,11 @@ static float STDMETHODCALLTYPE d2d_bitmap_brush_GetOpacity(ID2D1BitmapBrush *ifa
 static void STDMETHODCALLTYPE d2d_bitmap_brush_GetTransform(ID2D1BitmapBrush *iface,
         D2D1_MATRIX_3X2_F *transform)
 {
-    static const D2D1_MATRIX_3X2_F identity =
-    {
-        1.0f, 0.0f,
-        0.0f, 1.0f,
-        0.0f, 0.0f,
-    };
+    struct d2d_brush *brush = impl_from_ID2D1BitmapBrush(iface);
 
-    FIXME("iface %p, transform %p stub!\n", iface, transform);
+    TRACE("iface %p, transform %p.\n", iface, transform);
 
-    *transform = identity;
+    *transform = brush->transform;
 }
 
 static void STDMETHODCALLTYPE d2d_bitmap_brush_SetExtendModeX(ID2D1BitmapBrush *iface, D2D1_EXTEND_MODE mode)
@@ -611,13 +619,40 @@ static const struct ID2D1BitmapBrushVtbl d2d_bitmap_brush_vtbl =
     d2d_bitmap_brush_GetBitmap,
 };
 
-void d2d_bitmap_brush_init(struct d2d_brush *brush, ID2D1RenderTarget *render_target, const ID2D1Bitmap *bitmap,
+HRESULT d2d_bitmap_brush_init(struct d2d_brush *brush, struct d2d_d3d_render_target *render_target, ID2D1Bitmap *bitmap,
         const D2D1_BITMAP_BRUSH_PROPERTIES *bitmap_brush_desc, const D2D1_BRUSH_PROPERTIES *brush_desc)
 {
+    D3D10_SAMPLER_DESC sampler_desc;
+    HRESULT hr;
+
     FIXME("Ignoring brush properties.\n");
 
-    d2d_brush_init(brush, render_target, D2D_BRUSH_TYPE_BITMAP, brush_desc,
-            (ID2D1BrushVtbl *)&d2d_bitmap_brush_vtbl);
+    d2d_brush_init(brush, &render_target->ID2D1RenderTarget_iface, D2D_BRUSH_TYPE_BITMAP,
+            brush_desc, (ID2D1BrushVtbl *)&d2d_bitmap_brush_vtbl);
+    brush->u.bitmap.bitmap = unsafe_impl_from_ID2D1Bitmap(bitmap);
+
+    sampler_desc.Filter = D3D10_FILTER_MIN_MAG_MIP_POINT;
+    sampler_desc.AddressU = D3D10_TEXTURE_ADDRESS_CLAMP;
+    sampler_desc.AddressV = D3D10_TEXTURE_ADDRESS_CLAMP;
+    sampler_desc.AddressW = D3D10_TEXTURE_ADDRESS_CLAMP;
+    sampler_desc.MipLODBias = 0.0f;
+    sampler_desc.MaxAnisotropy = 0;
+    sampler_desc.ComparisonFunc = D3D10_COMPARISON_NEVER;
+    sampler_desc.BorderColor[0] = 0.0f;
+    sampler_desc.BorderColor[1] = 0.0f;
+    sampler_desc.BorderColor[2] = 0.0f;
+    sampler_desc.BorderColor[3] = 0.0f;
+    sampler_desc.MinLOD = 0.0f;
+    sampler_desc.MaxLOD = 0.0f;
+
+    if (FAILED(hr = ID3D10Device_CreateSamplerState(render_target->device,
+            &sampler_desc, &brush->u.bitmap.sampler_state)))
+    {
+        ERR("Failed to create sampler state, hr %#x.\n", hr);
+        return hr;
+    }
+
+    return S_OK;
 }
 
 struct d2d_brush *unsafe_impl_from_ID2D1Brush(ID2D1Brush *iface)
@@ -628,4 +663,13 @@ struct d2d_brush *unsafe_impl_from_ID2D1Brush(ID2D1Brush *iface)
             || iface->lpVtbl == (const ID2D1BrushVtbl *)&d2d_linear_gradient_brush_vtbl
             || iface->lpVtbl == (const ID2D1BrushVtbl *)&d2d_bitmap_brush_vtbl);
     return CONTAINING_RECORD(iface, struct d2d_brush, ID2D1Brush_iface);
+}
+
+void d2d_brush_bind_resources(struct d2d_brush *brush, ID3D10Device *device)
+{
+    if (brush->type == D2D_BRUSH_TYPE_BITMAP)
+    {
+        ID3D10Device_PSSetShaderResources(device, 0, 1, &brush->u.bitmap.bitmap->view);
+        ID3D10Device_PSSetSamplers(device, 0, 1, &brush->u.bitmap.sampler_state);
+    }
 }

@@ -107,7 +107,7 @@ sub svg_element_start
         $width = $attr{'width'};
         $height = $attr{'height'};
 
-        if(defined($x) and defined($x)) {
+        if(defined($x) and defined($y)) {
             if($x =~ /\d*/ and $y =~ /\d*/) {
                 shell $convert, $renderedSVGFileName, "-crop", "${width}x${height}+$x+$y", $pngFileName;
             }
@@ -141,7 +141,12 @@ sub svg_element_start
 }
 
 # Render the SVG image
-shell $rsvg, $svgFileName, $renderedSVGFileName;
+my @rsvgCmd;
+push(@rsvgCmd, $rsvg);
+push(@rsvgCmd, $svgFileName);
+push(@rsvgCmd, "-o") if ($rsvg eq "rsvg-convert");
+push(@rsvgCmd, $renderedSVGFileName);
+shell @rsvgCmd;
 
 # Render the images in the SVG
 my $parser = new XML::Parser(

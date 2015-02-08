@@ -372,7 +372,17 @@ static MMDevice *MMDevice_Create(WCHAR *name, GUID *id, EDataFlow flow, DWORD st
             }
 
             if (flow != eCapture)
-                set_driver_prop_value(id, flow, &PKEY_AudioEndpoint_PhysicalSpeakers);
+            {
+                PROPVARIANT pv2;
+
+                PropVariantInit(&pv2);
+
+                /* make read-write by not overwriting if already set */
+                if (FAILED(MMDevice_GetPropValue(id, flow, &PKEY_AudioEndpoint_PhysicalSpeakers, &pv2)) || pv2.vt != VT_UI4)
+                    set_driver_prop_value(id, flow, &PKEY_AudioEndpoint_PhysicalSpeakers);
+
+                PropVariantClear(&pv2);
+            }
 
             RegCloseKey(keyprop);
         }
@@ -1459,8 +1469,17 @@ static HRESULT WINAPI MMDevPropStore_SetValue(IPropertyStore *iface, REFPROPERTY
 
 static HRESULT WINAPI MMDevPropStore_Commit(IPropertyStore *iface)
 {
-    FIXME("stub\n");
-    return E_NOTIMPL;
+    MMDevPropStore *This = impl_from_IPropertyStore(iface);
+    TRACE("(%p)\n", iface);
+
+    if (This->access != STGM_WRITE
+        && This->access != STGM_READWRITE)
+        return STG_E_ACCESSDENIED;
+
+    /* Does nothing - for mmdevapi, the propstore values are written on SetValue,
+     * not on Commit. */
+
+    return S_OK;
 }
 
 static const IPropertyStoreVtbl MMDevPropVtbl =
