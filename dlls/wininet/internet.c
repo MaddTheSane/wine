@@ -26,34 +26,14 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA
  */
 
-#include "config.h"
-#include "wine/port.h"
 
-#if defined(__MINGW32__) || defined (_MSC_VER)
-#include <ws2tcpip.h>
-#endif
+#include "ws2tcpip.h"
 
 #include <string.h>
 #include <stdarg.h>
 #include <stdio.h>
-#include <sys/types.h>
-#ifdef HAVE_SYS_SOCKET_H
-# include <sys/socket.h>
-#endif
-#ifdef HAVE_POLL_H
-#include <poll.h>
-#endif
-#ifdef HAVE_SYS_POLL_H
-# include <sys/poll.h>
-#endif
-#ifdef HAVE_SYS_TIME_H
-# include <sys/time.h>
-#endif
 #include <stdlib.h>
 #include <ctype.h>
-#ifdef HAVE_UNISTD_H
-# include <unistd.h>
-#endif
 #include <assert.h>
 
 #ifdef HAVE_CORESERVICES_CORESERVICES_H
@@ -84,8 +64,6 @@
 #include "wine/unicode.h"
 
 WINE_DEFAULT_DEBUG_CHANNEL(wininet);
-
-#define RESPONSE_TIMEOUT        30
 
 typedef struct
 {
@@ -544,11 +522,12 @@ static void free_global_proxy( void )
 static BOOL parse_proxy_url( proxyinfo_t *info, const WCHAR *url )
 {
     static const WCHAR fmt[] = {'%','s',':','%','u',0};
-    WCHAR hostname[INTERNET_MAX_HOST_NAME_LENGTH] = {};
-    WCHAR username[INTERNET_MAX_USER_NAME_LENGTH] = {};
-    WCHAR password[INTERNET_MAX_PASSWORD_LENGTH] = {};
+    WCHAR hostname[INTERNET_MAX_HOST_NAME_LENGTH];
+    WCHAR username[INTERNET_MAX_USER_NAME_LENGTH];
+    WCHAR password[INTERNET_MAX_PASSWORD_LENGTH];
     URL_COMPONENTSW uc;
 
+    hostname[0] = username[0] = password[0] = 0;
     memset( &uc, 0, sizeof(uc) );
     uc.dwStructSize      = sizeof(uc);
     uc.lpszHostName      = hostname;
@@ -3475,14 +3454,15 @@ BOOL WINAPI InternetCheckConnectionW( LPCWSTR lpszUrl, DWORD dwFlags, DWORD dwRe
       socklen_t sa_len = sizeof(saddr);
       int fd;
 
-      if (!GetAddress(hostW, port, (struct sockaddr *)&saddr, &sa_len))
+      if (!GetAddress(hostW, port, (struct sockaddr *)&saddr, &sa_len, NULL))
           goto End;
+      init_winsock();
       fd = socket(saddr.ss_family, SOCK_STREAM, 0);
       if (fd != -1)
       {
           if (connect(fd, (struct sockaddr *)&saddr, sa_len) == 0)
               rc = TRUE;
-          close(fd);
+          closesocket(fd);
       }
   }
   else
@@ -3915,68 +3895,6 @@ LPSTR INTERNET_GetResponseBuffer(void)
         lpwite = INTERNET_AllocThreadError();
     TRACE("\n");
     return lpwite->response;
-}
-
-/***********************************************************************
- *           INTERNET_GetNextLine  (internal)
- *
- * Parse next line in directory string listing
- *
- * RETURNS
- *   Pointer to beginning of next line
- *   NULL on failure
- *
- */
-
-LPSTR INTERNET_GetNextLine(INT nSocket, LPDWORD dwLen)
-{
-    struct pollfd pfd;
-    BOOL bSuccess = FALSE;
-    INT nRecv = 0;
-    LPSTR lpszBuffer = INTERNET_GetResponseBuffer();
-
-    TRACE("\n");
-
-    pfd.fd = nSocket;
-    pfd.events = POLLIN;
-
-    while (nRecv < MAX_REPLY_LEN)
-    {
-        if (poll(&pfd,1, RESPONSE_TIMEOUT * 1000) > 0)
-        {
-            if (sock_recv(nSocket, &lpszBuffer[nRecv], 1, 0) <= 0)
-            {
-                INTERNET_SetLastError(ERROR_FTP_TRANSFER_IN_PROGRESS);
-                goto lend;
-            }
-
-            if (lpszBuffer[nRecv] == '\n')
-	    {
-		bSuccess = TRUE;
-                break;
-	    }
-            if (lpszBuffer[nRecv] != '\r')
-                nRecv++;
-        }
-	else
-	{
-            INTERNET_SetLastError(ERROR_INTERNET_TIMEOUT);
-            goto lend;
-        }
-    }
-
-lend:
-    if (bSuccess)
-    {
-        lpszBuffer[nRecv] = '\0';
-	*dwLen = nRecv - 1;
-        TRACE(":%d %s\n", nRecv, lpszBuffer);
-        return lpszBuffer;
-    }
-    else
-    {
-        return NULL;
-    }
 }
 
 /**********************************************************

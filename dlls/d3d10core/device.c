@@ -1381,7 +1381,7 @@ static HRESULT STDMETHODCALLTYPE d3d10_device_CreateBuffer(ID3D10Device1 *iface,
     struct d3d10_buffer *object;
     HRESULT hr;
 
-    FIXME("iface %p, desc %p, data %p, buffer %p partial stub!\n", iface, desc, data, buffer);
+    TRACE("iface %p, desc %p, data %p, buffer %p.\n", iface, desc, data, buffer);
 
     object = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(*object));
     if (!object)
@@ -1418,7 +1418,7 @@ static HRESULT STDMETHODCALLTYPE d3d10_device_CreateTexture2D(ID3D10Device1 *ifa
     struct d3d10_texture2d *object;
     HRESULT hr;
 
-    FIXME("iface %p, desc %p, data %p, texture %p partial stub!\n", iface, desc, data, texture);
+    TRACE("iface %p, desc %p, data %p, texture %p.\n", iface, desc, data, texture);
 
     object = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(*object));
     if (!object)

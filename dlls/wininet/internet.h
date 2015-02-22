@@ -23,44 +23,21 @@
 #ifndef _WINE_INTERNET_H_
 #define _WINE_INTERNET_H_
 
-#ifndef __WINE_CONFIG_H
-# error You must include config.h to use this header
-#endif
-
 #include "wine/unicode.h"
 #include "wine/list.h"
 
 #include <time.h>
-#ifdef HAVE_NETDB_H
-# include <netdb.h>
-#endif
-#ifdef HAVE_NETINET_IN_H
-# include <sys/types.h>
-# include <netinet/in.h>
-#endif
-#ifdef HAVE_SYS_SOCKET_H
-# include <sys/socket.h>
-#endif
-
-#if !defined(__MINGW32__) && !defined(_MSC_VER)
-#define closesocket close
-#define ioctlsocket ioctl
-#endif /* __MINGW32__ */
 
 #include "winineti.h"
 
 extern HMODULE WININET_hModule DECLSPEC_HIDDEN;
-
-#ifndef INET6_ADDRSTRLEN
-#define INET6_ADDRSTRLEN 46
-#endif
 
 typedef struct {
     WCHAR *name;
     INTERNET_PORT port;
     BOOL is_https;
     struct sockaddr_storage addr;
-    socklen_t addr_len;
+    int addr_len;
     char addr_str[INET6_ADDRSTRLEN];
 
     WCHAR *scheme_host_port;
@@ -420,8 +397,7 @@ DWORD HTTP_Connect(appinfo_t*,LPCWSTR,
         LPCWSTR lpszPassword, DWORD dwFlags, DWORD_PTR dwContext,
         DWORD dwInternalFlags, HINTERNET*) DECLSPEC_HIDDEN;
 
-BOOL GetAddress(LPCWSTR lpszServerName, INTERNET_PORT nServerPort,
-	struct sockaddr *psa, socklen_t *sa_len) DECLSPEC_HIDDEN;
+BOOL GetAddress(const WCHAR*,INTERNET_PORT,SOCKADDR*,int*,char*) DECLSPEC_HIDDEN;
 
 DWORD get_cookie_header(const WCHAR*,const WCHAR*,WCHAR**) DECLSPEC_HIDDEN;
 DWORD set_cookie(const WCHAR*,const WCHAR*,const WCHAR*,const WCHAR*,DWORD) DECLSPEC_HIDDEN;
@@ -430,7 +406,6 @@ void INTERNET_SetLastError(DWORD dwError) DECLSPEC_HIDDEN;
 DWORD INTERNET_GetLastError(void) DECLSPEC_HIDDEN;
 DWORD INTERNET_AsyncCall(task_header_t*) DECLSPEC_HIDDEN;
 LPSTR INTERNET_GetResponseBuffer(void) DECLSPEC_HIDDEN;
-LPSTR INTERNET_GetNextLine(INT nSocket, LPDWORD dwLen) DECLSPEC_HIDDEN;
 
 VOID SendAsyncCallback(object_header_t *hdr, DWORD_PTR dwContext,
                        DWORD dwInternetStatus, LPVOID lpvStatusInfo,
@@ -459,7 +434,7 @@ BOOL NETCON_is_alive(netconn_t*) DECLSPEC_HIDDEN;
 LPCVOID NETCON_GetCert(netconn_t *connection) DECLSPEC_HIDDEN;
 int NETCON_GetCipherStrength(netconn_t*) DECLSPEC_HIDDEN;
 DWORD NETCON_set_timeout(netconn_t *connection, BOOL send, DWORD value) DECLSPEC_HIDDEN;
-int sock_get_error(int) DECLSPEC_HIDDEN;
+int sock_get_error(void) DECLSPEC_HIDDEN;
 int sock_send(int fd, const void *msg, size_t len, int flags) DECLSPEC_HIDDEN;
 int sock_recv(int fd, void *msg, size_t len, int flags) DECLSPEC_HIDDEN;
 
@@ -477,6 +452,8 @@ static inline req_file_t *req_file_addref(req_file_t *req_file)
 BOOL init_urlcache(void) DECLSPEC_HIDDEN;
 void free_urlcache(void) DECLSPEC_HIDDEN;
 void free_cookie(void) DECLSPEC_HIDDEN;
+
+void init_winsock(void) DECLSPEC_HIDDEN;
 
 #define MAX_REPLY_LEN	 	0x5B4
 

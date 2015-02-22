@@ -68,6 +68,7 @@ static ULONG STDMETHODCALLTYPE dxgi_output_Release(IDXGIOutput *iface)
 
     if (!refcount)
     {
+        wined3d_private_store_cleanup(&This->private_store);
         HeapFree(GetProcessHeap(), 0, This);
     }
 
@@ -79,25 +80,31 @@ static ULONG STDMETHODCALLTYPE dxgi_output_Release(IDXGIOutput *iface)
 static HRESULT STDMETHODCALLTYPE dxgi_output_SetPrivateData(IDXGIOutput *iface,
         REFGUID guid, UINT data_size, const void *data)
 {
-    FIXME("iface %p, guid %s, data_size %u, data %p stub!\n", iface, debugstr_guid(guid), data_size, data);
+    struct dxgi_output *output = impl_from_IDXGIOutput(iface);
 
-    return E_NOTIMPL;
+    TRACE("iface %p, guid %s, data_size %u, data %p.\n", iface, debugstr_guid(guid), data_size, data);
+
+    return dxgi_set_private_data(&output->private_store, guid, data_size, data);
 }
 
 static HRESULT STDMETHODCALLTYPE dxgi_output_SetPrivateDataInterface(IDXGIOutput *iface,
         REFGUID guid, const IUnknown *object)
 {
-    FIXME("iface %p, guid %s, object %p stub!\n", iface, debugstr_guid(guid), object);
+    struct dxgi_output *output = impl_from_IDXGIOutput(iface);
 
-    return E_NOTIMPL;
+    TRACE("iface %p, guid %s, object %p.\n", iface, debugstr_guid(guid), object);
+
+    return dxgi_set_private_data_interface(&output->private_store, guid, object);
 }
 
 static HRESULT STDMETHODCALLTYPE dxgi_output_GetPrivateData(IDXGIOutput *iface,
         REFGUID guid, UINT *data_size, void *data)
 {
-    FIXME("iface %p, guid %s, data_size %p, data %p stub!\n", iface, debugstr_guid(guid), data_size, data);
+    struct dxgi_output *output = impl_from_IDXGIOutput(iface);
 
-    return E_NOTIMPL;
+    TRACE("iface %p, guid %s, data_size %p, data %p.\n", iface, debugstr_guid(guid), data_size, data);
+
+    return dxgi_get_private_data(&output->private_store, guid, data_size, data);
 }
 
 static HRESULT STDMETHODCALLTYPE dxgi_output_GetParent(IDXGIOutput *iface,
@@ -289,5 +296,6 @@ void dxgi_output_init(struct dxgi_output *output, struct dxgi_adapter *adapter)
 {
     output->IDXGIOutput_iface.lpVtbl = &dxgi_output_vtbl;
     output->refcount = 1;
+    wined3d_private_store_init(&output->private_store);
     output->adapter = adapter;
 }

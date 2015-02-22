@@ -541,13 +541,6 @@ static void test_utf7_encoding(void)
         }
     };
 
-    if (WideCharToMultiByte(CP_UTF7, 0, foobarW, -1, NULL, 0, NULL, NULL) == 0 &&
-        GetLastError() == ERROR_CALL_NOT_IMPLEMENTED)
-    {
-        skip("UTF-7 encoding not implemented\n");
-        return;
-    }
-
     /* test which characters are encoded if surrounded by non-encoded characters */
     for (i = 0; i <= 0xFFFF; i++)
     {
@@ -811,13 +804,6 @@ static void test_utf7_decoding(void)
             {0x4F60}, 1, 0
         }
     };
-
-    if (MultiByteToWideChar(CP_UTF7, 0, "foobar", -1, NULL, 0) == 0 &&
-        GetLastError() == ERROR_CALL_NOT_IMPLEMENTED)
-    {
-        skip("UTF-7 decoding not implemented\n");
-        return;
-    }
 
     /* test which one-byte characters remove stray + signs */
     for (i = 0; i < 256; i++)

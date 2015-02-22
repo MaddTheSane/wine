@@ -178,20 +178,87 @@ static const WCHAR *attribute_table[] =
     NULL                            /* WINHTTP_QUERY_PASSPORT_CONFIG            = 78 */
 };
 
-static DWORD CALLBACK task_thread( LPVOID param )
+static task_header_t *dequeue_task( request_t *request )
 {
-    task_header_t *task = param;
+    task_header_t *task;
 
-    task->proc( task );
+    EnterCriticalSection( &request->task_cs );
+    TRACE("%u tasks queued\n", list_count( &request->task_queue ));
+    task = LIST_ENTRY( list_head( &request->task_queue ), task_header_t, entry );
+    if (task) list_remove( &task->entry );
+    LeaveCriticalSection( &request->task_cs );
 
-    release_object( &task->request->hdr );
-    heap_free( task );
-    return ERROR_SUCCESS;
+    TRACE("returning task %p\n", task);
+    return task;
+}
+
+static DWORD CALLBACK task_proc( LPVOID param )
+{
+    request_t *request = param;
+    HANDLE handles[2];
+
+    handles[0] = request->task_wait;
+    handles[1] = request->task_cancel;
+    for (;;)
+    {
+        DWORD err = WaitForMultipleObjects( 2, handles, FALSE, INFINITE );
+        switch (err)
+        {
+        case WAIT_OBJECT_0:
+        {
+            task_header_t *task;
+            while ((task = dequeue_task( request )))
+            {
+                task->proc( task );
+                release_object( &task->request->hdr );
+                heap_free( task );
+            }
+            break;
+        }
+        case WAIT_OBJECT_0 + 1:
+            TRACE("exiting\n");
+            return 0;
+
+        default:
+            ERR("wait failed %u (%u)\n", err, GetLastError());
+            break;
+        }
+    }
+    return 0;
 }
 
 static BOOL queue_task( task_header_t *task )
 {
-    return QueueUserWorkItem( task_thread, task, WT_EXECUTELONGFUNCTION );
+    request_t *request = task->request;
+
+    if (!request->task_thread)
+    {
+        if (!(request->task_wait = CreateEventW( NULL, FALSE, FALSE, NULL ))) return FALSE;
+        if (!(request->task_cancel = CreateEventW( NULL, FALSE, FALSE, NULL )))
+        {
+            CloseHandle( request->task_wait );
+            request->task_wait = NULL;
+            return FALSE;
+        }
+        if (!(request->task_thread = CreateThread( NULL, 0, task_proc, request, 0, NULL )))
+        {
+            CloseHandle( request->task_wait );
+            request->task_wait = NULL;
+            CloseHandle( request->task_cancel );
+            request->task_cancel = NULL;
+            return FALSE;
+        }
+        InitializeCriticalSection( &request->task_cs );
+        request->task_cs.DebugInfo->Spare[0] = (DWORD_PTR)(__FILE__ ": request.task_cs");
+    }
+
+    EnterCriticalSection( &request->task_cs );
+    TRACE("queueing task %p\n", task );
+    list_add_tail( &request->task_queue, &task->entry );
+    LeaveCriticalSection( &request->task_cs );
+
+    SetEvent( request->task_wait );
+    return TRUE;
 }
 
 static void free_header( header_t *header )
@@ -3597,6 +3664,11 @@ static HRESULT WINAPI winhttp_request_get_ResponseBody(
     if (!body) return E_INVALIDARG;
 
     EnterCriticalSection( &request->cs );
+    if (request->state < REQUEST_STATE_SENT)
+    {
+        err = ERROR_WINHTTP_CANNOT_CALL_BEFORE_SEND;
+        goto done;
+    }
     if (!(sa = SafeArrayCreateVector( VT_UI1, 0, request->offset )))
     {
         err = ERROR_OUTOFMEMORY;
@@ -3623,12 +3695,203 @@ done:
     return HRESULT_FROM_WIN32( err );
 }
 
+struct stream
+{
+    IStream IStream_iface;
+    LONG    refs;
+    char   *data;
+    ULARGE_INTEGER pos, size;
+};
+
+static inline struct stream *impl_from_IStream( IStream *iface )
+{
+    return CONTAINING_RECORD( iface, struct stream, IStream_iface );
+}
+
+static HRESULT WINAPI stream_QueryInterface( IStream *iface, REFIID riid, void **obj )
+{
+    struct stream *stream = impl_from_IStream( iface );
+
+    TRACE("%p, %s, %p\n", stream, debugstr_guid(riid), obj);
+
+    if (IsEqualGUID( riid, &IID_IStream ) || IsEqualGUID( riid, &IID_IUnknown ))
+    {
+        *obj = iface;
+    }
+    else
+    {
+        FIXME("interface %s not implemented\n", debugstr_guid(riid));
+        return E_NOINTERFACE;
+    }
+    IStream_AddRef( iface );
+    return S_OK;
+}
+
+static ULONG WINAPI stream_AddRef( IStream *iface )
+{
+    struct stream *stream = impl_from_IStream( iface );
+    return InterlockedIncrement( &stream->refs );
+}
+
+static ULONG WINAPI stream_Release( IStream *iface )
+{
+    struct stream *stream = impl_from_IStream( iface );
+    LONG refs = InterlockedDecrement( &stream->refs );
+    if (!refs)
+    {
+        heap_free( stream->data );
+        heap_free( stream );
+    }
+    return refs;
+}
+
+static HRESULT WINAPI stream_Read( IStream *iface, void *buf, ULONG len, ULONG *read )
+{
+    struct stream *stream = impl_from_IStream( iface );
+    ULONG size;
+
+    if (stream->pos.QuadPart >= stream->size.QuadPart)
+    {
+        *read = 0;
+        return S_FALSE;
+    }
+
+    size = min( stream->size.QuadPart - stream->pos.QuadPart, len );
+    memcpy( buf, stream->data + stream->pos.QuadPart, size );
+    stream->pos.QuadPart += size;
+    *read = size;
+
+    return S_OK;
+}
+
+static HRESULT WINAPI stream_Write( IStream *iface, const void *buf, ULONG len, ULONG *written )
+{
+    FIXME("\n");
+    return E_NOTIMPL;
+}
+
+static HRESULT WINAPI stream_Seek( IStream *iface, LARGE_INTEGER move, DWORD origin, ULARGE_INTEGER *newpos )
+{
+    struct stream *stream = impl_from_IStream( iface );
+
+    if (origin == STREAM_SEEK_SET)
+        stream->pos.QuadPart = move.QuadPart;
+    else if (origin == STREAM_SEEK_CUR)
+        stream->pos.QuadPart += move.QuadPart;
+    else if (origin == STREAM_SEEK_END)
+        stream->pos.QuadPart = stream->size.QuadPart - move.QuadPart;
+
+    if (newpos) newpos->QuadPart = stream->pos.QuadPart;
+    return S_OK;
+}
+
+static HRESULT WINAPI stream_SetSize( IStream *iface, ULARGE_INTEGER newsize )
+{
+    FIXME("\n");
+    return E_NOTIMPL;
+}
+
+static HRESULT WINAPI stream_CopyTo( IStream *iface, IStream *stream, ULARGE_INTEGER len, ULARGE_INTEGER *read,
+                                     ULARGE_INTEGER *written )
+{
+    FIXME("\n");
+    return E_NOTIMPL;
+}
+
+static HRESULT WINAPI stream_Commit( IStream *iface, DWORD flags )
+{
+    FIXME("\n");
+    return E_NOTIMPL;
+}
+
+static HRESULT WINAPI stream_Revert( IStream *iface )
+{
+    FIXME("\n");
+    return E_NOTIMPL;
+}
+
+static HRESULT WINAPI stream_LockRegion( IStream *iface, ULARGE_INTEGER offset, ULARGE_INTEGER len, DWORD locktype )
+{
+    FIXME("\n");
+    return E_NOTIMPL;
+}
+
+static HRESULT WINAPI stream_UnlockRegion( IStream *iface, ULARGE_INTEGER offset, ULARGE_INTEGER len, DWORD locktype )
+{
+    FIXME("\n");
+    return E_NOTIMPL;
+}
+
+static HRESULT WINAPI stream_Stat( IStream *iface, STATSTG *stg, DWORD flag )
+{
+    FIXME("\n");
+    return E_NOTIMPL;
+}
+
+static HRESULT WINAPI stream_Clone( IStream *iface, IStream **stream )
+{
+    FIXME("\n");
+    return E_NOTIMPL;
+}
+
+static const IStreamVtbl stream_vtbl =
+{
+    stream_QueryInterface,
+    stream_AddRef,
+    stream_Release,
+    stream_Read,
+    stream_Write,
+    stream_Seek,
+    stream_SetSize,
+    stream_CopyTo,
+    stream_Commit,
+    stream_Revert,
+    stream_LockRegion,
+    stream_UnlockRegion,
+    stream_Stat,
+    stream_Clone
+};
+
 static HRESULT WINAPI winhttp_request_get_ResponseStream(
     IWinHttpRequest *iface,
     VARIANT *body )
 {
-    FIXME("\n");
-    return E_NOTIMPL;
+    struct winhttp_request *request = impl_from_IWinHttpRequest( iface );
+    DWORD err = ERROR_SUCCESS;
+    struct stream *stream;
+
+    TRACE("%p, %p\n", request, body);
+
+    if (!body) return E_INVALIDARG;
+
+    EnterCriticalSection( &request->cs );
+    if (request->state < REQUEST_STATE_SENT)
+    {
+        err = ERROR_WINHTTP_CANNOT_CALL_BEFORE_SEND;
+        goto done;
+    }
+    if (!(stream = heap_alloc( sizeof(*stream) )))
+    {
+        err = ERROR_OUTOFMEMORY;
+        goto done;
+    }
+    stream->IStream_iface.lpVtbl = &stream_vtbl;
+    stream->refs = 1;
+    if (!(stream->data = heap_alloc( request->offset )))
+    {
+        heap_free( stream );
+        err = ERROR_OUTOFMEMORY;
+        goto done;
+    }
+    memcpy( stream->data, request->buffer, request->offset );
+    stream->pos.QuadPart = 0;
+    stream->size.QuadPart = request->offset;
+    V_VT( body ) = VT_UNKNOWN;
+    V_UNKNOWN( body ) = (IUnknown *)&stream->IStream_iface;
+
+done:
+    LeaveCriticalSection( &request->cs );
+    return HRESULT_FROM_WIN32( err );
 }
 
 static HRESULT WINAPI winhttp_request_get_Option(

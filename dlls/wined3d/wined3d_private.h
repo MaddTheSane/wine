@@ -95,14 +95,14 @@ enum complex_fixup
 #include <pshpack2.h>
 struct color_fixup_desc
 {
-    unsigned x_sign_fixup : 1;
-    unsigned x_source : 3;
-    unsigned y_sign_fixup : 1;
-    unsigned y_source : 3;
-    unsigned z_sign_fixup : 1;
-    unsigned z_source : 3;
-    unsigned w_sign_fixup : 1;
-    unsigned w_source : 3;
+    unsigned short x_sign_fixup : 1;
+    unsigned short x_source : 3;
+    unsigned short y_sign_fixup : 1;
+    unsigned short y_source : 3;
+    unsigned short z_sign_fixup : 1;
+    unsigned short z_source : 3;
+    unsigned short w_sign_fixup : 1;
+    unsigned short w_source : 3;
 };
 #include <poppack.h>
 
@@ -511,8 +511,10 @@ enum WINED3D_SHADER_INSTRUCTION_HANDLER
     WINED3DSIH_MOVA,
     WINED3DSIH_MOVC,
     WINED3DSIH_MUL,
+    WINED3DSIH_NE,
     WINED3DSIH_NOP,
     WINED3DSIH_NRM,
+    WINED3DSIH_OR,
     WINED3DSIH_PHASE,
     WINED3DSIH_POW,
     WINED3DSIH_RCP,
@@ -2179,6 +2181,7 @@ struct wined3d_texture_ops
 #define WINED3D_TEXTURE_PIN_SYSMEM          0x00000100
 #define WINED3D_TEXTURE_DYNAMIC_MAP         0x00000200
 #define WINED3D_TEXTURE_NORMALIZED_COORDS   0x00000400
+#define WINED3D_TEXTURE_COLOR_KEY           0x00000800
 
 struct wined3d_texture
 {
@@ -2201,6 +2204,7 @@ struct wined3d_texture
     struct wined3d_color_key src_blt_color_key;
     struct wined3d_color_key dst_overlay_color_key;
     struct wined3d_color_key src_overlay_color_key;
+    struct wined3d_color_key gl_color_key;
     DWORD color_key_flags;
 };
 
@@ -2334,8 +2338,6 @@ struct wined3d_surface
     struct wined3d_surface_dib dib;
     HDC                       hDC;
 
-    struct wined3d_color_key gl_color_key;
-
     struct list               renderbuffers;
     const struct wined3d_renderbuffer_entry *current_renderbuffer;
     SIZE ds_current_size;
@@ -2402,9 +2404,8 @@ void flip_surface(struct wined3d_surface *front, struct wined3d_surface *back) D
 #define SFLAG_DISCARD           0x00000002 /* ??? */
 #define SFLAG_NONPOW2           0x00000004 /* Surface sizes are not a power of 2 */
 #define SFLAG_LOST              0x00000008 /* Surface lost flag for ddraw. */
-#define SFLAG_GLCKEY            0x00000010 /* The GL texture was created with a color key. */
-#define SFLAG_CLIENT            0x00000020 /* GL_APPLE_client_storage is used with this surface. */
-#define SFLAG_DCINUSE           0x00000040 /* Set between GetDC and ReleaseDC calls. */
+#define SFLAG_CLIENT            0x00000010 /* GL_APPLE_client_storage is used with this surface. */
+#define SFLAG_DCINUSE           0x00000020 /* Set between GetDC and ReleaseDC calls. */
 
 struct wined3d_sampler
 {
@@ -2420,8 +2421,8 @@ struct wined3d_vertex_declaration_element
 {
     const struct wined3d_format *format;
     BOOL ffp_valid;
-    WORD input_slot;
-    WORD offset;
+    unsigned int input_slot;
+    unsigned int offset;
     UINT output_slot;
     BYTE method;
     BYTE usage;

@@ -2732,9 +2732,14 @@ msgstr ""
 "Ar tikrai norite pašalinti šį liudijimą?"
 
 #: cryptui.rc:113
+#, fuzzy
+#| msgid ""
+#| "You will no longer be able to encrypt messages with these certificates, "
+#| "or verify messages signed with it.\n"
+#| "Are you sure you want to remove these certificates?"
 msgid ""
 "You will no longer be able to encrypt messages with these certificates, or "
-"verify messages signed with it.\n"
+"verify messages signed with them.\n"
 "Are you sure you want to remove these certificates?"
 msgstr ""
 "Su šiais liudijimais daugiau nebegalėsite užšifruoti pranešimų ar patikrinti "
@@ -8161,7 +8166,7 @@ msgstr "Istorija"
 
 #: shell32.rc:215
 msgid "Program Files"
-msgstr "Programų failai"
+msgstr "Program Files"
 
 #: shell32.rc:217
 msgid "My Pictures"
@@ -8193,7 +8198,7 @@ msgstr "Vaizdai"
 
 #: shell32.rc:216
 msgid "Program Files (x86)"
-msgstr "Programų failai (x86)"
+msgstr "Program Files (x86)"
 
 #: shell32.rc:224
 msgid "Contacts"

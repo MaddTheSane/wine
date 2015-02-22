@@ -315,8 +315,8 @@ void draw_textured_quad(const struct wined3d_surface *src_surface, struct wined3
     gl_info->gl_ops.gl.p_glTexParameteri(info.bind_target, GL_TEXTURE_MIN_FILTER,
             wined3d_gl_min_mip_filter(filter, WINED3D_TEXF_NONE));
     checkGLcall("glTexParameteri");
-    gl_info->gl_ops.gl.p_glTexParameteri(info.bind_target, GL_TEXTURE_WRAP_S, GL_CLAMP);
-    gl_info->gl_ops.gl.p_glTexParameteri(info.bind_target, GL_TEXTURE_WRAP_T, GL_CLAMP);
+    gl_info->gl_ops.gl.p_glTexParameteri(info.bind_target, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    gl_info->gl_ops.gl.p_glTexParameteri(info.bind_target, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     if (context->gl_info->supported[EXT_TEXTURE_SRGB_DECODE])
         gl_info->gl_ops.gl.p_glTexParameteri(info.bind_target, GL_TEXTURE_SRGB_DECODE_EXT, GL_SKIP_DECODE_EXT);
     gl_info->gl_ops.gl.p_glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_REPLACE);
@@ -1814,43 +1814,18 @@ GLenum surface_get_gl_buffer(const struct wined3d_surface *surface)
 void surface_load(struct wined3d_surface *surface, BOOL srgb)
 {
     DWORD location = srgb ? WINED3D_LOCATION_TEXTURE_SRGB : WINED3D_LOCATION_TEXTURE_RGB;
-    BOOL ck_changed;
 
     TRACE("surface %p, srgb %#x.\n", surface, srgb);
 
     if (surface->resource.pool == WINED3D_POOL_SCRATCH)
         ERR("Not supported on scratch surfaces.\n");
 
-    ck_changed = !(surface->flags & SFLAG_GLCKEY) != !(surface->container->color_key_flags & WINED3D_CKEY_SRC_BLT);
-
-    /* Reload if either the texture and sysmem have different ideas about the
-     * color key, or the actual key values changed. */
-    if (ck_changed || ((surface->container->color_key_flags & WINED3D_CKEY_SRC_BLT)
-            && (surface->gl_color_key.color_space_low_value
-            != surface->container->src_blt_color_key.color_space_low_value
-            || surface->gl_color_key.color_space_high_value
-            != surface->container->src_blt_color_key.color_space_high_value)))
-    {
-        TRACE("Reloading because of color keying\n");
-        /* To perform the color key conversion we need a sysmem copy of
-         * the surface. Make sure we have it. */
-
-        surface_prepare_map_memory(surface);
-        surface_load_location(surface, surface->resource.map_binding);
-        surface_invalidate_location(surface, ~surface->resource.map_binding);
-        /* Switching color keying on / off may change the internal format. */
-        if (ck_changed)
-            wined3d_texture_force_reload(surface->container);
-    }
-    else if (!(surface->locations & location))
-    {
-        TRACE("Reloading because surface is dirty.\n");
-    }
-    else
+    if (surface->locations & location)
     {
         TRACE("surface is already in texture\n");
         return;
     }
+    TRACE("Reloading because surface is dirty.\n");
 
     surface_load_location(surface, location);
     surface_evict_sysmem(surface);
@@ -2212,10 +2187,16 @@ HRESULT wined3d_surface_update_desc(struct wined3d_surface *surface,
     surface->resource.multisample_type = texture_resource->multisample_type;
     surface->resource.multisample_quality = texture_resource->multisample_quality;
     if (surface->pitch)
+    {
         surface->resource.size = height * surface->pitch;
+    }
     else
+    {
+        /* User memory surfaces don't have the regular surface alignment. */
         surface->resource.size = wined3d_format_calculate_size(texture_resource->format,
-                texture_resource->device->surface_alignment, width, height, 1);
+                1, width, height, 1);
+        surface->pitch = wined3d_format_calculate_pitch(texture_resource->format, width);
+    }
 
     /* The format might be changed to a format that needs conversion.
      * If the surface didn't use PBOs previously but could now, don't
@@ -2843,7 +2824,8 @@ static void read_from_framebuffer(struct wined3d_surface *surface, DWORD dst_loc
     }
 
     /* Setup pixel store pack state -- to glReadPixels into the correct place */
-    gl_info->gl_ops.gl.p_glPixelStorei(GL_PACK_ROW_LENGTH, surface->resource.width);
+    gl_info->gl_ops.gl.p_glPixelStorei(GL_PACK_ROW_LENGTH,
+            wined3d_surface_get_pitch(surface) / surface->resource.format->byte_count);
     checkGLcall("glPixelStorei");
 
     gl_info->gl_ops.gl.p_glReadPixels(0, 0,
@@ -3306,8 +3288,8 @@ static void fb_copy_to_texture_hwstretch(struct wined3d_surface *dst_surface, st
     }
 
     /* draw the source texture stretched and upside down. The correct surface is bound already */
-    gl_info->gl_ops.gl.p_glTexParameteri(texture_target, GL_TEXTURE_WRAP_S, GL_CLAMP);
-    gl_info->gl_ops.gl.p_glTexParameteri(texture_target, GL_TEXTURE_WRAP_T, GL_CLAMP);
+    gl_info->gl_ops.gl.p_glTexParameteri(texture_target, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    gl_info->gl_ops.gl.p_glTexParameteri(texture_target, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
     context_set_draw_buffer(context, drawBuffer);
     gl_info->gl_ops.gl.p_glReadBuffer(drawBuffer);
@@ -4178,13 +4160,6 @@ static HRESULT surface_load_texture(struct wined3d_surface *surface,
     wined3d_texture_prepare_texture(texture, context, srgb);
     wined3d_texture_bind_and_dirtify(texture, context, srgb);
 
-    if (texture->color_key_flags & WINED3D_CKEY_SRC_BLT)
-    {
-        surface->flags |= SFLAG_GLCKEY;
-        surface->gl_color_key = texture->src_blt_color_key;
-    }
-    else surface->flags &= ~SFLAG_GLCKEY;
-
     width = surface->resource.width;
     src_pitch = wined3d_surface_get_pitch(surface);
 
@@ -4217,7 +4192,6 @@ static HRESULT surface_load_texture(struct wined3d_surface *surface,
 
         format.byte_count = format.conv_byte_count;
         dst_pitch = wined3d_format_calculate_pitch(&format, width);
-        dst_pitch = (dst_pitch + device->surface_alignment - 1) & ~(device->surface_alignment - 1);
 
         if (!(mem = HeapAlloc(GetProcessHeap(), 0, dst_pitch * height)))
         {
@@ -4248,7 +4222,7 @@ static HRESULT surface_load_texture(struct wined3d_surface *surface,
         if (texture->swapchain && texture->swapchain->palette)
             palette = texture->swapchain->palette;
         conversion->convert(data.addr, src_pitch, mem, dst_pitch,
-                width, height, palette, &texture->src_blt_color_key);
+                width, height, palette, &texture->gl_color_key);
         src_pitch = dst_pitch;
         data.addr = mem;
     }

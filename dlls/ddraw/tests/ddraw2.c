@@ -4622,10 +4622,11 @@ static void test_surface_lock(void)
 static void test_surface_discard(void)
 {
     IDirectDraw2 *ddraw;
+    IDirect3DDevice2 *device;
     HRESULT hr;
     HWND window;
     DDSURFACEDESC ddsd;
-    IDirectDrawSurface *surface, *primary;
+    IDirectDrawSurface *surface, *target;
     void *addr;
     static const struct
     {
@@ -4645,14 +4646,16 @@ static void test_surface_discard(void)
             0, 0, 640, 480, 0, 0, 0, 0);
     ddraw = create_ddraw();
     ok(!!ddraw, "Failed to create a ddraw object.\n");
-    hr = IDirectDraw2_SetCooperativeLevel(ddraw, window, DDSCL_NORMAL);
-    ok(SUCCEEDED(hr), "Failed to set cooperative level, hr %#x.\n", hr);
+    if (!(device = create_device(ddraw, window, DDSCL_NORMAL)))
+    {
+        skip("Failed to create a 3D device, skipping test.\n");
+        DestroyWindow(window);
+        IDirectDraw2_Release(ddraw);
+        return;
+    }
 
-    memset(&ddsd, 0, sizeof(ddsd));
-    ddsd.dwSize = sizeof(ddsd);
-    ddsd.dwFlags = DDSD_CAPS;
-    ddsd.ddsCaps.dwCaps = DDSCAPS_PRIMARYSURFACE;
-    hr = IDirectDraw2_CreateSurface(ddraw, &ddsd, &primary, NULL);
+    hr = IDirect3DDevice2_GetRenderTarget(device, &target);
+    ok(SUCCEEDED(hr), "Failed to get render target, hr %#x.\n", hr);
 
     for (i = 0; i < sizeof(tests) / sizeof(*tests); i++)
     {
@@ -4687,7 +4690,7 @@ static void test_surface_discard(void)
         hr = IDirectDrawSurface_Unlock(surface, NULL);
         ok(SUCCEEDED(hr), "Failed to unlock surface, hr %#x.\n", hr);
 
-        hr = IDirectDrawSurface_Blt(primary, NULL, surface, NULL, DDBLT_WAIT, NULL);
+        hr = IDirectDrawSurface_Blt(target, NULL, surface, NULL, DDBLT_WAIT, NULL);
         ok(SUCCEEDED(hr), "Failed to blit, hr %#x.\n", hr);
 
         memset(&ddsd, 0, sizeof(ddsd));
@@ -4705,7 +4708,8 @@ static void test_surface_discard(void)
         ok(!discarded || tests[i].discard, "Expected surface not to be discarded, case %u\n", i);
     }
 
-    IDirectDrawSurface_Release(primary);
+    IDirectDrawSurface_Release(target);
+    IDirect3DDevice2_Release(device);
     IDirectDraw2_Release(ddraw);
     DestroyWindow(window);
 }
@@ -6998,6 +7002,402 @@ static void test_surface_desc_lock(void)
     DestroyWindow(window);
 }
 
+static void test_texturemapblend(void)
+{
+    HRESULT hr;
+    DDSURFACEDESC ddsd;
+    DDBLTFX fx;
+    static RECT rect = {0, 0, 64, 128};
+    static D3DRECT clear_rect = {{0}, {0}, {640}, {480}};
+    DDCOLORKEY ckey;
+    IDirectDrawSurface *surface, *rt;
+    IDirect3DTexture2 *texture;
+    D3DTEXTUREHANDLE texture_handle;
+    HWND window;
+    IDirectDraw2 *ddraw;
+    IDirect3DDevice2 *device;
+    IDirect3DMaterial2 *material;
+    IDirect3DViewport2 *viewport;
+    ULONG ref;
+    D3DCOLOR color;
+
+    static D3DTLVERTEX test1_quads[] =
+    {
+        {{0.0f},   {0.0f},   {0.0f}, {1.0f}, {0xffffffff}, {0}, {0.0f}, {0.0f}},
+        {{0.0f},   {240.0f}, {0.0f}, {1.0f}, {0xffffffff}, {0}, {0.0f}, {1.0f}},
+        {{640.0f}, {0.0f},   {0.0f}, {1.0f}, {0xffffffff}, {0}, {1.0f}, {0.0f}},
+        {{640.0f}, {240.0f}, {0.0f}, {1.0f}, {0xffffffff}, {0}, {1.0f}, {1.0f}},
+        {{0.0f},   {240.0f}, {0.0f}, {1.0f}, {0x80ffffff}, {0}, {0.0f}, {0.0f}},
+        {{0.0f},   {480.0f}, {0.0f}, {1.0f}, {0x80ffffff}, {0}, {0.0f}, {1.0f}},
+        {{640.0f}, {240.0f}, {0.0f}, {1.0f}, {0x80ffffff}, {0}, {1.0f}, {0.0f}},
+        {{640.0f}, {480.0f}, {0.0f}, {1.0f}, {0x80ffffff}, {0}, {1.0f}, {1.0f}},
+    },
+    test2_quads[] =
+    {
+        {{0.0f},   {0.0f},   {0.0f}, {1.0f}, {0x00ff0080}, {0}, {0.0f}, {0.0f}},
+        {{0.0f},   {240.0f}, {0.0f}, {1.0f}, {0x00ff0080}, {0}, {0.0f}, {1.0f}},
+        {{640.0f}, {0.0f},   {0.0f}, {1.0f}, {0x00ff0080}, {0}, {1.0f}, {0.0f}},
+        {{640.0f}, {240.0f}, {0.0f}, {1.0f}, {0x00ff0080}, {0}, {1.0f}, {1.0f}},
+        {{0.0f},   {240.0f}, {0.0f}, {1.0f}, {0x008000ff}, {0}, {0.0f}, {0.0f}},
+        {{0.0f},   {480.0f}, {0.0f}, {1.0f}, {0x008000ff}, {0}, {0.0f}, {1.0f}},
+        {{640.0f}, {240.0f}, {0.0f}, {1.0f}, {0x008000ff}, {0}, {1.0f}, {0.0f}},
+        {{640.0f}, {480.0f}, {0.0f}, {1.0f}, {0x008000ff}, {0}, {1.0f}, {1.0f}},
+    };
+
+    window = CreateWindowA("static", "ddraw_test", WS_OVERLAPPEDWINDOW,
+            0, 0, 640, 480, 0, 0, 0, 0);
+    ddraw = create_ddraw();
+    ok(!!ddraw, "Failed to create a ddraw object.\n");
+    if (!(device = create_device(ddraw, window, DDSCL_NORMAL)))
+    {
+        skip("Failed to create a 3D device, skipping test.\n");
+        DestroyWindow(window);
+        IDirectDraw2_Release(ddraw);
+        return;
+    }
+
+    hr = IDirect3DDevice2_GetRenderTarget(device, &rt);
+    ok(SUCCEEDED(hr), "Failed to get render target, hr %#x.\n", hr);
+
+    material = create_diffuse_material(device, 0.0f, 0.0f, 0.0f, 1.0f);
+    viewport = create_viewport(device, 0, 0, 640, 480);
+    viewport_set_background(device, viewport, material);
+    hr = IDirect3DDevice2_SetCurrentViewport(device, viewport);
+    ok(SUCCEEDED(hr), "Failed to set current viewport, hr %#x.\n", hr);
+
+    /* Test alpha with DDPF_ALPHAPIXELS texture - should be taken from texture alpha channel.
+     *
+     * The vertex alpha is completely ignored in this case, so case 1 and 2 combined are not
+     * a D3DTOP_MODULATE with texture alpha = 0xff in case 2 (no alpha in texture). */
+    memset(&ddsd, 0, sizeof(ddsd));
+    ddsd.dwSize = sizeof(ddsd);
+    ddsd.dwFlags = DDSD_CAPS | DDSD_HEIGHT | DDSD_WIDTH | DDSD_PIXELFORMAT;
+    ddsd.dwHeight = 128;
+    ddsd.dwWidth = 128;
+    ddsd.ddsCaps.dwCaps = DDSCAPS_TEXTURE;
+    ddsd.ddpfPixelFormat.dwSize = sizeof(ddsd.ddpfPixelFormat);
+    ddsd.ddpfPixelFormat.dwFlags = DDPF_RGB | DDPF_ALPHAPIXELS;
+    U1(ddsd.ddpfPixelFormat).dwRGBBitCount = 32;
+    U2(ddsd.ddpfPixelFormat).dwRBitMask = 0x00ff0000;
+    U3(ddsd.ddpfPixelFormat).dwGBitMask = 0x0000ff00;
+    U4(ddsd.ddpfPixelFormat).dwBBitMask = 0x000000ff;
+    U5(ddsd.ddpfPixelFormat).dwRGBAlphaBitMask = 0xff000000;
+    hr = IDirectDraw2_CreateSurface(ddraw, &ddsd, &surface, NULL);
+    ok(SUCCEEDED(hr), "Failed to create surface, hr %#x.\n", hr);
+
+    hr = IDirectDrawSurface_QueryInterface(surface, &IID_IDirect3DTexture2, (void **)&texture);
+    ok(SUCCEEDED(hr), "Failed to get texture interface, hr %#x.\n", hr);
+    hr = IDirect3DTexture2_GetHandle(texture, device, &texture_handle);
+    ok(SUCCEEDED(hr), "Failed to get texture handle, hr %#x.\n", hr);
+    hr = IDirect3DDevice2_SetRenderState(device, D3DRENDERSTATE_TEXTUREHANDLE, texture_handle);
+    ok(SUCCEEDED(hr), "Failed to set render state, hr %#x.\n", hr);
+
+    hr = IDirect3DViewport2_Clear(viewport, 1, &clear_rect, D3DCLEAR_TARGET);
+    ok(SUCCEEDED(hr), "Failed to clear render target, hr %#x.\n", hr);
+
+    memset(&fx, 0, sizeof(fx));
+    fx.dwSize = sizeof(fx);
+    U5(fx).dwFillColor = 0xff0000ff;
+    hr = IDirectDrawSurface_Blt(surface, NULL, NULL, NULL, DDBLT_COLORFILL | DDBLT_WAIT, &fx);
+    ok(SUCCEEDED(hr), "Failed to clear texture, hr %#x.\n", hr);
+    U5(fx).dwFillColor = 0x800000ff;
+    hr = IDirectDrawSurface_Blt(surface, &rect, NULL, NULL, DDBLT_COLORFILL | DDBLT_WAIT, &fx);
+    ok(SUCCEEDED(hr), "Failed to clear texture, hr %#x.\n", hr);
+
+    /* Note that the ddraw1 version of this test runs tests 1-3 with D3DRENDERSTATE_COLORKEYENABLE
+     * enabled, whereas this version only runs test 4 with color keying on. Because no color key
+     * is set on the texture this should not result in different behavior. */
+    hr = IDirect3DDevice2_SetRenderState(device, D3DRENDERSTATE_CULLMODE, D3DCULL_NONE);
+    ok(SUCCEEDED(hr), "Failed to set render state, hr %#x.\n", hr);
+    hr = IDirect3DDevice2_SetRenderState(device, D3DRENDERSTATE_ZENABLE, D3DZB_FALSE);
+    ok(SUCCEEDED(hr), "Failed to set render state, hr %#x.\n", hr);
+    hr = IDirect3DDevice2_SetRenderState(device, D3DRENDERSTATE_SRCBLEND, D3DBLEND_SRCALPHA);
+    ok(SUCCEEDED(hr), "Failed to set render state, hr %#x.\n", hr);
+    hr = IDirect3DDevice2_SetRenderState(device, D3DRENDERSTATE_DESTBLEND, D3DBLEND_INVSRCALPHA);
+    ok(SUCCEEDED(hr), "Failed to set render state, hr %#x.\n", hr);
+    hr = IDirect3DDevice2_SetRenderState(device, D3DRENDERSTATE_ALPHABLENDENABLE, TRUE);
+    ok(SUCCEEDED(hr), "Failed to set render state, hr %#x.\n", hr);
+    hr = IDirect3DDevice2_SetRenderState(device, D3DRENDERSTATE_TEXTUREMAPBLEND, D3DTBLEND_MODULATE);
+    ok(SUCCEEDED(hr), "Failed to set render state, hr %#x.\n", hr);
+
+    hr = IDirect3DDevice2_BeginScene(device);
+    ok(SUCCEEDED(hr), "Failed to begin scene, hr %#x.\n", hr);
+    hr = IDirect3DDevice2_DrawPrimitive(device, D3DPT_TRIANGLESTRIP, D3DVT_TLVERTEX, &test1_quads[0], 4, 0);
+    ok(SUCCEEDED(hr), "Failed to draw, hr %#x.\n", hr);
+    hr = IDirect3DDevice2_DrawPrimitive(device, D3DPT_TRIANGLESTRIP, D3DVT_TLVERTEX, &test1_quads[4], 4, 0);
+    ok(SUCCEEDED(hr), "Failed to draw, hr %#x.\n", hr);
+    hr = IDirect3DDevice2_EndScene(device);
+    ok(SUCCEEDED(hr), "Failed to end scene, hr %#x.\n", hr);
+
+    color = get_surface_color(rt, 5, 5);
+    ok(compare_color(color, 0x00000080, 2), "Got unexpected color 0x%08x.\n", color);
+    color = get_surface_color(rt, 400, 5);
+    ok(compare_color(color, 0x000000ff, 2), "Got unexpected color 0x%08x.\n", color);
+    color = get_surface_color(rt, 5, 245);
+    ok(compare_color(color, 0x00000080, 2), "Got unexpected color 0x%08x.\n", color);
+    color = get_surface_color(rt, 400, 245);
+    ok(compare_color(color, 0x000000ff, 2), "Got unexpected color 0x%08x.\n", color);
+
+    IDirect3DTexture2_Release(texture);
+    ref = IDirectDrawSurface_Release(surface);
+    ok(ref == 0, "Surface not properly released, refcount %u.\n", ref);
+
+    /* Test alpha with texture that has no alpha channel - alpha should be taken from diffuse vertex color. */
+    memset(&ddsd, 0, sizeof(ddsd));
+    ddsd.dwSize = sizeof(ddsd);
+    ddsd.dwFlags = DDSD_CAPS | DDSD_HEIGHT | DDSD_WIDTH | DDSD_PIXELFORMAT;
+    ddsd.dwHeight = 128;
+    ddsd.dwWidth = 128;
+    ddsd.ddsCaps.dwCaps = DDSCAPS_TEXTURE;
+    ddsd.ddpfPixelFormat.dwSize = sizeof(ddsd.ddpfPixelFormat);
+    ddsd.ddpfPixelFormat.dwFlags = DDPF_RGB;
+    U1(ddsd.ddpfPixelFormat).dwRGBBitCount = 32;
+    U2(ddsd.ddpfPixelFormat).dwRBitMask = 0x00ff0000;
+    U3(ddsd.ddpfPixelFormat).dwGBitMask = 0x0000ff00;
+    U4(ddsd.ddpfPixelFormat).dwBBitMask = 0x000000ff;
+
+    hr = IDirectDraw2_CreateSurface(ddraw, &ddsd, &surface, NULL);
+    ok(SUCCEEDED(hr), "Failed to create surface, hr %#x.\n", hr);
+
+    hr = IDirectDrawSurface_QueryInterface(surface, &IID_IDirect3DTexture2, (void **)&texture);
+    ok(SUCCEEDED(hr), "Failed to get texture interface, hr %#x.\n", hr);
+    hr = IDirect3DTexture2_GetHandle(texture, device, &texture_handle);
+    ok(SUCCEEDED(hr), "Failed to get texture handle, hr %#x.\n", hr);
+    hr = IDirect3DDevice2_SetRenderState(device, D3DRENDERSTATE_TEXTUREHANDLE, texture_handle);
+    ok(SUCCEEDED(hr), "Failed to set render state, hr %#x.\n", hr);
+
+    hr = IDirect3DViewport2_Clear(viewport, 1, &clear_rect, D3DCLEAR_TARGET);
+    ok(SUCCEEDED(hr), "Failed to clear render target, hr %#x.\n", hr);
+
+    U5(fx).dwFillColor = 0xff0000ff;
+    hr = IDirectDrawSurface_Blt(surface, NULL, NULL, NULL, DDBLT_COLORFILL | DDBLT_WAIT, &fx);
+    ok(SUCCEEDED(hr), "Failed to clear texture, hr %#x.\n", hr);
+    U5(fx).dwFillColor = 0x800000ff;
+    hr = IDirectDrawSurface_Blt(surface, &rect, NULL, NULL, DDBLT_COLORFILL | DDBLT_WAIT, &fx);
+    ok(SUCCEEDED(hr), "Failed to clear texture, hr %#x.\n", hr);
+
+    hr = IDirect3DDevice2_BeginScene(device);
+    ok(SUCCEEDED(hr), "Failed to begin scene, hr %#x.\n", hr);
+    hr = IDirect3DDevice2_DrawPrimitive(device, D3DPT_TRIANGLESTRIP, D3DVT_TLVERTEX, &test1_quads[0], 4, 0);
+    ok(SUCCEEDED(hr), "Failed to draw, hr %#x.\n", hr);
+    hr = IDirect3DDevice2_DrawPrimitive(device, D3DPT_TRIANGLESTRIP, D3DVT_TLVERTEX, &test1_quads[4], 4, 0);
+    ok(SUCCEEDED(hr), "Failed to draw, hr %#x.\n", hr);
+    hr = IDirect3DDevice2_EndScene(device);
+    ok(SUCCEEDED(hr), "Failed to end scene, hr %#x.\n", hr);
+
+    color = get_surface_color(rt, 5, 5);
+    ok(compare_color(color, 0x000000ff, 2), "Got unexpected color 0x%08x.\n", color);
+    color = get_surface_color(rt, 400, 5);
+    ok(compare_color(color, 0x000000ff, 2), "Got unexpected color 0x%08x.\n", color);
+    color = get_surface_color(rt, 5, 245);
+    ok(compare_color(color, 0x00000080, 2), "Got unexpected color 0x%08x.\n", color);
+    color = get_surface_color(rt, 400, 245);
+    ok(compare_color(color, 0x00000080, 2), "Got unexpected color 0x%08x.\n", color);
+
+    IDirect3DTexture2_Release(texture);
+    ref = IDirectDrawSurface_Release(surface);
+    ok(ref == 0, "Surface not properly released, refcount %u.\n", ref);
+
+    /* Test RGB - should multiply color components from diffuse vertex color and texture. */
+    memset(&ddsd, 0, sizeof(ddsd));
+    ddsd.dwSize = sizeof(ddsd);
+    ddsd.dwFlags = DDSD_CAPS | DDSD_HEIGHT | DDSD_WIDTH | DDSD_PIXELFORMAT;
+    ddsd.dwHeight = 128;
+    ddsd.dwWidth = 128;
+    ddsd.ddsCaps.dwCaps = DDSCAPS_TEXTURE;
+    ddsd.ddpfPixelFormat.dwSize = sizeof(ddsd.ddpfPixelFormat);
+    ddsd.ddpfPixelFormat.dwFlags = DDPF_RGB | DDPF_ALPHAPIXELS;
+    U1(ddsd.ddpfPixelFormat).dwRGBBitCount = 32;
+    U2(ddsd.ddpfPixelFormat).dwRBitMask = 0x00ff0000;
+    U3(ddsd.ddpfPixelFormat).dwGBitMask = 0x0000ff00;
+    U4(ddsd.ddpfPixelFormat).dwBBitMask = 0x000000ff;
+    U5(ddsd.ddpfPixelFormat).dwRGBAlphaBitMask = 0xff000000;
+    hr = IDirectDraw2_CreateSurface(ddraw, &ddsd, &surface, NULL);
+    ok(SUCCEEDED(hr), "Failed to create surface, hr %#x.\n", hr);
+
+    hr = IDirectDrawSurface_QueryInterface(surface, &IID_IDirect3DTexture2, (void **)&texture);
+    ok(SUCCEEDED(hr), "Failed to get texture interface, hr %#x.\n", hr);
+    hr = IDirect3DTexture2_GetHandle(texture, device, &texture_handle);
+    ok(SUCCEEDED(hr), "Failed to get texture handle, hr %#x.\n", hr);
+    hr = IDirect3DDevice2_SetRenderState(device, D3DRENDERSTATE_TEXTUREHANDLE, texture_handle);
+    ok(SUCCEEDED(hr), "Failed to set render state, hr %#x.\n", hr);
+
+    hr = IDirect3DViewport2_Clear(viewport, 1, &clear_rect, D3DCLEAR_TARGET);
+    ok(SUCCEEDED(hr), "Failed to clear render target, hr %#x.\n", hr);
+
+    U5(fx).dwFillColor = 0x00ffffff;
+    hr = IDirectDrawSurface_Blt(surface, NULL, NULL, NULL, DDBLT_COLORFILL | DDBLT_WAIT, &fx);
+    ok(SUCCEEDED(hr), "Failed to clear texture, hr %#x.\n", hr);
+    U5(fx).dwFillColor = 0x00ffff80;
+    hr = IDirectDrawSurface_Blt(surface, &rect, NULL, NULL, DDBLT_COLORFILL | DDBLT_WAIT, &fx);
+    ok(SUCCEEDED(hr), "Failed to clear texture, hr %#x.\n", hr);
+
+    hr = IDirect3DDevice2_SetRenderState(device, D3DRENDERSTATE_ALPHABLENDENABLE, FALSE);
+    ok(SUCCEEDED(hr), "Failed to set render state, hr %#x.\n", hr);
+
+    hr = IDirect3DDevice2_BeginScene(device);
+    ok(SUCCEEDED(hr), "Failed to begin scene, hr %#x.\n", hr);
+    hr = IDirect3DDevice2_DrawPrimitive(device, D3DPT_TRIANGLESTRIP, D3DVT_TLVERTEX, &test2_quads[0], 4, 0);
+    ok(SUCCEEDED(hr), "Failed to draw, hr %#x.\n", hr);
+    hr = IDirect3DDevice2_DrawPrimitive(device, D3DPT_TRIANGLESTRIP, D3DVT_TLVERTEX, &test2_quads[4], 4, 0);
+    ok(SUCCEEDED(hr), "Failed to draw, hr %#x.\n", hr);
+    hr = IDirect3DDevice2_EndScene(device);
+    ok(SUCCEEDED(hr), "Failed to end scene, hr %#x.\n", hr);
+
+    color = get_surface_color(rt, 5, 5);
+    ok(compare_color(color, 0x00ff0040, 2), "Got unexpected color 0x%08x.\n", color);
+    color = get_surface_color(rt, 400, 5);
+    ok(compare_color(color, 0x00ff0080, 2), "Got unexpected color 0x%08x.\n", color);
+    color = get_surface_color(rt, 5, 245);
+    ok(compare_color(color, 0x00800080, 2), "Got unexpected color 0x%08x.\n", color);
+    color = get_surface_color(rt, 400, 245);
+    ok(compare_color(color, 0x008000ff, 2), "Got unexpected color 0x%08x.\n", color);
+
+    IDirect3DTexture2_Release(texture);
+    ref = IDirectDrawSurface_Release(surface);
+    ok(ref == 0, "Surface not properly released, refcount %u.\n", ref);
+
+    /* Test alpha again, now with color keyed texture (colorkey emulation in wine can interfere). */
+    memset(&ddsd, 0, sizeof(ddsd));
+    ddsd.dwSize = sizeof(ddsd);
+    ddsd.dwFlags = DDSD_CAPS | DDSD_HEIGHT | DDSD_WIDTH | DDSD_PIXELFORMAT;
+    ddsd.dwHeight = 128;
+    ddsd.dwWidth = 128;
+    ddsd.ddsCaps.dwCaps = DDSCAPS_TEXTURE;
+    ddsd.ddpfPixelFormat.dwSize = sizeof(ddsd.ddpfPixelFormat);
+    ddsd.ddpfPixelFormat.dwFlags = DDPF_RGB;
+    U1(ddsd.ddpfPixelFormat).dwRGBBitCount = 16;
+    U2(ddsd.ddpfPixelFormat).dwRBitMask = 0xf800;
+    U3(ddsd.ddpfPixelFormat).dwGBitMask = 0x07e0;
+    U4(ddsd.ddpfPixelFormat).dwBBitMask = 0x001f;
+
+    hr = IDirectDraw2_CreateSurface(ddraw, &ddsd, &surface, NULL);
+    ok(SUCCEEDED(hr), "Failed to create surface, hr %#x.\n", hr);
+
+    hr = IDirectDrawSurface_QueryInterface(surface, &IID_IDirect3DTexture2, (void **)&texture);
+    ok(SUCCEEDED(hr), "Failed to get texture interface, hr %#x.\n", hr);
+    hr = IDirect3DTexture2_GetHandle(texture, device, &texture_handle);
+    ok(SUCCEEDED(hr), "Failed to get texture handle, hr %#x.\n", hr);
+    hr = IDirect3DDevice2_SetRenderState(device, D3DRENDERSTATE_TEXTUREHANDLE, texture_handle);
+    ok(SUCCEEDED(hr), "Failed to set render state, hr %#x.\n", hr);
+
+    hr = IDirect3DViewport2_Clear(viewport, 1, &clear_rect, D3DCLEAR_TARGET);
+    ok(SUCCEEDED(hr), "Failed to clear render target, hr %#x.\n", hr);
+
+    U5(fx).dwFillColor = 0xf800;
+    hr = IDirectDrawSurface_Blt(surface, NULL, NULL, NULL, DDBLT_COLORFILL | DDBLT_WAIT, &fx);
+    ok(SUCCEEDED(hr), "Failed to clear texture, hr %#x.\n", hr);
+    U5(fx).dwFillColor = 0x001f;
+    hr = IDirectDrawSurface_Blt(surface, &rect, NULL, NULL, DDBLT_COLORFILL | DDBLT_WAIT, &fx);
+    ok(SUCCEEDED(hr), "Failed to clear texture, hr %#x.\n", hr);
+
+    ckey.dwColorSpaceLowValue = 0x001f;
+    ckey.dwColorSpaceHighValue = 0x001f;
+    hr = IDirectDrawSurface_SetColorKey(surface, DDCKEY_SRCBLT, &ckey);
+    ok(SUCCEEDED(hr), "Failed to set color key, hr %#x.\n", hr);
+
+    hr = IDirect3DDevice2_SetRenderState(device, D3DRENDERSTATE_ALPHABLENDENABLE, TRUE);
+    ok(SUCCEEDED(hr), "Failed to set render state, hr %#x.\n", hr);
+    hr = IDirect3DDevice2_SetRenderState(device, D3DRENDERSTATE_COLORKEYENABLE, TRUE);
+    ok(SUCCEEDED(hr), "Failed to set render state, hr %#x.\n", hr);
+
+    hr = IDirect3DDevice2_BeginScene(device);
+    ok(SUCCEEDED(hr), "Failed to begin scene, hr %#x.\n", hr);
+    hr = IDirect3DDevice2_DrawPrimitive(device, D3DPT_TRIANGLESTRIP, D3DVT_TLVERTEX, &test1_quads[0], 4, 0);
+    ok(SUCCEEDED(hr), "Failed to draw, hr %#x.\n", hr);
+    hr = IDirect3DDevice2_DrawPrimitive(device, D3DPT_TRIANGLESTRIP, D3DVT_TLVERTEX, &test1_quads[4], 4, 0);
+    ok(SUCCEEDED(hr), "Failed to draw, hr %#x.\n", hr);
+    hr = IDirect3DDevice2_EndScene(device);
+    ok(SUCCEEDED(hr), "Failed to end scene, hr %#x.\n", hr);
+
+    color = get_surface_color(rt, 5, 5);
+    ok(compare_color(color, 0x00000000, 2), "Got unexpected color 0x%08x.\n", color);
+    color = get_surface_color(rt, 400, 5);
+    ok(compare_color(color, 0x00ff0000, 2), "Got unexpected color 0x%08x.\n", color);
+    color = get_surface_color(rt, 5, 245);
+    ok(compare_color(color, 0x00000000, 2), "Got unexpected color 0x%08x.\n", color);
+    color = get_surface_color(rt, 400, 245);
+    ok(compare_color(color, 0x00800000, 2), "Got unexpected color 0x%08x.\n", color);
+
+    IDirect3DTexture2_Release(texture);
+    ref = IDirectDrawSurface_Release(surface);
+    ok(ref == 0, "Surface not properly released, refcount %u.\n", ref);
+
+    destroy_viewport(device, viewport);
+    ref = IDirect3DMaterial2_Release(material);
+    ok(ref == 0, "Material not properly released, refcount %u.\n", ref);
+    IDirectDrawSurface_Release(rt);
+    IDirect3DDevice2_Release(device);
+    ref = IDirectDraw2_Release(ddraw);
+    ok(ref == 0, "Ddraw object not properly released, refcount %u.\n", ref);
+    DestroyWindow(window);
+}
+
+static void test_viewport_clear_rect(void)
+{
+    HRESULT hr;
+    static D3DRECT clear_rect = {{0}, {0}, {640}, {480}};
+    static D3DRECT clear_rect2 = {{90}, {90}, {110}, {110}};
+    IDirectDrawSurface *rt;
+    HWND window;
+    IDirectDraw2 *ddraw;
+    IDirect3DDevice2 *device;
+    IDirect3DMaterial2 *red, *green;
+    IDirect3DViewport2 *viewport, *viewport2;
+    ULONG ref;
+    D3DCOLOR color;
+
+    window = CreateWindowA("static", "ddraw_test", WS_OVERLAPPEDWINDOW,
+            0, 0, 640, 480, 0, 0, 0, 0);
+    ddraw = create_ddraw();
+    ok(!!ddraw, "Failed to create a ddraw object.\n");
+    if (!(device = create_device(ddraw, window, DDSCL_NORMAL)))
+    {
+        skip("Failed to create a 3D device, skipping test.\n");
+        DestroyWindow(window);
+        IDirectDraw2_Release(ddraw);
+        return;
+    }
+
+    hr = IDirect3DDevice2_GetRenderTarget(device, &rt);
+    ok(SUCCEEDED(hr), "Failed to get render target, hr %#x.\n", hr);
+
+    red = create_diffuse_material(device, 1.0f, 0.0f, 0.0f, 1.0f);
+    viewport = create_viewport(device, 0, 0, 640, 480);
+    viewport_set_background(device, viewport, red);
+    hr = IDirect3DViewport2_Clear(viewport, 1, &clear_rect, D3DCLEAR_TARGET);
+    ok(SUCCEEDED(hr), "Failed to clear viewport, hr %#x.\n", hr);
+
+    green = create_diffuse_material(device, 0.0f, 1.0f, 0.0f, 1.0f);
+    viewport2 = create_viewport(device, 100, 100, 20, 20);
+    viewport_set_background(device, viewport2, green);
+    hr = IDirect3DViewport2_Clear(viewport2, 1, &clear_rect2, D3DCLEAR_TARGET);
+    ok(SUCCEEDED(hr), "Failed to clear viewport, hr %#x.\n", hr);
+
+    color = get_surface_color(rt, 85, 85);  /* Outside both. */
+    ok(compare_color(color, 0x00ff0000, 1), "Got unexpected color 0x%08x.\n", color);
+    color = get_surface_color(rt, 95, 95); /* Outside vp, inside rect. */
+    /* AMD GPUs ignore the viewport dimensions and only care about the rectangle. */
+    ok(compare_color(color, 0x00ff0000, 1) || broken(compare_color(color, 0x0000ff00, 1)),
+            "Got unexpected color 0x%08x.\n", color);
+    color = get_surface_color(rt, 105, 105); /* Inside both. */
+    ok(compare_color(color, 0x0000ff00, 1), "Got unexpected color 0x%08x.\n", color);
+    color = get_surface_color(rt, 115, 115); /* Inside vp, outside rect. */
+    ok(compare_color(color, 0x00ff0000, 1), "Got unexpected color 0x%08x.\n", color);
+    color = get_surface_color(rt, 125, 125); /* Outside both. */
+    ok(compare_color(color, 0x00ff0000, 1), "Got unexpected color 0x%08x.\n", color);
+
+    destroy_viewport(device, viewport2);
+    destroy_material(green);
+    destroy_viewport(device, viewport);
+    destroy_material(red);
+    IDirectDrawSurface_Release(rt);
+    IDirect3DDevice2_Release(device);
+    ref = IDirectDraw2_Release(ddraw);
+    ok(ref == 0, "Ddraw object not properly released, refcount %u.\n", ref);
+    DestroyWindow(window);
+}
+
 START_TEST(ddraw2)
 {
     IDirectDraw2 *ddraw;
@@ -7069,4 +7469,6 @@ START_TEST(ddraw2)
     test_palette_alpha();
     test_lost_device();
     test_surface_desc_lock();
+    test_texturemapblend();
+    test_viewport_clear_rect();
 }

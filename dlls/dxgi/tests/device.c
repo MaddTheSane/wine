@@ -621,67 +621,67 @@ static void test_private_data(void)
      * NULL interface is not considered a clear but as setting an interface pointer that
      * happens to be NULL. */
     hr = IDXGIDevice_SetPrivateData(device, &dxgi_private_data_test_guid, 0, NULL);
-    todo_wine ok(hr == S_FALSE, "Got unexpected hr %#x.\n", hr);
+    ok(hr == S_FALSE, "Got unexpected hr %#x.\n", hr);
     hr = IDXGIDevice_SetPrivateDataInterface(device, &dxgi_private_data_test_guid, NULL);
-    todo_wine ok(hr == S_OK, "Got unexpected hr %#x.\n", hr);
+    ok(hr == S_OK, "Got unexpected hr %#x.\n", hr);
     hr = IDXGIDevice_SetPrivateData(device, &dxgi_private_data_test_guid, ~0U, NULL);
-    todo_wine ok(hr == S_OK, "Got unexpected hr %#x.\n", hr);
+    ok(hr == S_OK, "Got unexpected hr %#x.\n", hr);
     hr = IDXGIDevice_SetPrivateData(device, &dxgi_private_data_test_guid, ~0U, NULL);
-    todo_wine ok(hr == S_FALSE, "Got unexpected hr %#x.\n", hr);
+    ok(hr == S_FALSE, "Got unexpected hr %#x.\n", hr);
 
     hr = IDXGIDevice_SetPrivateDataInterface(device, &dxgi_private_data_test_guid, NULL);
-    todo_wine ok(hr == S_OK, "Got unexpected hr %#x.\n", hr);
+    ok(hr == S_OK, "Got unexpected hr %#x.\n", hr);
     size = sizeof(ptr) * 2;
     ptr = (IUnknown *)0xdeadbeef;
     hr = IDXGIDevice_GetPrivateData(device, &dxgi_private_data_test_guid, &size, &ptr);
-    todo_wine ok(hr == S_OK, "Got unexpected hr %#x.\n", hr);
-    todo_wine ok(!ptr, "Got unexpected pointer %p.\n", ptr);
-    todo_wine ok(size == sizeof(IUnknown *), "Got unexpected size %u.\n", size);
+    ok(hr == S_OK, "Got unexpected hr %#x.\n", hr);
+    ok(!ptr, "Got unexpected pointer %p.\n", ptr);
+    ok(size == sizeof(IUnknown *), "Got unexpected size %u.\n", size);
 
     refcount = get_refcount((IUnknown *)test_object);
     hr = IDXGIDevice_SetPrivateDataInterface(device, &dxgi_private_data_test_guid,
             (IUnknown *)test_object);
-    todo_wine ok(hr == S_OK, "Got unexpected hr %#x.\n", hr);
+    ok(hr == S_OK, "Got unexpected hr %#x.\n", hr);
     expected_refcount = refcount + 1;
     refcount = get_refcount((IUnknown *)test_object);
-    todo_wine ok(refcount == expected_refcount, "Got unexpected refcount %u, expected %u.\n", refcount, expected_refcount);
+    ok(refcount == expected_refcount, "Got unexpected refcount %u, expected %u.\n", refcount, expected_refcount);
     hr = IDXGIDevice_SetPrivateDataInterface(device, &dxgi_private_data_test_guid,
             (IUnknown *)test_object);
-    todo_wine ok(hr == S_OK, "Got unexpected hr %#x.\n", hr);
+    ok(hr == S_OK, "Got unexpected hr %#x.\n", hr);
     refcount = get_refcount((IUnknown *)test_object);
-    todo_wine ok(refcount == expected_refcount, "Got unexpected refcount %u, expected %u.\n", refcount, expected_refcount);
+    ok(refcount == expected_refcount, "Got unexpected refcount %u, expected %u.\n", refcount, expected_refcount);
 
     hr = IDXGIDevice_SetPrivateDataInterface(device, &dxgi_private_data_test_guid, NULL);
-    todo_wine ok(hr == S_OK, "Got unexpected hr %#x.\n", hr);
+    ok(hr == S_OK, "Got unexpected hr %#x.\n", hr);
     expected_refcount--;
     refcount = get_refcount((IUnknown *)test_object);
     ok(refcount == expected_refcount, "Got unexpected refcount %u, expected %u.\n", refcount, expected_refcount);
 
     hr = IDXGIDevice_SetPrivateDataInterface(device, &dxgi_private_data_test_guid,
             (IUnknown *)test_object);
-    todo_wine ok(hr == S_OK, "Got unexpected hr %#x.\n", hr);
+    ok(hr == S_OK, "Got unexpected hr %#x.\n", hr);
     size = sizeof(data);
     hr = IDXGIDevice_SetPrivateData(device, &dxgi_private_data_test_guid, size, data);
-    todo_wine ok(hr == S_OK, "Got unexpected hr %#x.\n", hr);
+    ok(hr == S_OK, "Got unexpected hr %#x.\n", hr);
     refcount = get_refcount((IUnknown *)test_object);
     ok(refcount == expected_refcount, "Got unexpected refcount %u, expected %u.\n", refcount, expected_refcount);
     hr = IDXGIDevice_SetPrivateData(device, &dxgi_private_data_test_guid, 42, NULL);
-    todo_wine ok(hr == S_OK, "Got unexpected hr %#x.\n", hr);
+    ok(hr == S_OK, "Got unexpected hr %#x.\n", hr);
     hr = IDXGIDevice_SetPrivateData(device, &dxgi_private_data_test_guid, 42, NULL);
-    todo_wine ok(hr == S_FALSE, "Got unexpected hr %#x.\n", hr);
+    ok(hr == S_FALSE, "Got unexpected hr %#x.\n", hr);
 
     hr = IDXGIDevice_SetPrivateDataInterface(device, &dxgi_private_data_test_guid,
             (IUnknown *)test_object);
-    todo_wine ok(hr == S_OK, "Got unexpected hr %#x.\n", hr);
+    ok(hr == S_OK, "Got unexpected hr %#x.\n", hr);
     expected_refcount++;
     size = 2 * sizeof(ptr);
     ptr = NULL;
     hr = IDXGIDevice_GetPrivateData(device, &dxgi_private_data_test_guid, &size, &ptr);
-    todo_wine ok(hr == S_OK, "Got unexpected hr %#x.\n", hr);
-    todo_wine ok(size == sizeof(test_object), "Got unexpected size %u.\n", size);
+    ok(hr == S_OK, "Got unexpected hr %#x.\n", hr);
+    ok(size == sizeof(test_object), "Got unexpected size %u.\n", size);
     expected_refcount++;
     refcount = get_refcount((IUnknown *)test_object);
-    todo_wine ok(refcount == expected_refcount, "Got unexpected refcount %u, expected %u.\n", refcount, expected_refcount);
+    ok(refcount == expected_refcount, "Got unexpected refcount %u, expected %u.\n", refcount, expected_refcount);
     if (ptr)
         IUnknown_Release(ptr);
     expected_refcount--;
@@ -689,29 +689,29 @@ static void test_private_data(void)
     ptr = (IUnknown *)0xdeadbeef;
     size = 1;
     hr = IDXGIDevice_GetPrivateData(device, &dxgi_private_data_test_guid, &size, NULL);
-    todo_wine ok(hr == S_OK, "Got unexpected hr %#x.\n", hr);
-    todo_wine ok(size == sizeof(device), "Got unexpected size %u.\n", size);
+    ok(hr == S_OK, "Got unexpected hr %#x.\n", hr);
+    ok(size == sizeof(device), "Got unexpected size %u.\n", size);
     size = 2 * sizeof(ptr);
     hr = IDXGIDevice_GetPrivateData(device, &dxgi_private_data_test_guid, &size, NULL);
-    todo_wine ok(hr == S_OK, "Got unexpected hr %#x.\n", hr);
-    todo_wine ok(size == sizeof(device), "Got unexpected size %u.\n", size);
+    ok(hr == S_OK, "Got unexpected hr %#x.\n", hr);
+    ok(size == sizeof(device), "Got unexpected size %u.\n", size);
     refcount = get_refcount((IUnknown *)test_object);
-    todo_wine ok(refcount == expected_refcount, "Got unexpected refcount %u, expected %u.\n", refcount, expected_refcount);
+    ok(refcount == expected_refcount, "Got unexpected refcount %u, expected %u.\n", refcount, expected_refcount);
 
     size = 1;
     hr = IDXGIDevice_GetPrivateData(device, &dxgi_private_data_test_guid, &size, &ptr);
-    todo_wine ok(hr == DXGI_ERROR_MORE_DATA, "Got unexpected hr %#x.\n", hr);
-    todo_wine ok(size == sizeof(device), "Got unexpected size %u.\n", size);
+    ok(hr == DXGI_ERROR_MORE_DATA, "Got unexpected hr %#x.\n", hr);
+    ok(size == sizeof(device), "Got unexpected size %u.\n", size);
     ok(ptr == (IUnknown *)0xdeadbeef, "Got unexpected pointer %p.\n", ptr);
     hr = IDXGIDevice_GetPrivateData(device, &dxgi_private_data_test_guid2, NULL, NULL);
-    todo_wine ok(hr == E_INVALIDARG, "Got unexpected hr %#x.\n", hr);
+    ok(hr == E_INVALIDARG, "Got unexpected hr %#x.\n", hr);
     size = 0xdeadbabe;
     hr = IDXGIDevice_GetPrivateData(device, &dxgi_private_data_test_guid2, &size, &ptr);
-    todo_wine ok(hr == DXGI_ERROR_NOT_FOUND, "Got unexpected hr %#x.\n", hr);
-    todo_wine ok(size == 0, "Got unexpected size %u.\n", size);
+    ok(hr == DXGI_ERROR_NOT_FOUND, "Got unexpected hr %#x.\n", hr);
+    ok(size == 0, "Got unexpected size %u.\n", size);
     ok(ptr == (IUnknown *)0xdeadbeef, "Got unexpected pointer %p.\n", ptr);
     hr = IDXGIDevice_GetPrivateData(device, &dxgi_private_data_test_guid, NULL, &ptr);
-    todo_wine ok(hr == E_INVALIDARG, "Got unexpected hr %#x.\n", hr);
+    ok(hr == E_INVALIDARG, "Got unexpected hr %#x.\n", hr);
     ok(ptr == (IUnknown *)0xdeadbeef, "Got unexpected pointer %p.\n", ptr);
 
     refcount = IDXGIDevice_Release(device);

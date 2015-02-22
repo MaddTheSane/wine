@@ -1758,28 +1758,28 @@ static void shader_glsl_add_src_param(const struct wined3d_shader_instruction *i
     }
     else
     {
-        char param_str[200];
-
-        shader_glsl_gen_modifier(wined3d_src->modifiers, glsl_src->reg_name, swizzle_str, param_str);
+        char reg_name[200];
 
         switch (wined3d_src->reg.data_type)
         {
             case WINED3D_DATA_FLOAT:
-                sprintf(glsl_src->param_str, "%s", param_str);
+                sprintf(reg_name, "%s", glsl_src->reg_name);
                 break;
             case WINED3D_DATA_INT:
-                sprintf(glsl_src->param_str, "floatBitsToInt(%s)", param_str);
+                sprintf(reg_name, "floatBitsToInt(%s)", glsl_src->reg_name);
                 break;
             case WINED3D_DATA_RESOURCE:
             case WINED3D_DATA_SAMPLER:
             case WINED3D_DATA_UINT:
-                sprintf(glsl_src->param_str, "floatBitsToUint(%s)", param_str);
+                sprintf(reg_name, "floatBitsToUint(%s)", glsl_src->reg_name);
                 break;
             default:
                 FIXME("Unhandled data type %#x.\n", wined3d_src->reg.data_type);
-                sprintf(glsl_src->param_str, "%s", param_str);
+                sprintf(reg_name, "%s", glsl_src->reg_name);
                 break;
         }
+
+        shader_glsl_gen_modifier(wined3d_src->modifiers, reg_name, swizzle_str, glsl_src->param_str);
     }
 }
 
@@ -2319,6 +2319,7 @@ static void shader_glsl_binop(const struct wined3d_shader_instruction *ins)
         case WINED3DSIH_IADD: op = "+";  break;
         case WINED3DSIH_ISHL: op = "<<"; break;
         case WINED3DSIH_MUL:  op = "*";  break;
+        case WINED3DSIH_OR:   op = "|";  break;
         case WINED3DSIH_SUB:  op = "-";  break;
         case WINED3DSIH_USHR: op = ">>"; break;
         case WINED3DSIH_XOR:  op = "^";  break;
@@ -2357,6 +2358,7 @@ static void shader_glsl_relop(const struct wined3d_shader_instruction *ins)
             case WINED3DSIH_IGE: op = "greaterThanEqual"; break;
             case WINED3DSIH_UGE: op = "greaterThanEqual"; break;
             case WINED3DSIH_LT:  op = "lessThan"; break;
+            case WINED3DSIH_NE:  op = "notEqual"; break;
             default:
                 op = "<unhandled operator>";
                 ERR("Unhandled opcode %#x.\n", ins->handler_idx);
@@ -2375,6 +2377,7 @@ static void shader_glsl_relop(const struct wined3d_shader_instruction *ins)
             case WINED3DSIH_IGE: op = ">="; break;
             case WINED3DSIH_UGE: op = ">="; break;
             case WINED3DSIH_LT:  op = "<"; break;
+            case WINED3DSIH_NE:  op = "!="; break;
             default:
                 op = "<unhandled operator>";
                 ERR("Unhandled opcode %#x.\n", ins->handler_idx);
@@ -2606,6 +2609,7 @@ static void shader_glsl_map2gl(const struct wined3d_shader_instruction *ins)
         case WINED3DSIH_DSX: instruction = "dFdx"; break;
         case WINED3DSIH_DSY: instruction = "ycorrection.y * dFdy"; break;
         case WINED3DSIH_ROUND_NI: instruction = "floor"; break;
+        case WINED3DSIH_SQRT: instruction = "sqrt"; break;
         default: instruction = "";
             FIXME("Opcode %#x not yet handled in GLSL\n", ins->handler_idx);
             break;
@@ -4151,7 +4155,7 @@ static void shader_glsl_input_pack(const struct wined3d_shader *shader, struct w
 
         if (vertexprocessing == vertexshader)
         {
-            if (!strcmp(semantic_name, "SV_POSITION"))
+            if (!strcmp(semantic_name, "SV_POSITION") && !semantic_idx)
                 shader_addline(buffer, "ps_in[%u]%s = vpos%s;\n",
                         shader->u.ps.input_reg_map[i], reg_mask, reg_mask);
             else
@@ -4377,7 +4381,7 @@ static GLuint generate_param_reorder_function(struct wined3d_shader_buffer *buff
                     shader_addline(buffer, "gl_FrontSecondaryColor%s = vs_out[%u]%s;\n",
                             reg_mask, i, reg_mask);
             }
-            else if (shader_match_semantic(semantic_name, WINED3D_DECL_USAGE_POSITION))
+            else if (shader_match_semantic(semantic_name, WINED3D_DECL_USAGE_POSITION) && !semantic_idx)
             {
                 shader_addline(buffer, "gl_Position%s = vs_out[%u]%s;\n",
                         reg_mask, i, reg_mask);
@@ -4419,9 +4423,10 @@ static GLuint generate_param_reorder_function(struct wined3d_shader_buffer *buff
             if (!(map & 1)) continue;
 
             semantic_name = output_signature[i].semantic_name;
+            semantic_idx = output_signature[i].semantic_idx;
             shader_glsl_write_mask_to_str(output_signature[i].mask, reg_mask);
 
-            if (shader_match_semantic(semantic_name, WINED3D_DECL_USAGE_POSITION))
+            if (shader_match_semantic(semantic_name, WINED3D_DECL_USAGE_POSITION) && !semantic_idx)
             {
                 shader_addline(buffer, "gl_Position%s = vs_out[%u]%s;\n",
                         reg_mask, i, reg_mask);
@@ -6770,8 +6775,10 @@ static const SHADER_HANDLER shader_glsl_instruction_handler_table[WINED3DSIH_TAB
     /* WINED3DSIH_MOVA                  */ shader_glsl_mov,
     /* WINED3DSIH_MOVC                  */ shader_glsl_conditional_move,
     /* WINED3DSIH_MUL                   */ shader_glsl_binop,
+    /* WINED3DSIH_NE                    */ shader_glsl_relop,
     /* WINED3DSIH_NOP                   */ shader_glsl_nop,
     /* WINED3DSIH_NRM                   */ shader_glsl_nrm,
+    /* WINED3DSIH_OR                    */ shader_glsl_binop,
     /* WINED3DSIH_PHASE                 */ shader_glsl_nop,
     /* WINED3DSIH_POW                   */ shader_glsl_pow,
     /* WINED3DSIH_RCP                   */ shader_glsl_scalar_op,
@@ -6787,7 +6794,7 @@ static const SHADER_HANDLER shader_glsl_instruction_handler_table[WINED3DSIH_TAB
     /* WINED3DSIH_SGN                   */ shader_glsl_sgn,
     /* WINED3DSIH_SINCOS                */ shader_glsl_sincos,
     /* WINED3DSIH_SLT                   */ shader_glsl_compare,
-    /* WINED3DSIH_SQRT                  */ NULL,
+    /* WINED3DSIH_SQRT                  */ shader_glsl_map2gl,
     /* WINED3DSIH_SUB                   */ shader_glsl_binop,
     /* WINED3DSIH_TEX                   */ shader_glsl_tex,
     /* WINED3DSIH_TEXBEM                */ shader_glsl_texbem,

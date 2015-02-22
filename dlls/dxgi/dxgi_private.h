@@ -76,12 +76,19 @@ const char *debug_dxgi_format(DXGI_FORMAT format) DECLSPEC_HIDDEN;
 
 DXGI_FORMAT dxgi_format_from_wined3dformat(enum wined3d_format_id format) DECLSPEC_HIDDEN;
 enum wined3d_format_id wined3dformat_from_dxgi_format(DXGI_FORMAT format) DECLSPEC_HIDDEN;
+HRESULT dxgi_get_private_data(struct wined3d_private_store *store,
+        REFGUID guid, UINT *data_size, void *data) DECLSPEC_HIDDEN;
+HRESULT dxgi_set_private_data(struct wined3d_private_store *store,
+        REFGUID guid, UINT data_size, const void *data) DECLSPEC_HIDDEN;
+HRESULT dxgi_set_private_data_interface(struct wined3d_private_store *store,
+        REFGUID guid, const IUnknown *object) DECLSPEC_HIDDEN;
 
 /* IDXGIFactory */
 struct dxgi_factory
 {
     IDXGIFactory1 IDXGIFactory1_iface;
     LONG refcount;
+    struct wined3d_private_store private_store;
     struct wined3d *wined3d;
     UINT adapter_count;
     IDXGIAdapter1 **adapters;
@@ -99,6 +106,7 @@ struct dxgi_device
     IWineDXGIDevice IWineDXGIDevice_iface;
     IUnknown *child_layer;
     LONG refcount;
+    struct wined3d_private_store private_store;
     struct wined3d_device *wined3d_device;
     IDXGIFactory1 *factory;
 };
@@ -111,6 +119,7 @@ struct dxgi_output
 {
     IDXGIOutput IDXGIOutput_iface;
     LONG refcount;
+    struct wined3d_private_store private_store;
     struct dxgi_adapter *adapter;
 };
 
@@ -122,6 +131,7 @@ struct dxgi_adapter
     IDXGIAdapter1 IDXGIAdapter1_iface;
     struct dxgi_factory *parent;
     LONG refcount;
+    struct wined3d_private_store private_store;
     UINT ordinal;
     IDXGIOutput *output;
 };
@@ -134,6 +144,7 @@ struct dxgi_swapchain
 {
     IDXGISwapChain IDXGISwapChain_iface;
     LONG refcount;
+    struct wined3d_private_store private_store;
     struct wined3d_swapchain *wined3d_swapchain;
 };
 
@@ -147,6 +158,7 @@ struct dxgi_surface
     IUnknown IUnknown_iface;
     IUnknown *outer_unknown;
     LONG refcount;
+    struct wined3d_private_store private_store;
     IDXGIDevice *device;
 
     DXGI_SURFACE_DESC desc;

@@ -80,6 +80,18 @@ struct tagMSIOBJECTHDR
 #define MSI_INITIAL_MEDIA_TRANSFORM_OFFSET 10000
 #define MSI_INITIAL_MEDIA_TRANSFORM_DISKID 30000
 
+typedef struct tagMSISTREAM
+{
+    UINT str_index;
+    IStream *stream;
+} MSISTREAM;
+
+typedef struct tagMSITRANSFORM
+{
+    struct list entry;
+    IStorage *stg;
+} MSITRANSFORM;
+
 typedef struct tagMSIDATABASE
 {
     MSIOBJECTHDR hdr;
@@ -93,7 +105,9 @@ typedef struct tagMSIDATABASE
     UINT media_transform_disk_id;
     struct list tables;
     struct list transforms;
-    struct list streams;
+    MSISTREAM *streams;
+    UINT num_streams;
+    UINT num_streams_allocated;
 } MSIDATABASE;
 
 typedef struct tagMSIVIEW MSIVIEW;
@@ -742,6 +756,7 @@ extern void msi_free_handle_table(void) DECLSPEC_HIDDEN;
 
 extern void free_cached_tables( MSIDATABASE *db ) DECLSPEC_HIDDEN;
 extern UINT MSI_CommitTables( MSIDATABASE *db ) DECLSPEC_HIDDEN;
+extern UINT msi_commit_streams( MSIDATABASE *db ) DECLSPEC_HIDDEN;
 
 
 /* string table functions */
@@ -751,7 +766,7 @@ enum StringPersistence
     StringNonPersistent = 1
 };
 
-extern BOOL msi_addstringW( string_table *st, const WCHAR *data, int len, USHORT refcount, enum StringPersistence persistence ) DECLSPEC_HIDDEN;
+extern BOOL msi_add_string( string_table *st, const WCHAR *data, int len, enum StringPersistence persistence ) DECLSPEC_HIDDEN;
 extern UINT msi_string2id( const string_table *st, const WCHAR *data, int len, UINT *id ) DECLSPEC_HIDDEN;
 extern VOID msi_destroy_stringtable( string_table *st ) DECLSPEC_HIDDEN;
 extern const WCHAR *msi_string_lookup( const string_table *st, UINT id, int *len ) DECLSPEC_HIDDEN;
@@ -829,9 +844,7 @@ extern LPWSTR encode_streamname(BOOL bTable, LPCWSTR in) DECLSPEC_HIDDEN;
 extern BOOL decode_streamname(LPCWSTR in, LPWSTR out) DECLSPEC_HIDDEN;
 
 /* database internals */
-extern UINT msi_get_raw_stream( MSIDATABASE *, LPCWSTR, IStream ** ) DECLSPEC_HIDDEN;
-extern UINT msi_clone_open_stream( MSIDATABASE *, IStorage *, const WCHAR *, IStream ** ) DECLSPEC_HIDDEN;
-void msi_destroy_stream( MSIDATABASE *, const WCHAR * ) DECLSPEC_HIDDEN;
+extern UINT msi_get_stream( MSIDATABASE *, const WCHAR *, IStream ** ) DECLSPEC_HIDDEN;
 extern UINT MSI_OpenDatabaseW( LPCWSTR, LPCWSTR, MSIDATABASE ** ) DECLSPEC_HIDDEN;
 extern UINT MSI_DatabaseOpenViewW(MSIDATABASE *, LPCWSTR, MSIQUERY ** ) DECLSPEC_HIDDEN;
 extern UINT MSI_OpenQuery( MSIDATABASE *, MSIQUERY **, LPCWSTR, ... ) DECLSPEC_HIDDEN;
