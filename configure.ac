@@ -76,6 +76,7 @@ AC_ARG_WITH(pthread,   AS_HELP_STRING([--without-pthread],[do not use the pthrea
             [if test "x$withval" = "xno"; then ac_cv_header_pthread_h=no; fi])
 AC_ARG_WITH(pulse,     AS_HELP_STRING([--without-pulse],[do not use PulseAudio sound support]))
 AC_ARG_WITH(sane,      AS_HELP_STRING([--without-sane],[do not use SANE (scanner support)]))
+AC_ARG_WITH(macic,     AS_HELP_STRING([--without-macic],[do not use Image Capture (Mac)]))
 AC_ARG_WITH(tiff,      AS_HELP_STRING([--without-tiff],[do not use TIFF]))
 AC_ARG_WITH(udev,      AS_HELP_STRING([--without-udev],[do not use udev (plug and play support)]))
 AC_ARG_WITH(v4l,       AS_HELP_STRING([--without-v4l],[do not use v4l1 (v4l support)]))
@@ -836,6 +837,7 @@ case $host_os in
     if test "$ac_cv_header_Carbon_Carbon_h" = "yes"
     then
         AC_SUBST(CARBON_LIBS,"-framework Carbon")
+        enable_macic=${enable_macic:-yes}
     fi
 
     dnl Enable Mac driver on Mac OS X 10.6 or later
@@ -978,6 +980,7 @@ enable_winecoreaudio_drv=${enable_winecoreaudio_drv:-no}
 enable_wineqtdecoder=${enable_wineqtdecoder:-no}
 enable_wineandroid_drv=${enable_wineandroid_drv:-no}
 enable_winemac_drv=${enable_winemac_drv:-no}
+enable_macic=${enable_macic:-no}
 test "$ac_cv_header_linux_joystick_h" = "yes" -o "$ac_cv_header_IOKit_hid_IOHIDLib_h" = "yes" || enable_winejoystick_drv=${enable_winejoystick_drv:-no}
 
 dnl Check for cross compiler to build test programs
@@ -3255,6 +3258,7 @@ WINE_CONFIG_TEST(dlls/infosoft/tests)
 WINE_CONFIG_DLL(initpki)
 WINE_CONFIG_DLL(inkobj)
 WINE_CONFIG_DLL(inseng,,[clean])
+WINE_CONFIG_DLL(imagecapture.ds,enable_macic)
 WINE_CONFIG_DLL(iphlpapi,,[implib])
 WINE_CONFIG_TEST(dlls/iphlpapi/tests)
 WINE_CONFIG_DLL(iprop)

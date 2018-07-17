@@ -855,6 +855,7 @@ with_png
 with_pthread
 with_pulse
 with_sane
+with_macic
 with_tiff
 with_udev
 with_v4l
@@ -1273,6 +1274,7 @@ enable_infosoft
 enable_initpki
 enable_inkobj
 enable_inseng
+enable_macic
 enable_iphlpapi
 enable_iprop
 enable_irprops_cpl
@@ -2415,6 +2417,7 @@ Optional Packages:
   --without-pthread       do not use the pthread library
   --without-pulse         do not use PulseAudio sound support
   --without-sane          do not use SANE (scanner support)
+  --without-macic         do not use Image Capture (Mac)
   --without-tiff          do not use TIFF
   --without-udev          do not use udev (plug and play support)
   --without-v4l           do not use v4l1 (v4l support)
@@ -3700,6 +3703,12 @@ fi
 # Check whether --with-sane was given.
 if test "${with_sane+set}" = set; then :
   withval=$with_sane;
+fi
+
+
+# Check whether --with-macic was given.
+if test "${with_macic+set}" = set; then :
+  withval=$with_macic;
 fi
 
 
@@ -8380,6 +8389,7 @@ rm -f core conftest.err conftest.$ac_objext \
     then
         CARBON_LIBS="-framework Carbon"
 
+        enable_macic=${enable_macic:-yes}
     fi
 
         if test "$ac_cv_header_ApplicationServices_ApplicationServices_h" = "yes"
@@ -9074,6 +9084,7 @@ enable_winecoreaudio_drv=${enable_winecoreaudio_drv:-no}
 enable_wineqtdecoder=${enable_wineqtdecoder:-no}
 enable_wineandroid_drv=${enable_wineandroid_drv:-no}
 enable_winemac_drv=${enable_winemac_drv:-no}
+enable_macic=${enable_macic:-no}
 test "$ac_cv_header_linux_joystick_h" = "yes" -o "$ac_cv_header_IOKit_hid_IOHIDLib_h" = "yes" || enable_winejoystick_drv=${enable_winejoystick_drv:-no}
 
 CROSSTARGET=""
@@ -18640,6 +18651,7 @@ wine_fn_config_test dlls/infosoft/tests infosoft_test
 wine_fn_config_dll initpki enable_initpki
 wine_fn_config_dll inkobj enable_inkobj
 wine_fn_config_dll inseng enable_inseng clean
+wine_fn_config_dll imagecapture.ds enable_macic
 wine_fn_config_dll iphlpapi enable_iphlpapi implib
 wine_fn_config_test dlls/iphlpapi/tests iphlpapi_test
 wine_fn_config_dll iprop enable_iprop
